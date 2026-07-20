@@ -1,0 +1,9 @@
+.button { display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--border);border-radius:7px;background:white;color:#1e293b;font-weight:500;line-height:1.2; }
+.button svg { width:1.15em;height:1.15em;flex:none; }
+.button:disabled { cursor:not-allowed;opacity:.6; }
+.md { padding:8px 12px; }
+.sm { padding:5px 8px;font-size:11px; }
+.primary { border-color:var(--primary);background:var(--primary);color:white; }
+.secondary { background:white; }
+.ghost { border-color:transparent;background:transparent; }
+.danger { border-color:#fecaca;background:white;color:#b91c1c; }

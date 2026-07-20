@@ -1,0 +1,203 @@
+docType: ui-spec
+format_version: "0.0.3"
+
+metadata:
+  name: agenvyl
+  description: "Персональное Web/PWA-приложение для групповой работы с несколькими AI-персонами через единый Connector. Пользователь собирает комнаты, явно вызывает агентов через упоминания, наблюдает параллельные попытки и управляет запросами агента, файлами и историей workspace."
+  version: "0.2.0"
+  theme: "Плотный рабочий мессенджер с устойчивой лентой длинных разговоров, ясным разделением голосов агентов и спокойной технической метаинформацией."
+  background: "Нейтральная рабочая поверхность, сохраняющая визуальную устойчивость при нескольких одновременных потоках ответа и открытых контекстных панелях."
+  palette:
+    primary: "холодный акцент для основных действий и выбранного контекста"
+    agent_identity: "устойчивые индивидуальные акценты персон без конкуренции с содержанием"
+    success: "успешно завершённая попытка или файловая операция"
+    warning: "approval, clarification, provider retry и состояния, требующие внимания"
+    danger: "ошибка, конфликт, отмена или необратимое удаление"
+    muted: "вторичная метаинформация, timestamps, технические snapshots и завершённая activity"
+  breakpoints:
+    mobile: "< 768px"
+    tablet: "768px - 1199px"
+    desktop: ">= 1200px"
+
+templates:
+  desktop_workspace:
+    purpose: "Рабочая оболочка с постоянной навигацией по комнатам слева и основной областью текущего раздела."
+    regions:
+      - id: rooms_sidebar
+        type: static
+        position: left
+        fullHeight: true
+        fixed: true
+        purpose: "Постоянный доступ к разделам, комнатам, корзине и профилю локального пользователя."
+        blocks:
+          - id: product_identity
+            type: logo
+            purpose: "Компактная идентификация Agenvyl и состояние подключения интерфейса."
+          - id: primary_navigation
+            type: main_navigation
+            purpose: "Переход между текущей комнатой и глобальным каталогом персон."
+          - id: room_navigation
+            type: custom
+            purpose: "Поиск и выбор комнат, создание новой комнаты, мягкое удаление, восстановление и подтверждаемая окончательная очистка."
+          - id: user_context
+            type: user_profile
+            purpose: "Профиль локального человека с immutable snapshot имени и handle в новых сообщениях."
+      - id: screen_content
+        type: content
+        position: center
+        purpose: "Основная область выбранного раздела."
+  mobile_workspace:
+    purpose: "Полноэкранная мобильная оболочка; навигация по комнатам и разделам открывается отдельной панелью из шапки текущего экрана."
+    regions:
+      - id: mobile_content
+        type: content
+        position: center
+        purpose: "Основная область с фокусом на текущем разговоре, каталоге или редакторе."
+
+default_template: desktop_workspace
+
+navigation:
+  items:
+    - id: nav_chat
+      label: "Чат"
+      target: room_chat
+    - id: nav_personas
+      label: "Персоны"
+      target: persona_catalog
+
+screen_groups:
+  - id: conversation
+    screens: [room_chat]
+  - id: persona_management
+    screens: [persona_catalog]
+
+screens:
+  room_chat:
+    title: "Групповой чат"
+    purpose: "Главная рабочая поверхность комнаты: durable история человека и агентов, явный fan-out по упоминаниям, параллельные Connector executions, retry-попытки, запросы агента и versioned workspace."
+    template:
+      default: desktop_workspace
+      mobile: mobile_workspace
+      tablet: desktop_workspace
+      desktop: desktop_workspace
+    container_max_width: "100%"
+    blocks:
+      - id: room_header
+        columns: 12
+        purpose: "Закреплённая шапка с названием комнаты, состоянием room stream, числом активных запусков, составом агентов и входом в workspace; на мобильном также открывает навигационную панель."
+        blocks:
+          - id: room_identity
+            columns: 6
+            purpose: "Название комнаты, connected/reconnecting/recovery state и количество активных попыток."
+          - id: participant_roster
+            columns: 3
+            purpose: "Компактный roster подключённых персон и действие управления составом комнаты."
+          - id: workspace_context
+            columns: 3
+            purpose: "Действие открытия файлов и версий канонического workspace комнаты."
+      - id: conversation_timeline
+        columns: 12
+        purpose: "Каноническая лента с пагинацией назад и durable replay; сохраняет положение, порядок response slots и визуальную устойчивость при streaming, загрузке изображений и reconnect."
+        blocks:
+          - id: empty_room_state
+            columns: 12
+            purpose: "Пустое состояние объясняет упоминания @handle и @all и предлагает подключить агентов к комнате."
+          - id: user_message
+            columns: 12
+            purpose: "Сообщение человека с immutable snapshot автора, выделенными mentions и прикреплёнными версиями файлов; сообщение без целей не запускает агентов."
+          - id: response_round
+            columns: 12
+            purpose: "Стабильная группа response slots одного пользовательского хода; карточки могут располагаться рядом, не меняют порядок и независимо доходят до terminal state."
+            blocks:
+              - id: agent_response_card
+                columns: 12
+                purpose: "Ответ персоны с snapshot harness/model, streaming Markdown, workspace-only inline-изображениями, статусом, остановкой и повторным запуском."
+              - id: reasoning_panel
+                columns: 12
+                purpose: "Отдельный сворачиваемый reasoning-поток, который не смешивается с публичным ответом."
+              - id: provider_degradation
+                columns: 12
+                purpose: "Нетерминальное предупреждение о retry конкретного provider/model; run остаётся активным и состояние не трактуется как недоступность всего harness."
+              - id: tool_activity
+                columns: 12
+                purpose: "Сворачиваемая хронология tool calls со статусами started, progress и completed и безопасными краткими деталями."
+              - id: approval_request
+                columns: 12
+                purpose: "Встроенный запрос разрешения с явными действиями Разрешить и Отклонить; execution продолжает ждать выбора пользователя."
+              - id: clarification_request
+                columns: 12
+                purpose: "Встроенный вопрос агента с suggested choices и свободным текстовым ответом внутри конкретной попытки."
+              - id: attempt_carousel
+                columns: 12
+                purpose: "Навигация между retry-попытками одного response slot и создание другого варианта только пока линейная история допускает смену канонического ответа."
+          - id: reconnect_state
+            columns: 12
+            purpose: "Состояние восстановления WebSocket и replay без потери уже показанного текста и без дублирования событий."
+      - id: room_composer
+        columns: 12
+        purpose: "Закреплённый composer для многострочного текста, mentions и versioned attachments; поддерживает выбор файлов, drag-and-drop, preview целей и безопасный повтор после ошибки API."
+        blocks:
+          - id: mention_editor
+            columns: 8
+            purpose: "Редактор с autocomplete для агентов комнаты, @all, клавиатурной навигацией и вставкой mention из ответа."
+          - id: target_preview
+            columns: 4
+            purpose: "Фактические цели следующего fan-out и предупреждение, когда текст не вызовет ни одного агента."
+          - id: composer_actions
+            columns: 12
+            purpose: "Отправка, выбор файлов из workspace, загрузка локальных вложений и отмена активных запусков раунда."
+      - id: run_details_drawer
+        columns: 12
+        purpose: "Контекстная панель попытки: пользовательский lifecycle, provider degradation, безопасное состояние Connector/checkpoint, запрос агента, tool details, immutable harness route, token usage и ID запуска."
+      - id: workspace_drawer
+        columns: 12
+        purpose: "Панель канонического workspace комнаты с деревом файлов и корзиной, preview текста и изображений, загрузкой, созданием папок, rename/move/delete, скачиванием и восстановлением версий."
+      - id: room_management_dialogs
+        columns: 12
+        purpose: "Диалоги создания комнаты и изменения состава: название, группированный выбор активных персон, счётчик выбранных элементов, валидация и сохранение."
+  persona_catalog:
+    title: "Персоны"
+    purpose: "Единый master-detail workspace для каталога и редактора персон: на desktop список и выбранная персона видны рядом, а на mobile пользователь последовательно переходит из каталога в создание или редактирование и возвращается назад."
+    template:
+      default: desktop_workspace
+      mobile: mobile_workspace
+    container_max_width: "100%"
+    blocks:
+      - id: persona_catalog_header
+        columns: 12
+        purpose: "Заголовок раздела, действие создания новой персоны и доступ к общей навигации на мобильном."
+      - id: persona_grouped_list
+        columns:
+          default: 4
+          mobile: 12
+        purpose: "Компактный список активных и архивных персон по пользовательским группам с выбором, переносом между группами и управлением самими группами."
+      - id: persona_editor_panel
+        columns:
+          default: 8
+          mobile: 12
+        purpose: "Правая область desktop workspace или отдельное mobile-состояние: пустое приглашение, создание новой персоны либо редактирование выбранной записи."
+        blocks:
+          - id: persona_catalog_empty_state
+            columns: 12
+            purpose: "Состояние без выбранной персоны предлагает открыть существующую запись или создать новую."
+          - id: persona_editor_header
+            columns: 12
+            purpose: "Identity выбранной персоны, состояние saved/dirty/saving, основное действие сохранения и возврат к каталогу на мобильном."
+          - id: persona_identity
+            columns: 12
+            purpose: "Имя, уникальный @handle, роль, группа и устойчивый цвет с немедленной клиентской валидацией."
+          - id: persona_behavior
+            columns: 12
+            purpose: "System prompt, определяющий поведение и область ответственности персоны."
+          - id: persona_harness_route
+            columns: 12
+            purpose: "Выбор healthy Connector harness instance, модели и доступного mode; сохранённый недоступный маршрут остаётся видимым, но не может быть молча заменён."
+          - id: room_membership
+            columns: 12
+            purpose: "Явное добавление активной персоны в текущую комнату или удаление из её roster без изменения глобальной конфигурации."
+          - id: persona_lifecycle
+            columns: 12
+            purpose: "Архивирование, восстановление и подтверждаемое окончательное удаление только допустимых персон."
+          - id: unsaved_changes_guard
+            columns: 12
+            purpose: "Подтверждение перехода к другой персоне, комнате или разделу при наличии несохранённого draft; пользователь может остаться или отбросить изменения."

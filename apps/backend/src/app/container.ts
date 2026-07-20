@@ -1,0 +1,52 @@
+import { createRepositories } from '../infrastructure/database/createRepositories.js';
+import { RoomEventBus } from '../modules/room-events/RoomEventBus.js';
+import { RoomEventService } from '../modules/room-events/RoomEventService.js';
+import { ActiveRunRegistry } from '../modules/runs/ActiveRunRegistry.js';
+import { RunExecutor } from '../modules/runs/RunExecutor.js';
+import type { AppConfig } from './config.js';
+import {RoomsService} from '../modules/rooms/rooms.service.js';
+import {PersonasService} from '../modules/personas/personas.service.js';
+import {CreateMessageRound} from '../modules/messages/createMessageRound.js';
+import {RunsService} from '../modules/runs/runs.service.js';
+import {PersonaGroupsService} from '../modules/persona-groups/personaGroups.service.js';
+import type {FastifyBaseLogger} from 'fastify';
+import {RoomWorkspaceService} from '../modules/workspace/RoomWorkspaceService.js';
+import {HttpConnectorClient} from '../integrations/connector/HttpConnectorClient.js';
+import {HarnessCatalogService} from '../modules/connector/HarnessCatalogService.js';
+import {ConnectorRunAdapter} from '../integrations/connector/ConnectorRunAdapter.js';
+import {UserProfileService} from '../modules/user-profile/userProfile.service.js';
+
+export async function createAppContainer(config: AppConfig, fetchImplementation?: typeof fetch,logger?:FastifyBaseLogger) {
+  const {database,personas,userProfile,personaGroups,rooms,roomEvents,messages,runs,workspace}=await createRepositories(config.databaseUrl);
+  const eventBus = new RoomEventBus();
+  const events = new RoomEventService(roomEvents,eventBus);
+  const connector=new HttpConnectorClient(config.connectorUrl,config.connectorToken,fetchImplementation);
+  const harnessCatalogService=new HarnessCatalogService(connector);
+  const connectorRuns=new ConnectorRunAdapter(connector);
+  const activeRuns = new ActiveRunRegistry();
+  const roomWorkspace=new RoomWorkspaceService(rooms,workspace,events,activeRuns,config.workspaceRoot,config.workspaceAgentRoot,config.workspaceMaxFileBytes);
+
+  const runExecutor=new RunExecutor({ personas, runs, events, runGateway:connectorRuns, runEvents:connectorRuns, connectorExecution:connectorRuns,activeRuns,concurrency:config.runConcurrency,runTimeoutMs:config.runTimeoutMs,logger,roomWorkspace,messages,connector });
+  await runExecutor.reconcilePersistedRuns();
+  return {
+    database,
+    personas,
+    rooms,
+    messages,
+    runs,
+    events,
+    dependencyHealth:connectorRuns,
+    activeRuns,
+    runExecutor,
+    roomsService:new RoomsService(rooms,roomWorkspace),
+    personasService:new PersonasService(personas,rooms,harnessCatalogService),
+    userProfileService:new UserProfileService(userProfile),
+    personaGroupsService:new PersonaGroupsService(personaGroups),
+    createMessageRound:new CreateMessageRound({personas,messages,events,harnesses:harnessCatalogService,activeRuns,runExecutor,roomWorkspace}),
+    runsService:new RunsService({runs,events,activeRuns,executor:runExecutor}),
+    harnessCatalogService,
+    roomWorkspace,
+  };
+}
+
+export type AppContainer = ReturnType<typeof createAppContainer>;

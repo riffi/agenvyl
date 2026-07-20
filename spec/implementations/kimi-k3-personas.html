@@ -1,0 +1,1896 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agenvyl — Персоны</title>
+<style>
+/* ===== RESET & BASE ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 14px; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: #f0f2f5;
+  color: #1e293b;
+  line-height: 1.5;
+  overflow: hidden;
+  height: 100vh;
+}
+button { font-family: inherit; }
+input, select, textarea { font-family: inherit; }
+
+/* ===== SEMANTIC PALETTE ===== */
+:root {
+  --primary: #4f6ef7;            /* холодный акцент: основные действия, выбранный контекст */
+  --primary-hover: #3d5ce5;
+  --primary-bg: #eef2ff;
+  --primary-border: #c7d2fe;
+  --success: #168456;            /* успешно завершённые операции */
+  --success-bg: #f0fdf4;
+  --warning: #b45309;            /* состояния, требующие внимания */
+  --warning-bg: #fffbeb;
+  --warning-border: #fde68a;
+  --danger: #dc2626;             /* ошибка, отмена, необратимое удаление */
+  --danger-bg: #fef2f2;
+  --danger-border: #fecaca;
+  --muted: #94a3b8;              /* вторичная метаинформация */
+  --surface: #ffffff;
+  --surface-alt: #f8fafc;
+  --border: #e2e8f0;
+  --border-soft: #edf0f4;
+  --text: #1e293b;
+  --text-secondary: #64748b;
+  --sidebar-bg: #1e293b;
+  --sidebar-text: #cbd5e1;
+  --sidebar-hover: #334155;
+  --shadow-menu: 0 12px 32px rgba(15, 23, 42, 0.12);
+  --shadow-dialog: 0 24px 64px rgba(15, 23, 42, 0.22);
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+
+/* ===== APP LAYOUT (desktop_workspace template) ===== */
+.app { display: flex; height: 100vh; width: 100%; }
+
+/* ===== SIDEBAR (rooms_sidebar region) ===== */
+.sidebar {
+  width: 264px; min-width: 264px;
+  background: var(--sidebar-bg);
+  color: var(--sidebar-text);
+  display: flex; flex-direction: column;
+  height: 100vh;
+  z-index: 200;
+  transition: transform .25s ease;
+}
+.sidebar-backdrop {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(15, 23, 42, .45);
+  z-index: 190;
+}
+
+/* product_identity */
+.product-identity {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+.product-identity .logo {
+  width: 34px; height: 34px; flex: 0 0 auto;
+  border-radius: 9px;
+  background: var(--primary);
+  color: #fff; font-weight: 700; font-size: 15px;
+  display: grid; place-items: center;
+}
+.product-identity .who { display: flex; flex-direction: column; min-width: 0; }
+.product-identity .who strong { color: #f1f5f9; font-size: 15px; font-weight: 600; }
+.product-identity .who small { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; }
+.product-identity .dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 6px rgba(34,197,94,.6); }
+
+/* primary_navigation */
+.primary-navigation { display: flex; gap: 4px; padding: 12px 12px 8px; }
+.primary-navigation button {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px;
+  padding: 8px 10px;
+  border: 0; border-radius: 8px;
+  background: transparent; color: var(--sidebar-text);
+  font-size: 13px; cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.primary-navigation button:hover { background: var(--sidebar-hover); }
+.primary-navigation button.active { background: var(--primary); color: #fff; }
+.primary-navigation svg { width: 15px; height: 15px; }
+
+/* room_navigation */
+.room-navigation {
+  flex: 1; min-height: 0;
+  display: flex; flex-direction: column;
+  padding: 6px 12px 12px;
+  overflow: hidden;
+}
+.room-navigation > header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 4px 4px 8px;
+  color: var(--muted); font-size: 10px; font-weight: 600;
+  letter-spacing: .08em; text-transform: uppercase;
+}
+.room-navigation > header button {
+  width: 24px; height: 24px; display: grid; place-items: center;
+  border: 0; border-radius: 6px; background: transparent; color: var(--muted);
+  cursor: pointer; font-size: 16px;
+}
+.room-navigation > header button:hover { background: var(--sidebar-hover); color: #e2e8f0; }
+.room-search {
+  width: 100%; margin-bottom: 8px;
+  padding: 7px 10px;
+  border: 1px solid rgba(255,255,255,.1); border-radius: 7px;
+  background: rgba(255,255,255,.05); color: #e2e8f0; font-size: 12px;
+}
+.room-search::placeholder { color: #64748b; }
+.room-search:focus { outline: none; border-color: var(--primary); }
+.room-list { flex: 1; min-height: 0; overflow-y: auto; display: grid; gap: 2px; align-content: start; }
+.room-row {
+  display: flex; align-items: center; gap: 9px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0; border-radius: 8px;
+  background: transparent; color: var(--sidebar-text);
+  text-align: left; cursor: pointer;
+  transition: background .15s;
+}
+.room-row:hover { background: var(--sidebar-hover); }
+.room-row.selected { background: rgba(79,110,247,.22); }
+.room-row > b {
+  width: 30px; height: 30px; flex: 0 0 auto;
+  display: grid; place-items: center;
+  border-radius: 8px; background: #334155;
+  color: #cbd5e1; font-size: 10px; font-weight: 600;
+}
+.room-row.selected > b { background: var(--primary); color: #fff; }
+.room-row > span { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.room-row strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; color: #e2e8f0; }
+.room-row small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 11px; }
+.room-row > i { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: var(--primary); }
+.room-trash { margin-top: 8px; border-top: 1px solid rgba(255,255,255,.07); padding-top: 8px; }
+.room-trash summary {
+  display: flex; align-items: center; gap: 7px;
+  padding: 6px 8px; border-radius: 7px;
+  color: var(--muted); font-size: 12px; cursor: pointer; list-style: none;
+}
+.room-trash summary::-webkit-details-marker { display: none; }
+.room-trash summary:hover { background: var(--sidebar-hover); }
+.room-trash .room-row { opacity: .65; cursor: default; }
+.room-trash .room-row:hover { background: transparent; }
+
+/* user_context */
+.user-context {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 0; border-top: 1px solid rgba(255,255,255,.08);
+  background: transparent; color: var(--sidebar-text);
+  cursor: pointer; text-align: left;
+}
+.user-context:hover { background: var(--sidebar-hover); }
+.user-context > b {
+  width: 32px; height: 32px; flex: 0 0 auto;
+  display: grid; place-items: center;
+  border-radius: 50%; background: #7c3aed;
+  color: #fff; font-size: 13px;
+}
+.user-context > span { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.user-context strong { color: #f1f5f9; font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-context small { color: var(--muted); font-size: 11px; }
+.user-context svg { width: 15px; height: 15px; color: var(--muted); flex: 0 0 auto; }
+
+/* ===== SCREEN ===== */
+.screen { flex: 1; min-width: 0; display: flex; flex-direction: column; height: 100vh; }
+
+/* persona_catalog_header */
+.catalog-header {
+  flex: 0 0 auto;
+  display: flex; align-items: center; gap: 12px;
+  min-height: 56px;
+  padding: 0 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.catalog-header .burger {
+  display: none;
+  width: 36px; height: 36px; flex: 0 0 auto;
+  place-items: center;
+  border: 0; border-radius: 8px; background: transparent; color: #334155;
+  cursor: pointer;
+}
+.catalog-header .burger:hover { background: var(--surface-alt); }
+.catalog-header .burger svg { width: 20px; height: 20px; }
+.catalog-header .title { display: flex; align-items: center; gap: 9px; min-width: 0; flex: 1; }
+.catalog-header .title svg { width: 17px; height: 17px; color: var(--text-secondary); flex: 0 0 auto; }
+.catalog-header .title strong { font-size: 16px; font-weight: 600; color: var(--text); white-space: nowrap; }
+.catalog-header .title small { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--border); border-radius: 9px;
+  background: var(--surface); color: #334155;
+  font-size: 13px; font-weight: 500;
+  cursor: pointer; white-space: nowrap;
+  transition: background .15s, border-color .15s, box-shadow .15s, transform .1s;
+}
+.btn:hover:not(:disabled) { background: var(--surface-alt); border-color: #cbd5e1; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn.primary { border-color: var(--primary); background: var(--primary); color: #fff; }
+.btn.primary:hover:not(:disabled) { background: var(--primary-hover); border-color: var(--primary-hover); box-shadow: 0 2px 8px rgba(79,110,247,.3); }
+.btn.danger { border-color: var(--danger-border); background: var(--surface); color: var(--danger); }
+.btn.danger:hover:not(:disabled) { background: var(--danger-bg); }
+.btn svg { width: 14px; height: 14px; }
+
+/* ===== MASTER-DETAIL ===== */
+.master-detail {
+  flex: 1; min-height: 0;
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  align-items: stretch;
+}
+
+/* persona_grouped_list */
+.persona-grouped-list {
+  min-height: 0; overflow-y: auto;
+  background: #fbfcfe;
+  border-right: 1px solid var(--border);
+  scrollbar-width: thin;
+}
+.list-toolbar {
+  position: sticky; top: 0; z-index: 12;
+  display: grid; grid-template-columns: minmax(0,1fr) 32px 32px; gap: 5px;
+  padding: 8px;
+  border-bottom: 1px solid var(--border-soft);
+  background: rgba(251,252,254,.94);
+  backdrop-filter: blur(8px);
+}
+.list-toolbar .search-wrap { position: relative; min-width: 0; }
+.list-toolbar .search-wrap svg {
+  position: absolute; left: 9px; top: 50%; transform: translateY(-50%);
+  width: 13px; height: 13px; color: var(--muted); pointer-events: none;
+}
+.list-toolbar input {
+  width: 100%; height: 32px; min-width: 0;
+  padding: 0 9px 0 28px;
+  border: 1px solid transparent; border-radius: 7px;
+  background: #f1f3f6; font-size: 12px;
+}
+.list-toolbar input:focus { outline: none; border-color: #a5b4fc; background: #fff; box-shadow: 0 0 0 2px #e0e7ff; }
+.icon-btn {
+  width: 32px; height: 32px;
+  display: grid; place-items: center;
+  border: 1px solid var(--border); border-radius: 7px;
+  background: var(--surface); color: var(--text-secondary);
+  cursor: pointer; transition: background .15s, color .15s, border-color .15s;
+}
+.icon-btn:hover:not(:disabled) { background: var(--primary-bg); border-color: #a5b4fc; color: #3730a3; }
+.icon-btn:disabled { opacity: .45; cursor: not-allowed; }
+.icon-btn svg { width: 15px; height: 15px; }
+
+.create-group-form {
+  display: grid; grid-template-columns: minmax(0,1fr) auto auto; gap: 5px;
+  margin: 7px 8px 0; padding: 7px;
+  border: 1px solid var(--primary-border); border-radius: 8px;
+  background: #f5f7ff;
+}
+.create-group-form input {
+  min-width: 0; height: 30px; padding: 0 9px;
+  border: 1px solid var(--border); border-radius: 6px; font-size: 12px;
+}
+.create-group-form input:focus { outline: none; border-color: var(--primary); }
+.create-group-form .btn { padding: 5px 10px; font-size: 12px; border-radius: 6px; }
+
+.persona-group { border-bottom: 1px solid var(--border-soft); }
+.persona-group > header { display: flex; align-items: center; min-height: 36px; padding: 0 3px; }
+.group-toggle {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; gap: 6px;
+  height: 36px; padding: 0 7px;
+  border: 0; border-radius: 5px; background: transparent;
+  text-align: left; cursor: pointer;
+}
+.group-toggle:hover { background: #f1f5f9; }
+.group-toggle .chevron { width: 12px; flex: 0 0 auto; color: var(--muted); font-size: 9px; transition: transform .18s; }
+.persona-group.collapsed .group-toggle .chevron { transform: rotate(-90deg); }
+.group-toggle strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; color: #334155; }
+.group-toggle .count {
+  display: grid; place-items: center;
+  min-width: 19px; height: 17px; padding: 0 5px;
+  border-radius: 9px; background: var(--primary-bg);
+  color: var(--primary); font-size: 10px; font-weight: 600;
+}
+.persona-group.archive .group-toggle .count { background: #f1f5f9; color: var(--text-secondary); }
+.group-menu-wrap { position: relative; flex: 0 0 auto; }
+.group-body { padding: 2px 5px 6px; display: grid; gap: 1px; }
+.persona-group.collapsed .group-body { display: none; }
+.empty-group { padding: 9px; color: var(--muted); text-align: center; font-size: 11px; }
+
+.persona-row {
+  position: relative;
+  display: flex; align-items: center;
+  min-height: 42px;
+  border: 0; border-left: 2px solid transparent; border-radius: 5px;
+  background: transparent;
+  transition: background .13s;
+}
+.persona-row:hover { background: #eef1f5; }
+.persona-row.selected { border-left-color: var(--primary); background: #e8edff; }
+.persona-row.draft-row { border-left-color: var(--warning); background: var(--warning-bg); }
+.persona-main {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 7px;
+  border: 0; background: transparent; cursor: pointer; text-align: left;
+}
+.persona-main .avatar {
+  width: 30px; height: 30px; flex: 0 0 auto;
+  display: grid; place-items: center;
+  border-radius: 8px;
+  color: #fff; font-size: 11px; font-weight: 600;
+}
+.persona-main .meta { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.persona-main .meta strong { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: 12.5px; font-weight: 500; color: var(--text); }
+.persona-main .meta strong span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.persona-main .meta small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 10.5px; margin-top: 1px; }
+.room-dot { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: var(--success); }
+.persona-row.is-archived .persona-main .avatar { filter: grayscale(.55); opacity: .75; }
+.persona-row.is-archived .meta strong { color: var(--text-secondary); }
+.row-menu-trigger, .group-menu-trigger {
+  width: 26px; height: 26px; flex: 0 0 auto;
+  display: grid; place-items: center;
+  border: 0; border-radius: 5px; background: transparent;
+  color: var(--muted); font-size: 15px; line-height: 1; cursor: pointer;
+}
+.row-menu-trigger:hover, .group-menu-trigger:hover { background: #e2e8f0; color: #475569; }
+.menu {
+  position: absolute; z-index: 60;
+  top: 28px; right: 0;
+  display: grid; min-width: 180px; padding: 4px;
+  border: 1px solid var(--border); border-radius: 9px;
+  background: var(--surface); box-shadow: var(--shadow-menu);
+  animation: menuIn .14s ease-out;
+}
+@keyframes menuIn { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: translateY(0); } }
+.menu > strong {
+  padding: 5px 8px 3px;
+  color: var(--muted); font-size: 9px; font-weight: 600;
+  letter-spacing: .06em; text-transform: uppercase;
+}
+.menu button {
+  display: flex; align-items: center; gap: 7px;
+  min-height: 30px; padding: 6px 8px;
+  border: 0; border-radius: 5px; background: transparent;
+  font-size: 12px; color: #334155; text-align: left; white-space: nowrap; cursor: pointer;
+}
+.menu button:hover:not(:disabled) { background: #f1f5f9; }
+.menu button:disabled { color: var(--muted); cursor: not-allowed; }
+.menu button.danger { color: var(--danger); }
+.menu button.danger:hover:not(:disabled) { background: var(--danger-bg); }
+.menu button .gcolor { width: 8px; height: 8px; border-radius: 3px; flex: 0 0 auto; }
+.rename-group { display: grid; grid-template-columns: minmax(0,1fr) 26px 26px; gap: 4px; flex: 1; padding: 0 4px; }
+.rename-group input { min-width: 0; height: 26px; padding: 3px 7px; border: 1px solid #a5b4fc; border-radius: 5px; font-size: 12px; }
+.rename-group input:focus { outline: none; }
+.rename-group button { border: 0; border-radius: 5px; background: var(--primary-bg); color: #3730a3; font-size: 12px; cursor: pointer; }
+.rename-group button:hover { background: #e0e7ff; }
+
+/* ===== EDITOR PANEL ===== */
+.persona-editor-panel {
+  min-width: 0; min-height: 0;
+  display: flex; flex-direction: column;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+/* persona_catalog_empty_state */
+.editor-empty {
+  flex: 1; min-height: 0;
+  display: grid; place-items: center;
+  background: var(--surface);
+}
+.editor-empty .inner { display: grid; justify-items: center; gap: 10px; max-width: 380px; padding: 32px; text-align: center; }
+.editor-empty .icon {
+  width: 56px; height: 56px;
+  display: grid; place-items: center;
+  border: 1px dashed #cbd5e1; border-radius: 16px;
+  color: var(--muted);
+}
+.editor-empty .icon svg { width: 26px; height: 26px; }
+.editor-empty h2 { font-size: 16px; font-weight: 600; color: var(--text); }
+.editor-empty p { color: var(--text-secondary); font-size: 13px; }
+
+/* editor form */
+.editor-form { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; scrollbar-width: thin; }
+.editor-back {
+  display: none;
+  align-items: center; gap: 6px;
+  position: sticky; top: 0; z-index: 14;
+  min-height: 38px; padding: 0 14px;
+  border: 0; border-bottom: 1px solid var(--border-soft);
+  background: rgba(251,252,254,.94); color: var(--primary);
+  font-size: 13px; cursor: pointer; text-align: left;
+  backdrop-filter: blur(8px);
+}
+
+/* persona_editor_header */
+.persona-editor-header {
+  position: sticky; top: 0; z-index: 13;
+  display: grid; grid-template-columns: auto minmax(0,1fr) auto auto;
+  align-items: center; gap: 10px;
+  min-height: 60px; padding: 9px 16px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255,255,255,.94);
+  backdrop-filter: blur(8px);
+}
+.editor-back + .persona-editor-header { top: 38px; }
+.persona-editor-header .avatar {
+  width: 38px; height: 38px;
+  display: grid; place-items: center;
+  border-radius: 10px; color: #fff; font-size: 14px; font-weight: 600;
+}
+.persona-editor-header .id { display: flex; flex-direction: column; min-width: 0; }
+.persona-editor-header .id strong { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 15px; font-weight: 600; color: var(--text); }
+.persona-editor-header .id strong span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.persona-editor-header .id small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 11px; margin-top: 1px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 7px; border-radius: 8px;
+  font-size: 10px; font-weight: 600; white-space: nowrap;
+}
+.chip.in-room { background: var(--success-bg); color: var(--success); }
+.chip.archived { background: #f1f5f9; color: var(--text-secondary); }
+.dirty-badge { font-size: 11px; font-weight: 600; white-space: nowrap; }
+.dirty-badge.saved { color: var(--success); }
+.dirty-badge.dirty { color: var(--warning); }
+.dirty-badge.saving { color: var(--text-secondary); }
+
+/* editor sections */
+.editor-section { padding: 16px 18px; border-bottom: 1px solid var(--border-soft); }
+.editor-section > h3 { margin: 0 0 12px; color: #334155; font-size: 11px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; }
+.editor-section > p.hint { margin: -6px 0 12px; color: var(--muted); font-size: 11.5px; }
+.profile-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px 14px; }
+.profile-grid .wide { grid-column: 1 / -1; }
+.field { display: grid; gap: 5px; min-width: 0; }
+.field > span { color: #475569; font-size: 12.5px; font-weight: 600; }
+.field input:not([type="color"]), .field select, .field textarea {
+  width: 100%; min-width: 0;
+  min-height: 36px; padding: 7px 10px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); font-size: 13.5px; color: var(--text);
+  transition: border-color .15s, box-shadow .15s;
+}
+.field input:focus, .field select:focus, .field textarea:focus {
+  outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-bg);
+}
+.field input.invalid, .field select.invalid { border-color: var(--danger); }
+.field input.invalid:focus, .field select.invalid:focus { box-shadow: 0 0 0 3px var(--danger-bg); }
+.field small { color: var(--muted); font-size: 11px; }
+.field .error-text { display: none; color: var(--danger); font-size: 11px; }
+.field .error-text.visible { display: block; }
+.field select {
+  appearance: none; -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center;
+  padding-right: 30px; cursor: pointer;
+}
+.color-field { display: grid; grid-template-columns: 38px minmax(0,1fr); gap: 8px; align-items: center; }
+.color-field input[type="color"] { width: 38px; height: 38px; padding: 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); cursor: pointer; }
+.color-field input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+.color-field input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 5px; }
+.color-field input[type="text"] { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; letter-spacing: .4px; }
+.behavior-textarea { min-height: 190px; resize: vertical; line-height: 1.55; }
+
+.alert {
+  display: flex; gap: 8px; align-items: flex-start;
+  margin-bottom: 12px; padding: 10px 12px;
+  border: 1px solid; border-radius: 9px;
+  font-size: 12.5px; line-height: 1.45;
+}
+.alert svg { width: 15px; height: 15px; flex: 0 0 auto; margin-top: 1px; }
+.alert.warning { border-color: var(--warning-border); background: var(--warning-bg); color: #92400e; }
+.alert.error { border-color: var(--danger-border); background: var(--danger-bg); color: #b91c1c; }
+.alert.info { border-color: var(--primary-border); background: var(--primary-bg); color: #3730a3; }
+
+.harness-grid { display: grid; grid-template-columns: minmax(170px,.8fr) minmax(230px,1.2fr) minmax(150px,.7fr); gap: 12px; align-items: end; }
+/* model picker */
+.model-picker { position: relative; }
+.model-picker-trigger {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; min-height: 54px; padding: 7px 11px;
+  border: 1px solid var(--border); border-radius: 9px;
+  background: var(--surface); cursor: pointer; text-align: left;
+  transition: border-color .15s, box-shadow .15s;
+}
+.model-picker-trigger:hover, .model-picker.open .model-picker-trigger { border-color: #a5b4fc; box-shadow: 0 0 0 3px var(--primary-bg); }
+.model-picker-trigger .mp-icon {
+  width: 34px; height: 34px; flex: 0 0 auto;
+  display: grid; place-items: center;
+  border-radius: 9px; background: var(--primary-bg); color: var(--primary);
+}
+.model-picker-trigger .mp-icon svg { width: 17px; height: 17px; }
+.model-picker-trigger .mp-current { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.model-picker-trigger .mp-current strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; color: var(--text); }
+.model-picker-trigger .mp-current small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 10.5px; margin-top: 1px; }
+.model-picker-trigger > .caret { flex: 0 0 auto; color: var(--muted); font-size: 11px; transition: transform .18s; }
+.model-picker.open .model-picker-trigger > .caret { transform: rotate(180deg); }
+.model-picker-menu {
+  position: absolute; z-index: 80; left: 0; right: 0; top: calc(100% + 6px);
+  max-height: 300px; overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--border); border-radius: 11px;
+  background: var(--surface); box-shadow: 0 18px 48px rgba(15,23,42,.14);
+  animation: menuIn .14s ease-out;
+}
+.model-picker-menu > header { display: flex; align-items: baseline; justify-content: space-between; padding: 6px 8px 8px; }
+.model-picker-menu > header strong { font-size: 12px; font-weight: 600; color: var(--text); }
+.model-picker-menu > header small { color: var(--muted); font-size: 10.5px; }
+.model-picker-menu .mp-option {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; padding: 8px 9px;
+  border: 1px solid transparent; border-radius: 7px; background: transparent;
+  text-align: left; cursor: pointer; transition: background .12s, border-color .12s;
+}
+.model-picker-menu .mp-option:hover { background: var(--surface-alt); border-color: var(--border); }
+.model-picker-menu .mp-option.selected { border-color: var(--primary-border); background: var(--primary-bg); }
+.model-picker-menu .mp-option > span { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.model-picker-menu .mp-option strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: #334155; }
+.model-picker-menu .mp-option.selected strong { color: #3730a3; }
+.model-picker-menu .mp-option small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 10px; }
+.model-picker-menu .mp-option > i { flex: 0 0 auto; font-style: normal; color: var(--muted); font-size: 11px; }
+.model-picker-menu .mp-option.selected > i { color: var(--primary); font-weight: 700; }
+.model-picker-menu code, .tech-details code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .92em; }
+.tech-details { margin-top: 10px; padding: 8px 11px; border-radius: 8px; background: var(--surface-alt); color: var(--muted); font-size: 11px; }
+.tech-details summary { cursor: pointer; font-weight: 600; }
+.tech-details p { margin: 6px 0 0; }
+
+/* room_membership / persona_lifecycle rows */
+.action-row { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+.action-row > span { display: flex; flex-direction: column; min-width: 0; }
+.action-row strong { color: #334155; font-size: 13px; }
+.action-row small { margin-top: 3px; color: var(--muted); font-size: 11.5px; }
+.action-row .btns { display: flex; gap: 8px; flex: 0 0 auto; }
+
+/* ===== DIALOGS ===== */
+.dialog-backdrop {
+  position: fixed; inset: 0; z-index: 300;
+  display: none; place-items: center;
+  padding: 20px;
+  background: rgba(15,23,42,.45);
+}
+.dialog-backdrop.open { display: grid; }
+.dialog {
+  width: min(460px, 100%);
+  border-radius: 14px; background: var(--surface);
+  box-shadow: var(--shadow-dialog);
+  animation: dialogIn .16s ease-out;
+  overflow: hidden;
+}
+@keyframes dialogIn { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.dialog > header { padding: 16px 18px 0; }
+.dialog > header h2 { font-size: 15.5px; font-weight: 600; color: var(--text); }
+.dialog > header p { margin-top: 5px; color: var(--text-secondary); font-size: 12.5px; }
+.dialog > .body { padding: 12px 18px; color: var(--text-secondary); font-size: 13px; }
+.dialog > footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px 16px; flex-wrap: wrap; }
+
+/* toast */
+.toast {
+  position: fixed; left: 50%; bottom: 26px; z-index: 400;
+  transform: translate(-50%, 20px);
+  padding: 10px 16px;
+  border-radius: 10px; background: #1e293b; color: #e2e8f0;
+  font-size: 13px; box-shadow: var(--shadow-menu);
+  opacity: 0; pointer-events: none;
+  transition: opacity .2s, transform .2s;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* ===== RESPONSIVE ===== */
+@media (min-width: 1200px) {
+  .master-detail { grid-template-columns: 360px minmax(0,1fr); }
+}
+@media (min-width: 768px) {
+  .sidebar { position: relative; transform: none !important; }
+}
+@media (min-width: 768px) and (max-width: 1199px) {
+  .master-detail { grid-template-columns: 300px minmax(0,1fr); }
+  .harness-grid { grid-template-columns: 1fr; align-items: stretch; }
+}
+@media (max-width: 900px) {
+  .harness-grid { grid-template-columns: 1fr; align-items: stretch; }
+  .profile-grid { grid-template-columns: 1fr; }
+  .profile-grid .wide { grid-column: auto; }
+}
+/* mobile_workspace: < 768px */
+@media (max-width: 767px) {
+  .sidebar {
+    position: fixed; left: 0; top: 0;
+    transform: translateX(-100%);
+    box-shadow: 0 0 48px rgba(15,23,42,.3);
+  }
+  body.nav-open .sidebar { transform: translateX(0); }
+  body.nav-open .sidebar-backdrop { display: block; }
+  .catalog-header { padding: 0 12px; min-height: 56px; }
+  .catalog-header .burger { display: grid; }
+  .catalog-header .title small { display: none; }
+  .catalog-header .btn .btn-label { display: none; }
+  .catalog-header .btn { padding: 8px 10px; }
+  .master-detail { display: block; overflow: hidden; }
+  .persona-grouped-list { height: 100%; border-right: 0; }
+  .persona-editor-panel { display: none; height: 100%; }
+  body.editor-open .persona-grouped-list { display: none; }
+  body.editor-open .persona-editor-panel { display: flex; }
+  .editor-back { display: flex; }
+  .editor-empty { display: none; }
+  .persona-editor-header { grid-template-columns: auto minmax(0,1fr) auto; }
+  .persona-editor-header .dirty-badge { grid-column: 2; }
+  .persona-editor-header .btn { grid-column: 3; grid-row: 1 / span 2; }
+  .editor-section { padding: 14px; }
+  .action-row { flex-direction: column; align-items: stretch; }
+  .action-row .btns { justify-content: stretch; }
+  .action-row .btns .btn { flex: 1; }
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- ===== rooms_sidebar (desktop_workspace template region) ===== -->
+  <aside class="sidebar" id="sidebar" aria-label="Навигация по комнатам и разделам">
+    <!-- product_identity -->
+    <div class="product-identity" ui-spec-block-id="product_identity">
+      <div class="logo">A</div>
+      <div class="who">
+        <strong>Agenvyl</strong>
+        <small><span class="dot"></span> интерфейс подключён</small>
+      </div>
+    </div>
+
+    <!-- primary_navigation -->
+    <nav class="primary-navigation" ui-spec-block-id="primary_navigation" aria-label="Основная навигация">
+      <button type="button" id="nav-chat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Чат
+      </button>
+      <button type="button" class="active" aria-current="page">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Персоны
+      </button>
+    </nav>
+
+    <!-- room_navigation -->
+    <div class="room-navigation" ui-spec-block-id="room_navigation">
+      <header>
+        <span>Комнаты</span>
+        <button type="button" id="create-room-btn" aria-label="Создать комнату" title="Создать комнату">+</button>
+      </header>
+      <input class="room-search" id="room-search" type="search" placeholder="Поиск комнат…" aria-label="Поиск комнат">
+      <div class="room-list" id="room-list"></div>
+      <details class="room-trash">
+        <summary>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          Корзина · 1
+        </summary>
+        <div class="room-row"><b>СП</b><span><strong>Старый проект</strong><small>Удалена 12.06</small></span></div>
+      </details>
+    </div>
+
+    <!-- user_context -->
+    <button type="button" class="user-context" ui-spec-block-id="user_context" id="user-context-btn">
+      <b>П</b>
+      <span><strong>Полина Соколова</strong><small>@polina</small></span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
+  </aside>
+  <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+
+  <!-- ===== screen_content ===== -->
+  <main class="screen">
+    <!-- persona_catalog_header -->
+    <header class="catalog-header" ui-spec-block-id="persona_catalog_header">
+      <button type="button" class="burger" id="burger" aria-label="Открыть навигацию">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <div class="title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <strong>Персоны</strong>
+        <small id="catalog-summary"></small>
+      </div>
+      <button type="button" class="btn primary" id="create-persona-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        <span class="btn-label">Новая персона</span>
+      </button>
+    </header>
+
+    <div class="master-detail">
+      <!-- persona_grouped_list -->
+      <section class="persona-grouped-list" ui-spec-block-id="persona_grouped_list" aria-label="Каталог персон по группам">
+        <div class="list-toolbar">
+          <div class="search-wrap">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="search" id="persona-search" placeholder="Поиск персон…" aria-label="Поиск персон">
+          </div>
+          <button type="button" class="icon-btn" id="toggle-archive-btn" title="Показать / скрыть архив" aria-label="Показать или скрыть архив">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+          </button>
+          <button type="button" class="icon-btn" id="new-group-btn" title="Новая группа" aria-label="Создать группу">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+          </button>
+        </div>
+        <form class="create-group-form" id="create-group-form" hidden>
+          <input type="text" id="new-group-name" placeholder="Название группы" maxlength="60" aria-label="Название новой группы">
+          <button type="submit" class="btn primary">Создать</button>
+          <button type="button" class="btn" id="cancel-group-btn">Отмена</button>
+        </form>
+        <div id="groups-container"></div>
+      </section>
+
+      <!-- persona_editor_panel -->
+      <section class="persona-editor-panel" ui-spec-block-id="persona_editor_panel" aria-label="Редактор персоны">
+
+        <!-- persona_catalog_empty_state -->
+        <div class="editor-empty" id="editor-empty" ui-spec-block-id="persona_catalog_empty_state">
+          <div class="inner">
+            <div class="icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </div>
+            <h2>Выберите персону</h2>
+            <p>Откройте существующую запись из каталога слева или создайте новую персону для комнат.</p>
+            <button type="button" class="btn primary" id="empty-create-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Новая персона
+            </button>
+          </div>
+        </div>
+
+        <form class="editor-form" id="editor-form" hidden novalidate>
+          <button type="button" class="editor-back" id="editor-back-btn">← Назад к каталогу</button>
+
+          <!-- persona_editor_header -->
+          <header class="persona-editor-header" ui-spec-block-id="persona_editor_header" id="editor-header"></header>
+
+          <!-- persona_identity -->
+          <section class="editor-section" ui-spec-block-id="persona_identity">
+            <h3>Профиль</h3>
+            <div class="profile-grid">
+              <label class="field">
+                <span>Имя</span>
+                <input type="text" id="f-name" placeholder="Имя персоны" maxlength="120" autocomplete="off">
+                <small class="error-text" id="err-name">Укажите имя персоны.</small>
+              </label>
+              <label class="field">
+                <span>Handle</span>
+                <input type="text" id="f-handle" placeholder="например, analyst" maxlength="80" autocomplete="off" aria-describedby="handle-hint">
+                <small id="handle-hint">Используется в упоминаниях как <b id="handle-preview">@handle</b>.</small>
+                <small class="error-text" id="err-handle"></small>
+              </label>
+              <label class="field">
+                <span>Роль</span>
+                <input type="text" id="f-role" placeholder="Область ответственности" maxlength="120" autocomplete="off">
+              </label>
+              <label class="field">
+                <span>Группа</span>
+                <select id="f-group" aria-label="Группа персоны"></select>
+              </label>
+              <label class="field wide">
+                <span>Цвет</span>
+                <div class="color-field">
+                  <input type="color" id="f-color" aria-label="Цвет персоны">
+                  <input type="text" id="f-color-hex" maxlength="7" spellcheck="false" aria-label="HEX-код цвета">
+                </div>
+                <small>Устойчивый акцент персоны в ленте и каталоге.</small>
+              </label>
+            </div>
+          </section>
+
+          <!-- persona_behavior -->
+          <section class="editor-section" ui-spec-block-id="persona_behavior">
+            <h3>Инструкция персоны</h3>
+            <p class="hint">System prompt, который определяет поведение и область ответственности персоны.</p>
+            <label class="field">
+              <textarea class="behavior-textarea" id="f-prompt" aria-label="Инструкция персоны" placeholder="Опишите, как персона отвечает, на что обращает внимание и чего избегает…"></textarea>
+            </label>
+          </section>
+
+          <!-- persona_harness_route -->
+          <section class="editor-section" ui-spec-block-id="persona_harness_route">
+            <h3>Среда запуска</h3>
+            <div id="route-alert"></div>
+            <div class="harness-grid">
+              <label class="field">
+                <span>Harness instance</span>
+                <select id="f-instance" aria-label="Harness instance"></select>
+              </label>
+              <div class="field">
+                <span>Модель</span>
+                <div class="model-picker" id="model-picker"></div>
+              </div>
+              <label class="field" id="mode-field">
+                <span>Режим</span>
+                <select id="f-mode" aria-label="Режим harness"></select>
+              </label>
+            </div>
+            <details class="tech-details" id="tech-details">
+              <summary>Технические параметры</summary>
+              <p id="tech-details-body"></p>
+            </details>
+          </section>
+
+          <div class="alert error" id="save-error" role="alert" style="display:none; margin: 14px 18px 0;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span id="save-error-text"></span>
+          </div>
+
+          <!-- room_membership -->
+          <section class="editor-section" ui-spec-block-id="room_membership" id="membership-section">
+            <h3>Участие в комнате</h3>
+            <div class="action-row">
+              <span>
+                <strong id="membership-title"></strong>
+                <small id="membership-hint">Комната: «Продуктовая разведка». Это не меняет глобальные настройки персоны.</small>
+              </span>
+              <span class="btns" id="membership-btns"></span>
+            </div>
+          </section>
+
+          <!-- persona_lifecycle -->
+          <section class="editor-section" ui-spec-block-id="persona_lifecycle" id="lifecycle-section">
+            <h3>Жизненный цикл</h3>
+            <div class="action-row">
+              <span>
+                <strong id="lifecycle-title"></strong>
+                <small id="lifecycle-hint"></small>
+              </span>
+              <span class="btns" id="lifecycle-btns"></span>
+            </div>
+          </section>
+
+          <!-- unsaved_changes_guard -->
+          <div class="dialog-backdrop" id="guard-backdrop" ui-spec-block-id="unsaved_changes_guard">
+            <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="guard-title">
+              <header>
+                <h2 id="guard-title">Есть несохранённые изменения</h2>
+                <p id="guard-description"></p>
+              </header>
+              <div class="body">Несохранённые изменения будут потеряны, если продолжить без сохранения.</div>
+              <footer>
+                <button type="button" class="btn" id="guard-stay">Остаться</button>
+                <button type="button" class="btn danger" id="guard-discard">Не сохранять и перейти</button>
+                <button type="button" class="btn primary" id="guard-save">Сохранить и перейти</button>
+              </footer>
+            </div>
+          </div>
+        </form>
+      </section>
+    </div>
+  </main>
+</div>
+
+<!-- lifecycle confirmation dialog -->
+<div class="dialog-backdrop" id="lifecycle-backdrop">
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="lifecycle-dialog-title">
+    <header>
+      <h2 id="lifecycle-dialog-title"></h2>
+      <p id="lifecycle-dialog-desc"></p>
+    </header>
+    <div class="body" id="lifecycle-dialog-body"></div>
+    <footer>
+      <button type="button" class="btn" id="lifecycle-cancel">Отмена</button>
+      <button type="button" class="btn" id="lifecycle-confirm"></button>
+    </footer>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+'use strict';
+
+/* ================= SAMPLE DATA ================= */
+
+const HARNESS = {
+  instances: [
+    {
+      id: 'hermes-main', type: 'hermes', status: 'healthy',
+      models: [
+        { id: 'hermes-large', label: 'Hermes Large' },
+        { id: 'hermes-small', label: 'Hermes Small' }
+      ],
+      modes: [
+        { id: 'standard', label: 'Стандартный' },
+        { id: 'deep', label: 'Глубокий анализ' }
+      ]
+    },
+    {
+      id: 'opencode-lab', type: 'opencode', status: 'healthy',
+      models: [
+        { id: 'opencode-go/kimi-k3', label: 'Kimi K3' },
+        { id: 'qwen3.7-plus', label: 'Qwen 3.7 Plus' },
+        { id: 'deepseek-v4-pro', label: 'DeepSeek V4 Pro' },
+        { id: 'glm-5.2', label: 'GLM 5.2' }
+      ],
+      modes: [
+        { id: 'plan', label: 'Планирование' },
+        { id: 'build', label: 'Сборка' },
+        { id: 'fast', label: 'Быстрый' }
+      ]
+    },
+    {
+      id: 'claude-relay', type: 'claude', status: 'unavailable',
+      models: [{ id: 'claude-opus-4.6', label: 'Claude Opus 4.6' }],
+      modes: []
+    }
+  ]
+};
+
+let groups = [
+  { id: 'g-analytics', name: 'Аналитика' },
+  { id: 'g-dev', name: 'Разработка' },
+  { id: 'g-creative', name: 'Креатив' }
+];
+
+let personas = [
+  {
+    id: 'p-mira', name: 'Мира', handle: 'mira', role: 'Продуктовый аналитик',
+    groupId: 'g-analytics', color: '#3b82f6',
+    systemPrompt: 'Ты — Мира, продуктовый аналитик. Отвечай структурировано: сначала вывод, затем аргументы. Опирайся на метрики и пользовательские интервью, явно помечай предположения. Не давай оценок коду.',
+    harnessInstanceId: 'hermes-main', harnessType: 'hermes', modelId: 'hermes-large', modeId: 'deep',
+    archived: false
+  },
+  {
+    id: 'p-gosha', name: 'Гоша', handle: 'gosha', role: 'Backend-разработчик',
+    groupId: 'g-dev', color: '#14b8a6',
+    systemPrompt: 'Ты — Гоша, backend-разработчик на Node.js и PostgreSQL. Предлагай минимальные изменения, показывай миграции и граничные случаи. Перед ответом проверяй обратную совместимость API.',
+    harnessInstanceId: 'opencode-lab', harnessType: 'opencode', modelId: 'opencode-go/kimi-k3', modeId: 'plan',
+    archived: false
+  },
+  {
+    id: 'p-vesta', name: 'Веста', handle: 'vesta', role: 'Ревьюер кода',
+    groupId: 'g-dev', color: '#8b5cf6',
+    systemPrompt: 'Ты — Веста, строгий ревьюер. Ищи race conditions, утечки соединений и нарушения границ модулей. Форматируй находки списком: файл, строка, severity, предложение.',
+    harnessInstanceId: 'opencode-lab', harnessType: 'opencode', modelId: 'qwen3.7-plus', modeId: 'fast',
+    archived: false
+  },
+  {
+    id: 'p-fedor', name: 'Фёдор', handle: 'fedor', role: 'Data-инженер',
+    groupId: 'g-analytics', color: '#f97316',
+    systemPrompt: 'Ты — Фёдор, data-инженер. Проектируй витрины и пайплайны, считай стоимость запросов. Всегда уточняй гранулярность и ретенцию данных перед проектированием.',
+    harnessInstanceId: 'hermes-main', harnessType: 'hermes', modelId: 'hermes-large', modeId: 'standard',
+    archived: false
+  },
+  {
+    id: 'p-lada', name: 'Лада', handle: 'lada', role: 'UX-писатель',
+    groupId: 'g-creative', color: '#ec4899',
+    systemPrompt: 'Ты — Лада, UX-писатель. Пишешь короткие понятные тексты интерфейса на русском. Предлагай 2–3 варианта формулировки с пояснением тона. Избегай канцелярита.',
+    harnessInstanceId: 'hermes-main', harnessType: 'hermes', modelId: 'hermes-small', modeId: 'standard',
+    archived: false
+  },
+  {
+    id: 'p-kim', name: 'Ким', handle: 'kim', role: 'Фронтенд-разработчик',
+    groupId: 'g-dev', color: '#0ea5e9',
+    systemPrompt: 'Ты — Ким, фронтенд-разработчик. Держишь доступность и производительность: клавиатурная навигация, aria-атрибуты, бюджет рендеринга. Отвечай компактными диффами.',
+    harnessInstanceId: 'opencode-lab', harnessType: 'opencode', modelId: 'deepseek-v4-pro', modeId: 'build',
+    archived: false
+  },
+  {
+    id: 'p-nora', name: 'Нора', handle: 'nora', role: 'Исследователь',
+    groupId: null, color: '#22c55e',
+    systemPrompt: 'Ты — Нора, исследователь. Смотришь шире задачи: конкуренты, патенты, аналогии из других индустрий. Помечай источники и степень уверенности.',
+    harnessInstanceId: 'hermes-main', harnessType: 'hermes', modelId: 'hermes-large', modeId: 'deep',
+    archived: false
+  },
+  {
+    id: 'p-boris', name: 'Борис', handle: 'boris', role: 'QA-инженер',
+    groupId: 'g-dev', color: '#64748b',
+    systemPrompt: 'Ты — Борис, QA-инженер. Строишь матрицы тестирования и чек-листы регрессии.',
+    harnessInstanceId: 'hermes-old', harnessType: 'hermes', modelId: 'hermes-legacy', modeId: null,
+    archived: true
+  },
+  {
+    id: 'p-stella', name: 'Стелла', handle: 'stella', role: 'Переводчик',
+    groupId: 'g-creative', color: '#a16207',
+    systemPrompt: 'Ты — Стелла, технический переводчик RU↔EN. Сохраняешь терминологию по глоссарию команды.',
+    harnessInstanceId: 'claude-relay', harnessType: 'claude', modelId: 'claude-opus-4.6', modeId: null,
+    archived: true
+  }
+];
+
+let rooms = [
+  { id: 'room-current', title: 'Продуктовая разведка', note: '5 участников' },
+  { id: 'room-release', title: 'Релиз 2.4', note: '3 участника' },
+  { id: 'room-market', title: 'Исследование рынка', note: '4 участника' }
+];
+let selectedRoomId = 'room-current';
+
+let roomPersonaIds = new Set(['p-mira', 'p-gosha', 'p-lada']);
+
+const DRAFT_COLORS = ['#3b82f6', '#8b5cf6', '#14b8a6', '#f97316', '#ec4899', '#0ea5e9', '#22c55e'];
+
+/* ================= STATE ================= */
+
+const state = {
+  selectedId: null,        // null | 'new' | persona id
+  draft: null,
+  snapshot: null,
+  saving: false,
+  personaQuery: '',
+  showArchive: true,
+  openMenuKey: null,       // 'group:<id>' | 'row:<id>'
+  renamingGroupId: null,
+  pending: null,           // { label, action }
+  lifecycleAction: null    // 'archive' | 'restore' | 'delete'
+};
+
+/* ================= UTILS ================= */
+
+const $ = (sel) => document.querySelector(sel);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const clone = (o) => JSON.parse(JSON.stringify(o));
+const initials = (name) => {
+  const parts = String(name || '?').trim().split(/\s+/);
+  return ((parts[0]?.[0] ?? '?') + (parts[1]?.[0] ?? '')).toUpperCase();
+};
+const normalizeHandle = (h) => String(h || '').trim().replace(/^@/, '').toLowerCase();
+const DRAFT_FIELDS = ['name', 'handle', 'role', 'groupId', 'color', 'systemPrompt', 'harnessInstanceId', 'harnessType', 'modelId', 'modeId'];
+
+let toastTimer;
+function showToast(text) {
+  const el = $('#toast');
+  el.textContent = text;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2400);
+}
+
+function currentPersona() {
+  return state.selectedId && state.selectedId !== 'new'
+    ? personas.find((p) => p.id === state.selectedId)
+    : undefined;
+}
+function isCreating() { return state.selectedId === 'new'; }
+function isDirty() {
+  if (!state.draft || !state.snapshot) return false;
+  if (isCreating()) return true;
+  return DRAFT_FIELDS.some((f) => String(state.draft[f] ?? '') !== String(state.snapshot[f] ?? ''));
+}
+function findInstance(id) { return HARNESS.instances.find((i) => i.id === id); }
+function groupName(id) { return groups.find((g) => g.id === id)?.name ?? ''; }
+
+/* ================= NAVIGATION GUARD ================= */
+
+function requestNav(label, action) {
+  if (!isDirty()) { action(); return; }
+  state.pending = { label, action };
+  const d = state.draft;
+  $('#guard-description').textContent =
+    `Вы изменили персону «${d?.name || normalizeHandle(d?.handle) || 'Новая персона'}». Что сделать перед переходом к ${label}?`;
+  $('#guard-backdrop').classList.add('open');
+}
+function closeGuard() { $('#guard-backdrop').classList.remove('open'); state.pending = null; }
+
+$('#guard-stay').addEventListener('click', closeGuard);
+$('#guard-discard').addEventListener('click', () => {
+  const action = state.pending?.action;
+  closeGuard();
+  action?.();
+});
+$('#guard-save').addEventListener('click', async () => {
+  const action = state.pending?.action;
+  const ok = await saveDraft();
+  if (ok) { closeGuard(); action?.(); } else { closeGuard(); }
+});
+$('#guard-backdrop').addEventListener('pointerdown', (e) => { if (e.target === e.currentTarget) closeGuard(); });
+
+window.addEventListener('beforeunload', (e) => { if (isDirty()) { e.preventDefault(); e.returnValue = ''; } });
+
+/* ================= CATALOG ================= */
+
+function filteredPersonas(list) {
+  const q = state.personaQuery.trim().toLowerCase();
+  if (!q) return list;
+  return list.filter((p) =>
+    p.name.toLowerCase().includes(q) ||
+    normalizeHandle(p.handle).includes(q) ||
+    (p.role || '').toLowerCase().includes(q)
+  );
+}
+
+function personaRowHtml(p) {
+  const selected = state.selectedId === p.id;
+  const inRoom = roomPersonaIds.has(p.id);
+  return `
+    <div class="persona-row ${selected ? 'selected' : ''} ${p.archived ? 'is-archived' : ''}" data-row="${p.id}">
+      <button type="button" class="persona-main" data-select="${p.id}" aria-label="Открыть персону ${esc(p.name)}">
+        <span class="avatar" style="background:${esc(p.color)}">${esc(initials(p.name))}</span>
+        <span class="meta">
+          <strong><span>${esc(p.name)}</span>${inRoom && !p.archived ? '<i class="room-dot" title="В текущей комнате"></i>' : ''}</strong>
+          <small>@${esc(normalizeHandle(p.handle))} · ${esc(p.role || 'роль не указана')}</small>
+        </span>
+      </button>
+      <button type="button" class="row-menu-trigger" data-menu="row:${p.id}" aria-label="Действия с персоной ${esc(p.name)}" aria-haspopup="menu">⋮</button>
+      ${state.openMenuKey === `row:${p.id}` ? rowMenuHtml(p) : ''}
+    </div>`;
+}
+
+function rowMenuHtml(p) {
+  if (p.archived) {
+    return `
+      <div class="menu" role="menu">
+        <button type="button" data-action="restore" data-id="${p.id}">Восстановить</button>
+        <button type="button" class="danger" data-action="delete" data-id="${p.id}">Удалить навсегда…</button>
+      </div>`;
+  }
+  const targets = [
+    ...groups.map((g) => `<button type="button" data-action="move" data-id="${p.id}" data-group="${g.id}" ${p.groupId === g.id ? 'disabled' : ''}><span class="gcolor" style="background:var(--primary)"></span>${esc(g.name)}</button>`),
+    `<button type="button" data-action="move" data-id="${p.id}" data-group="" ${!p.groupId ? 'disabled' : ''}><span class="gcolor" style="background:var(--muted)"></span>Без группы</button>`
+  ].join('');
+  return `
+    <div class="menu" role="menu">
+      <strong>Переместить в</strong>
+      ${targets}
+      <button type="button" data-action="archive" data-id="${p.id}">Архивировать…</button>
+    </div>`;
+}
+
+function groupSectionHtml(g, list) {
+  const renaming = state.renamingGroupId === g.id;
+  return `
+    <div class="persona-group" data-group-section="${g.id}">
+      <header>
+        ${renaming ? `
+          <form class="rename-group" data-rename-form="${g.id}">
+            <input type="text" value="${esc(g.name)}" maxlength="60" aria-label="Новое название группы">
+            <button type="submit" title="Сохранить">✓</button>
+            <button type="button" data-action="cancel-rename" title="Отмена">✕</button>
+          </form>` : `
+          <button type="button" class="group-toggle" data-action="toggle-group" data-id="${g.id}" aria-expanded="true">
+            <span class="chevron">▼</span><strong>${esc(g.name)}</strong><span class="count">${list.length}</span>
+          </button>
+          <span class="group-menu-wrap">
+            <button type="button" class="group-menu-trigger" data-menu="group:${g.id}" aria-label="Действия с группой ${esc(g.name)}" aria-haspopup="menu">⋮</button>
+            ${state.openMenuKey === `group:${g.id}` ? `
+              <div class="menu" role="menu">
+                <button type="button" data-action="rename-group" data-id="${g.id}">Переименовать</button>
+                <button type="button" class="danger" data-action="delete-group" data-id="${g.id}" ${list.length ? 'disabled title="Группа не пуста"' : ''}>Удалить группу</button>
+              </div>` : ''}
+          </span>`}
+      </header>
+      <div class="group-body">
+        ${list.length ? list.map(personaRowHtml).join('') : '<div class="empty-group">В группе пока нет персон</div>'}
+      </div>
+    </div>`;
+}
+
+function renderCatalog() {
+  const active = filteredPersonas(personas.filter((p) => !p.archived));
+  const archived = filteredPersonas(personas.filter((p) => p.archived));
+  const container = $('#groups-container');
+
+  let html = '';
+
+  if (isCreating()) {
+    html += `
+      <div class="persona-group">
+        <div class="group-body">
+          <div class="persona-row draft-row selected">
+            <span class="persona-main">
+              <span class="avatar" style="background:${esc(state.draft?.color ?? '#94a3b8')}">?</span>
+              <span class="meta"><strong><span>${esc(state.draft?.name || 'Новая персона')}</span></strong><small>черновик · не сохранена</small></span>
+            </span>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  for (const g of groups) {
+    html += groupSectionHtml(g, active.filter((p) => p.groupId === g.id));
+  }
+
+  const ungrouped = active.filter((p) => !p.groupId || !groups.some((g) => g.id === p.groupId));
+  if (ungrouped.length || !groups.length) {
+    html += groupSectionHtml({ id: '__none__', name: 'Без группы' }, ungrouped);
+  }
+
+  if (state.showArchive) {
+    html += `
+      <div class="persona-group archive">
+        <header>
+          <button type="button" class="group-toggle" data-action="toggle-group" data-id="__archive__" aria-expanded="true">
+            <span class="chevron">▼</span><strong>Архив</strong><span class="count">${archived.length}</span>
+          </button>
+        </header>
+        <div class="group-body">
+          ${archived.length ? archived.map(personaRowHtml).join('') : '<div class="empty-group">Архив пуст</div>'}
+        </div>
+      </div>`;
+  }
+
+  container.innerHTML = html;
+
+  const activeCount = personas.filter((p) => !p.archived).length;
+  $('#catalog-summary').textContent = `${activeCount} активных · ${personas.length - activeCount} в архиве`;
+}
+
+/* catalog events (delegation) */
+$('#groups-container').addEventListener('click', (e) => {
+  const menuTrigger = e.target.closest('[data-menu]');
+  if (menuTrigger) {
+    e.stopPropagation();
+    const key = menuTrigger.dataset.menu;
+    state.openMenuKey = state.openMenuKey === key ? null : key;
+    renderCatalog();
+    return;
+  }
+  const selectBtn = e.target.closest('[data-select]');
+  if (selectBtn) {
+    const id = selectBtn.dataset.select;
+    const p = personas.find((x) => x.id === id);
+    requestNav(`персоне «${p?.name ?? id}»`, () => openPersona(id));
+    return;
+  }
+  const actionBtn = e.target.closest('[data-action]');
+  if (!actionBtn) return;
+  const { action, id, group } = actionBtn.dataset;
+  const persona = personas.find((x) => x.id === id);
+
+  if (action === 'toggle-group') {
+    actionBtn.closest('.persona-group')?.classList.toggle('collapsed');
+  } else if (action === 'rename-group') {
+    state.openMenuKey = null; state.renamingGroupId = id; renderCatalog();
+    $('.rename-group input')?.focus();
+  } else if (action === 'cancel-rename') {
+    state.renamingGroupId = null; renderCatalog();
+  } else if (action === 'delete-group') {
+    groups = groups.filter((g) => g.id !== id);
+    state.openMenuKey = null; renderCatalog(); fillGroupSelect();
+    showToast('Группа удалена');
+  } else if (action === 'move') {
+    if (persona) {
+      persona.groupId = group || null;
+      if (state.draft?.id === persona.id) { state.draft.groupId = persona.groupId; state.snapshot.groupId = persona.groupId; }
+      state.openMenuKey = null; renderCatalog();
+      showToast(`«${persona.name}» перенесена${group ? ` в «${groupName(group)}»` : ' из группы'}`);
+    }
+  } else if (action === 'archive' && persona) {
+    state.openMenuKey = null;
+    requestLifecycleFromList(persona, 'archive');
+  } else if (action === 'restore' && persona) {
+    state.openMenuKey = null;
+    requestLifecycleFromList(persona, 'restore');
+  } else if (action === 'delete' && persona) {
+    state.openMenuKey = null;
+    requestLifecycleFromList(persona, 'delete');
+  }
+});
+
+$('#groups-container').addEventListener('submit', (e) => {
+  const form = e.target.closest('[data-rename-form]');
+  if (!form) return;
+  e.preventDefault();
+  const g = groups.find((x) => x.id === form.dataset.renameForm);
+  const value = form.querySelector('input').value.trim();
+  if (g && value) { g.name = value; showToast('Группа переименована'); }
+  state.renamingGroupId = null;
+  renderCatalog(); fillGroupSelect();
+});
+
+document.addEventListener('pointerdown', (e) => {
+  if (state.openMenuKey && !e.target.closest('.menu') && !e.target.closest('[data-menu]')) {
+    state.openMenuKey = null;
+    renderCatalog();
+  }
+});
+
+$('#persona-search').addEventListener('input', (e) => { state.personaQuery = e.target.value; renderCatalog(); });
+$('#toggle-archive-btn').addEventListener('click', () => { state.showArchive = !state.showArchive; renderCatalog(); });
+$('#new-group-btn').addEventListener('click', () => {
+  const form = $('#create-group-form');
+  form.hidden = !form.hidden;
+  if (!form.hidden) $('#new-group-name').focus();
+});
+$('#cancel-group-btn').addEventListener('click', () => { $('#create-group-form').hidden = true; $('#new-group-name').value = ''; });
+$('#create-group-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const name = $('#new-group-name').value.trim();
+  if (!name) return;
+  groups.push({ id: 'g-' + Math.random().toString(36).slice(2, 8), name });
+  $('#new-group-name').value = '';
+  $('#create-group-form').hidden = true;
+  renderCatalog(); fillGroupSelect();
+  showToast(`Группа «${name}» создана`);
+});
+
+/* ================= EDITOR ================= */
+
+function blankDraft() {
+  const inst = HARNESS.instances.find((i) => i.status === 'healthy');
+  return {
+    id: '', name: '', handle: '', role: '', groupId: null,
+    color: DRAFT_COLORS[personas.length % DRAFT_COLORS.length],
+    systemPrompt: '',
+    harnessInstanceId: inst.id, harnessType: inst.type,
+    modelId: inst.models[0]?.id ?? '', modeId: null,
+    archived: false
+  };
+}
+
+function openPersona(id) {
+  const p = personas.find((x) => x.id === id);
+  if (!p) return;
+  state.selectedId = id;
+  state.draft = clone(p);
+  state.snapshot = clone(p);
+  state.saving = false;
+  hideSaveError();
+  renderEditor();
+  document.body.classList.add('editor-open');
+}
+
+function startCreate() {
+  state.selectedId = 'new';
+  state.draft = blankDraft();
+  state.snapshot = clone(state.draft);
+  state.saving = false;
+  hideSaveError();
+  renderEditor();
+  document.body.classList.add('editor-open');
+  setTimeout(() => $('#f-name').focus(), 60);
+}
+
+function deselect() {
+  state.selectedId = null;
+  state.draft = null;
+  state.snapshot = null;
+  document.body.classList.remove('editor-open');
+  renderEditor();
+  renderCatalog();
+}
+
+function renderEditor() {
+  const hasDraft = Boolean(state.draft);
+  $('#editor-empty').style.display = hasDraft ? 'none' : '';
+  $('#editor-form').hidden = !hasDraft;
+  renderCatalog();
+  if (!hasDraft) return;
+  fillForm();
+  renderEditorHeader();
+  renderHarnessSection();
+  renderMembershipSection();
+  renderLifecycleSection();
+  updateDirtyUI();
+}
+
+function fillGroupSelect() {
+  const sel = $('#f-group');
+  sel.innerHTML = `<option value="">Без группы</option>` +
+    groups.map((g) => `<option value="${g.id}">${esc(g.name)}</option>`).join('');
+  if (state.draft) sel.value = state.draft.groupId ?? '';
+}
+
+function fillForm() {
+  const d = state.draft;
+  $('#f-name').value = d.name;
+  $('#f-handle').value = d.handle;
+  $('#f-role').value = d.role;
+  fillGroupSelect();
+  $('#f-color').value = d.color;
+  $('#f-color-hex').value = d.color;
+  $('#f-prompt').value = d.systemPrompt ?? '';
+  $('#handle-preview').textContent = '@' + (normalizeHandle(d.handle) || 'handle');
+  clearValidation();
+}
+
+function renderEditorHeader() {
+  const d = state.draft;
+  const creating = isCreating();
+  const inRoom = !creating && roomPersonaIds.has(d.id);
+  const archived = !creating && d.archived;
+  $('#editor-header').innerHTML = `
+    <span class="avatar" style="background:${esc(d.color || '#94a3b8')}">${esc(initials(d.name || 'Н'))}</span>
+    <span class="id">
+      <strong><span>${esc(d.name || 'Новая персона')}</span>
+        ${archived ? '<span class="chip archived">В архиве</span>' : ''}
+        ${inRoom && !archived ? '<span class="chip in-room">В текущей комнате</span>' : ''}
+      </strong>
+      <small>@${esc(normalizeHandle(d.handle) || 'handle')} · ${esc(d.role || 'роль не указана')}${d.groupId ? ` · ${esc(groupName(d.groupId))}` : ''}</small>
+    </span>
+    <b class="dirty-badge saved" id="dirty-badge">Сохранено</b>
+    <button type="submit" class="btn primary" id="save-btn">${creating ? 'Создать' : 'Сохранить'}</button>`;
+}
+
+function updateDirtyUI() {
+  const badge = $('#dirty-badge');
+  const btn = $('#save-btn');
+  if (!badge || !btn) return;
+  const dirty = isDirty();
+  if (state.saving) {
+    badge.textContent = 'Сохраняем…';
+    badge.className = 'dirty-badge saving';
+  } else if (dirty) {
+    badge.textContent = 'Есть несохранённые изменения';
+    badge.className = 'dirty-badge dirty';
+  } else {
+    badge.textContent = 'Сохранено';
+    badge.className = 'dirty-badge saved';
+  }
+  btn.disabled = state.saving || !dirty;
+}
+
+/* ----- identity field bindings ----- */
+
+function patchDraft(patch) {
+  if (!state.draft) return;
+  Object.assign(state.draft, patch);
+  updateDirtyUI();
+}
+
+$('#f-name').addEventListener('input', (e) => {
+  patchDraft({ name: e.target.value });
+  const avatar = $('#editor-header .avatar');
+  const title = $('#editor-header .id strong span');
+  if (avatar) avatar.textContent = initials(state.draft.name || 'Н');
+  if (title) title.textContent = state.draft.name || 'Новая персона';
+  validateName(false);
+  if (isCreating()) renderCatalog();
+});
+$('#f-handle').addEventListener('input', (e) => {
+  patchDraft({ handle: e.target.value });
+  $('#handle-preview').textContent = '@' + (normalizeHandle(state.draft.handle) || 'handle');
+  const sub = $('#editor-header .id small');
+  if (sub) sub.childNodes[0].textContent = '@' + (normalizeHandle(state.draft.handle) || 'handle') + ' ';
+  validateHandle(false);
+});
+$('#f-role').addEventListener('input', (e) => {
+  patchDraft({ role: e.target.value });
+  renderHeaderSubtitle();
+});
+$('#f-group').addEventListener('change', (e) => {
+  patchDraft({ groupId: e.target.value || null });
+  renderHeaderSubtitle();
+});
+$('#f-color').addEventListener('input', (e) => {
+  patchDraft({ color: e.target.value });
+  $('#f-color-hex').value = e.target.value;
+  $('#editor-header .avatar').style.background = e.target.value;
+});
+$('#f-color-hex').addEventListener('input', (e) => {
+  const v = e.target.value.trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+    patchDraft({ color: v });
+    $('#f-color').value = v;
+    $('#editor-header .avatar').style.background = v;
+  }
+});
+$('#f-prompt').addEventListener('input', (e) => patchDraft({ systemPrompt: e.target.value }));
+
+function renderHeaderSubtitle() {
+  const d = state.draft;
+  const sub = $('#editor-header .id small');
+  if (sub) sub.textContent = `@${normalizeHandle(d.handle) || 'handle'} · ${d.role || 'роль не указана'}${d.groupId ? ` · ${groupName(d.groupId)}` : ''}`;
+}
+
+/* ----- validation ----- */
+
+function validateName(show = true) {
+  const ok = Boolean(state.draft?.name.trim());
+  $('#f-name').classList.toggle('invalid', show && !ok);
+  $('#err-name').classList.toggle('visible', show && !ok);
+  return ok;
+}
+function validateHandle(show = true) {
+  const h = normalizeHandle(state.draft?.handle);
+  let error = '';
+  if (!h) error = 'Укажите handle персоны.';
+  else if (!/^[a-z0-9][a-z0-9_-]*$/.test(h)) error = 'Handle должен начинаться с буквы или цифры и содержать только a-z, 0-9, _ или -.';
+  else if (personas.some((p) => p.id !== state.draft?.id && normalizeHandle(p.handle) === h)) error = `Handle @${h} уже занят другой персоной.`;
+  $('#f-handle').classList.toggle('invalid', show && Boolean(error));
+  const errEl = $('#err-handle');
+  errEl.textContent = error;
+  errEl.classList.toggle('visible', show && Boolean(error));
+  return !error;
+}
+function validateRoute() {
+  const d = state.draft;
+  const inst = findInstance(d.harnessInstanceId);
+  if (!inst || inst.status !== 'healthy') return 'Выбранный harness сейчас недоступен. Сохранённый маршрут не будет молча заменён — выберите другой instance вручную.';
+  if (!d.modelId || !inst.models.some((m) => m.id === d.modelId)) return 'Выберите доступную модель для выбранного harness.';
+  if (d.modeId && !inst.modes.some((m) => m.id === d.modeId)) return 'Выбранный режим больше не поддерживается этим harness.';
+  return '';
+}
+function clearValidation() {
+  $('#f-name').classList.remove('invalid');
+  $('#f-handle').classList.remove('invalid');
+  $('#err-name').classList.remove('visible');
+  $('#err-handle').classList.remove('visible');
+  hideSaveError();
+}
+function showSaveError(text) {
+  $('#save-error-text').textContent = text;
+  $('#save-error').style.display = 'flex';
+}
+function hideSaveError() { $('#save-error').style.display = 'none'; }
+
+/* ----- harness route section ----- */
+
+function renderHarnessSection() {
+  const d = state.draft;
+  const inst = findInstance(d.harnessInstanceId);
+  const routeUnavailable = !inst || inst.status !== 'healthy';
+
+  /* alert for saved-but-unavailable route */
+  const alertBox = $('#route-alert');
+  if (routeUnavailable && !isCreating()) {
+    alertBox.innerHTML = `
+      <div class="alert warning">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span>Сохранённый маршрут сейчас недоступен: Connector не видит instance <code>${esc(d.harnessInstanceId)}</code>. Маршрут остаётся видимым и не будет молча заменён — чтобы сохранить изменения, выберите healthy instance вручную.</span>
+      </div>`;
+  } else {
+    alertBox.innerHTML = '';
+  }
+
+  /* instance select: healthy instances + saved unavailable one appended */
+  const sel = $('#f-instance');
+  const options = HARNESS.instances.map((i) =>
+    `<option value="${i.id}" ${i.status !== 'healthy' ? 'disabled' : ''}>${i.id} · ${i.type}${i.status === 'healthy' ? '' : ' · недоступен'}</option>`
+  );
+  if (!inst && d.harnessInstanceId) {
+    options.push(`<option value="${esc(d.harnessInstanceId)}" disabled>${esc(d.harnessInstanceId)} · ${esc(d.harnessType || 'unknown')} · недоступен</option>`);
+  }
+  sel.innerHTML = options.join('');
+  sel.value = d.harnessInstanceId;
+
+  renderModelPicker();
+  renderModeSelect();
+  renderTechDetails();
+}
+
+function renderModelPicker() {
+  const d = state.draft;
+  const inst = findInstance(d.harnessInstanceId);
+  const models = inst ? inst.models : [];
+  const known = models.some((m) => m.id === d.modelId);
+  const picker = $('#model-picker');
+
+  const currentLabel = known ? (models.find((m) => m.id === d.modelId).label ?? d.modelId) : (d.modelId || 'Выберите модель');
+  const currentSub = known
+    ? `ID ${d.modelId}`
+    : d.modelId ? `Модель ${d.modelId} сохранена, но недоступна` : 'Модель выбранного harness';
+
+  const optionsHtml = models.length
+    ? models.map((m) => `
+        <button type="button" class="mp-option ${m.id === d.modelId ? 'selected' : ''}" data-model="${esc(m.id)}" role="option" aria-selected="${m.id === d.modelId}">
+          <span><strong>${esc(m.label ?? m.id)}</strong><small>ID <code>${esc(m.id)}</code></small></span>
+          <i>${m.id === d.modelId ? '✓' : '›'}</i>
+        </button>`).join('')
+    : `<button type="button" class="mp-option" disabled><span><strong>Нет доступных моделей</strong><small>${d.modelId ? `сохранено: <code>${esc(d.modelId)}</code>` : 'instance недоступен'}</small></span></button>`;
+
+  picker.innerHTML = `
+    <button type="button" class="model-picker-trigger" aria-haspopup="listbox" aria-expanded="false" aria-label="Выбрать модель">
+      <span class="mp-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="12" rx="2"/><path d="M12 8V4"/><circle cx="9" cy="13" r="1"/><circle cx="15" cy="13" r="1"/><path d="M9 17h6"/></svg>
+      </span>
+      <span class="mp-current"><strong>${esc(currentLabel)}</strong><small>${esc(currentSub)}</small></span>
+      <span class="caret">▼</span>
+    </button>
+    <div class="model-picker-menu" role="listbox" aria-label="Доступные модели" hidden>
+      <header><strong>Доступные модели</strong><small>${models.length}</small></header>
+      ${optionsHtml}
+    </div>`;
+
+  const trigger = picker.querySelector('.model-picker-trigger');
+  const menu = picker.querySelector('.model-picker-menu');
+  trigger.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = menu.hidden;
+    menu.hidden = !open;
+    picker.classList.toggle('open', open);
+    trigger.setAttribute('aria-expanded', String(open));
+  });
+  menu.addEventListener('click', (e) => {
+    const opt = e.target.closest('[data-model]');
+    if (!opt) return;
+    patchDraft({ modelId: opt.dataset.model });
+    menu.hidden = true;
+    picker.classList.remove('open');
+    renderModelPicker();
+    renderTechDetails();
+    hideSaveError();
+  });
+}
+document.addEventListener('pointerdown', (e) => {
+  const picker = $('#model-picker');
+  if (picker && !picker.contains(e.target)) {
+    picker.classList.remove('open');
+    const menu = picker.querySelector('.model-picker-menu');
+    if (menu) menu.hidden = true;
+  }
+});
+
+function renderModeSelect() {
+  const d = state.draft;
+  const inst = findInstance(d.harnessInstanceId);
+  const modes = inst?.modes ?? [];
+  $('#mode-field').style.display = modes.length ? '' : 'none';
+  const sel = $('#f-mode');
+  sel.innerHTML = `<option value="">По умолчанию</option>` +
+    modes.map((m) => `<option value="${m.id}">${esc(m.label ?? m.id)}</option>`).join('');
+  sel.value = d.modeId ?? '';
+}
+
+function renderTechDetails() {
+  const d = state.draft;
+  const inst = findInstance(d.harnessInstanceId);
+  const model = inst?.models.find((m) => m.id === d.modelId);
+  $('#tech-details').style.display = d.harnessInstanceId ? '' : 'none';
+  $('#tech-details-body').innerHTML =
+    `<b>Instance:</b> ${esc(d.harnessInstanceId)} · <b>Type:</b> ${esc(d.harnessType || '—')} · <b>Status:</b> ${esc(inst?.status ?? 'unavailable')}<br>` +
+    `<b>Model:</b> ${esc(model?.label ?? d.modelId ?? 'не выбрана')}${d.modeId ? ` · <b>Mode:</b> ${esc(d.modeId)}` : ''}`;
+}
+
+$('#f-instance').addEventListener('change', (e) => {
+  const inst = findInstance(e.target.value);
+  if (!inst) return;
+  patchDraft({
+    harnessInstanceId: inst.id,
+    harnessType: inst.type,
+    modelId: inst.models[0]?.id ?? '',
+    modeId: null
+  });
+  renderHarnessSection();
+  hideSaveError();
+});
+$('#f-mode').addEventListener('change', (e) => {
+  patchDraft({ modeId: e.target.value || null });
+  renderTechDetails();
+});
+
+/* ----- membership & lifecycle sections ----- */
+
+function renderMembershipSection() {
+  const section = $('#membership-section');
+  const d = state.draft;
+  const creating = isCreating();
+  if (creating) { section.style.display = 'none'; return; }
+  section.style.display = '';
+  const inRoom = roomPersonaIds.has(d.id);
+  $('#membership-title').textContent = inRoom
+    ? 'Персона участвует в текущей комнате'
+    : 'Персона не участвует в текущей комнате';
+  const btns = $('#membership-btns');
+  if (d.archived) {
+    btns.innerHTML = '';
+    $('#membership-hint').textContent = 'Восстановите персону из архива, чтобы управлять составом комнаты.';
+  } else {
+    $('#membership-hint').textContent = 'Комната: «Продуктовая разведка». Это не меняет глобальные настройки персоны.';
+    btns.innerHTML = `<button type="button" class="btn" id="membership-toggle">${inRoom ? 'Убрать из комнаты' : 'Добавить в комнату'}</button>`;
+    $('#membership-toggle').addEventListener('click', toggleMembership);
+  }
+}
+
+async function toggleMembership() {
+  const d = state.draft;
+  if (!d || state.saving) return;
+  state.saving = true;
+  const btn = $('#membership-toggle');
+  if (btn) { btn.disabled = true; btn.textContent = 'Применяем…'; }
+  await new Promise((r) => setTimeout(r, 500));
+  const present = roomPersonaIds.has(d.id);
+  if (present) roomPersonaIds.delete(d.id); else roomPersonaIds.add(d.id);
+  state.saving = false;
+  renderMembershipSection();
+  renderEditorHeader();
+  updateDirtyUI();
+  renderCatalog();
+  showToast(present ? `«${d.name}» убрана из комнаты` : `«${d.name}» добавлена в комнату`);
+}
+
+function renderLifecycleSection() {
+  const section = $('#lifecycle-section');
+  const d = state.draft;
+  if (isCreating()) { section.style.display = 'none'; return; }
+  section.style.display = '';
+  $('#lifecycle-title').textContent = d.archived ? 'Персона находится в архиве' : 'Персона активна';
+  $('#lifecycle-hint').textContent = d.archived
+    ? 'Её можно восстановить в каталог или удалить навсегда — удаление доступно только из архива.'
+    : 'Архивирование скроет персону из активного каталога и составов комнат.';
+  $('#lifecycle-btns').innerHTML = d.archived
+    ? `<button type="button" class="btn" id="lc-restore">Восстановить</button>
+       <button type="button" class="btn danger" id="lc-delete">Удалить навсегда…</button>`
+    : `<button type="button" class="btn" id="lc-archive">Архивировать</button>`;
+  $('#lc-archive')?.addEventListener('click', () => requestLifecycle('archive'));
+  $('#lc-restore')?.addEventListener('click', () => requestLifecycle('restore'));
+  $('#lc-delete')?.addEventListener('click', () => requestLifecycle('delete'));
+}
+
+/* ----- lifecycle dialog ----- */
+
+function requestLifecycle(action) {
+  requestNav(action === 'archive' ? 'архивированию персоны' : action === 'restore' ? 'восстановлению персоны' : 'удалению персоны',
+    () => openLifecycleDialog(action, state.draft));
+}
+function requestLifecycleFromList(persona, action) {
+  requestNav(action === 'archive' ? `архивированию «${persona.name}»` : action === 'restore' ? `восстановлению «${persona.name}»` : `удалению «${persona.name}»`,
+    () => openLifecycleDialog(action, persona));
+}
+
+function openLifecycleDialog(action, persona) {
+  if (!persona) return;
+  state.lifecycleAction = { action, id: persona.id };
+  const title = $('#lifecycle-dialog-title');
+  const desc = $('#lifecycle-dialog-desc');
+  const body = $('#lifecycle-dialog-body');
+  const confirm = $('#lifecycle-confirm');
+  if (action === 'archive') {
+    title.textContent = 'Архивировать персону?';
+    desc.textContent = '';
+    body.textContent = 'Персона исчезнет из активного каталога и составов комнат, но её можно будет восстановить.';
+    confirm.textContent = 'Архивировать';
+    confirm.className = 'btn primary';
+  } else if (action === 'restore') {
+    title.textContent = 'Восстановить персону?';
+    desc.textContent = '';
+    body.textContent = 'Персона снова появится в активном каталоге. Состав комнат при этом не изменится.';
+    confirm.textContent = 'Восстановить';
+    confirm.className = 'btn primary';
+  } else {
+    title.textContent = 'Удалить персону навсегда?';
+    desc.textContent = 'Это действие нельзя отменить.';
+    body.textContent = `@${normalizeHandle(persona.handle)} будет окончательно удалена вместе с настройками маршрута.`;
+    confirm.textContent = 'Удалить навсегда';
+    confirm.className = 'btn danger';
+  }
+  $('#lifecycle-backdrop').classList.add('open');
+}
+function closeLifecycleDialog() {
+  $('#lifecycle-backdrop').classList.remove('open');
+  state.lifecycleAction = null;
+}
+$('#lifecycle-cancel').addEventListener('click', closeLifecycleDialog);
+$('#lifecycle-backdrop').addEventListener('pointerdown', (e) => { if (e.target === e.currentTarget) closeLifecycleDialog(); });
+$('#lifecycle-confirm').addEventListener('click', async () => {
+  const ctx = state.lifecycleAction;
+  if (!ctx) return;
+  const btn = $('#lifecycle-confirm');
+  btn.disabled = true;
+  btn.textContent = 'Выполняем…';
+  await new Promise((r) => setTimeout(r, 550));
+  const persona = personas.find((p) => p.id === ctx.id);
+  if (persona) {
+    if (ctx.action === 'archive') {
+      persona.archived = true;
+      roomPersonaIds.delete(persona.id);
+      showToast(`«${persona.name}» архивирована`);
+    } else if (ctx.action === 'restore') {
+      persona.archived = false;
+      showToast(`«${persona.name}» восстановлена`);
+    } else {
+      personas = personas.filter((p) => p.id !== persona.id);
+      roomPersonaIds.delete(persona.id);
+      showToast(`«${persona.name}» удалена навсегда`);
+    }
+    if (state.selectedId === persona.id) deselect();
+  }
+  btn.disabled = false;
+  closeLifecycleDialog();
+  renderCatalog();
+  if (state.draft) { renderEditorHeader(); renderMembershipSection(); renderLifecycleSection(); updateDirtyUI(); }
+});
+
+/* ----- save ----- */
+
+async function saveDraft() {
+  const d = state.draft;
+  if (!d || state.saving) return false;
+  hideSaveError();
+  const nameOk = validateName(true);
+  const handleOk = validateHandle(true);
+  const routeError = validateRoute();
+  if (!nameOk || !handleOk || routeError) {
+    if (routeError) showSaveError(routeError);
+    else showSaveError('Проверьте выделенные поля формы.');
+    return false;
+  }
+  state.saving = true;
+  updateDirtyUI();
+  await new Promise((r) => setTimeout(r, 650));
+
+  const handle = normalizeHandle(d.handle);
+  const record = { ...d, handle, name: d.name.trim() };
+
+  if (isCreating()) {
+    record.id = 'p-' + Math.random().toString(36).slice(2, 8);
+    personas.push(record);
+    state.selectedId = record.id;
+    showToast(`Персона «${record.name}» создана`);
+  } else {
+    const idx = personas.findIndex((p) => p.id === d.id);
+    if (idx >= 0) personas[idx] = record;
+    showToast(`Персона «${record.name}» сохранена`);
+  }
+  state.draft = clone(record);
+  state.snapshot = clone(record);
+  state.saving = false;
+  renderEditor();
+  return true;
+}
+
+$('#editor-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  void saveDraft();
+});
+
+/* ----- mobile back & header buttons ----- */
+
+$('#editor-back-btn').addEventListener('click', () => {
+  requestNav('каталогу', () => deselect());
+});
+$('#create-persona-btn').addEventListener('click', () => requestNav('созданию новой персоны', startCreate));
+$('#empty-create-btn').addEventListener('click', () => requestNav('созданию новой персоны', startCreate));
+
+/* ================= SIDEBAR / NAVIGATION ================= */
+
+function renderRooms() {
+  const q = $('#room-search').value.trim().toLowerCase();
+  $('#room-list').innerHTML = rooms
+    .filter((r) => r.title.toLowerCase().includes(q))
+    .map((r) => `
+      <button type="button" class="room-row ${r.id === selectedRoomId ? 'selected' : ''}" data-room="${r.id}">
+        <b>${esc(r.title.slice(0, 2).toUpperCase())}</b>
+        <span><strong>${esc(r.title)}</strong><small>${esc(r.note)}</small></span>
+        ${r.id === selectedRoomId ? '<i></i>' : ''}
+      </button>`).join('');
+}
+$('#room-search').addEventListener('input', renderRooms);
+$('#room-list').addEventListener('click', (e) => {
+  const row = e.target.closest('[data-room]');
+  if (!row || row.dataset.room === selectedRoomId) { closeMobileNav(); return; }
+  const room = rooms.find((r) => r.id === row.dataset.room);
+  requestNav(`комнате «${room?.title ?? ''}»`, () => {
+    selectedRoomId = row.dataset.room;
+    renderRooms();
+    closeMobileNav();
+    renderMembershipSection();
+    showToast('В концепте доступен только раздел «Персоны»');
+  });
+});
+$('#create-room-btn').addEventListener('click', () => {
+  requestNav('созданию комнаты', () => showToast('Создание комнат не входит в этот концепт'));
+});
+$('#nav-chat').addEventListener('click', () => {
+  requestNav('разделу «Чат»', () => {
+    closeMobileNav();
+    showToast('В концепте доступен только раздел «Персоны»');
+  });
+});
+$('#user-context-btn').addEventListener('click', () => {
+  showToast('Профиль @polina: snapshot имени в новых сообщениях');
+});
+
+/* mobile nav panel */
+function closeMobileNav() { document.body.classList.remove('nav-open'); }
+$('#burger').addEventListener('click', () => document.body.classList.add('nav-open'));
+$('#sidebar-backdrop').addEventListener('click', closeMobileNav);
+
+/* Escape closes menus/dialogs */
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if ($('#guard-backdrop').classList.contains('open')) { closeGuard(); return; }
+  if ($('#lifecycle-backdrop').classList.contains('open')) { closeLifecycleDialog(); return; }
+  if (document.body.classList.contains('nav-open')) { closeMobileNav(); return; }
+  if (state.openMenuKey) { state.openMenuKey = null; renderCatalog(); }
+});
+
+/* ================= INIT ================= */
+
+renderRooms();
+renderCatalog();
+renderEditor();
+</script>
+</body>
+</html>
+

@@ -1,0 +1,5 @@
+.control { width:100%;border:1px solid var(--border);border-radius:7px;background:white;color:#1e293b;outline:none;transition:border-color .15s,box-shadow .15s; }
+.control:focus { border-color:#a5b4fc;box-shadow:0 0 0 3px #4f6ef71a; }
+.control:disabled { cursor:not-allowed;background:#f8fafc;color:var(--muted); }
+.input,.select { min-height:38px;padding:9px; }
+.textarea { min-height:90px;padding:9px;resize:vertical; }

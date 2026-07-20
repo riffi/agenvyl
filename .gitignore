@@ -1,0 +1,21 @@
+.env
+.env.*
+!.env.example
+node_modules/
+apps/frontend/dist/
+apps/backend/dist/
+packages/contracts/dist/
+packages/connector-contract/dist/
+apps/connector/dist/
+# Legacy build outputs may remain in existing working copies after B0.
+dist/
+server-dist/
+*.tsbuildinfo
+.venv/
+__pycache__/
+*.db
+*.db-wal
+*.db-shm
+.DS_Store
+data/
+connector.yaml

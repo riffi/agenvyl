@@ -1,0 +1,23 @@
+code {
+  color: var(--primary);
+  background: #eef2ff;
+  padding: 2px 4px;
+}
+.lucide {
+  width: 1em;
+  height: 1em;
+  flex: none;
+  vertical-align: -0.125em;
+}
+@media (max-width: 767px) {
+body {
+    overflow: hidden;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+* {
+    scroll-behavior: auto !important;
+    animation: none !important;
+    transition: none !important;
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "rootDir": "apps/backend/src",
+    "outDir": "apps/backend/dist",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["node"],
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
+  },
+  "include": ["apps/backend/src/**/*.ts"],
+  "exclude": ["apps/backend/src/**/*.test.ts"]
+}

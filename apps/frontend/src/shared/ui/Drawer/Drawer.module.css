@@ -1,0 +1,9 @@
+.drawer { position:fixed;z-index:40;top:0;right:0;bottom:0;width:min(460px,100vw);display:flex;visibility:hidden;pointer-events:none;transform:translateX(100%);flex-direction:column;background:white;box-shadow:-8px 0 30px #0002;transition:transform .25s ease,visibility 0s linear .25s; }
+.open { visibility:visible;pointer-events:auto;transform:translateX(0);transition:transform .25s ease; }
+.wide { width:min(540px,100vw); }
+.drawer>header { height:62px;display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--border); }
+.drawer>header>strong { flex:1; }
+.close { padding:0;font-size:22px; }
+.content { padding:18px;overflow:auto; }
+.content h3 { margin-top:22px;color:#94a3b8;font-size:11px;text-transform:uppercase; }
+@media(max-width:767px){.drawer{z-index:50}}

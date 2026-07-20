@@ -1,0 +1,14 @@
+export const migrations = [
+  { version: 1, name: 'initial', file: '001_initial.sql' },
+  { version: 2, name: 'persona_groups', file: '002_persona_groups.sql' },
+  { version: 3, name: 'workspace_versions', file: '003_workspace_versions.sql' },
+  { version: 4, name: 'run_embeds', file: '004_run_embeds.sql' },
+  { version: 5, name: 'run_embed_content_validation', file: '005_run_embed_content_validation.sql' },
+  { version: 6, name: 'drop_legacy_session_mappings', file: '006_drop_legacy_session_mappings.sql' },
+  { version: 7, name: 'harness_execution_snapshots', file: '007_harness_execution_snapshots.sql' },
+  { version: 8, name: 'run_execution_deadlines', file: '008_run_execution_deadlines.sql' },
+  { version: 9, name: 'run_reasoning', file: '009_run_reasoning.sql' },
+  { version: 10, name: 'local_user_identity', file: '010_local_user_identity.sql' },
+  { version: 11, name: 'run_upstream_status', file: '011_run_upstream_status.sql' },
+  { version: 12, name: 'run_usage', file: '012_run_usage.sql' },
+] as const;

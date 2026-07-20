@@ -1,0 +1,31 @@
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  overflow: hidden;
+}
+button,
+input,
+textarea {
+  font: inherit;
+}
+:where(
+  button,
+  a[href],
+  summary,
+  select,
+  label[for],
+  input[type="checkbox"],
+  input[type="radio"],
+  [role="button"],
+  [role="menuitem"],
+  [role="option"]
+) {
+  cursor: pointer;
+}
+
+:where(button, input, select):disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
+}

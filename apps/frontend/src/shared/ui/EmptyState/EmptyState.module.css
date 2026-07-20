@@ -1,0 +1,9 @@
+.empty { display:grid;place-content:center;justify-items:center;text-align:center; }
+.empty>b { display:grid;place-items:center;color:var(--primary);font-size:30px; }
+.empty h2 { margin:8px; }
+.description { color:var(--muted); }
+.compact { padding:30px;border:1px dashed #cbd5e1;border-radius:12px;background:white; }
+.page { height:100%;padding:24px;background:#f8fafc; }
+.page>b { width:54px;height:54px;border-radius:14px;background:#eef2ff;font-size:28px; }
+.page h2 { margin:16px 0 5px;font-size:22px; }
+.page .description { margin-bottom:18px; }

@@ -1,0 +1,18 @@
+import { MessageRepository } from '../../modules/messages/messages.repository.js';
+import { PersonaRepository } from '../../modules/personas/personas.repository.js';
+import { RoomEventRepository } from '../../modules/room-events/roomEvents.repository.js';
+import { RoomRepository } from '../../modules/rooms/rooms.repository.js';
+import { RunRepository } from '../../modules/runs/runs.repository.js';
+import {PersonaGroupRepository} from '../../modules/persona-groups/personaGroups.repository.js';
+import { Database } from './Database.js';
+import {WorkspaceRepository} from '../../modules/workspace/workspace.repository.js';
+import {UserProfileRepository} from '../../modules/user-profile/userProfile.repository.js';
+
+export async function createRepositories(databaseUrl:string){
+  const database=await Database.connect(databaseUrl);
+  const personas=new PersonaRepository(database);
+  const roomEvents=new RoomEventRepository(database);
+  const workspace=new WorkspaceRepository(database),rooms=new RoomRepository(database,personas,workspace);
+  const userProfile=new UserProfileRepository(database);
+  return{database,personas,userProfile,personaGroups:new PersonaGroupRepository(database),rooms,messages:new MessageRepository(database,personas,userProfile,roomEvents,workspace),runs:new RunRepository(database,roomEvents),roomEvents,workspace};
+}

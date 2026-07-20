@@ -1,0 +1,70 @@
+.root { display:contents; }
+.title { display:flex;min-width:0;flex-direction:column;line-height:1.25; }
+.title>span { overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.title small { overflow:hidden;color:var(--muted);font-size:11px;font-weight:400;text-overflow:ellipsis;white-space:nowrap; }
+.details { display:flex;flex-direction:column;gap:20px; }
+.status-card { display:flex;gap:12px;align-items:center;padding:14px;border:1px solid;border-radius:12px; }
+.status-card>span:first-child { display:grid;width:38px;height:38px;flex:0 0 38px;place-items:center;border-radius:10px;background:#ffffffa8; }
+.status-card svg { width:20px;height:20px; }
+.status-card>span:last-child,.error-card span,.request-card span,.empty span { display:flex;min-width:0;flex-direction:column;gap:3px; }
+.status-card small,.empty small { color:var(--muted);font-size:11px;line-height:1.4; }
+.active { border-color:#bfdbfe;background:#eff6ff;color:#2563eb; }
+.warning { border-color:#fde68a;background:#fffbeb;color:#b45309; }
+.success { border-color:#bbf7d0;background:#f0fdf4;color:#15803d; }
+.error { border-color:#fecaca;background:#fef2f2;color:#b91c1c; }
+.neutral { border-color:var(--border);background:#f8fafc;color:var(--muted); }
+.spinning svg { animation:spin .9s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.error-card,.request-card { display:flex;gap:10px;padding:12px;border-radius:10px;font-size:12px; }
+.connector-card { display:flex;gap:10px;padding:12px;border:1px solid #bfdbfe;border-radius:10px;background:#eff6ff;color:#1d4ed8;font-size:12px; }
+.connector-card>svg { width:18px;height:18px;flex:0 0 auto; }
+.connector-card>span { display:flex;min-width:0;flex-direction:column;gap:3px; }
+.connector-card small { color:#64748b;font-size:11px;line-height:1.4; }
+.connector-card.degraded { border-color:#fde68a;background:#fffbeb;color:#b45309; }
+.connector-card.unavailable,.connector-card.lost { border-color:#fecaca;background:#fef2f2;color:#b91c1c; }
+.connector-card.terminal { border-color:#e2e8f0;background:#f8fafc;color:#475569; }
+.error-card { border:1px solid #fecaca;background:#fef2f2;color:#991b1b; }
+.request-card { border:1px solid #fde68a;background:#fffbeb;color:#92400e; }
+.error-card>svg,.request-card>svg { width:18px;height:18px;flex:0 0 auto; }
+.error-card p,.request-card p { margin:2px 0 0;color:#475569;line-height:1.45; }
+.request-card small { margin-top:4px;color:#64748b; }
+.activity h3 { display:flex;gap:7px;align-items:center;margin:0 0 10px;color:#475569;font-size:12px;text-transform:none; }
+.activity h3 svg { width:15px;height:15px; }
+.activity ol { padding:0;margin:0;list-style:none; }
+.activity li { position:relative;display:grid;grid-template-columns:24px minmax(0,1fr);gap:9px;align-items:start;padding:9px 0; }
+.activity li+li { border-top:1px solid #f1f5f9; }
+.activity li>span:first-child { display:grid;width:24px;height:24px;place-items:center;border-radius:50%;background:#eff6ff;color:#2563eb; }
+.activity li>span:first-child svg { width:13px;height:13px; }
+.tool-item>details { min-width:0; }
+.tool-item>details>summary,.tool-summary { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:start;cursor:pointer;list-style:none; }
+.tool-item>details>summary::-webkit-details-marker { display:none; }
+.tool-item>details>summary>span,.tool-summary>span { display:flex;min-width:0;flex-direction:column;gap:2px; }
+.tool-item>details>summary::after { position:absolute;top:12px;right:0;color:#94a3b8;content:'›';font-size:15px;line-height:1;transition:transform .15s ease; }
+.tool-item>details[open]>summary::after { transform:rotate(90deg); }
+.activity li strong { overflow-wrap:anywhere;font-size:12px; }
+.activity li summary small,.tool-summary small { max-width:100%;overflow:hidden;color:var(--muted);font-size:11px;text-overflow:ellipsis;white-space:nowrap; }
+.activity li em { padding:3px 16px 0 0;color:var(--muted);font-size:10px;font-style:normal;white-space:nowrap; }
+.activity li>.tool-completed { background:#f0fdf4;color:#16a34a; }
+.tool-details { display:flex;flex-direction:column;gap:10px;padding:10px;margin-top:8px;border-radius:8px;background:#f8fafc; }
+.tool-details>span { display:flex;min-width:0;flex-direction:column;gap:4px; }
+.tool-details small { color:var(--muted);font-size:9px;font-weight:600;text-transform:uppercase; }
+.tool-details pre { max-height:260px;overflow:auto;padding:9px;margin:0;border:1px solid #e2e8f0;border-radius:6px;background:white;color:#334155;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:10px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere; }
+.tool-details code { color:#475569;font-size:9px;overflow-wrap:anywhere; }
+.empty { display:flex;gap:10px;align-items:flex-start;padding:13px;border:1px dashed #cbd5e1;border-radius:10px;background:#f8fafc; }
+.empty>svg { width:18px;height:18px;flex:0 0 auto;color:#94a3b8; }
+.empty strong { color:#475569;font-size:12px; }
+.technical { border-top:1px solid var(--border);padding-top:14px; }
+.technical summary { display:flex;gap:7px;align-items:center;color:var(--muted);cursor:pointer;font-size:11px;font-weight:600;list-style:none; }
+.technical summary::-webkit-details-marker { display:none; }
+.technical summary::after { margin-left:auto;content:'›';font-size:18px;line-height:1;transition:transform .15s ease; }
+.technical[open] summary::after { transform:rotate(90deg); }
+.technical summary svg { width:14px;height:14px; }
+.technical dl { display:flex;flex-direction:column;gap:11px;padding:12px;margin:10px 0 0;border-radius:9px;background:#f8fafc; }
+.technical dl>div { display:grid;grid-template-columns:115px minmax(0,1fr);gap:8px;align-items:start; }
+.technical dt { color:var(--muted);font-size:10px; }
+.technical dd { min-width:0;margin:0;font-size:11px; }
+.technical code { overflow-wrap:anywhere;font-size:10px; }
+.run-id dd { display:flex;gap:7px;align-items:flex-start;flex-wrap:wrap; }
+.run-id button { display:inline-flex;gap:4px;align-items:center;padding:2px 5px;border:0;border-radius:5px;background:#e2e8f0;color:#475569;font-size:9px; }
+.run-id button svg { width:11px;height:11px; }
+@media (prefers-reduced-motion:reduce) { .spinning svg { animation-duration:1.8s; } }

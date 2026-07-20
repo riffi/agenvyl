@@ -1,0 +1,20 @@
+version: 1
+
+listen:
+  host: 127.0.0.1
+  port: 4310
+
+workspaces:
+  # Add existing absolute host paths before enabling an adapter.
+  roots: []
+
+instances:
+  - id: local-hermes
+    type: hermes
+    enabled: true
+  - id: local-opencode
+    type: opencode
+    enabled: false
+  - id: local-antigravity
+    type: antigravity
+    enabled: false

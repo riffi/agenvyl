@@ -1,0 +1,13 @@
+{
+  "name": "@agenvyl/connector",
+  "private": true,
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "dependencies": {
+    "@agenvyl/connector-contract": "0.1.0",
+    "@opencode-ai/sdk": "1.17.15",
+    "fastify": "^5.10.0",
+    "yaml": "^2.4.2"
+  }
+}

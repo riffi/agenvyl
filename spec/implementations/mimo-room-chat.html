@@ -1,0 +1,2660 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hermes — Групповой чат</title>
+<style>
+/* ===== RESET & BASE ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 14px; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  background: #f0f2f5;
+  color: #1e293b;
+  line-height: 1.5;
+  overflow: hidden;
+  height: 100vh;
+}
+
+/* ===== PALETTE ===== */
+:root {
+  --muted: #94a3b8;
+  --muted-bg: #f1f5f9;
+  --muted-border: #e2e8f0;
+  --danger: #ef4444;
+  --danger-bg: #fef2f2;
+  --danger-border: #fecaca;
+  --primary: #4f6ef7;
+  --primary-light: #818cf8;
+  --primary-bg: #eef2ff;
+  --primary-border: #c7d2fe;
+  --success: #22c55e;
+  --success-bg: #f0fdf4;
+  --success-border: #bbf7d0;
+  --warning: #f59e0b;
+  --warning-bg: #fffbeb;
+  --warning-border: #fde68a;
+  --agent-blue: #3b82f6;
+  --agent-purple: #8b5cf6;
+  --agent-teal: #14b8a6;
+  --agent-orange: #f97316;
+  --agent-pink: #ec4899;
+  --surface: #ffffff;
+  --surface-alt: #f8fafc;
+  --border: #e2e8f0;
+  --text: #1e293b;
+  --text-secondary: #64748b;
+  --text-tertiary: #94a3b8;
+  --sidebar-bg: #1e293b;
+  --sidebar-text: #cbd5e1;
+  --sidebar-active: #4f6ef7;
+  --sidebar-hover: #334155;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1);
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+}
+
+/* ===== SCROLLBAR ===== */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
+
+/* ===== LAYOUT ===== */
+.app-layout {
+  display: flex;
+  height: 100vh;
+  width: 100%;
+}
+
+/* ===== SIDEBAR ===== */
+.sidebar {
+  width: 280px;
+  min-width: 280px;
+  background: var(--sidebar-bg);
+  color: var(--sidebar-text);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 100;
+  transition: transform 0.3s ease;
+}
+
+/* product_identity */
+.sidebar-logo {
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.sidebar-logo .logo-icon {
+  width: 36px; height: 36px;
+  background: var(--primary);
+  border-radius: var(--radius-md);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; color: #fff; font-size: 16px;
+}
+.sidebar-logo .logo-text { font-size: 16px; font-weight: 600; color: #f1f5f9; }
+.sidebar-logo .connection-dot {
+  width: 8px; height: 8px;
+  background: var(--success);
+  border-radius: 50%;
+  margin-left: auto;
+  box-shadow: 0 0 6px rgba(34,197,94,0.5);
+}
+.sidebar-logo .connection-label { font-size: 11px; color: var(--muted); }
+
+/* primary_navigation */
+.sidebar-nav {
+  padding: 12px 12px 8px;
+  display: flex;
+  gap: 4px;
+}
+.sidebar-nav-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  background: transparent;
+  border: none;
+  color: var(--sidebar-text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+.sidebar-nav-btn:hover { background: var(--sidebar-hover); }
+.sidebar-nav-btn.active { background: var(--sidebar-active); color: #fff; }
+.sidebar-nav-btn svg { width: 18px; height: 18px; flex-shrink: 0; }
+
+/* room_navigation */
+.room-nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 12px;
+}
+.room-nav-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px 8px;
+}
+.room-nav-header span { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 600; }
+.room-search {
+  margin: 0 8px 8px;
+  position: relative;
+}
+.room-search input {
+  width: 100%;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px 8px 34px;
+  color: #f1f5f9;
+  font-size: 13px;
+  outline: none;
+  font-family: inherit;
+}
+.room-search input::placeholder { color: var(--muted); }
+.room-search input:focus { border-color: var(--primary); background: rgba(255,255,255,0.1); }
+.room-search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--muted); }
+
+.room-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background 0.15s;
+  position: relative;
+}
+.room-item:hover { background: var(--sidebar-hover); }
+.room-item.active { background: rgba(79,110,247,0.15); }
+.room-item .room-icon {
+  width: 36px; height: 36px;
+  border-radius: var(--radius-md);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 600; font-size: 14px;
+  flex-shrink: 0;
+}
+.room-item .room-icon.blue { background: rgba(59,130,246,0.2); color: #60a5fa; }
+.room-item .room-icon.purple { background: rgba(139,92,246,0.2); color: #a78bfa; }
+.room-item .room-icon.teal { background: rgba(20,184,166,0.2); color: #2dd4bf; }
+.room-item .room-info { flex: 1; min-width: 0; }
+.room-item .room-name { font-size: 13px; font-weight: 500; color: #e2e8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.room-item .room-last { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.room-item .room-badge {
+  min-width: 20px; height: 20px;
+  background: var(--primary);
+  color: #fff;
+  border-radius: 10px;
+  font-size: 11px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0 6px;
+}
+.room-item .run-indicator {
+  width: 8px; height: 8px;
+  background: var(--success);
+  border-radius: 50%;
+  animation: pulse-dot 2s infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.btn-create-room {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  margin-top: 8px;
+  border-radius: var(--radius-md);
+  background: rgba(255,255,255,0.04);
+  border: 1px dashed rgba(255,255,255,0.12);
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+.btn-create-room:hover { background: rgba(255,255,255,0.08); color: #e2e8f0; border-color: rgba(255,255,255,0.2); }
+
+/* user_context */
+.user-context {
+  padding: 12px 16px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.user-avatar {
+  width: 36px; height: 36px;
+  background: var(--primary);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 600; font-size: 14px; color: #fff;
+}
+.user-info { flex: 1; min-width: 0; }
+.user-name { font-size: 13px; font-weight: 500; color: #e2e8f0; }
+.user-role { font-size: 11px; color: var(--muted); }
+.user-settings-btn {
+  width: 32px; height: 32px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+}
+.user-settings-btn:hover { background: var(--sidebar-hover); color: #e2e8f0; }
+
+/* ===== MAIN CONTENT ===== */
+.main-content {
+  flex: 1;
+  margin-left: 280px;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--surface);
+}
+
+/* ===== room_header ===== */
+.room-header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 24px;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 16px;
+  align-items: center;
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+/* room_identity */
+.room-identity { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.room-identity-icon {
+  width: 40px; height: 40px;
+  background: linear-gradient(135deg, var(--primary), var(--primary-light));
+  border-radius: var(--radius-md);
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-weight: 700; font-size: 16px;
+  flex-shrink: 0;
+}
+.room-identity-info { min-width: 0; }
+.room-identity-name { font-size: 15px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 6px; }
+.room-identity-name .hermes-badge {
+  font-size: 10px;
+  background: var(--primary-bg);
+  color: var(--primary);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+.room-identity-status { font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; }
+.room-identity-status .status-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+}
+.room-identity-status .status-dot.connected { background: var(--success); }
+.room-details-btn {
+  width: 32px; height: 32px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+  margin-left: 8px;
+}
+.room-details-btn:hover { background: var(--muted-bg); color: var(--text); }
+
+/* participant_roster */
+.participant-roster { display: flex; align-items: center; gap: 8px; justify-content: center; }
+.participant-avatar {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.participant-avatar .avatar {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 600; font-size: 13px; color: #fff;
+  border: 2px solid var(--surface);
+  box-shadow: var(--shadow-sm);
+  position: relative;
+}
+.participant-avatar .avatar.blue { background: var(--agent-blue); }
+.participant-avatar .avatar.purple { background: var(--agent-purple); }
+.participant-avatar .avatar.teal { background: var(--agent-teal); }
+.participant-avatar .avatar.orange { background: var(--agent-orange); }
+.participant-avatar .avatar.pink { background: var(--agent-pink); }
+.participant-avatar .avatar .status-ring {
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+}
+.participant-avatar .avatar .status-ring.idle { border-color: var(--muted); }
+.participant-avatar .avatar .status-ring.running { border-color: var(--success); animation: spin-ring 2s linear infinite; }
+.participant-avatar .avatar .status-ring.waiting { border-color: var(--warning); }
+.participant-avatar .avatar .status-ring.failed { border-color: var(--danger); }
+.participant-avatar .avatar .status-ring.queued { border-color: var(--primary); }
+.participant-avatar .avatar .status-ring.completed { border-color: var(--success); }
+@keyframes spin-ring { to { transform: rotate(360deg); } }
+.participant-avatar .participant-name { font-size: 10px; color: var(--text-secondary); font-weight: 500; white-space: nowrap; }
+.participant-avatar .participant-model { font-size: 9px; color: var(--text-tertiary); }
+.participant-more {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: var(--muted-bg);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 600; color: var(--text-secondary);
+}
+
+/* workspace_context */
+.workspace-context { display: flex; align-items: center; gap: 12px; justify-content: flex-end; }
+.workspace-info { text-align: right; }
+.workspace-name { font-size: 13px; font-weight: 500; color: var(--text); display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
+.workspace-name svg { width: 14px; height: 14px; }
+.workspace-meta { font-size: 11px; color: var(--text-tertiary); display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+.isolation-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+.isolation-badge.sandboxed { background: var(--warning-bg); color: #b45309; border: 1px solid var(--warning-border); }
+.artifacts-btn {
+  display: flex; align-items: center; gap: 4px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+.artifacts-btn:hover { background: var(--muted-bg); color: var(--text); }
+.artifacts-btn svg { width: 14px; height: 14px; }
+.artifacts-btn .count {
+  background: var(--primary);
+  color: #fff;
+  font-size: 10px;
+  padding: 0 5px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+/* ===== conversation_timeline ===== */
+.conversation-timeline {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* empty_room_state */
+.empty-room-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 60px 40px;
+  flex: 1;
+}
+.empty-room-state .empty-icon {
+  width: 80px; height: 80px;
+  background: var(--primary-bg);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 20px;
+}
+.empty-room-state .empty-icon svg { width: 40px; height: 40px; color: var(--primary); }
+.empty-room-state h3 { font-size: 18px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+.empty-room-state p { font-size: 14px; color: var(--text-secondary); max-width: 460px; margin-bottom: 24px; }
+.mention-examples {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 400px;
+}
+.mention-example {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  text-align: left;
+}
+.mention-example code {
+  background: var(--primary-bg);
+  color: var(--primary);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  white-space: nowrap;
+}
+.mention-example span { font-size: 13px; color: var(--text-secondary); }
+
+/* System messages */
+.system-message {
+  text-align: center;
+  padding: 8px 0;
+}
+.system-message span {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  background: var(--surface);
+  padding: 4px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+
+/* user_message */
+.user-message {
+  display: flex;
+  gap: 12px;
+  padding: 8px 0;
+  justify-content: flex-end;
+}
+.user-message .msg-content {
+  max-width: 70%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.user-message .msg-bubble {
+  background: var(--primary);
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: var(--radius-lg) var(--radius-lg) 4px var(--radius-lg);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.user-message .msg-bubble .mention-token {
+  background: rgba(255,255,255,0.2);
+  color: #fff;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 13px;
+}
+.user-message .msg-bubble .mention-token.all {
+  background: rgba(255,255,255,0.3);
+}
+.user-message .msg-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.user-message .msg-targets {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.user-message .msg-targets .target-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+}
+.user-message .msg-attachments {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+.user-message .attachment-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(255,255,255,0.15);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: rgba(255,255,255,0.9);
+}
+.user-message .attachment-chip svg { width: 14px; height: 14px; }
+
+/* response_round */
+.response-round {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0 8px;
+}
+
+/* agent_response_card */
+.agent-response-card {
+  display: flex;
+  gap: 12px;
+  padding: 4px 0;
+}
+.agent-response-card .agent-avatar-col {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 44px;
+}
+.agent-response-card .agent-avatar {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 600; font-size: 15px; color: #fff;
+  flex-shrink: 0;
+}
+.agent-response-card .agent-avatar.blue { background: var(--agent-blue); }
+.agent-response-card .agent-avatar.purple { background: var(--agent-purple); }
+.agent-response-card .agent-avatar.teal { background: var(--agent-teal); }
+.agent-response-card .agent-avatar.orange { background: var(--agent-orange); }
+.agent-response-card .agent-avatar.pink { background: var(--agent-pink); }
+
+.agent-response-card .card-body {
+  flex: 1;
+  min-width: 0;
+}
+.agent-response-card .card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+.agent-response-card .agent-name { font-size: 14px; font-weight: 600; }
+.agent-response-card .agent-name.blue { color: var(--agent-blue); }
+.agent-response-card .agent-name.purple { color: var(--agent-purple); }
+.agent-response-card .agent-name.teal { color: var(--agent-teal); }
+.agent-response-card .agent-name.orange { color: var(--agent-orange); }
+.agent-response-card .agent-name.pink { color: var(--agent-pink); }
+.agent-response-card .model-tag {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--muted-bg);
+  color: var(--text-secondary);
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+.agent-response-card .run-status {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.run-status.running { background: var(--success-bg); color: #15803d; border: 1px solid var(--success-border); }
+.run-status.running .dot { width: 6px; height: 6px; background: var(--success); border-radius: 50%; animation: pulse-dot 1.5s infinite; }
+.run-status.completed { background: var(--muted-bg); color: var(--text-secondary); border: 1px solid var(--muted-border); }
+.run-status.waiting { background: var(--warning-bg); color: #b45309; border: 1px solid var(--warning-border); }
+.run-status.failed { background: var(--danger-bg); color: #b91c1c; border: 1px solid var(--danger-border); }
+.run-status.queued { background: var(--primary-bg); color: var(--primary); border: 1px solid var(--primary-border); }
+
+.agent-response-card .card-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+}
+.card-action-btn {
+  width: 28px; height: 28px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+}
+.card-action-btn:hover { background: var(--muted-bg); color: var(--text-secondary); }
+.card-action-btn.danger:hover { background: var(--danger-bg); color: var(--danger); }
+
+.agent-response-card .card-content {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px var(--radius-lg) var(--radius-lg) var(--radius-lg);
+  padding: 14px 16px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text);
+}
+.agent-response-card .card-content p { margin-bottom: 10px; }
+.agent-response-card .card-content p:last-child { margin-bottom: 0; }
+.agent-response-card .card-content code {
+  background: var(--muted-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 13px;
+  color: var(--danger);
+}
+.agent-response-card .card-content pre {
+  background: #1e293b;
+  color: #e2e8f0;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+  font-size: 13px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  margin: 10px 0;
+  line-height: 1.6;
+}
+.agent-response-card .card-content pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+}
+
+.streaming-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 16px;
+  background: var(--primary);
+  margin-left: 2px;
+  animation: blink 1s step-end infinite;
+  vertical-align: text-bottom;
+}
+@keyframes blink { 50% { opacity: 0; } }
+
+.agent-response-card .card-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.card-footer .footer-action {
+  color: var(--primary);
+  cursor: pointer;
+  font-weight: 500;
+}
+.card-footer .footer-action:hover { text-decoration: underline; }
+
+/* tool_activity */
+.tool-activity {
+  margin-left: 56px;
+  border-left: 2px solid var(--border);
+  padding-left: 16px;
+}
+.tool-activity-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  cursor: pointer;
+  user-select: none;
+}
+.tool-activity-header .toggle-icon {
+  width: 18px; height: 18px;
+  color: var(--text-tertiary);
+  transition: transform 0.2s;
+}
+.tool-activity-header .toggle-icon.expanded { transform: rotate(90deg); }
+.tool-activity-header span { font-size: 12px; color: var(--text-secondary); font-weight: 500; }
+.tool-activity-header .tool-count {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: var(--muted-bg);
+  color: var(--text-tertiary);
+}
+
+.tool-activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0 8px;
+}
+.tool-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+}
+.tool-item .tool-icon {
+  width: 24px; height: 24px;
+  border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.tool-item .tool-icon.started { background: var(--primary-bg); color: var(--primary); }
+.tool-item .tool-icon.progress { background: var(--warning-bg); color: var(--warning); }
+.tool-item .tool-icon.completed { background: var(--success-bg); color: var(--success); }
+.tool-item .tool-icon svg { width: 14px; height: 14px; }
+.tool-item .tool-info { flex: 1; min-width: 0; }
+.tool-item .tool-name { font-weight: 500; color: var(--text); }
+.tool-item .tool-detail { font-size: 12px; color: var(--text-tertiary); margin-top: 2px; }
+.tool-item .tool-status-label {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+.tool-status-label.started { background: var(--primary-bg); color: var(--primary); }
+.tool-status-label.progress { background: var(--warning-bg); color: #b45309; }
+.tool-status-label.completed { background: var(--success-bg); color: #15803d; }
+
+/* approval_request */
+.approval-request {
+  margin-left: 56px;
+  background: var(--warning-bg);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+}
+.approval-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.approval-header svg { width: 18px; height: 18px; color: var(--warning); }
+.approval-header span { font-size: 13px; font-weight: 600; color: #92400e; }
+.approval-body { font-size: 13px; color: #78350f; margin-bottom: 12px; line-height: 1.6; }
+.approval-body strong { font-weight: 600; }
+.approval-consequences {
+  background: rgba(245,158,11,0.08);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: #92400e;
+}
+.approval-consequences ul { margin: 4px 0 0 16px; }
+.approval-actions {
+  display: flex;
+  gap: 8px;
+}
+.approval-actions .btn {
+  padding: 7px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+.approval-actions .btn-approve {
+  background: var(--warning);
+  color: #fff;
+}
+.approval-actions .btn-approve:hover { background: #d97706; }
+.approval-actions .btn-deny {
+  background: var(--surface);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+.approval-actions .btn-deny:hover { background: var(--muted-bg); }
+
+/* clarification_request */
+.clarification-request {
+  margin-left: 56px;
+  background: var(--primary-bg);
+  border: 1px solid var(--primary-border);
+  border-radius: var(--radius-lg);
+  padding: 14px 16px;
+}
+.clarification-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.clarification-header svg { width: 18px; height: 18px; color: var(--primary); }
+.clarification-header span { font-size: 13px; font-weight: 600; color: var(--primary); }
+.clarification-body {
+  font-size: 13px;
+  color: var(--text);
+  margin-bottom: 12px;
+  line-height: 1.6;
+}
+.clarification-context {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-bottom: 10px;
+}
+.clarification-input {
+  display: flex;
+  gap: 8px;
+}
+.clarification-input input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--primary-border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  outline: none;
+  font-family: inherit;
+  background: var(--surface);
+}
+.clarification-input input:focus { border-color: var(--primary); }
+.clarification-input .btn-send {
+  padding: 8px 16px;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s;
+}
+.clarification-input .btn-send:hover { background: #435bd4; }
+
+/* reconnect_state */
+.reconnect-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--warning-bg);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-md);
+  margin: 8px 0;
+}
+.reconnect-state svg { width: 16px; height: 16px; color: var(--warning); }
+.reconnect-state span { font-size: 13px; color: #92400e; }
+.reconnect-state .spinner {
+  width: 14px; height: 14px;
+  border: 2px solid var(--warning-border);
+  border-top-color: var(--warning);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ===== room_composer ===== */
+.room-composer {
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding: 12px 24px 16px;
+  flex-shrink: 0;
+}
+.composer-main {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+/* mention_editor */
+.mention-editor {
+  position: relative;
+}
+.mention-editor .editor-area {
+  width: 100%;
+  min-height: 44px;
+  max-height: 120px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text);
+  resize: none;
+  outline: none;
+  font-family: inherit;
+  background: var(--surface);
+  transition: border-color 0.15s;
+}
+.mention-editor .editor-area:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(79,110,247,0.1); }
+.mention-editor .editor-area::placeholder { color: var(--text-tertiary); }
+.mention-editor .draft-indicator {
+  position: absolute;
+  top: -8px;
+  left: 12px;
+  font-size: 10px;
+  background: var(--surface);
+  padding: 0 6px;
+  color: var(--text-tertiary);
+}
+
+/* Autocomplete dropdown */
+.autocomplete-dropdown {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  margin-bottom: 4px;
+  display: none;
+  z-index: 50;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.autocomplete-dropdown.visible { display: block; }
+.autocomplete-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.autocomplete-item:hover, .autocomplete-item.selected { background: var(--primary-bg); }
+.autocomplete-item .ac-avatar {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600; color: #fff;
+}
+.autocomplete-item .ac-name { font-size: 13px; font-weight: 500; color: var(--text); }
+.autocomplete-item .ac-handle { font-size: 12px; color: var(--text-tertiary); }
+.autocomplete-item .ac-model { font-size: 11px; color: var(--text-tertiary); margin-left: auto; font-family: monospace; }
+
+/* target_preview */
+.target-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.target-preview .target-header {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.target-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.target-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+}
+.target-chip .chip-avatar {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 600; color: #fff;
+}
+.target-chip .remove-chip {
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+  margin-left: 2px;
+}
+.target-chip .remove-chip:hover { background: var(--danger-bg); color: var(--danger); }
+.no-mentions-warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--warning);
+  padding: 6px 10px;
+  background: var(--warning-bg);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-sm);
+}
+.parallel-limit {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.parallel-limit .limit-bar {
+  flex: 1;
+  height: 4px;
+  background: var(--muted-bg);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.parallel-limit .limit-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 2px;
+  transition: width 0.3s;
+}
+
+/* composer_actions */
+.composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  grid-column: 1 / -1;
+}
+.composer-actions .btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+.composer-actions .btn-send {
+  background: var(--primary);
+  color: #fff;
+}
+.composer-actions .btn-send:hover { background: #435bd4; }
+.composer-actions .btn-send:disabled { background: var(--muted); cursor: not-allowed; opacity: 0.6; }
+.composer-actions .btn-send svg { width: 16px; height: 16px; }
+.composer-actions .btn-attach {
+  background: var(--surface);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+.composer-actions .btn-attach:hover { background: var(--muted-bg); color: var(--text); }
+.composer-actions .btn-attach svg { width: 16px; height: 16px; }
+.composer-actions .btn-cancel-all {
+  background: var(--surface);
+  color: var(--danger);
+  border: 1px solid var(--danger-border);
+  margin-left: auto;
+}
+.composer-actions .btn-cancel-all:hover { background: var(--danger-bg); }
+.composer-actions .btn-cancel-all svg { width: 16px; height: 16px; }
+.composer-actions .char-count { font-size: 11px; color: var(--text-tertiary); margin-left: auto; }
+
+/* ===== run_details_drawer ===== */
+.run-details-drawer {
+  position: fixed;
+  right: -480px;
+  top: 0;
+  bottom: 0;
+  width: 480px;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  transition: right 0.3s ease;
+}
+.run-details-drawer.open { right: 0; }
+.drawer-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.drawer-header h3 { font-size: 15px; font-weight: 600; color: var(--text); flex: 1; }
+.drawer-close {
+  width: 32px; height: 32px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+}
+.drawer-close:hover { background: var(--muted-bg); color: var(--text); }
+
+.drawer-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  padding: 0 20px;
+  flex-shrink: 0;
+}
+.drawer-tab {
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s;
+  background: none;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  font-family: inherit;
+}
+.drawer-tab:hover { color: var(--text); }
+.drawer-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+.drawer-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+}
+.drawer-section {
+  margin-bottom: 20px;
+}
+.drawer-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 10px;
+}
+.drawer-meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.drawer-meta-item {
+  padding: 8px 12px;
+  background: var(--surface-alt);
+  border-radius: var(--radius-sm);
+}
+.drawer-meta-item .meta-label { font-size: 11px; color: var(--text-tertiary); }
+.drawer-meta-item .meta-value { font-size: 13px; font-weight: 500; color: var(--text); margin-top: 2px; }
+
+.drawer-artifact-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  margin-bottom: 8px;
+}
+.drawer-artifact-item .artifact-icon {
+  width: 32px; height: 32px;
+  border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.drawer-artifact-item .artifact-icon.file { background: var(--primary-bg); color: var(--primary); }
+.drawer-artifact-item .artifact-icon.patch { background: var(--success-bg); color: var(--success); }
+.drawer-artifact-item .artifact-info { flex: 1; min-width: 0; }
+.drawer-artifact-item .artifact-name { font-size: 13px; font-weight: 500; color: var(--text); }
+.drawer-artifact-item .artifact-meta { font-size: 11px; color: var(--text-tertiary); }
+
+/* ===== artifacts_and_patches ===== */
+.artifacts-panel {
+  position: fixed;
+  right: -560px;
+  top: 0;
+  bottom: 0;
+  width: 560px;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  transition: right 0.3s ease;
+}
+.artifacts-panel.open { right: 0; }
+.artifacts-panel .panel-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.artifacts-panel .panel-header h3 { font-size: 15px; font-weight: 600; color: var(--text); flex: 1; }
+.artifacts-panel .panel-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  padding: 0 20px;
+  flex-shrink: 0;
+}
+.artifacts-panel .panel-tab {
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s;
+  background: none;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  font-family: inherit;
+}
+.artifacts-panel .panel-tab:hover { color: var(--text); }
+.artifacts-panel .panel-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+.artifacts-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+}
+
+.diff-viewer {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  background: #1e293b;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+.diff-header {
+  padding: 8px 16px;
+  background: rgba(255,255,255,0.05);
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  font-size: 12px;
+  color: #94a3b8;
+}
+.diff-line {
+  padding: 1px 16px;
+  display: flex;
+}
+.diff-line .line-num {
+  color: #64748b;
+  width: 40px;
+  flex-shrink: 0;
+  user-select: none;
+  text-align: right;
+  padding-right: 12px;
+}
+.diff-line.add { background: rgba(34,197,94,0.1); }
+.diff-line.add .line-content { color: #4ade80; }
+.diff-line.remove { background: rgba(239,68,68,0.1); }
+.diff-line.remove .line-content { color: #f87171; }
+.diff-line.context .line-content { color: #cbd5e1; }
+
+.patch-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.patch-actions .btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+.patch-actions .btn-apply { background: var(--success); color: #fff; }
+.patch-actions .btn-apply:hover { background: #16a34a; }
+.patch-actions .btn-apply:disabled { background: var(--muted); cursor: not-allowed; }
+.patch-actions .btn-download { background: var(--surface); color: var(--text-secondary); border: 1px solid var(--border); }
+.patch-actions .btn-download:hover { background: var(--muted-bg); }
+
+.conflict-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-md);
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: #991b1b;
+}
+.conflict-banner svg { width: 18px; height: 18px; flex-shrink: 0; }
+
+/* ===== MOBILE STYLES ===== */
+.mobile-header {
+  display: none;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 16px;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+.mobile-menu-btn {
+  width: 36px; height: 36px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.mobile-title { flex: 1; }
+.mobile-title h2 { font-size: 15px; font-weight: 600; color: var(--text); }
+.mobile-title span { font-size: 12px; color: var(--text-secondary); }
+
+.mobile-nav {
+  display: none;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding: 6px 16px;
+  padding-bottom: env(safe-area-inset-bottom, 6px);
+  flex-shrink: 0;
+}
+.mobile-nav-items {
+  display: flex;
+  justify-content: space-around;
+}
+.mobile-nav-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+  position: relative;
+}
+.mobile-nav-btn svg { width: 22px; height: 22px; }
+.mobile-nav-btn.active { color: var(--primary); }
+.mobile-nav-btn .mobile-badge {
+  position: absolute;
+  top: 0;
+  right: 4px;
+  min-width: 16px;
+  height: 16px;
+  background: var(--danger);
+  color: #fff;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0 4px;
+}
+
+/* Overlay for mobile drawer */
+.overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 150;
+}
+.overlay.visible { display: block; }
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 1199px) {
+  .room-header { grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px 16px; }
+  .workspace-context { grid-column: 1 / -1; justify-content: flex-start; }
+  .conversation-timeline { padding: 16px; }
+  .room-composer { padding: 10px 16px 14px; }
+}
+
+@media (max-width: 767px) {
+  .sidebar { transform: translateX(-100%); }
+  .sidebar.open { transform: translateX(0); }
+  .main-content { margin-left: 0; }
+  .mobile-header { display: flex; }
+  .mobile-nav { display: block; }
+  .room-header { display: none; }
+  .conversation-timeline { padding: 12px; }
+  .room-composer { padding: 8px 12px 12px; }
+  .composer-main { grid-template-columns: 1fr; }
+  .target-preview { order: -1; }
+  .composer-actions { grid-column: 1; }
+  .agent-response-card .agent-avatar-col { width: 32px; }
+  .agent-response-card .agent-avatar { width: 32px; height: 32px; font-size: 12px; }
+  .tool-activity { margin-left: 44px; }
+  .approval-request, .clarification-request { margin-left: 44px; }
+  .run-details-drawer, .artifacts-panel { width: 100%; right: -100%; }
+  .mention-examples { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+
+<div class="app-layout">
+  <!-- ==================== SIDEBAR ==================== -->
+  <aside class="sidebar" id="sidebar">
+    <!-- product_identity -->
+    <div class="sidebar-logo" ui-spec-block-id="block_id(product_identity)">
+      <div class="logo-icon">H</div>
+      <div>
+        <div class="logo-text">Hermes</div>
+        <div class="connection-label">Подключён</div>
+      </div>
+      <div class="connection-dot" title="Соединение активно"></div>
+    </div>
+
+    <!-- primary_navigation -->
+    <nav class="sidebar-nav" ui-spec-block-id="block_id(primary_navigation)">
+      <button class="sidebar-nav-btn active" data-nav="chat" onclick="switchNav(this, 'chat')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Чат
+      </button>
+      <button class="sidebar-nav-btn" data-nav="personas" onclick="switchNav(this, 'personas')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Персоны
+      </button>
+    </nav>
+
+    <!-- room_navigation -->
+    <div class="room-nav" ui-spec-block-id="block_id(room_navigation)">
+      <div class="room-nav-header">
+        <span>Комнаты</span>
+        <span style="font-size:11px; color: var(--muted);">5 комнат</span>
+      </div>
+      <div class="room-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input type="text" placeholder="Поиск комнат…" oninput="filterRooms(this.value)">
+      </div>
+
+      <div class="room-item active" data-room="dev-team">
+        <div class="room-icon blue">DT</div>
+        <div class="room-info">
+          <div class="room-name">Dev Team</div>
+          <div class="room-last">@architect предложил рефакторинг…</div>
+        </div>
+        <div class="run-indicator" title="Активный run"></div>
+      </div>
+
+      <div class="room-item" data-room="research">
+        <div class="room-icon purple">RS</div>
+        <div class="room-info">
+          <div class="room-name">Research</div>
+          <div class="room-last">Анализ завершён</div>
+        </div>
+        <div class="room-badge">3</div>
+      </div>
+
+      <div class="room-item" data-room="design">
+        <div class="room-icon teal">DS</div>
+        <div class="room-info">
+          <div class="room-name">Design Sprint</div>
+          <div class="room-last">Макеты обновлены</div>
+        </div>
+      </div>
+
+      <div class="room-item" data-room="planning">
+        <div class="room-icon blue">PL</div>
+        <div class="room-info">
+          <div class="room-name">Sprint Planning</div>
+          <div class="room-back">Нет сообщений</div>
+        </div>
+      </div>
+
+      <div class="room-item" data-room="debug">
+        <div class="room-icon purple">DB</div>
+        <div class="room-info">
+          <div class="room-name">Debug Session</div>
+          <div class="room-last">Ошибка воспроизведена</div>
+        </div>
+        <div class="room-badge">1</div>
+      </div>
+
+      <button class="btn-create-room" onclick="showCreateRoom()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Создать комнату
+      </button>
+    </div>
+
+    <!-- user_context -->
+    <div class="user-context" ui-spec-block-id="block_id(user_context)">
+      <div class="user-avatar">АИ</div>
+      <div class="user-info">
+        <div class="user-name">Алексей Иванов</div>
+        <div class="user-role">Owner</div>
+      </div>
+      <button class="user-settings-btn" title="Настройки" onclick="toggleSettings()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
+  </aside>
+
+  <!-- Overlay for mobile -->
+  <div class="overlay" id="overlay" onclick="closeSidebar()"></div>
+
+  <!-- ==================== MAIN CONTENT ==================== -->
+  <main class="main-content">
+    <!-- Mobile header -->
+    <div class="mobile-header">
+      <button class="mobile-menu-btn" onclick="openSidebar()">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <div class="mobile-title">
+        <h2>Dev Team</h2>
+        <span>4 персоны · 1 active run</span>
+      </div>
+      <button class="mobile-menu-btn" onclick="toggleRunDrawer()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+      </button>
+    </div>
+
+    <!-- ==================== room_header ==================== -->
+    <div class="room-header" ui-spec-block-id="block_id(room_header)">
+      <!-- room_identity -->
+      <div class="room-identity" ui-spec-block-id="block_id(room_identity)">
+        <div class="room-identity-icon">DT</div>
+        <div class="room-identity-info">
+          <div class="room-identity-name">
+            Dev Team
+            <span class="hermes-badge">HERMES</span>
+          </div>
+          <div class="room-identity-status">
+            <span class="status-dot connected"></span>
+            4 персоны · Активный раунд
+          </div>
+        </div>
+        <button class="room-details-btn" title="Сведения о комнате" onclick="toggleRoomDetails()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        </button>
+      </div>
+
+      <!-- participant_roster -->
+      <div class="participant-roster" ui-spec-block-id="block_id(participant_roster)">
+        <div class="participant-avatar">
+          <div class="avatar blue">
+            <div class="status-ring running"></div>
+            A
+          </div>
+          <span class="participant-name">Architect</span>
+          <span class="participant-model">claude-4</span>
+        </div>
+        <div class="participant-avatar">
+          <div class="avatar purple">
+            <div class="status-ring completed"></div>
+            C
+          </div>
+          <span class="participant-name">Coder</span>
+          <span class="participant-model">gpt-4o</span>
+        </div>
+        <div class="participant-avatar">
+          <div class="avatar teal">
+            <div class="status-ring idle"></div>
+            R
+          </div>
+          <span class="participant-name">Reviewer</span>
+          <span class="participant-model">claude-4</span>
+        </div>
+        <div class="participant-avatar">
+          <div class="avatar orange">
+            <div class="status-ring queued"></div>
+            D
+          </div>
+          <span class="participant-name">Debugger</span>
+          <span class="participant-model">gemini-2.5</span>
+        </div>
+      </div>
+
+      <!-- workspace_context -->
+      <div class="workspace-context" ui-spec-block-id="block_id(workspace_context)">
+        <div class="workspace-info">
+          <div class="workspace-name">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
+            hermes-monorepo
+          </div>
+          <div class="workspace-meta">
+            <span class="isolation-badge sandboxed">sandboxed</span>
+            <span>main · a3f2c1d</span>
+          </div>
+        </div>
+        <button class="artifacts-btn" onclick="toggleArtifacts()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+          Артефакты
+          <span class="count">3</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ==================== conversation_timeline ==================== -->
+    <div class="conversation-timeline" ui-spec-block-id="block_id(conversation_timeline)" id="conversationTimeline">
+
+      <!-- System message -->
+      <div class="system-message">
+        <span>Комната создана · 15 января 2026, 10:00</span>
+      </div>
+
+      <!-- empty_room_state (hidden when messages exist) -->
+      <div class="empty-room-state" ui-spec-block-id="block_id(empty_room_state)" id="emptyRoomState" style="display:none;">
+        <div class="empty-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </div>
+        <h3>Начните диалог</h3>
+        <p>Упомяните персон через <code>@handle</code> или <code>@all</code>, чтобы вызвать одну, несколько или все персоны одновременно.</p>
+        <div class="mention-examples">
+          <div class="mention-example">
+            <code>@architect</code>
+            <span>Вызвать одну персону</span>
+          </div>
+          <div class="mention-example">
+            <code>@architect @coder</code>
+            <span>Несколько персон параллельно</span>
+          </div>
+          <div class="mention-example">
+            <code>@all</code>
+            <span>Все участники комнаты</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- user_message #1 -->
+      <div class="user-message" ui-spec-block-id="block_id(user_message)">
+        <div class="msg-content">
+          <div class="msg-bubble">
+            <span class="mention-token">@architect</span> <span class="mention-token">@coder</span> нужно реализовать WebSocket-соединение для real-time обновлений. Предложите архитектуру и напишите код.
+          </div>
+          <div class="msg-attachments">
+            <div class="attachment-chip">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+              ws-spec.md
+            </div>
+          </div>
+          <div class="msg-meta">
+            <span>10:32</span>
+            <span>·</span>
+            <div class="msg-targets">
+              <span class="target-dot" style="background: var(--agent-blue)"></span>
+              <span class="target-dot" style="background: var(--agent-purple)"></span>
+              <span>2 runs запущено</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- response_round #1 -->
+      <div class="response-round" ui-spec-block-id="block_id(response_round)">
+
+        <!-- agent_response_card: Architect -->
+        <div class="agent-response-card" ui-spec-block-id="block_id(agent_response_card)">
+          <div class="agent-avatar-col">
+            <div class="agent-avatar blue">A</div>
+          </div>
+          <div class="card-body">
+            <div class="card-header">
+              <span class="agent-name blue">Architect</span>
+              <span class="model-tag">claude-4</span>
+              <span class="run-status running"><span class="dot"></span> running</span>
+              <div class="card-actions">
+                <button class="card-action-btn" title="Подробнее" onclick="toggleRunDrawer()">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                </button>
+                <button class="card-action-btn danger" title="Отменить run">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="card-content">
+              <p>Для real-time обновлений рекомендую использовать WebSocket через библиотеку <code>ws</code> на сервере и нативный <code>WebSocket</code> API на клиенте.</p>
+              <p>Архитектура:</p>
+              <pre><code>┌─────────┐    WebSocket     ┌──────────┐
+│  Client  │◄───────────────►│  Server  │
+│ (React)  │   ws://host     │ (Node.js)│
+└─────────┘                  └────┬─────┘
+                                  │
+                           ┌──────┴──────┐
+                           │   Redis     │
+                           │   Pub/Sub   │
+                           └─────────────┘</code></pre>
+              <p>Ключевые принципы: connection pooling, heartbeat для обнаружения разрывов, exponential backoff при reconnect на клиенте.</p>
+              <span class="streaming-cursor"></span>
+            </div>
+            <div class="card-footer">
+              <span>~1.2k tokens</span>
+              <span>·</span>
+              <span>8s</span>
+              <span>·</span>
+              <span class="footer-action">Показать полностью</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- tool_activity for Architect -->
+        <div class="tool-activity" ui-spec-block-id="block_id(tool_activity)">
+          <div class="tool-activity-header" onclick="toggleToolActivity(this)">
+            <svg class="toggle-icon expanded" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            <span>Tool Activity</span>
+            <span class="tool-count">3</span>
+          </div>
+          <div class="tool-activity-list">
+            <div class="tool-item">
+              <div class="tool-icon completed">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </div>
+              <div class="tool-info">
+                <div class="tool-name">file_read</div>
+                <div class="tool-detail">src/server/ws-handler.ts</div>
+              </div>
+              <span class="tool-status-label completed">completed</span>
+            </div>
+            <div class="tool-item">
+              <div class="tool-icon progress">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="M4.93 19.07l2.83-2.83"/><path d="M16.24 7.76l2.83-2.83"/></svg>
+              </div>
+              <div class="tool-info">
+                <div class="tool-name">code_generate</div>
+                <div class="tool-detail">WebSocket connection manager</div>
+              </div>
+              <span class="tool-status-label progress">in progress</span>
+            </div>
+            <div class="tool-item">
+              <div class="tool-icon started">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              </div>
+              <div class="tool-info">
+                <div class="tool-name">file_write</div>
+                <div class="tool-detail">Ожидает завершения code_generate</div>
+              </div>
+              <span class="tool-status-label started">queued</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- agent_response_card: Coder -->
+        <div class="agent-response-card" ui-spec-block-id="block_id(agent_response_card)">
+          <div class="agent-avatar-col">
+            <div class="agent-avatar purple">C</div>
+          </div>
+          <div class="card-body">
+            <div class="card-header">
+              <span class="agent-name purple">Coder</span>
+              <span class="model-tag">gpt-4o</span>
+              <span class="run-status completed">✓ completed</span>
+              <div class="card-actions">
+                <button class="card-action-btn" title="Подробнее" onclick="toggleRunDrawer()">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="card-content">
+              <p>Вот реализация WebSocket-менеджера с auto-reconnect:</p>
+              <pre><code>class WSManager {
+  private ws: WebSocket | null = null;
+  private retryCount = 0;
+
+  connect(url: string) {
+    this.ws = new WebSocket(url);
+    this.ws.onopen = () => {
+      this.retryCount = 0;
+      console.log('Connected');
+    };
+    this.ws.onclose = () => {
+      this.scheduleReconnect(url);
+    };
+  }
+
+  private scheduleReconnect(url: string) {
+    const delay = Math.min(
+      1000 * Math.pow(2, this.retryCount),
+      30000
+    );
+    setTimeout(() => {
+      this.retryCount++;
+      this.connect(url);
+    }, delay);
+  }
+}</code></pre>
+            </div>
+            <div class="card-footer">
+              <span>~890 tokens</span>
+              <span>·</span>
+              <span>12s</span>
+              <span>·</span>
+              <span class="footer-action">Показать diff</span>
+              <span>·</span>
+              <span class="footer-action">Артефакты (2)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- tool_activity for Coder -->
+        <div class="tool-activity" ui-spec-block-id="block_id(tool_activity)">
+          <div class="tool-activity-header" onclick="toggleToolActivity(this)">
+            <svg class="toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            <span>Tool Activity</span>
+            <span class="tool-count">4</span>
+          </div>
+          <div class="tool-activity-list" style="display:none;">
+            <div class="tool-item">
+              <div class="tool-icon completed">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </div>
+              <div class="tool-info">
+                <div class="tool-name">file_read</div>
+                <div class="tool-detail">package.json, tsconfig.json</div>
+              </div>
+              <span class="tool-status-label completed">completed</span>
+            </div>
+            <div class="tool-item">
+              <div class="tool-icon completed">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </div>
+              <div class="tool-info">
+                <div class="tool-name">code_generate</div>
+                <div class="tool-detail">ws-manager.ts</div>
+              </div>
+              <span class="tool-status-label completed">completed</span>
+            </div>
+            <div class="tool-item">
+              <div class="tool-icon completed">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </div>
+              <div class="tool-info">
+                <div class="tool-name">file_write</div>
+                <div class="tool-detail">src/ws-manager.ts</div>
+              </div>
+              <span class="tool-status-label completed">completed</span>
+            </div>
+            <div class="tool-item">
+              <div class="tool-icon completed">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </div>
+              <div class="tool-info">
+                <div class="tool-name">test_run</div>
+                <div class="tool-detail">Проверка компиляции — OK</div>
+              </div>
+              <span class="tool-status-label completed">completed</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- user_message #2 -->
+      <div class="user-message" ui-spec-block-id="block_id(user_message)">
+        <div class="msg-content">
+          <div class="msg-bubble">
+            <span class="mention-token">@coder</span> добавь heartbeat mechanism с интервалом 30 секунд
+          </div>
+          <div class="msg-meta">
+            <span>10:45</span>
+            <span>·</span>
+            <div class="msg-targets">
+              <span class="target-dot" style="background: var(--agent-purple)"></span>
+              <span>1 run запущен</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- response_round #2 -->
+      <div class="response-round" ui-spec-block-id="block_id(response_round)">
+
+        <!-- agent_response_card: Coder - with approval -->
+        <div class="agent-response-card" ui-spec-block-id="block_id(agent_response_card)">
+          <div class="agent-avatar-col">
+            <div class="agent-avatar purple">C</div>
+          </div>
+          <div class="card-body">
+            <div class="card-header">
+              <span class="agent-name purple">Coder</span>
+              <span class="model-tag">gpt-4o</span>
+              <span class="run-status waiting"><span class="dot" style="background:var(--warning);"></span> waiting approval</span>
+            </div>
+            <div class="card-content">
+              <p>Добавляю heartbeat mechanism. Для этого нужно изменить существующий <code>ws-manager.ts</code> и добавить новый конфигурационный параметр.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- approval_request -->
+        <div class="approval-request" ui-spec-block-id="block_id(approval_request)">
+          <div class="approval-header">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <span>Требуется подтверждение</span>
+          </div>
+          <div class="approval-body">
+            Агент <strong>Coder</strong> запрашивает разрешение на запись в <code>src/ws-manager.ts</code> и изменение <code>package.json</code>.
+          </div>
+          <div class="approval-consequences">
+            <strong>Область последствий:</strong>
+            <ul>
+              <li>Изменение существующего модуля WebSocket</li>
+              <li>Добавление новой зависимости <code>ws-heartbeat</code></li>
+            </ul>
+          </div>
+          <div class="approval-actions">
+            <button class="btn btn-approve" onclick="handleApproval(this, true)">Разрешить</button>
+            <button class="btn btn-deny" onclick="handleApproval(this, false)">Отклонить</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- user_message #3 with @all -->
+      <div class="user-message" ui-spec-block-id="block_id(user_message)">
+        <div class="msg-content">
+          <div class="msg-bubble">
+            <span class="mention-token all">@all</span> проверьте совместимость текущих изменений с тестами в проекте
+          </div>
+          <div class="msg-meta">
+            <span>11:02</span>
+            <span>·</span>
+            <div class="msg-targets">
+              <span class="target-dot" style="background: var(--agent-blue)"></span>
+              <span class="target-dot" style="background: var(--agent-purple)"></span>
+              <span class="target-dot" style="background: var(--agent-teal)"></span>
+              <span class="target-dot" style="background: var(--agent-orange)"></span>
+              <span>4 runs запущено</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- response_round #3 with clarification -->
+      <div class="response-round" ui-spec-block-id="block_id(response_round)">
+
+        <!-- agent_response_card: Reviewer with clarification -->
+        <div class="agent-response-card" ui-spec-block-id="block_id(agent_response_card)">
+          <div class="agent-avatar-col">
+            <div class="agent-avatar teal">R</div>
+          </div>
+          <div class="card-body">
+            <div class="card-header">
+              <span class="agent-name teal">Reviewer</span>
+              <span class="model-tag">claude-4</span>
+              <span class="run-status running"><span class="dot"></span> running</span>
+              <div class="card-actions">
+                <button class="card-action-btn danger" title="Отменить run">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="card-content">
+              <span class="streaming-cursor"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- clarification_request from Debugger -->
+        <div class="agent-response-card" ui-spec-block-id="block_id(agent_response_card)">
+          <div class="agent-avatar-col">
+            <div class="agent-avatar orange">D</div>
+          </div>
+          <div class="card-body">
+            <div class="card-header">
+              <span class="agent-name orange">Debugger</span>
+              <span class="model-tag">gemini-2.5</span>
+              <span class="run-status waiting"><span class="dot" style="background:var(--primary);"></span> waiting input</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="clarification-request" ui-spec-block-id="block_id(clarification_request)">
+          <div class="clarification-header">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <span>Debugger запрашивает уточнение</span>
+          </div>
+          <div class="clarification-body">
+            Какие именно тесты нужно запустить? В проекте есть unit-тесты (Jest), интеграционные тесты (Playwright) и e2e тесты. Также, нужно ли проверить тесты, зависящие от WebSocket соединения?
+          </div>
+          <div class="clarification-context">
+            Run ID: dbg-7f3a · Запрос сохраняет контекст до ответа
+          </div>
+          <div class="clarification-input">
+            <input type="text" placeholder="Ответить только Debugger…">
+            <button class="btn-send">Отправить</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- reconnect_state -->
+      <div class="reconnect-state" ui-spec-block-id="block_id(reconnect_state)" id="reconnectState" style="display:none;">
+        <div class="spinner"></div>
+        <span>Переподключение к Hermes… Восстановление событий (2/5)</span>
+      </div>
+
+    </div>
+
+    <!-- ==================== room_composer ==================== -->
+    <div class="room-composer" ui-spec-block-id="block_id(room_composer)">
+      <div class="composer-main">
+        <!-- mention_editor -->
+        <div class="mention-editor" ui-spec-block-id="block_id(mention_editor)">
+          <div class="autocomplete-dropdown" id="autocompleteDropdown">
+            <div class="autocomplete-item" onclick="selectMention('architect', 'blue')">
+              <div class="ac-avatar" style="background: var(--agent-blue)">A</div>
+              <span class="ac-name">Architect</span>
+              <span class="ac-handle">@architect</span>
+              <span class="ac-model">claude-4</span>
+            </div>
+            <div class="autocomplete-item" onclick="selectMention('coder', 'purple')">
+              <div class="ac-avatar" style="background: var(--agent-purple)">C</div>
+              <span class="ac-name">Coder</span>
+              <span class="ac-handle">@coder</span>
+              <span class="ac-model">gpt-4o</span>
+            </div>
+            <div class="autocomplete-item" onclick="selectMention('reviewer', 'teal')">
+              <div class="ac-avatar" style="background: var(--agent-teal)">R</div>
+              <span class="ac-name">Reviewer</span>
+              <span class="ac-handle">@reviewer</span>
+              <span class="ac-model">claude-4</span>
+            </div>
+            <div class="autocomplete-item" onclick="selectMention('debugger', 'orange')">
+              <div class="ac-avatar" style="background: var(--agent-orange)">D</div>
+              <span class="ac-name">Debugger</span>
+              <span class="ac-handle">@debugger</span>
+              <span class="ac-model">gemini-2.5</span>
+            </div>
+            <div class="autocomplete-item" onclick="selectMention('all', 'all')">
+              <div class="ac-avatar" style="background: var(--text-secondary)">*</div>
+              <span class="ac-name">Все персоны</span>
+              <span class="ac-handle">@all</span>
+              <span class="ac-model">все модели</span>
+            </div>
+          </div>
+          <textarea class="editor-area" id="messageEditor" placeholder="Напишите сообщение… Используйте @ для упоминания персон" rows="2" oninput="handleEditorInput(this)" onkeydown="handleEditorKeydown(event)"></textarea>
+        </div>
+
+        <!-- target_preview -->
+        <div class="target-preview" ui-spec-block-id="block_id(target_preview)">
+          <div class="target-header">
+            <span>Цели вызова</span>
+            <span class="parallel-limit" id="parallelInfo">0/4 параллельно</span>
+          </div>
+          <div class="target-chips" id="targetChips">
+            <!-- Dynamically populated -->
+          </div>
+          <div class="no-mentions-warning" id="noMentionsWarning" style="display:none;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            Нет mentions — сообщение без вызова персон
+          </div>
+          <div class="parallel-limit">
+            <span>Лимит:</span>
+            <div class="limit-bar">
+              <div class="limit-fill" id="limitFill" style="width: 50%"></div>
+            </div>
+            <span id="limitText">2/4</span>
+          </div>
+        </div>
+
+        <!-- composer_actions -->
+        <div class="composer-actions" ui-spec-block-id="block_id(composer_actions)">
+          <button class="btn btn-send" id="sendBtn" onclick="sendMessage()" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            Отправить
+          </button>
+          <button class="btn btn-attach" onclick="attachFile()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+            Вложение
+          </button>
+          <button class="btn btn-cancel-all" onclick="cancelAllRuns()" id="cancelAllBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg>
+            Cancel all
+          </button>
+          <span class="char-count" id="charCount">0 / 4000</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mobile bottom navigation -->
+    <div class="mobile-nav" ui-spec-block-id="block_id(mobile_primary_navigation)">
+      <div class="mobile-nav-items">
+        <button class="mobile-nav-btn active">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          Чат
+          <span class="mobile-badge">2</span>
+        </button>
+        <button class="mobile-nav-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Персоны
+        </button>
+        <button class="mobile-nav-btn" onclick="toggleArtifacts()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+          Файлы
+          <span class="mobile-badge">3</span>
+        </button>
+        <button class="mobile-nav-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          Ещё
+        </button>
+      </div>
+    </div>
+  </main>
+
+  <!-- ==================== run_details_drawer ==================== -->
+  <div class="run-details-drawer" ui-spec-block-id="block_id(run_details_drawer)" id="runDetailsDrawer">
+    <div class="drawer-header">
+      <div class="agent-avatar blue" style="width:32px;height:32px;font-size:13px;">A</div>
+      <h3>Architect · Run Details</h3>
+      <button class="drawer-close" onclick="toggleRunDrawer()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="drawer-tabs">
+      <button class="drawer-tab active" onclick="switchDrawerTab(this, 'tools')">Tools</button>
+      <button class="drawer-tab" onclick="switchDrawerTab(this, 'approvals')">Approvals</button>
+      <button class="drawer-tab" onclick="switchDrawerTab(this, 'artifacts')">Артефакты</button>
+      <button class="drawer-tab" onclick="switchDrawerTab(this, 'meta')">Метаданные</button>
+    </div>
+    <div class="drawer-content" id="drawerContent">
+      <!-- Tools tab -->
+      <div class="drawer-section" data-tab="tools">
+        <div class="drawer-section-title">История Tool Calls</div>
+        <div class="tool-item" style="margin-bottom:8px;">
+          <div class="tool-icon completed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+          <div class="tool-info"><div class="tool-name">file_read</div><div class="tool-detail">src/server/ws-handler.ts — 2.3KB</div></div>
+          <span class="tool-status-label completed">120ms</span>
+        </div>
+        <div class="tool-item" style="margin-bottom:8px;">
+          <div class="tool-icon completed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+          <div class="tool-info"><div class="tool-name">file_read</div><div class="tool-detail">src/server/config.ts — 890B</div></div>
+          <span class="tool-status-label completed">85ms</span>
+        </div>
+        <div class="tool-item" style="margin-bottom:8px;">
+          <div class="tool-icon progress"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg></div>
+          <div class="tool-info"><div class="tool-name">code_generate</div><div class="tool-detail">WebSocket connection manager</div></div>
+          <span class="tool-status-label progress">running</span>
+        </div>
+        <div class="tool-item">
+          <div class="tool-icon started"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+          <div class="tool-info"><div class="tool-name">file_write</div><div class="tool-detail">Ожидает завершения code_generate</div></div>
+          <span class="tool-status-label started">queued</span>
+        </div>
+      </div>
+
+      <!-- Approvals tab (hidden by default) -->
+      <div class="drawer-section" data-tab="approvals" style="display:none;">
+        <div class="drawer-section-title">История подтверждений</div>
+        <div class="tool-item">
+          <div class="tool-icon completed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+          <div class="tool-info"><div class="tool-name">file_write</div><div class="tool-detail">src/server/ws-handler.ts — approved by user</div></div>
+          <span class="tool-status-label completed">approved</span>
+        </div>
+      </div>
+
+      <!-- Artifacts tab (hidden by default) -->
+      <div class="drawer-section" data-tab="artifacts" style="display:none;">
+        <div class="drawer-section-title">Артефакты</div>
+        <div class="drawer-artifact-item">
+          <div class="artifact-icon patch"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M3 12h18"/></svg></div>
+          <div class="artifact-info"><div class="artifact-name">ws-manager.patch</div><div class="artifact-meta">+42 / -8 строк · 2 файла</div></div>
+        </div>
+        <div class="drawer-artifact-item">
+          <div class="artifact-icon file"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/></svg></div>
+          <div class="artifact-info"><div class="artifact-name">arch-diagram.md</div><div class="artifact-meta">Документация · 1.8KB</div></div>
+        </div>
+      </div>
+
+      <!-- Meta tab (hidden by default) -->
+      <div class="drawer-section" data-tab="meta" style="display:none;">
+        <div class="drawer-section-title">Технические метаданные</div>
+        <div class="drawer-meta-grid">
+          <div class="drawer-meta-item"><div class="meta-label">Run ID</div><div class="meta-value">run-8f2a-4c1d</div></div>
+          <div class="drawer-meta-item"><div class="meta-label">Модель</div><div class="meta-value">claude-4</div></div>
+          <div class="drawer-meta-item"><div class="meta-label">Tokens</div><div class="meta-value">~1,200</div></div>
+          <div class="drawer-meta-item"><div class="meta-label">Время</div><div class="meta-value">8.2s</div></div>
+          <div class="drawer-meta-item"><div class="meta-label">Начат</div><div class="meta-value">10:32:14</div></div>
+          <div class="drawer-meta-item"><div class="meta-label">Статус</div><div class="meta-value" style="color:var(--success)">running</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== artifacts_and_patches ==================== -->
+  <div class="artifacts-panel" ui-spec-block-id="block_id(artifacts_and_patches)" id="artifactsPanel">
+    <div class="panel-header">
+      <h3>Артефакты и Patches</h3>
+      <button class="drawer-close" onclick="toggleArtifacts()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="panel-tabs">
+      <button class="panel-tab active" onclick="switchArtifactsTab(this, 'diff')">Diff</button>
+      <button class="panel-tab" onclick="switchArtifactsTab(this, 'files')">Файлы</button>
+      <button class="panel-tab" onclick="switchArtifactsTab(this, 'history')">История</button>
+    </div>
+    <div class="artifacts-content" id="artifactsContent">
+      <!-- Diff tab -->
+      <div data-panel-tab="diff">
+        <div class="conflict-banner">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span>Предупреждение: файл <strong>src/ws-manager.ts</strong> был изменён с момента создания patch</span>
+        </div>
+
+        <div class="diff-viewer">
+          <div class="diff-header">src/ws-manager.ts</div>
+          <div class="diff-line context"><span class="line-num">24</span><span class="line-content">  private ws: WebSocket | null = null;</span></div>
+          <div class="diff-line context"><span class="line-num">25</span><span class="line-content">  private retryCount = 0;</span></div>
+          <div class="diff-line remove"><span class="line-num">26</span><span class="line-content">- private heartbeatInterval = null;</span></div>
+          <div class="diff-line add"><span class="line-num">26</span><span class="line-content">+ private heartbeatInterval: NodeJS.Timer | null = null;</span></div>
+          <div class="diff-line add"><span class="line-num">27</span><span class="line-content">+ private readonly HEARTBEAT_MS = 30_000;</span></div>
+          <div class="diff-line context"><span class="line-num">28</span><span class="line-content"></span></div>
+          <div class="diff-line context"><span class="line-num">29</span><span class="line-content">  connect(url: string) {</span></div>
+          <div class="diff-line remove"><span class="line-num">30</span><span class="line-content">-   this.ws = new WebSocket(url);</span></div>
+          <div class="diff-line add"><span class="line-num">30</span><span class="line-content">+   this.ws = new WebSocket(url);</span></div>
+          <div class="diff-line add"><span class="line-num">31</span><span class="line-content">+   this.startHeartbeat();</span></div>
+          <div class="diff-line context"><span class="line-num">32</span><span class="line-content">    this.ws.onopen = () => {</span></div>
+          <div class="diff-line context"><span class="line-num">33</span><span class="line-content">      this.retryCount = 0;</span></div>
+        </div>
+
+        <div class="patch-actions">
+          <button class="btn btn-apply" onclick="applyPatch()" id="applyPatchBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            Применить patch
+          </button>
+          <button class="btn btn-download">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Скачать .patch
+          </button>
+        </div>
+      </div>
+
+      <!-- Files tab (hidden) -->
+      <div data-panel-tab="files" style="display:none;">
+        <div class="drawer-artifact-item">
+          <div class="artifact-icon file"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/></svg></div>
+          <div class="artifact-info"><div class="artifact-name">ws-manager.ts</div><div class="artifact-meta">TypeScript · 3.2KB · Изменён Coder</div></div>
+          <button class="card-action-btn" title="Скачать"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
+        </div>
+        <div class="drawer-artifact-item">
+          <div class="artifact-icon patch"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M3 12h18"/></svg></div>
+          <div class="artifact-info"><div class="artifact-name">heartbeat.patch</div><div class="artifact-meta">Patch · +42/-8 · Применимость: OK</div></div>
+          <button class="card-action-btn" title="Скачать"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
+        </div>
+        <div class="drawer-artifact-item">
+          <div class="artifact-icon file"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/></svg></div>
+          <div class="artifact-info"><div class="artifact-name">arch-diagram.md</div><div class="artifact-meta">Markdown · 1.8KB · Создан Architect</div></div>
+          <button class="card-action-btn" title="Скачать"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
+        </div>
+      </div>
+
+      <!-- History tab (hidden) -->
+      <div data-panel-tab="history" style="display:none;">
+        <div class="tool-item" style="margin-bottom:8px;">
+          <div class="tool-icon completed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+          <div class="tool-info"><div class="tool-name">Patch создан</div><div class="tool-detail">ws-manager.patch · Coder · 10:38</div></div>
+          <span class="tool-status-label completed">OK</span>
+        </div>
+        <div class="tool-item" style="margin-bottom:8px;">
+          <div class="tool-icon completed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+          <div class="tool-info"><div class="tool-name">Проверка применимости</div><div class="tool-detail">3 hunks · все совпадают</div></div>
+          <span class="tool-status-label completed">applicable</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== STATE =====
+let selectedTargets = [];
+let isRunDrawerOpen = false;
+let isArtifactsOpen = false;
+const maxParallel = 4;
+
+// ===== SIDEBAR =====
+function openSidebar() {
+  document.getElementById('sidebar').classList.add('open');
+  document.getElementById('overlay').classList.add('visible');
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('overlay').classList.remove('visible');
+}
+
+function switchNav(btn, nav) {
+  document.querySelectorAll('.sidebar-nav-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function filterRooms(query) {
+  const items = document.querySelectorAll('.room-item');
+  const q = query.toLowerCase();
+  items.forEach(item => {
+    const name = item.querySelector('.room-name').textContent.toLowerCase();
+    item.style.display = name.includes(q) ? '' : 'none';
+  });
+}
+
+// ===== COMPOSER =====
+function handleEditorInput(textarea) {
+  const text = textarea.value;
+  const charCount = text.length;
+  document.getElementById('charCount').textContent = `${charCount} / 4000`;
+  
+  // Enable/disable send button
+  const sendBtn = document.getElementById('sendBtn');
+  sendBtn.disabled = charCount === 0;
+  
+  // Detect @mention trigger
+  const cursorPos = textarea.selectionStart;
+  const textBeforeCursor = text.substring(0, cursorPos);
+  const atMatch = textBeforeCursor.match(/@(\w*)$/);
+  
+  if (atMatch) {
+    showAutocomplete(atMatch[1]);
+  } else {
+    hideAutocomplete();
+  }
+  
+  // Parse mentions for target preview
+  parseMentions(text);
+}
+
+function handleEditorKeydown(e) {
+  const dropdown = document.getElementById('autocompleteDropdown');
+  if (!dropdown.classList.contains('visible')) return;
+  
+  const items = dropdown.querySelectorAll('.autocomplete-item');
+  const selected = dropdown.querySelector('.autocomplete-item.selected');
+  let idx = Array.from(items).indexOf(selected);
+  
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (selected) selected.classList.remove('selected');
+    idx = (idx + 1) % items.length;
+    items[idx].classList.add('selected');
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (selected) selected.classList.remove('selected');
+    idx = idx <= 0 ? items.length - 1 : idx - 1;
+    items[idx].classList.add('selected');
+  } else if (e.key === 'Enter' && selected) {
+    e.preventDefault();
+    selected.click();
+  } else if (e.key === 'Escape') {
+    hideAutocomplete();
+  }
+}
+
+function showAutocomplete(query) {
+  const dropdown = document.getElementById('autocompleteDropdown');
+  const items = dropdown.querySelectorAll('.autocomplete-item');
+  let hasVisible = false;
+  
+  items.forEach(item => {
+    const name = item.querySelector('.ac-name').textContent.toLowerCase();
+    const handle = item.querySelector('.ac-handle').textContent.toLowerCase();
+    const matches = name.includes(query.toLowerCase()) || handle.includes('@' + query.toLowerCase());
+    item.style.display = matches ? '' : 'none';
+    if (matches) hasVisible = true;
+  });
+  
+  if (hasVisible) {
+    dropdown.classList.add('visible');
+    // Select first visible item
+    items.forEach(i => i.classList.remove('selected'));
+    const firstVisible = Array.from(items).find(i => i.style.display !== 'none');
+    if (firstVisible) firstVisible.classList.add('selected');
+  } else {
+    hideAutocomplete();
+  }
+}
+
+function hideAutocomplete() {
+  document.getElementById('autocompleteDropdown').classList.remove('visible');
+}
+
+function selectMention(handle, color) {
+  const editor = document.getElementById('messageEditor');
+  const text = editor.value;
+  const cursorPos = editor.selectionStart;
+  const textBefore = text.substring(0, cursorPos);
+  const atIdx = textBefore.lastIndexOf('@');
+  
+  if (atIdx >= 0) {
+    editor.value = text.substring(0, atIdx) + '@' + handle + ' ' + text.substring(cursorPos);
+    const newPos = atIdx + handle.length + 2;
+    editor.setSelectionRange(newPos, newPos);
+  }
+  
+  hideAutocomplete();
+  editor.focus();
+  handleEditorInput(editor);
+}
+
+function parseMentions(text) {
+  const mentionRegex = /@(\w+)/g;
+  const found = [];
+  let match;
+  
+  while ((match = mentionRegex.exec(text)) !== null) {
+    const handle = match[1].toLowerCase();
+    if (handle === 'all') {
+      // Add all agents
+      ['architect', 'coder', 'reviewer', 'debugger'].forEach(a => {
+        if (!found.includes(a)) found.push(a);
+      });
+    } else if (['architect', 'coder', 'reviewer', 'debugger'].includes(handle)) {
+      if (!found.includes(handle)) found.push(handle);
+    }
+  }
+  
+  selectedTargets = found;
+  renderTargetChips();
+  updateParallelInfo();
+}
+
+const agentColors = {
+  architect: { letter: 'A', color: 'blue', name: 'Architect' },
+  coder: { letter: 'C', color: 'purple', name: 'Coder' },
+  reviewer: { letter: 'R', color: 'teal', name: 'Reviewer' },
+  debugger: { letter: 'D', color: 'orange', name: 'Debugger' }
+};
+
+const agentCssColors = {
+  blue: 'var(--agent-blue)',
+  purple: 'var(--agent-purple)',
+  teal: 'var(--agent-teal)',
+  orange: 'var(--agent-orange)'
+};
+
+function renderTargetChips() {
+  const container = document.getElementById('targetChips');
+  container.innerHTML = '';
+  
+  selectedTargets.forEach(handle => {
+    const agent = agentColors[handle];
+    if (!agent) return;
+    
+    const chip = document.createElement('div');
+    chip.className = 'target-chip';
+    chip.innerHTML = `
+      <div class="chip-avatar" style="background: ${agentCssColors[agent.color]}">${agent.letter}</div>
+      ${agent.name}
+      <button class="remove-chip" onclick="removeTarget('${handle}')">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    `;
+    container.appendChild(chip);
+  });
+  
+  // Show/hide no mentions warning
+  const editor = document.getElementById('messageEditor');
+  const hasText = editor.value.trim().length > 0;
+  document.getElementById('noMentionsWarning').style.display = (hasText && selectedTargets.length === 0) ? 'flex' : 'none';
+}
+
+function removeTarget(handle) {
+  const editor = document.getElementById('messageEditor');
+  const regex = new RegExp(`@${handle}\\b`, 'gi');
+  editor.value = editor.value.replace(regex, '').replace(/\s{2,}/g, ' ').trim();
+  handleEditorInput(editor);
+}
+
+function updateParallelInfo() {
+  const count = selectedTargets.length;
+  document.getElementById('parallelInfo').textContent = `${count}/${maxParallel} параллельно`;
+  document.getElementById('limitText').textContent = `${count}/${maxParallel}`;
+  document.getElementById('limitFill').style.width = `${(count / maxParallel) * 100}%`;
+}
+
+// ===== SEND MESSAGE =====
+function sendMessage() {
+  const editor = document.getElementById('messageEditor');
+  const text = editor.value.trim();
+  if (!text) return;
+  
+  // In a real app, this would send to backend
+  console.log('Sending message:', text, 'Targets:', selectedTargets);
+  
+  // Clear editor
+  editor.value = '';
+  handleEditorInput(editor);
+  
+  // Show reconnect state briefly for demo
+  // document.getElementById('reconnectState').style.display = 'flex';
+}
+
+// ===== DRAWERS & PANELS =====
+function toggleRunDrawer() {
+  isRunDrawerOpen = !isRunDrawerOpen;
+  document.getElementById('runDetailsDrawer').classList.toggle('open', isRunDrawerOpen);
+}
+
+function toggleArtifacts() {
+  isArtifactsOpen = !isArtifactsOpen;
+  document.getElementById('artifactsPanel').classList.toggle('open', isArtifactsOpen);
+}
+
+function switchDrawerTab(btn, tab) {
+  btn.parentElement.querySelectorAll('.drawer-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  
+  document.querySelectorAll('#drawerContent .drawer-section').forEach(s => {
+    s.style.display = s.dataset.tab === tab ? '' : 'none';
+  });
+}
+
+function switchArtifactsTab(btn, tab) {
+  btn.parentElement.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  
+  document.querySelectorAll('#artifactsContent [data-panel-tab]').forEach(s => {
+    s.style.display = s.dataset.panelTab === tab ? '' : 'none';
+  });
+}
+
+// ===== TOOL ACTIVITY TOGGLE =====
+function toggleToolActivity(header) {
+  const icon = header.querySelector('.toggle-icon');
+  const list = header.nextElementSibling;
+  const isExpanded = icon.classList.contains('expanded');
+  
+  icon.classList.toggle('expanded');
+  list.style.display = isExpanded ? 'none' : 'flex';
+}
+
+// ===== APPROVAL =====
+function handleApproval(btn, approved) {
+  const container = btn.closest('.approval-request');
+  if (approved) {
+    container.style.borderColor = 'var(--success-border)';
+    container.style.background = 'var(--success-bg)';
+    container.querySelector('.approval-header span').textContent = 'Разрешено';
+    container.querySelector('.approval-header svg').style.color = 'var(--success)';
+  } else {
+    container.style.borderColor = 'var(--danger-border)';
+    container.style.background = 'var(--danger-bg)';
+    container.querySelector('.approval-header span').textContent = 'Отклонено';
+    container.querySelector('.approval-header svg').style.color = 'var(--danger)';
+  }
+  container.querySelector('.approval-actions').style.display = 'none';
+}
+
+// ===== APPLY PATCH =====
+function applyPatch() {
+  const btn = document.getElementById('applyPatchBtn');
+  btn.disabled = true;
+  btn.innerHTML = `
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+    Применено ✓
+  `;
+  btn.style.background = 'var(--success)';
+}
+
+// ===== CANCEL ALL =====
+function cancelAllRuns() {
+  if (confirm('Отменить все активные runs в текущем раунде?')) {
+    console.log('Cancelling all runs');
+  }
+}
+
+// ===== MISC =====
+function showCreateRoom() {
+  console.log('Create room dialog');
+}
+
+function toggleSettings() {
+  console.log('Settings panel');
+}
+
+function toggleRoomDetails() {
+  console.log('Room details');
+}
+
+function attachFile() {
+  console.log('Attach file dialog');
+}
+
+// ===== SCROLL TO BOTTOM ON LOAD =====
+document.addEventListener('DOMContentLoaded', () => {
+  const timeline = document.getElementById('conversationTimeline');
+  timeline.scrollTop = timeline.scrollHeight;
+});
+
+// ===== CLOSE PANELS ON ESCAPE =====
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (isRunDrawerOpen) toggleRunDrawer();
+    if (isArtifactsOpen) toggleArtifacts();
+    closeSidebar();
+    hideAutocomplete();
+  }
+});
+
+// ===== RECONNECT DEMO =====
+// Show reconnect state briefly for demo purposes
+setTimeout(() => {
+  const rs = document.getElementById('reconnectState');
+  rs.style.display = 'flex';
+  setTimeout(() => { rs.style.display = 'none'; }, 4000);
+}, 8000);
+</script>
+
+</body>
+</html>

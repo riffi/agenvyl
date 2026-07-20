@@ -1,0 +1,25 @@
+.root { display:contents; }
+.agentOptions { display:grid;min-width:0;max-width:100%;gap:8px;overflow-x:hidden;overflow-y:auto;padding:14px 20px; }
+.agentGroup { display:grid;min-width:0;max-width:100%;gap:6px;padding:6px;border:1px solid var(--border);border-radius:10px;background:white; }
+.agentGroup + .agentGroup { margin-top:4px; }
+.agentGroup > header { display:flex;min-width:0;align-items:center;gap:8px;padding:5px 6px;color:#475569;background:#f8fafc;border-radius:7px; }
+.agentGroup > header input { flex:none; }
+.agentGroup > header small { display:grid;min-width:38px;height:21px;flex:none;margin-left:auto;place-items:center;border-radius:11px;background:#e2e8f0;font-weight:600; }
+.groupToggle { display:flex;min-width:0;min-height:28px;flex:1;align-items:center;gap:5px;padding:3px 4px;border:0;border-radius:5px;background:transparent;color:inherit;text-align:left; }
+.groupToggle:hover { background:#eef2f7; }
+.groupToggle svg { width:14px;height:14px;flex:none;color:#94a3b8;transition:transform .15s ease; }
+.groupToggle svg.expanded { transform:rotate(90deg); }
+.groupToggle strong { min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.agentOptions label { display:flex;min-width:0;max-width:100%;align-items:center;gap:11px;padding:9px;border:1px solid transparent;border-radius:8px;cursor:pointer; }
+.agentOptions label:hover { border-color:var(--border);background:#f8fafc; }
+.agentOptions label.selected,.selected { border-color:#a5b4fc;background:#eef2ff; }
+.agentOptions input { flex:none;accent-color:var(--primary); }
+.agentIdentity { display:flex;min-width:0;flex:1;flex-direction:column; }
+.agentOptions strong { min-width:0;overflow:hidden;font-size:13px;text-overflow:ellipsis;white-space:nowrap; }
+.agentOptions small { overflow:hidden;color:var(--muted);font-size:11px;text-overflow:ellipsis;white-space:nowrap; }
+.roomTitle { display:flex;flex-direction:column;gap:6px;padding:16px 20px 5px;font-size:12px;font-weight:600; }
+.roomTitle input { padding:11px;border:1px solid var(--border);border-radius:8px; }
+.sectionTitle { margin:15px 20px 0;color:#94a3b8;font-size:10px;letter-spacing:.08em; }
+.roomAgents { max-height:330px; }
+.alert { margin:0 20px 10px; }
+@media(max-width:767px){.agentOptions{gap:6px;padding:10px 12px}.agentGroup{gap:4px;padding:4px}.groupToggle{min-height:32px}.agentOptions label{gap:9px;padding:7px}.roomTitle{padding-right:12px;padding-left:12px}.sectionTitle{margin-right:12px;margin-left:12px}.alert{margin-right:12px;margin-left:12px}}

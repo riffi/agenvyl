@@ -1,0 +1,108 @@
+name: agenvyl-watch
+
+services:
+  deps-init:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    user: "0:0"
+    restart: "no"
+    command: ["sh", "-c", "npm ci && chown -R 1000:1000 /app/node_modules"]
+    volumes:
+      - .:/app
+      - node-modules:/app/node_modules
+
+  workspace-init:
+    image: node:22-alpine
+    user: "0:0"
+    restart: "no"
+    command: ["chown", "-R", "1000:1000", "/app/data/room-workspaces"]
+    volumes:
+      - ${AGENVYL_WORKSPACE_PATH:-./data/room-workspaces}:/app/data/room-workspaces
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    restart: unless-stopped
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "8791"]
+    ports:
+      - ${AGENVYL_BIND_ADDRESS:-127.0.0.1}:${AGENVYL_PORT:-8791}:8791
+    environment:
+      NODE_ENV: development
+      DEV_BACKEND_URL: http://backend:8792
+      DEV_ALLOWED_HOSTS: ${DEV_ALLOWED_HOSTS:-}
+    volumes:
+      - .:/app
+      - node-modules:/app/node_modules
+    depends_on:
+      deps-init:
+        condition: service_completed_successfully
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8791/health | grep -q '^ok$'"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    restart: unless-stopped
+    command: ["npm", "run", "dev:server"]
+    environment:
+      NODE_ENV: development
+      AGENVYL_HOST: 0.0.0.0
+      AGENVYL_PORT: 8792
+      AGENVYL_DATABASE_URL: postgres://agenvyl:${POSTGRES_PASSWORD:-agenvyl}@postgres:5432/agenvyl
+      AGENVYL_CONNECTOR_URL: ${AGENVYL_CONNECTOR_URL:-}
+      AGENVYL_CONNECTOR_TOKEN: ${AGENVYL_CONNECTOR_TOKEN:-}
+      AGENVYL_WORKSPACE_ROOT: /app/data/room-workspaces
+      AGENVYL_WORKSPACE_AGENT_ROOT: ${AGENVYL_WORKSPACE_AGENT_ROOT:-/app/data/room-workspaces}
+      AGENVYL_WORKSPACE_MAX_FILE_BYTES: ${AGENVYL_WORKSPACE_MAX_FILE_BYTES:-52428800}
+      AGENVYL_RUN_CONCURRENCY: ${AGENVYL_RUN_CONCURRENCY:-4}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - .:/app
+      - node-modules:/app/node_modules
+      - ${AGENVYL_WORKSPACE_PATH:-./data/room-workspaces}:/app/data/room-workspaces
+    depends_on:
+      deps-init:
+        condition: service_completed_successfully
+      workspace-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8792/health | grep -q '^ok$'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: agenvyl
+      POSTGRES_USER: agenvyl
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agenvyl}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agenvyl -d agenvyl"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  node-modules:
+  postgres-data:
