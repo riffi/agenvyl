@@ -17,10 +17,17 @@ afterEach(async () => { await Promise.all(directories.splice(0).map(directory =>
 describe('Connector config', () => {
   it('loads v1 YAML with loopback defaults and env-only token', async () => {
     const path = await config('version: 1\ninstances:\n  - id: local-hermes\n    type: hermes\n');
-    await expect(loadConnectorConfig({ path, env: { AGENVYL_CONNECTOR_TOKEN: 'x'.repeat(32) } })).resolves.toEqual({
+    await expect(loadConnectorConfig({ path, env: { AGENVYL_CONNECTOR_TOKEN: 'x'.repeat(32), XDG_DATA_HOME: '/tmp/agenvyl-test-data' } })).resolves.toEqual({
       version: 1, listen: { host: '127.0.0.1', port: 4310 }, token: 'x'.repeat(32),
-      workspaces: { roots: [] },
+      workspaces: { roots: ['/tmp/agenvyl-test-data/agenvyl/workspaces'] },
       instances: [{ id: 'local-hermes', type: 'hermes', enabled: true }],
+    });
+  });
+
+  it('uses one explicit workspace override when YAML roots are empty', async () => {
+    const path = await config('version: 1\nworkspaces:\n  roots: []\ninstances: []\n');
+    await expect(loadConnectorConfig({ path, env: { AGENVYL_CONNECTOR_TOKEN: 'x'.repeat(32), AGENVYL_WORKSPACE_ROOT: '/srv/agenvyl/workspaces' } })).resolves.toMatchObject({
+      workspaces: { roots: ['/srv/agenvyl/workspaces'] },
     });
   });
 

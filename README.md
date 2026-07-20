@@ -32,39 +32,45 @@ available but disabled until their host runtimes are configured.
    npm ci
    cp .env.example .env
    cp connector.example.yaml connector.yaml
-   mkdir -p data/room-workspaces
+   mkdir -p "${XDG_DATA_HOME:-$HOME/.local/share}/agenvyl/workspaces"
    ```
 
-2. Add the absolute workspace root to `connector.yaml`:
+2. Leave `workspaces.roots` empty to use the same XDG workspace root as Core,
+   or add an explicit absolute override:
 
    ```yaml
    workspaces:
      roots:
-       - /absolute/path/to/agenvyl/data/room-workspaces
+       - /absolute/path/to/workspaces
    ```
 
 3. Generate one shared token, export the Connector settings, and start it:
 
    ```bash
    export AGENVYL_CONNECTOR_TOKEN="$(openssl rand -hex 32)"
+   export AGENVYL_CONNECTOR_CONFIG="$PWD/connector.yaml"
    export AGENVYL_CONNECTOR_HERMES_URL="http://127.0.0.1:8642"
    npm run dev:connector
    ```
 
-4. In another shell, use the same token in `.env`, set
-   `AGENVYL_CONNECTOR_URL=http://host.docker.internal:4310`, then start Core:
+4. In another shell, set the same token in `.env`, load it, start PostgreSQL,
+   build the host runtime, and start Core:
 
    ```bash
-   docker compose up -d --build
+   set -a; . ./.env; set +a
+   docker compose up -d --wait
+   npm run build
+   npm start
    curl -fsS http://127.0.0.1:8791/api/v1/health
    ```
 
 Open <http://127.0.0.1:8791>. Persistent PostgreSQL data lives in a named Docker
 volume; room files live under the configured host workspace path.
 
-The Connector can also be run from a production build with
-`npm run build && npm run start:connector`. Detailed setup for Hermes, OpenCode,
-and Antigravity is in [the Connector operations guide](docs/operations/connector.md).
+Self-contained Linux x64/arm64 archives and user-systemd units are covered by
+the [portable runtime guide](docs/operations/portable-runtime.md). Detailed
+setup for Hermes, OpenCode, and Antigravity is in
+[the Connector operations guide](docs/operations/connector.md).
 
 ## Local development
 
@@ -89,6 +95,8 @@ npm test
 npm run typecheck
 npm run lint:boundaries
 npm run build
+npm run bundle:x64
+npm run verify:bundle
 npm run audit:oss
 npm audit --omit=dev --audit-level=high
 ```

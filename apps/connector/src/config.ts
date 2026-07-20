@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
 import { parse } from 'yaml';
+import { resolveAgenvylPaths } from '@agenvyl/runtime-config';
 
 export type ConnectorInstanceConfig = { id: string; type: string; enabled: boolean };
 export type ConnectorConfig = {
@@ -13,7 +14,8 @@ export type ConnectorConfig = {
 
 export async function loadConnectorConfig(options: { path?: string; env?: NodeJS.ProcessEnv } = {}): Promise<ConnectorConfig> {
   const env = options.env ?? process.env;
-  const path = options.path ?? env.AGENVYL_CONNECTOR_CONFIG ?? './connector.yaml';
+  const paths = resolveAgenvylPaths(env);
+  const path = options.path ?? env.AGENVYL_CONNECTOR_CONFIG ?? paths.connectorConfig;
   const token = env.AGENVYL_CONNECTOR_TOKEN;
   if (!token || token.length < 32) throw new Error('AGENVYL_CONNECTOR_TOKEN must contain at least 32 characters');
   let source: string;
@@ -24,7 +26,7 @@ export async function loadConnectorConfig(options: { path?: string; env?: NodeJS
   exactKeys(document, ['version', 'listen', 'workspaces', 'instances'], 'connector config');
   if (document.version !== 1) throw new Error('Connector config version must be 1');
   const listen = parseListen(document.listen);
-  const workspaces = parseWorkspaces(document.workspaces);
+  const workspaces = parseWorkspaces(document.workspaces, env.AGENVYL_WORKSPACE_ROOT ?? paths.workspaces);
   const instances = parseInstances(document.instances);
   return { version: 1, listen, workspaces, instances, token };
 }
@@ -55,12 +57,12 @@ function parseInstances(value: unknown): ConnectorInstanceConfig[] {
   });
 }
 
-function parseWorkspaces(value: unknown) {
-  if (value === undefined) return { roots: [] };
+function parseWorkspaces(value: unknown, defaultRoot: string) {
+  if (value === undefined) return { roots: [defaultRoot] };
   if (!isRecord(value)) throw new Error('workspaces must be an object');
   exactKeys(value, ['roots'], 'workspaces');
   if (!Array.isArray(value.roots)) throw new Error('workspaces.roots must be an array');
-  const roots = value.roots.map((root, index) => {
+  const roots = (value.roots.length ? value.roots : [defaultRoot]).map((root, index) => {
     if (typeof root !== 'string' || !root.trim() || !isAbsolute(root)) throw new Error(`workspaces.roots[${index}] must be an absolute path`);
     return root;
   });

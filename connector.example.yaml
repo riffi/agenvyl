@@ -5,7 +5,7 @@ listen:
   port: 4310
 
 workspaces:
-  # Add existing absolute host paths before enabling an adapter.
+  # Empty means ${AGENVYL_WORKSPACE_ROOT} or the XDG data path used by Core.
   roots: []
 
 instances:

@@ -1,0 +1,19 @@
+[Unit]
+Description=Agenvyl host Connector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/agenvyl/agenvyl.env
+ExecStart=%h/.local/share/agenvyl/current/bin/agenvyl-connector
+ExecStartPost=%h/.local/share/agenvyl/current/bin/agenvyl-health connector --wait
+Restart=on-failure
+RestartSec=2s
+TimeoutStartSec=75s
+TimeoutStopSec=15s
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

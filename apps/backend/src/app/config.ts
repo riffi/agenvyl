@@ -1,3 +1,5 @@
+import { resolveAgenvylPaths } from '@agenvyl/runtime-config';
+
 export type AppConfig = {
   databaseUrl: string;
   connectorUrl: string;
@@ -15,6 +17,7 @@ export type AppConfig = {
 export type AppConfigOverrides = Partial<AppConfig>;
 
 export function resolveAppConfig(overrides: AppConfigOverrides = {}): AppConfig {
+  const paths = resolveAgenvylPaths();
   const connectorUrl = overrides.connectorUrl ?? process.env.AGENVYL_CONNECTOR_URL;
   const connectorToken = overrides.connectorToken ?? process.env.AGENVYL_CONNECTOR_TOKEN;
   if(process.env.AGENVYL_EXECUTION_BACKEND!==undefined)throw new Error('AGENVYL_EXECUTION_BACKEND is no longer supported; Core always uses Connector');
@@ -32,8 +35,8 @@ export function resolveAppConfig(overrides: AppConfigOverrides = {}): AppConfig 
     runTimeoutMs: positiveInteger(overrides.runTimeoutMs ?? process.env.AGENVYL_RUN_TIMEOUT_MS, 15*60_000),
     shutdownTimeoutMs: positiveInteger(overrides.shutdownTimeoutMs ?? process.env.AGENVYL_SHUTDOWN_TIMEOUT_MS, 10_000),
     websocketMaxBufferedBytes: positiveInteger(overrides.websocketMaxBufferedBytes ?? process.env.AGENVYL_WEBSOCKET_MAX_BUFFERED_BYTES, 1_048_576),
-    workspaceRoot: overrides.workspaceRoot ?? process.env.AGENVYL_WORKSPACE_ROOT ?? 'data/room-workspaces',
-    workspaceAgentRoot: overrides.workspaceAgentRoot ?? process.env.AGENVYL_WORKSPACE_AGENT_ROOT ?? overrides.workspaceRoot ?? process.env.AGENVYL_WORKSPACE_ROOT ?? 'data/room-workspaces',
+    workspaceRoot: overrides.workspaceRoot ?? process.env.AGENVYL_WORKSPACE_ROOT ?? paths.workspaces,
+    workspaceAgentRoot: overrides.workspaceAgentRoot ?? process.env.AGENVYL_WORKSPACE_AGENT_ROOT ?? overrides.workspaceRoot ?? process.env.AGENVYL_WORKSPACE_ROOT ?? paths.workspaces,
     workspaceMaxFileBytes: positiveInteger(overrides.workspaceMaxFileBytes ?? process.env.AGENVYL_WORKSPACE_MAX_FILE_BYTES, 50*1024*1024),
   };
 }

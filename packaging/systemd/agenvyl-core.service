@@ -1,0 +1,20 @@
+[Unit]
+Description=Agenvyl Core and Web UI
+After=network-online.target agenvyl-connector.service
+Wants=network-online.target
+Requires=agenvyl-connector.service
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/agenvyl/agenvyl.env
+ExecStart=%h/.local/share/agenvyl/current/bin/agenvyl-core
+ExecStartPost=%h/.local/share/agenvyl/current/bin/agenvyl-health core --wait
+Restart=on-failure
+RestartSec=2s
+TimeoutStartSec=75s
+TimeoutStopSec=15s
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

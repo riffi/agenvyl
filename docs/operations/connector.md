@@ -1,7 +1,7 @@
 # Host-side Agenvyl Connector
 
 Connector runs on the host beside installed coding-agent harnesses and their
-credential stores. It is not part of the Core container. Core reaches every
+credential stores. Core is also host-side in the portable runtime. Core reaches every
 harness through Connector; there is no direct or fallback execution path.
 
 For protocol ownership and lifecycle invariants, see the
@@ -128,9 +128,8 @@ export AGENVYL_CONNECTOR_URL="http://127.0.0.1:4310"
 export AGENVYL_CONNECTOR_TOKEN="<same-token>"
 ```
 
-When Core runs in Compose, use an endpoint reachable from the container, such
-as `http://host.docker.internal:4310`. Missing or incomplete Connector settings
-make Core fail at startup.
+The portable runtime uses the loopback URL shown above. Missing or incomplete
+Connector settings make Core fail at startup.
 
 ## Verification
 

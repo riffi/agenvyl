@@ -13,3 +13,4 @@ server-dist
 .env.*
 !.env.example
 *.log
+artifacts

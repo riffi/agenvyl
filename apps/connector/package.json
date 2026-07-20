@@ -6,6 +6,7 @@
   "type": "module",
   "dependencies": {
     "@agenvyl/connector-contract": "0.1.0",
+    "@agenvyl/runtime-config": "0.1.0",
     "@opencode-ai/sdk": "1.17.15",
     "fastify": "^5.10.0",
     "yaml": "^2.4.2"

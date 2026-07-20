@@ -33,23 +33,25 @@ flowchart LR
 - **Room workspaces** contain live files plus application-managed immutable
   versions. They are shared working directories, not security sandboxes.
 
-## Source-run deployment
+## Portable production deployment
 
-The current supported OSS deployment builds Core and the web UI into the `app`
-container, runs PostgreSQL in Compose, and runs Connector on the host:
+The production bundle runs Core, the built Web UI, and Connector on the host
+under user-systemd. Docker runs only PostgreSQL:
 
 ```mermaid
 flowchart TB
-  Browser -->|127.0.0.1:8791| App[app container<br/>Core + built Web UI]
-  App -->|Compose network| DB[postgres:17-alpine]
-  App -->|host.docker.internal:4310| Connector[host Connector]
-  App --> Workspace[(host room-workspace bind)]
+  Browser -->|127.0.0.1:8791| Core[host Core + built Web UI<br/>user-systemd]
+  Core -->|127.0.0.1:5432| DB[postgres:17-alpine<br/>only Docker container]
+  Core -->|127.0.0.1:4310 + Bearer| Connector[host Connector<br/>user-systemd]
+  Core --> Workspace[(XDG host workspaces)]
   Connector --> Workspace
   Connector --> Harnesses[host harness runtimes]
   DB --> Volume[(postgres-data volume)]
 ```
 
-`compose.yaml` is portable product configuration. Operator-specific domains,
+Core and Connector resolve one XDG host workspace path, so no container path
+mapping exists. `compose.yaml` is portable PostgreSQL configuration and binds
+its published port to loopback. Operator-specific domains,
 TLS, authentication proxies, supervisors, secrets, and reset policies belong
 in a separate deployment layer. See
 [OSS operations boundaries](../operations/oss-boundaries.md).
