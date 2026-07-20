@@ -109,6 +109,7 @@ commands and environment contracts.
   internal domains, or machine-specific paths.
 
 Read [OSS operations boundaries](docs/operations/oss-boundaries.md),
+[architecture overview](docs/architecture/overview.md),
 [runtime policy](docs/operations/runtime.md), and
 [database operations](docs/operations/database.md) before exposing a deployment
 outside a trusted machine.

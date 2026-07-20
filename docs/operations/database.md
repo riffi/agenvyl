@@ -24,19 +24,16 @@ pg_restore --list agenvyl.dump >/dev/null
 Restore into a separate database first when rehearsing an upgrade. Do not restore
 over a running application database.
 
-## SQLite import policy
+## Restore rehearsal
 
-The PostgreSQL migration starts with a new schema and seed. Existing SQLite data
-is not imported automatically during backend startup. Automatic dual-database
-startup would make deployment non-idempotent and hide partial imports.
+Restore backups into a separate PostgreSQL database before relying on them:
 
-If historical SQLite data must be retained, use a separately reviewed one-shot
-importer while the backend is stopped. The importer must preserve IDs, immutable
-persona versions, run snapshots, JSON payloads and per-room event ordering; validate
-row counts and foreign keys before switching traffic. Legacy Hermes session mappings
-are intentionally discarded because each attempt now creates an isolated upstream
-session from its durable run snapshot.
-The old SQLite volume/file must remain read-only until that validation succeeds.
+```bash
+createdb agenvyl_restore_check
+pg_restore --exit-on-error --no-owner --no-acl \
+  --dbname=agenvyl_restore_check agenvyl.dump
+```
 
-For the current dev stand the old `group-chat-data` volume is intentionally not
-deleted by the PostgreSQL deployment.
+Start a disposable Core instance against the restored database and verify
+readiness, room counts, timeline replay, and workspace references. Database and
+workspace backups form one recovery point and should be retained together.

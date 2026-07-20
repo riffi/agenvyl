@@ -30,11 +30,8 @@ executor's internal `stats()` API for future metrics integration.
 ## Restart recovery
 
 At startup the backend reconciles persisted runs in `queued`, `streaming`,
-`stopping`, `waiting_approval` or `waiting_clarification`. Legacy direct-Hermes runs
-become `failed` and receive a durable room event. Core cannot stop those historical
-upstream runs because the direct transport has been removed.
-
-Connector-bound runs use the internal health/inspect client when
+`stopping`, `waiting_approval` or `waiting_clarification`. Runs use the internal
+Connector health/inspect client when
 `AGENVYL_CONNECTOR_URL` and `AGENVYL_CONNECTOR_TOKEN` are both set. A changed
 `connectorEpoch` becomes the vendor-neutral `connector_restarted` failure. A missing
 execution or unavailable Connector also fails closed with a vendor-neutral code.

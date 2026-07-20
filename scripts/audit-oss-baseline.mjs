@@ -1,10 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 const files = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '-z'])
   .toString('utf8')
   .split('\0')
-  .filter(Boolean);
+  .filter(file => file && existsSync(file));
 
 const findings = [];
 const forbiddenReferences = [
