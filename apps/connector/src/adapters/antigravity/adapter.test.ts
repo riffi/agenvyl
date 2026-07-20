@@ -84,7 +84,7 @@ async function fakeAgy() {
   const directory = await mkdtemp(join(tmpdir(), 'agenvyl-agy-'));
   directories.push(directory);
   const command = join(directory, 'agy');
-  await writeFile(command, `#!/usr/bin/env node
+  await writeFile(command, `#!${process.execPath}
 const { writeFileSync } = require('node:fs');
 const args=process.argv.slice(2);
 if(args[0]==='--version'){console.log(process.env.FAKE_AGY_VERSION||'1.1.3');process.exit(0)}
