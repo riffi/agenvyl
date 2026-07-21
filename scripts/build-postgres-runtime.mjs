@@ -7,6 +7,7 @@ import { POSTGRES_RUNTIME_CONFIG, runtimeTarget, targetName } from './postgres-r
 
 const repositoryRoot = resolve(import.meta.dirname, '..');
 const options = parseArgs(process.argv.slice(2));
+const tar = process.platform === 'win32' ? join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
 const target = runtimeTarget(options.platform, options.architecture);
 if (target.platform !== process.platform || target.architecture !== process.arch) {
   throw new Error(`PostgreSQL runtime must be built natively: requested ${targetName(target)}, running ${process.platform}-${process.arch}`);
@@ -20,7 +21,7 @@ try {
   const sourceArchive = options.sourceArchive ? resolve(options.sourceArchive) : join(temporaryRoot, basename(POSTGRES_RUNTIME_CONFIG.source.url));
   if (!options.sourceArchive) await download(POSTGRES_RUNTIME_CONFIG.source.url, sourceArchive);
   await verifySha256(sourceArchive, POSTGRES_RUNTIME_CONFIG.source.sha256);
-  run('tar', ['-xjf', sourceArchive, '-C', temporaryRoot]);
+  run(tar, ['-xjf', sourceArchive, '-C', temporaryRoot]);
 
   const sourceRoot = join(temporaryRoot, `postgresql-${POSTGRES_RUNTIME_CONFIG.version}`);
   const installRoot = join(temporaryRoot, 'install');
@@ -65,7 +66,7 @@ try {
   await writeFile(join(artifactRoot, 'sbom.cdx.json'), `${JSON.stringify(cycloneDx(manifest), null, 2)}\n`);
 
   const archive = join(outputDirectory, `${artifactName}.tar.gz`);
-  run('tar', ['-czf', archive, '-C', temporaryRoot, artifactName]);
+  run(tar, ['-czf', archive, '-C', temporaryRoot, artifactName]);
   const archiveSha256 = digest(await readFile(archive));
   await writeFile(`${archive}.sha256`, `${archiveSha256}  ${basename(archive)}\n`);
   console.log(JSON.stringify({ archive, sha256: archiveSha256, manifest }, null, 2));

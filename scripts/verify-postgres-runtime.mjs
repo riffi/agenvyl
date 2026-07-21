@@ -6,12 +6,13 @@ import { spawnSync } from 'node:child_process';
 
 const archive = resolve(process.argv[2] ?? '');
 if (!process.argv[2]) throw new Error('Usage: node scripts/verify-postgres-runtime.mjs <artifact.tar.gz>');
+const tar = process.platform === 'win32' ? join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
 const temporaryRoot = await mkdtemp(join(tmpdir(), 'agenvyl-postgres-verify-'));
 let dataRoot;
 let postgresRunning = false;
 
 try {
-  run('tar', ['-xzf', archive, '-C', temporaryRoot]);
+  run(tar, ['-xzf', archive, '-C', temporaryRoot]);
   const artifactName = basename(archive, '.tar.gz');
   const artifactRoot = join(temporaryRoot, artifactName);
   const postgresRoot = join(artifactRoot, 'postgres');

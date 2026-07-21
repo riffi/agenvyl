@@ -133,14 +133,14 @@ jobs:
           --platform ${{ matrix.platform }}
           --arch ${{ matrix.arch }}
           --jobs 2
-      - shell: bash
-        run: node scripts/verify-postgres-runtime.mjs artifacts/postgres-runtime/*.tar.gz
       - uses: actions/upload-artifact@v4
         with:
           name: agenvyl-postgres-${{ matrix.target }}
           path: |
             artifacts/postgres-runtime/*.tar.gz
             artifacts/postgres-runtime/*.sha256
+      - shell: bash
+        run: node scripts/verify-postgres-runtime.mjs artifacts/postgres-runtime/*.tar.gz
 
   preview-signing-boundary:
     if: ${{ vars.AGENVYL_ENABLE_PREVIEW_SIGNING == 'true' }}
