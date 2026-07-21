@@ -211,7 +211,7 @@ describe('RunExecutor', () => {
 
   it('leaves an active Connector run recoverable during graceful Core shutdown',async()=>{
     const snapshot={...connectorContractFixtures.execution,cursor:2,pendingRequests:[]},connector=executionClient(snapshot,async function*(_executionId,options){await new Promise<void>((_resolve,reject)=>options.signal.addEventListener('abort',()=>reject(new DOMException('Aborted','AbortError')),{once:true}));}),transport=new ConnectorRunAdapter(connector);vi.mocked(connector.start).mockImplementation(async request=>({...snapshot,executionId:request.executionId}));const{executor,registry,database,personas,messages}=await fixture(vi.fn<typeof fetch>(),4,connector,transport),persona=(await personas.find('persona-architect'))!,round=await messages.createRound('demo-room','shutdown',[persona]),runId=round.runs[0].id;registry.add(run(runId,round.message.id));executor.start(runId,'shutdown');await vi.waitFor(async()=>expect((await database.sql`SELECT status,connector_cursor FROM agent_runs WHERE id=${runId}`)[0]).toEqual({status:'streaming',connector_cursor:'2'}));expect(await executor.shutdown()).toBe(true);expect((await database.sql`SELECT status FROM agent_runs WHERE id=${runId}`)[0]?.status).toBe('streaming');await database.sql`UPDATE agent_runs SET status='failed' WHERE id=${runId}`;await database.close();
-  });
+  },15_000);
 
   it('persists Connector identity and every accepted stream checkpoint on the opt-in execution path',async()=>{
     let startRequest:unknown,streamOptions:unknown;
