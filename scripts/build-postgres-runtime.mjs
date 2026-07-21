@@ -127,7 +127,7 @@ async function verifySha256(path, expected) {
 }
 
 async function copyIfPresent(source, destination) {
-  try { await cp(source, destination, { recursive: true }); } catch (error) {
+  try { await cp(source, destination, { recursive: true, dereference: true }); } catch (error) {
     if (error?.code !== 'ENOENT') throw error;
   }
 }

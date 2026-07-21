@@ -1,7 +1,7 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, readlink, rm } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { basename, join, resolve } from 'node:path';
+import { basename, isAbsolute, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const archive = resolve(process.argv[2] ?? '');
@@ -17,6 +17,7 @@ try {
   const postgresRoot = join(artifactRoot, 'postgres');
   const manifest = JSON.parse(await readFile(join(artifactRoot, 'manifest.json'), 'utf8'));
   assertManifest(manifest);
+  await assertNoAbsoluteSymlinks(postgresRoot);
 
   const executable = name => join(postgresRoot, 'bin', process.platform === 'win32' ? `${name}.exe` : name);
   const env = runtimeEnvironment(postgresRoot);
@@ -97,4 +98,15 @@ async function assertPortReleased(port) {
     server.once('error', reject);
     server.listen(port, '127.0.0.1', () => server.close(resolvePromise));
   });
+}
+async function assertNoAbsoluteSymlinks(root) {
+  for (const entry of await readdir(root, { withFileTypes: true })) {
+    const path = join(root, entry.name);
+    if (entry.isSymbolicLink()) {
+      const target = await readlink(path);
+      if (isAbsolute(target)) throw new Error(`Runtime payload contains an absolute symlink: ${path} -> ${target}`);
+    } else if (entry.isDirectory()) {
+      await assertNoAbsoluteSymlinks(path);
+    }
+  }
 }
