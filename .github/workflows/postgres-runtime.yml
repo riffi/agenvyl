@@ -1,0 +1,100 @@
+name: PostgreSQL Runtime
+run-name: PostgreSQL runtime (${{ inputs.target }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Native target to build
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - linux-x64
+          - linux-arm64
+          - darwin-x64
+          - darwin-arm64
+          - windows-x64
+
+permissions:
+  contents: read
+
+concurrency:
+  group: postgres-runtime-${{ inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.targets.outputs.value }}
+    steps:
+      - id: targets
+        env:
+          TARGET: ${{ inputs.target }}
+        run: |
+          targets='[
+            {"target":"linux-x64","os":"ubuntu-24.04","platform":"linux","arch":"x64"},
+            {"target":"linux-arm64","os":"ubuntu-24.04-arm","platform":"linux","arch":"arm64"},
+            {"target":"darwin-x64","os":"macos-15-intel","platform":"darwin","arch":"x64"},
+            {"target":"darwin-arm64","os":"macos-15","platform":"darwin","arch":"arm64"},
+            {"target":"windows-x64","os":"windows-2025","platform":"win32","arch":"x64"}
+          ]'
+          if [ "$TARGET" = all ]; then
+            value=$(jq -c . <<< "$targets")
+          else
+            value=$(jq -c --arg target "$TARGET" '[.[] | select(.target == $target)]' <<< "$targets")
+          fi
+          echo "value=$value" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: PostgreSQL ${{ matrix.target }}
+    needs: matrix
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.matrix.outputs.targets) }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - id: cache
+        uses: actions/cache@v4
+        with:
+          path: artifacts/postgres-runtime
+          key: postgres-runtime-${{ matrix.target }}-${{ hashFiles('packaging/postgres-runtime.json', 'scripts/build-postgres-runtime.mjs') }}
+      - if: steps.cache.outputs.cache-hit != 'true' && runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y bison flex
+      - if: steps.cache.outputs.cache-hit != 'true' && runner.os == 'macOS'
+        run: |
+          brew install bison flex
+          echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix flex)/bin" >> "$GITHUB_PATH"
+      - if: steps.cache.outputs.cache-hit != 'true' && runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+      - if: steps.cache.outputs.cache-hit != 'true' && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install winflexbison3 --no-progress -y
+          py -m pip install meson ninja
+          py -c "import sysconfig; print(sysconfig.get_path('scripts'))" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - if: steps.cache.outputs.cache-hit != 'true'
+        run: >-
+          node scripts/build-postgres-runtime.mjs
+          --platform ${{ matrix.platform }}
+          --arch ${{ matrix.arch }}
+          --jobs 2
+      - shell: bash
+        run: node scripts/verify-postgres-runtime.mjs artifacts/postgres-runtime/*.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agenvyl-postgres-${{ matrix.target }}
+          path: |
+            artifacts/postgres-runtime/*.tar.gz
+            artifacts/postgres-runtime/*.sha256

@@ -44,8 +44,18 @@ Verification extracts into a path containing spaces and Unicode, then runs
 `pg_dump`, database recreation, `pg_restore`, value verification, bounded stop,
 PID status, and port-release checks.
 
-CI runs this gate natively on all five GitHub-hosted runner targets. Build or
-verification failure on any target blocks completion of the spike.
+The `PostgreSQL Runtime` workflow runs this gate explicitly on one selected
+native target or all five GitHub-hosted runner targets:
+
+```bash
+gh workflow run "PostgreSQL Runtime" --ref main -f target=all
+```
+
+Run it only when the pinned PostgreSQL version, payload contract, build script,
+or verifier changes. Its artifacts can be passed to the separate `Portable`
+workflow by run ID. Normal pushes and pull requests do not rebuild PostgreSQL.
+Build or verification failure on a requested target blocks publication of that
+payload.
 
 ## Boundaries carried into the supervisor and final assembly
 

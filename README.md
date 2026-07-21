@@ -103,17 +103,23 @@ docker compose -f compose.watch.yaml up -d --build
 
 ## Verification
 
+Run the normal local gate before pushing:
+
 ```bash
-npm test
-npm run typecheck
-npm run lint:boundaries
-npm run build
-npm run postgres:runtime:build
-npm run bundle
-npm run verify:bundle -- artifacts/portable/<archive>
-npm run audit:oss
-npm audit --omit=dev --audit-level=high
+npm run check:local
 ```
+
+Run the production build and security audits before merging a substantial
+increment:
+
+```bash
+npm run check:full
+```
+
+Native PostgreSQL and portable archive builds are not part of normal push CI.
+They run explicitly through the `PostgreSQL Runtime` and `Portable` workflows,
+or locally on the matching native host as described in the
+[portable runtime guide](docs/operations/portable-runtime.md).
 
 Live harness smoke tests are opt-in because they require local credentials and
 running harness services. See the operations guide for the corresponding

@@ -1,0 +1,170 @@
+name: Portable
+run-name: Portable (${{ inputs.target }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Native target to build and verify
+        required: true
+        default: linux-x64
+        type: choice
+        options:
+          - linux-x64
+          - linux-arm64
+          - darwin-x64
+          - darwin-arm64
+          - windows-x64
+          - all
+      postgres_artifact_run_id:
+        description: Optional PostgreSQL Runtime run ID used on cache miss
+        required: false
+        type: string
+      rebuild_postgres:
+        description: Rebuild PostgreSQL instead of using cache or a prior artifact
+        required: true
+        default: false
+        type: boolean
+  workflow_call:
+    inputs:
+      target:
+        required: false
+        default: all
+        type: string
+      postgres_artifact_run_id:
+        required: false
+        default: ""
+        type: string
+      rebuild_postgres:
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: portable-${{ github.ref }}-${{ inputs.target }}
+  cancel-in-progress: true
+
+jobs:
+  matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.targets.outputs.value }}
+    steps:
+      - id: targets
+        env:
+          TARGET: ${{ inputs.target }}
+        run: |
+          targets='[
+            {"target":"linux-x64","os":"ubuntu-24.04","platform":"linux","arch":"x64"},
+            {"target":"linux-arm64","os":"ubuntu-24.04-arm","platform":"linux","arch":"arm64"},
+            {"target":"darwin-x64","os":"macos-15-intel","platform":"darwin","arch":"x64"},
+            {"target":"darwin-arm64","os":"macos-15","platform":"darwin","arch":"arm64"},
+            {"target":"windows-x64","os":"windows-2025","platform":"win32","arch":"x64"}
+          ]'
+          if [ "$TARGET" = all ]; then
+            value=$(jq -c . <<< "$targets")
+          else
+            value=$(jq -c --arg target "$TARGET" '[.[] | select(.target == $target)]' <<< "$targets")
+          fi
+          test "$value" != '[]'
+          echo "value=$value" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Portable ${{ matrix.target }}
+    needs: matrix
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.matrix.outputs.targets) }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - id: postgres-cache
+        if: ${{ !inputs.rebuild_postgres }}
+        uses: actions/cache@v4
+        with:
+          path: artifacts/postgres-runtime
+          key: postgres-runtime-${{ matrix.target }}-${{ hashFiles('packaging/postgres-runtime.json', 'scripts/build-postgres-runtime.mjs') }}
+      - if: ${{ !inputs.rebuild_postgres && inputs.postgres_artifact_run_id != '' && steps.postgres-cache.outputs.cache-hit != 'true' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: agenvyl-postgres-${{ matrix.target }}
+          path: artifacts/postgres-runtime
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.postgres_artifact_run_id }}
+      - if: ${{ inputs.rebuild_postgres && runner.os == 'Linux' }}
+        run: sudo apt-get update && sudo apt-get install -y bison flex
+      - if: ${{ inputs.rebuild_postgres && runner.os == 'macOS' }}
+        run: |
+          brew install bison flex
+          echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix flex)/bin" >> "$GITHUB_PATH"
+      - if: ${{ inputs.rebuild_postgres && runner.os == 'Windows' }}
+        uses: ilammy/msvc-dev-cmd@v1
+      - if: ${{ inputs.rebuild_postgres && runner.os == 'Windows' }}
+        shell: pwsh
+        run: |
+          choco install winflexbison3 --no-progress -y
+          py -m pip install meson ninja
+          py -c "import sysconfig; print(sysconfig.get_path('scripts'))" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - if: ${{ inputs.rebuild_postgres }}
+        run: >-
+          node scripts/build-postgres-runtime.mjs
+          --platform ${{ matrix.platform }}
+          --arch ${{ matrix.arch }}
+          --jobs 2
+      - name: Require an explicit PostgreSQL payload
+        shell: bash
+        run: |
+          if ! compgen -G 'artifacts/postgres-runtime/*.tar.gz' > /dev/null; then
+            echo 'No PostgreSQL runtime is available.' >&2
+            echo 'Run PostgreSQL Runtime first and pass its run ID, or enable rebuild_postgres.' >&2
+            exit 1
+          fi
+      - if: ${{ inputs.rebuild_postgres }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: agenvyl-postgres-${{ matrix.target }}
+          path: |
+            artifacts/postgres-runtime/*.tar.gz
+            artifacts/postgres-runtime/*.sha256
+      - shell: bash
+        run: node scripts/verify-postgres-runtime.mjs artifacts/postgres-runtime/*.tar.gz
+      - shell: bash
+        run: npm run build:contracts && node scripts/verify-supervisor-lifecycle.mjs artifacts/postgres-runtime/*.tar.gz
+      - shell: bash
+        run: >-
+          node scripts/build-runtime-bundle.mjs
+          --platform ${{ matrix.platform }}
+          --arch ${{ matrix.arch }}
+          --postgres-artifact artifacts/postgres-runtime/*.tar.gz
+      - shell: bash
+        run: |
+          portable_archive=$(find artifacts/portable -type f ! -name '*.sha256' -print -quit)
+          node scripts/verify-portable-bundle.mjs "$portable_archive"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agenvyl-${{ matrix.target }}
+          path: |
+            artifacts/portable/*.tar.xz
+            artifacts/portable/*.zip
+            artifacts/portable/*.sha256
+
+  preview-signing-boundary:
+    if: ${{ vars.AGENVYL_ENABLE_PREVIEW_SIGNING == 'true' }}
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - run: >-
+          echo "Preview signing is enabled, but publisher-specific signing remains
+          intentionally external to the unsigned runtime probe artifacts."

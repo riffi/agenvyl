@@ -82,8 +82,29 @@ normalized to relocatable relative aliases during final assembly.
 The archive probe copies and extracts the artifact through paths containing
 spaces and Unicode, invokes the real platform Start/Status/Stop launchers, checks
 the bundled Node and PostgreSQL versions, waits for the Web UI, and verifies that
-all three ports and all recorded processes are released after Stop. CI runs this
-gate on Linux x64/arm64, macOS x64/arm64, and Windows x64.
+all three ports and all recorded processes are released after Stop.
+
+Normal pushes run only the fast `Checks` workflow. Native archive gates are
+explicit so routine development does not consume five GitHub-hosted runners:
+
+```bash
+# Build one target. This uses its PostgreSQL cache when available.
+gh workflow run Portable --ref main -f target=linux-x64
+
+# Build all five targets from PostgreSQL artifacts produced by an earlier run.
+gh workflow run Portable --ref main -f target=all \
+  -f postgres_artifact_run_id=<postgres-runtime-run-id>
+```
+
+Set `rebuild_postgres=true` only when intentionally testing PostgreSQL assembly
+inside the portable workflow. Prefer the separate `PostgreSQL Runtime` workflow
+when the pinned version, payload contract, or build scripts change. If neither a
+matching cache nor `postgres_artifact_run_id` is available, `Portable` fails
+instead of silently starting an expensive PostgreSQL build.
+
+Run the complete five-target portable gate before closing a platform-sensitive
+milestone and before a release candidate. For ordinary Core or Web UI work,
+`npm run check:local` and the automatic `Checks` workflow are sufficient.
 
 ## Server and development mode
 
