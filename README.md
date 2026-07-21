@@ -1,184 +1,233 @@
 # Agenvyl
 
-Agenvyl is a room-first workspace for coordinating multiple coding-agent
-harnesses. A single Fastify Core serves the React application, REST API, and
-room WebSocket. Agent execution is delegated to a separate host-side Connector:
+Agenvyl is a local workspace where you can talk to several coding agents in one
+room.
 
-```text
-Browser -> Agenvyl Core -> Agenvyl Connector -> Hermes / OpenCode / Antigravity
-```
+Instead of opening a separate terminal or chat for every agent, you create a
+room for a task, add the agents you need, and call them by name. They can answer
+in parallel, work with the same files, and keep the whole discussion in one
+place.
 
-The Connector runs next to the installed harness CLIs and their credential
-stores. Credentials stay out of Core, the browser, YAML configuration, and the
-application database.
+Agenvyl currently works with **Hermes**, **OpenCode**, and **Antigravity (AGY)**.
+It uses the tools and accounts already configured on your computer; Agenvyl does
+not provide model access by itself.
 
-> Agenvyl is currently an unsigned Technical Preview. The release workflow
-> produces native archives, checksums, a versioned manifest, and installers;
-> signing identities remain a later milestone.
+> Agenvyl v0.1.0 is an unsigned Technical Preview for a trusted, single-user
+> computer. It runs locally and does not send telemetry. Windows SmartScreen or
+> macOS Gatekeeper may show a warning. Read the
+> [Technical Preview trust guide](docs/operations/preview-trust.md) before
+> accepting it.
 
-## Portable Technical Preview
+## What you can do
 
-The native build matrix produces self-contained archives for Linux x64/arm64,
-macOS x64/arm64, and Windows x64. They include Node.js, PostgreSQL, Core/Web UI,
-Connector, and the supervisor; Docker, a system Node installation, and a source
-checkout are not required.
+- Create separate rooms for projects, bugs, reviews, or experiments.
+- Give each agent a name, role, model, and its own instructions.
+- Ask one agent, several specific agents, or everyone in the room.
+- Receive parallel answers without losing the shared conversation.
+- Retry an answer and compare attempts.
+- See tool activity, answer clarification questions, and approve actions when
+  the connected agent supports it.
+- Attach files and let agents read or update the room workspace.
+- Keep room history, generated files, and file versions on your computer.
 
-Install the latest preview on Linux/macOS:
+A room is both a conversation and a shared working folder. It is useful for
+workflows such as:
 
-```bash
-curl -fsSL https://github.com/riffi/agenvyl/releases/latest/download/install.sh | sh
-```
+- ask an architect to inspect a task;
+- ask a builder to implement it;
+- ask a reviewer to check the result;
+- let all three discuss the same problem in parallel.
 
-Or on Windows:
+## Before you install
 
-```powershell
-irm https://github.com/riffi/agenvyl/releases/latest/download/install.ps1 | iex
-```
+The downloadable app already includes Node.js and PostgreSQL. You do **not**
+need Docker, npm, or a source checkout.
 
-The installer verifies the release index, archive size, and SHA-256 checksum,
-then registers the user-level `agenvyl` command. Set `AGENVYL_VERSION` to pin a
-version or `AGENVYL_NO_PATH=1` to skip command registration.
+Supported systems:
 
-The preview is unsigned. Release archives include SHA-256 checksums, CycloneDX
-SBOMs, and GitHub build-provenance attestations. Read the
-[Technical Preview trust guide](docs/operations/preview-trust.md) before
-accepting a Gatekeeper or SmartScreen prompt.
+- Windows 10/11 x64;
+- Linux x64 or arm64;
+- macOS on Intel or Apple Silicon.
 
-Alternatively, extract one archive and run `Start Agenvyl.sh`, `Start
-Agenvyl.command`, or `Start Agenvyl.cmd`. The launcher starts PostgreSQL →
-Connector → Core and opens the loopback Web UI. A fresh install opens the English setup flow; it discovers
-local harnesses and can continue with none configured. You can run
-`bin/agenvyl setup` (`bin\agenvyl.cmd setup` on Windows) for terminal-first
-bootstrap. Matching Stop and Status launchers call the same supervisor
-CLI. See the [portable runtime guide](docs/operations/portable-runtime.md) for
-data locations, backups, diagnostics, and the unsigned preview boundary.
-
-## Prerequisites
-
-- Node.js 22 and npm
-- Docker with Compose v2
-- optionally, one supported harness installed and authenticated on the host
-
-The default example enables Hermes. OpenCode and Antigravity instances are
-available but disabled until their host runtimes are configured.
+To receive agent responses, have at least one supported agent tool installed and
+authenticated on the same computer. The setup screen will show what Agenvyl can
+find. You may also finish setup without an agent and connect one later.
 
 ## Quick start
 
-1. Install dependencies and create local configuration:
+### Windows
+
+1. Open **PowerShell** and run:
+
+   ```powershell
+   irm https://github.com/riffi/agenvyl/releases/latest/download/install.ps1 | iex
+   ```
+
+2. Close PowerShell and open it again so the new `agenvyl` command is available.
+
+3. Start the first-time setup:
+
+   ```powershell
+   agenvyl setup
+   ```
+
+### Linux
+
+1. Open a terminal and run:
 
    ```bash
-   npm ci
-   cp .env.example .env
-   cp connector.example.yaml connector.yaml
-   mkdir -p "${XDG_DATA_HOME:-$HOME/.local/share}/agenvyl/workspaces"
+   curl -fsSL https://github.com/riffi/agenvyl/releases/latest/download/install.sh | sh
    ```
 
-2. Leave `workspaces.roots` empty to use the same XDG workspace root as Core,
-   or add an explicit absolute override:
+2. Close the terminal and open it again.
 
-   ```yaml
-   workspaces:
-     roots:
-       - /absolute/path/to/workspaces
-   ```
-
-3. Generate one shared token, export the Connector settings, and start it:
+3. Start the first-time setup:
 
    ```bash
-   export AGENVYL_CONNECTOR_TOKEN="$(openssl rand -hex 32)"
-   export AGENVYL_CONNECTOR_CONFIG="$PWD/connector.yaml"
-   export AGENVYL_CONNECTOR_HERMES_URL="http://127.0.0.1:8642"
-   npm run dev:connector
+   agenvyl setup
    ```
 
-4. In another shell, set the same token in `.env`, load it, start PostgreSQL,
-   build the host runtime, and start Core:
+### macOS
+
+1. Open **Terminal** and run:
 
    ```bash
-   set -a; . ./.env; set +a
-   docker compose up -d --wait
-   npm run build
-   npm start
-   curl -fsS http://127.0.0.1:8791/api/v1/health
+   curl -fsSL https://github.com/riffi/agenvyl/releases/latest/download/install.sh | sh
    ```
 
-Open <http://127.0.0.1:8791> and complete the setup screen. Persistent PostgreSQL data lives in a named Docker
-volume; room files live under the configured host workspace path.
+2. Close Terminal and open it again.
 
-Portable archives are covered by the
-[portable runtime guide](docs/operations/portable-runtime.md). Detailed setup
-for Hermes, OpenCode, and Antigravity is in
-[the Connector operations guide](docs/operations/connector.md).
+3. Start the first-time setup:
 
-## Local development
+   ```bash
+   agenvyl setup
+   ```
 
-Start PostgreSQL, Connector, backend, and Vite from one terminal:
+## Finish setup in the browser
 
-```bash
-npm ci
-npm run dev:all
+`agenvyl setup` does the following:
+
+1. starts Agenvyl and its local database;
+2. looks for Hermes, OpenCode, and AGY on your computer;
+3. asks whether to use the safely detected connections;
+4. opens the Web UI in your browser.
+
+If the browser does not open, go to:
+
+<http://127.0.0.1:8791>
+
+On the setup page:
+
+1. choose the detected agent connections you want to use;
+2. enter your display name and handle;
+3. name your first room;
+4. click **Create workspace**.
+
+When an agent connection is available, Agenvyl creates three starter agents:
+**Architect**, **Builder**, and **Reviewer**. You can edit or remove them later.
+AGY is never enabled automatically because it starts a separate process with a
+dangerous permission flag; enabling it requires a separate confirmation.
+
+## Your first conversation
+
+Open the first room and type a message with an agent mention:
+
+```text
+@architect Read the project and propose a safe implementation plan.
 ```
 
-The command creates the ignored local Connector configuration and workspace
-directory when needed, generates one shared development token, and prefixes
-each service's output. Press `Ctrl+C` to stop the three application processes.
-PostgreSQL stays available for the next run; stop it with `npm run dev:down`.
-The development database uses host port `55432` by default to avoid collisions;
-override it with `AGENVYL_POSTGRES_PORT` when necessary.
+Call a different agent:
 
-For a Compose-based watch environment:
-
-```bash
-docker compose -f compose.watch.yaml up -d --build
+```text
+@builder Implement the agreed plan and run the tests.
 ```
 
-## Verification
+Call several agents at once:
 
-Run the normal local gate before pushing:
-
-```bash
-npm run check:local
+```text
+@architect @reviewer Check this change from different perspectives.
 ```
 
-Run the production build and security audits before merging a substantial
-increment:
+Call every agent connected to the room:
 
-```bash
-npm run check:full
+```text
+@all Review the current state and tell me what should happen next.
 ```
 
-Native PostgreSQL and portable archive builds are not part of normal push CI.
-They run explicitly through the `PostgreSQL Runtime` and `Portable` workflows,
-or locally on the matching native host as described in the
-[portable runtime guide](docs/operations/portable-runtime.md).
+Agents mentioned in the same message run in parallel. A message without an
+`@mention` is saved in the room but does not start an agent.
 
-Live harness smoke tests are opt-in because they require local credentials and
-running harness services. See the operations guide for the corresponding
-commands and environment contracts.
+## Rooms and agents
 
-## Architecture and safety boundaries
+### Rooms
 
-- Core owns rooms, personas, messages, run snapshots, events, and PostgreSQL.
-- Connector owns harness discovery, execution lifecycle, replay, redaction, and
-  access to host-side credentials.
-- A room workspace is a shared filesystem location, not a security sandbox.
-- Connector binds to loopback by default and requires a Bearer token.
-- Agenvyl has no telemetry or remote analytics.
-- The repository does not include private deployment overlays, credentials,
-  internal domains, or machine-specific paths.
+Use **New room** in the sidebar to create a workspace for a new task. Choose
+which agents belong to it. Only agents added to a room can be mentioned there.
 
-Read [OSS operations boundaries](docs/operations/oss-boundaries.md),
-[architecture overview](docs/architecture/overview.md),
-[runtime policy](docs/operations/runtime.md), and
-[database operations](docs/operations/database.md) before exposing a deployment
-outside a trusted machine.
+Each room keeps:
 
-## Contributing and security
+- the conversation;
+- agent responses and retries;
+- attached and generated files;
+- the agents currently working on the task.
 
-Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). Report
-vulnerabilities using the private process in [SECURITY.md](SECURITY.md), not a
-public issue.
+### Agents
 
-## License
+Open **Agents** in the sidebar to create or edit an agent. You can choose:
 
-Licensed under the [Apache License 2.0](LICENSE).
+- its name and `@handle`;
+- its role in the team;
+- the connected tool and model it uses;
+- optional instructions that define how it should behave.
+
+For example, one OpenCode or Hermes installation can power several Agenvyl
+agents with different roles and instructions.
+
+### Files
+
+Attach a file from the message composer or open the room workspace. Agents in
+the room work with the same files. Files created or changed during a run appear
+in the Web UI, and workspace images can be shown directly inside an answer.
+
+Agenvyl keeps file versions, but the workspace is **not a security sandbox**.
+Connected agents run with your normal user permissions. Do not connect an agent
+you would not trust to work on the selected files.
+
+## Starting Agenvyl later
+
+Run the control center:
+
+```bash
+agenvyl
+```
+
+Choose **Start**. When Agenvyl is ready, the Web UI opens in your browser.
+The same control center can open the UI, stop Agenvyl, show diagnostics, create a
+backup, or remove the app.
+
+Useful direct commands:
+
+```bash
+agenvyl start
+agenvyl status
+agenvyl stop
+agenvyl backup
+```
+
+`agenvyl start` starts the services without opening a browser. Open
+<http://127.0.0.1:8791> yourself when using that command.
+
+## Need more detail?
+
+The README intentionally covers the normal user journey. Technical and
+operator documentation lives here:
+
+- [Portable runtime, backups, restore, and uninstall](docs/operations/portable-runtime.md)
+- [Connecting Hermes, OpenCode, and AGY](docs/operations/connector.md)
+- [Architecture](docs/architecture/overview.md)
+- [Runtime operations](docs/operations/runtime.md)
+- [Database operations](docs/operations/database.md)
+- [Development and contributions](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
+
+Agenvyl is licensed under the [Apache License 2.0](LICENSE).
