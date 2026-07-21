@@ -448,12 +448,13 @@ async function ensureWindowsPostgresAliases(config: SupervisorConfig) {
   }
 }
 function secureWindowsDirectory(path: string) {
-  const identity = spawnSync('whoami.exe', ['/user', '/fo', 'csv', '/nh'], { encoding: 'utf8', windowsHide: true });
+  const identity = spawnSync(windowsSystemTool('whoami.exe'), ['/user', '/fo', 'csv', '/nh'], { encoding: 'utf8', windowsHide: true });
   const sid = identity.stdout.match(/S-\d+(?:-\d+)+/)?.[0];
   if (!sid) throw new SupervisorError('WINDOWS_IDENTITY_UNAVAILABLE', 'Unable to secure the Windows PostgreSQL storage directory.', 'Run Agenvyl from a normal user session.');
-  const secured = spawnSync('icacls.exe', [path, '/inheritance:r', '/grant:r', `*${sid}:(OI)(CI)F`, '*S-1-5-18:(OI)(CI)F'], { encoding: 'utf8', windowsHide: true });
+  const secured = spawnSync(windowsSystemTool('icacls.exe'), [path, '/inheritance:r', '/grant:r', `*${sid}:(OI)(CI)F`, '*S-1-5-18:(OI)(CI)F'], { encoding: 'utf8', windowsHide: true });
   if (secured.status !== 0) throw new SupervisorError('WINDOWS_STORAGE_ACL_FAILED', 'Unable to restrict access to the Windows PostgreSQL storage directory.', 'Check permissions for the Public folder.', { path });
 }
+function windowsSystemTool(name: string) { return join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', name); }
 export async function removeWindowsPostgresAliases(config: SupervisorConfig) {
   if (!usesWindowsPostgresAliases(config)) return;
   const root = windowsPostgresAliasRoot(config);
