@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { readFile, stat } from 'node:fs/promises';
+import { stat } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { basename, resolve } from 'node:path';
 
@@ -11,7 +11,7 @@ if (ports.some(port => !Number.isSafeInteger(port))) throw new Error('Release sm
 const doctor = runJson(['doctor', '--json']);
 if (!doctor.ok) throw new Error(`Installed release doctor failed: ${JSON.stringify(doctor)}`);
 const started = runJson(['start', '--json']);
-if (!started.running) throw new Error(`Installed release did not start: ${JSON.stringify(started)}`);
+if (started.phase !== 'running') throw new Error(`Installed release did not start: ${JSON.stringify(started)}`);
 await waitForHttp(`http://127.0.0.1:${ports[0]}/api/v1/health`);
 const frontend = await fetch(`http://127.0.0.1:${ports[0]}/`, { signal: AbortSignal.timeout(2_000) });
 if (!frontend.ok || !(await frontend.text()).includes('<!doctype html>')) throw new Error('Installed release did not serve the Web UI');

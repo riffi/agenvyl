@@ -68,10 +68,6 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $env:AGENVYL_HOME = Join-Path $env:RUNNER_TEMP 'agenvyl-home'
-          $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP 'local-app-data'
-          $env:AGENVYL_INSTALL_ROOT = Join-Path $env:AGENVYL_HOME 'versions'
-          New-Item -ItemType Directory -Path $env:AGENVYL_HOME -Force | Out-Null
           Invoke-RestMethod "https://github.com/${{ github.repository }}/releases/download/v$env:AGENVYL_VERSION/install.ps1" | Invoke-Expression
           $commandPath = Join-Path $env:LOCALAPPDATA 'Agenvyl\bin\agenvyl.cmd'
           if (-not (Test-Path -LiteralPath $commandPath)) { throw 'The installer did not create agenvyl.cmd.' }
