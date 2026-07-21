@@ -356,8 +356,26 @@ function managedDatabaseUrl(config: SupervisorConfig, secrets: Secrets, database
 async function writeState(config: SupervisorConfig, state: RuntimeState) {
   state.updatedAt = new Date().toISOString();
   const temporary = `${config.stateFile}.${process.pid}.tmp`;
-  await writeFile(temporary, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
-  await rename(temporary, config.stateFile);
+  try {
+    await writeFile(temporary, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
+    if (config.platform === 'win32') await removeWindowsReplaceTarget(config.stateFile);
+    await retryWindowsFsOperation(config.platform, () => rename(temporary, config.stateFile));
+  } finally {
+    await rm(temporary, { force: true }).catch(() => undefined);
+  }
+}
+async function removeWindowsReplaceTarget(path: string) {
+  await retryWindowsFsOperation('win32', () => rm(path, { force: true }));
+}
+async function retryWindowsFsOperation(platform: NodeJS.Platform, operation: () => Promise<void>) {
+  const attempts = platform === 'win32' ? 10 : 1;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try { await operation(); return; }
+    catch (error) {
+      if (attempt === attempts || !isTransientWindowsFsError(error)) throw error;
+      await delay(attempt * 50);
+    }
+  }
 }
 async function readState(config: SupervisorConfig) {
   try { return JSON.parse(await readFile(config.stateFile, 'utf8')) as RuntimeState; }
@@ -403,4 +421,5 @@ function delay(ms: number) { return new Promise<void>(resolvePromise => setTimeo
 function errorMessage(error: unknown) { return error instanceof Error ? error.message : String(error); }
 function isMissing(error: unknown) { return (error as NodeJS.ErrnoException)?.code === 'ENOENT'; }
 function isExists(error: unknown) { return (error as NodeJS.ErrnoException)?.code === 'EEXIST'; }
+function isTransientWindowsFsError(error: unknown) { return ['EACCES', 'EBUSY', 'EPERM'].includes((error as NodeJS.ErrnoException)?.code ?? ''); }
 function logEvent(event: string, details: Record<string, unknown>) { process.stdout.write(`${JSON.stringify({ time: new Date().toISOString(), event, ...details })}\n`); }
