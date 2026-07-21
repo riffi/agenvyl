@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       postgres_artifact_run_id:
-        description: Optional prior run ID whose Windows PostgreSQL artifact should be reused
+        description: Optional prior run ID whose five PostgreSQL artifacts should be reused
         required: false
         type: string
 
@@ -120,14 +120,14 @@ jobs:
         with:
           path: artifacts/postgres-runtime
           key: postgres-runtime-${{ matrix.target }}-${{ hashFiles('packaging/postgres-runtime.json', 'scripts/build-postgres-runtime.mjs') }}
-      - if: ${{ matrix.target == 'windows-x64' && inputs.postgres_artifact_run_id != '' && steps.postgres-runtime-cache.outputs.cache-hit != 'true' }}
+      - if: ${{ inputs.postgres_artifact_run_id != '' && steps.postgres-runtime-cache.outputs.cache-hit != 'true' }}
         uses: actions/download-artifact@v4
         with:
-          name: agenvyl-postgres-windows-x64
+          name: agenvyl-postgres-${{ matrix.target }}
           path: artifacts/postgres-runtime
           github-token: ${{ github.token }}
           run-id: ${{ inputs.postgres_artifact_run_id }}
-      - if: ${{ steps.postgres-runtime-cache.outputs.cache-hit != 'true' && !(matrix.target == 'windows-x64' && inputs.postgres_artifact_run_id != '') }}
+      - if: ${{ steps.postgres-runtime-cache.outputs.cache-hit != 'true' && inputs.postgres_artifact_run_id == '' }}
         run: >-
           node scripts/build-postgres-runtime.mjs
           --platform ${{ matrix.platform }}
