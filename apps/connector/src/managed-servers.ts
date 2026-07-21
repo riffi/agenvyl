@@ -1,5 +1,6 @@
 import {spawn,type ChildProcess} from 'node:child_process';
 import type {ConnectorInstanceConfig} from './config.js';
+import {commandInvocation,resolveCommand} from './discovery.js';
 
 export class ManagedHarnessServers{
   private readonly children=new Map<string,ChildProcess>();
@@ -13,8 +14,8 @@ export class ManagedHarnessServers{
   private async startOpenCode(instance:ConnectorInstanceConfig){
     const endpoint=new URL(instance.endpoint??'http://127.0.0.1:4096');
     if(!['127.0.0.1','localhost','::1'].includes(endpoint.hostname)||endpoint.pathname!=='/'||endpoint.search||endpoint.hash)throw new Error('Managed OpenCode endpoint must be a loopback origin');
-    const port=endpoint.port||'4096',command=this.env.AGENVYL_CONNECTOR_OPENCODE_COMMAND??'opencode';
-    const child=spawn(command,['serve','--hostname',endpoint.hostname==='localhost'?'127.0.0.1':endpoint.hostname,'--port',port],{env:this.env,stdio:'ignore',windowsHide:true});
+    const port=endpoint.port||'4096',command=this.env.AGENVYL_CONNECTOR_OPENCODE_COMMAND??'opencode',executable=await resolveCommand(command,{env:this.env}),invocation=commandInvocation(executable,['serve','--hostname',endpoint.hostname==='localhost'?'127.0.0.1':endpoint.hostname,'--port',port],process.platform,this.env);
+    const child=spawn(invocation.file,invocation.args,{env:this.env,stdio:'ignore',windowsHide:true});
     this.children.set(instance.id,child);child.once('exit',()=>this.children.delete(instance.id));
     try{await waitForEndpoint(endpoint.toString(),this.request,child);}catch(error){child.kill();this.children.delete(instance.id);throw error;}
   }
