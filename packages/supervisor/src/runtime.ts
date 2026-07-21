@@ -205,14 +205,14 @@ export async function restoreDatabase(config: SupervisorConfig, archive: string)
   await initializePostgres(config, secrets);
   const env = postgresEnv(config, secrets);
   const logFile = join(config.paths.logs, 'postgresql-restore.log');
-  runTool(postgresTool(config, 'pg_ctl'), ['-D', config.paths.postgres, '-l', logFile, '-o', `-h 127.0.0.1 -p ${config.postgresPort}`, '-w', 'start'], env);
+  runControlTool(postgresTool(config, 'pg_ctl'), ['-D', config.paths.postgres, '-l', logFile, '-o', `-h 127.0.0.1 -p ${config.postgresPort}`, '-w', 'start'], env);
   try {
     const admin = managedDatabaseUrl(config, secrets, 'postgres');
     runTool(postgresTool(config, 'dropdb'), ['--if-exists', `--maintenance-db=${admin}`, 'agenvyl'], env);
     runTool(postgresTool(config, 'createdb'), [`--maintenance-db=${admin}`, 'agenvyl'], env);
     runTool(postgresTool(config, 'pg_restore'), ['--exit-on-error', '--no-owner', '--dbname', managedDatabaseUrl(config, secrets), archive], env);
   } finally {
-    runTool(postgresTool(config, 'pg_ctl'), ['-D', config.paths.postgres, '-m', 'fast', '-w', 'stop'], env, true);
+    runControlTool(postgresTool(config, 'pg_ctl'), ['-D', config.paths.postgres, '-m', 'fast', '-w', 'stop'], env, true);
   }
   return archive;
 }
@@ -277,7 +277,7 @@ async function initializePostgres(config: SupervisorConfig, secrets: Secrets) {
 async function startPostgres(config: SupervisorConfig, secrets: Secrets, state: RuntimeState) {
   const logFile = join(config.paths.logs, 'postgresql.log');
   if (config.platform === 'win32') {
-    runTool(postgresTool(config, 'pg_ctl'), ['-D', config.paths.postgres, '-l', logFile, '-o', `-h 127.0.0.1 -p ${config.postgresPort}`, '-w', '-t', String(Math.ceil(config.readinessTimeoutMs / 1000)), 'start'], postgresEnv(config, secrets));
+    runControlTool(postgresTool(config, 'pg_ctl'), ['-D', config.paths.postgres, '-l', logFile, '-o', `-h 127.0.0.1 -p ${config.postgresPort}`, '-w', '-t', String(Math.ceil(config.readinessTimeoutMs / 1000)), 'start'], postgresEnv(config, secrets));
     const pid = Number((await readFile(join(config.paths.postgres, 'postmaster.pid'), 'utf8')).split(/\r?\n/, 1)[0]);
     if (!Number.isSafeInteger(pid) || pid < 1) throw new Error('Managed PostgreSQL did not provide a valid postmaster PID');
     state.components.postgresql = { pid, startedAt: new Date().toISOString(), logFile };
@@ -322,7 +322,7 @@ async function stopChildren(config: SupervisorConfig, children: ChildMap) {
   for (const name of ['core', 'connector'] as const) if (children[name]) await terminateChild(children[name]!, config.platform, config.gracePeriodMs);
   if (config.managedPostgres) {
     const secrets = await loadOrCreateSecrets(config).catch(() => undefined);
-    if (secrets) runTool(postgresTool(config, 'pg_ctl'), ['-D', config.paths.postgres, '-m', 'fast', '-w', '-t', String(Math.ceil(config.gracePeriodMs / 1000)), 'stop'], postgresEnv(config, secrets), true);
+    if (secrets) runControlTool(postgresTool(config, 'pg_ctl'), ['-D', config.paths.postgres, '-m', 'fast', '-w', '-t', String(Math.ceil(config.gracePeriodMs / 1000)), 'stop'], postgresEnv(config, secrets), true);
     if (children.postgresql) await terminateChild(children.postgresql, config.platform, config.gracePeriodMs);
   }
 }
@@ -391,6 +391,11 @@ async function exists(path: string) { try { await stat(path); return true; } cat
 function runTool(command: string, args: string[], env: NodeJS.ProcessEnv, ignoreFailure = false) {
   const result = spawnSync(command, args, { env, encoding: 'utf8', windowsHide: true });
   if (result.status !== 0 && !ignoreFailure) throw new Error(`${basename(command)} failed (${result.status}): ${(result.stderr || result.stdout).trim()}`);
+  return result;
+}
+function runControlTool(command: string, args: string[], env: NodeJS.ProcessEnv, ignoreFailure = false) {
+  const result = spawnSync(command, args, { env, stdio: 'ignore', windowsHide: true });
+  if (result.status !== 0 && !ignoreFailure) throw new Error(`${basename(command)} failed with status ${result.status}`);
   return result;
 }
 function timestamp() { return new Date().toISOString().replace(/[:.]/g, '-'); }
