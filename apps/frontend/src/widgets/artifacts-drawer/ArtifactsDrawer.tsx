@@ -134,7 +134,7 @@ export function ArtifactsDrawer({ open, close, roomId, fake = false, onAttach }:
         await roomsApi.uploadFile(roomId, file, filePath);
       } catch (value) {
         const failure = value as Error & { code?: string };
-        if (failure.code === 'file_exists' && confirm(`${filePath} уже существует. Сохранить как новую версию?`)) {
+        if (failure.code === 'file_exists' && confirm(`${filePath} already exists. Save it as a new version?`)) {
           await roomsApi.uploadFile(roomId, file, filePath, 'replace');
         } else throw value;
       }
@@ -193,21 +193,21 @@ export function ArtifactsDrawer({ open, close, roomId, fake = false, onAttach }:
     <header className={styles.panelHeader}>
       <FolderOpen />
       <strong>Workspace</strong>
-      <IconButton aria-label="Обновить workspace" title="Обновить" onClick={() => void query.refetch()}><RefreshCw /></IconButton>
-      <IconButton aria-label="Закрыть workspace" title="Закрыть" onClick={close}><X /></IconButton>
+      <IconButton aria-label="Refresh workspace" title="Refresh" onClick={() => void query.refetch()}><RefreshCw /></IconButton>
+      <IconButton aria-label="Close workspace" title="Close" onClick={close}><X /></IconButton>
     </header>
-    {fake ? <div className={styles.panelMessage}><Alert>В demo-режиме workspace недоступен.</Alert></div> : <>
+    {fake ? <div className={styles.panelMessage}><Alert>Workspace is unavailable in demo mode.</Alert></div> : <>
       {error && <div className={styles.alert}><Alert tone="error">{error}</Alert></div>}
       {query.error && <div className={styles.alert}><Alert tone="error">{query.error instanceof Error ? query.error.message : String(query.error)}</Alert></div>}
       <div className={`${styles.content} ${compact ? styles.compact : ''}`}>
         {(!compact || mobileStep === 'explorer') && <aside className={styles.explorer}>
           <div className={styles.explorerToolbar}>
-            <label className={styles.search}><Search /><input value={search} onChange={event => setSearch(event.target.value)} placeholder={trash ? 'Поиск в корзине' : 'Поиск файлов'} /></label>
+            <label className={styles.search}><Search /><input value={search} onChange={event => setSearch(event.target.value)} placeholder={trash ? 'Search trash' : 'Search files'} /></label>
             {!trash && <div className={styles.menuAnchor} ref={createMenuRef}>
-              <IconButton aria-label="Добавить в workspace" title="Добавить" className={styles.addButton} onClick={() => setCreateMenu(value => !value)}><Plus /></IconButton>
+              <IconButton aria-label="Add to workspace" title="Add" className={styles.addButton} onClick={() => setCreateMenu(value => !value)}><Plus /></IconButton>
               {createMenu && <div className={`${styles.menu} ${styles.createMenu}`} role="menu">
-                <button role="menuitem" onClick={() => inputRef.current?.click()}><Upload />Загрузить файлы</button>
-                <button role="menuitem" onClick={() => { setCreateMenu(false); setOperation({ kind: 'create' }); }}><FolderPlus />Создать папку</button>
+                <button role="menuitem" onClick={() => inputRef.current?.click()}><Upload />Upload files</button>
+                <button role="menuitem" onClick={() => { setCreateMenu(false); setOperation({ kind: 'create' }); }}><FolderPlus />Create folder</button>
               </div>}
             </div>}
           </div>
@@ -215,13 +215,13 @@ export function ArtifactsDrawer({ open, close, roomId, fake = false, onAttach }:
             if (event.target.files) void uploadFiles(event.target.files).catch(value => setError(value instanceof Error ? value.message : String(value)));
             event.currentTarget.value = '';
           }} />
-          <nav className={styles.tree} aria-label={trash ? 'Корзина workspace' : 'Файлы workspace'} onDragOver={event => event.preventDefault()} onDrop={event => {
+          <nav className={styles.tree} aria-label={trash ? 'Workspace trash' : 'Workspace files'} onDragOver={event => event.preventDefault()} onDrop={event => {
             if (trash) return;
             event.preventDefault();
             if (event.dataTransfer.files.length) void uploadFiles(event.dataTransfer.files).catch(value => setError(String(value)));
           }}>
-            {query.isPending && <ExplorerMessage>Загружаем workspace…</ExplorerMessage>}
-            {!query.isPending && !filteredTree.length && <ExplorerMessage icon={<FilePlus2 />}>{search ? 'Ничего не найдено' : trash ? 'Корзина пуста' : 'Workspace пуст'}</ExplorerMessage>}
+            {query.isPending && <ExplorerMessage>Loading workspace…</ExplorerMessage>}
+            {!query.isPending && !filteredTree.length && <ExplorerMessage icon={<FilePlus2 />}>{search ? 'No results' : trash ? 'Trash is empty' : 'Workspace is empty'}</ExplorerMessage>}
             {filteredTree.map(node => <TreeRow key={node.path} node={node} depth={0} expanded={effectiveExpanded} selectedId={selectedId} activeDirectory={uploadDirectory} trash={trash} onFolder={toggleFolder} onFile={selectFile} onRename={entry => setOperation({ kind: 'rename', entry })} />)}
           </nav>
           <button className={`${styles.trashToggle} ${trash ? styles.trashActive : ''}`} onClick={() => {
@@ -229,35 +229,35 @@ export function ArtifactsDrawer({ open, close, roomId, fake = false, onAttach }:
             setSelectedId(undefined);
             setSearch('');
             setMobileStep('explorer');
-          }}><Trash2 />{trash ? 'Вернуться к файлам' : 'Корзина'}</button>
+          }}><Trash2 />{trash ? 'Back to files' : 'Trash'}</button>
         </aside>}
         {(!compact || mobileStep === 'viewer') && <main className={styles.viewer}>
           {selected ? <>
             <header className={styles.fileHeader}>
-              {compact && <IconButton className={styles.backButton} aria-label="Назад к файлам" onClick={() => setMobileStep('explorer')}><ArrowLeft /></IconButton>}
+              {compact && <IconButton className={styles.backButton} aria-label="Back to files" onClick={() => setMobileStep('explorer')}><ArrowLeft /></IconButton>}
               <File />
               <div className={styles.fileIdentity}><strong title={selected.name}>{selected.name}</strong><small title={selected.path}>{selected.path} <span>· {formatBytes(selected.size)}</span></small></div>
               <div className={styles.fileActions}>
-                {selected.deleted_at ? <Button size="sm" variant="primary" icon={<RotateCcw />} onClick={() => mutate.mutate(() => roomsApi.restoreEntry(roomId, selected.id))}>Восстановить</Button> : <>
-                  {onAttach && current && <Button className={styles.attachButton} size="sm" variant="primary" icon={<Paperclip />} onClick={attach}><span>Прикрепить</span></Button>}
-                  {current && <a className={styles.iconLink} href={current.url} aria-label="Скачать файл" title="Скачать"><Download /></a>}
+                {selected.deleted_at ? <Button size="sm" variant="primary" icon={<RotateCcw />} onClick={() => mutate.mutate(() => roomsApi.restoreEntry(roomId, selected.id))}>Restore</Button> : <>
+                  {onAttach && current && <Button className={styles.attachButton} size="sm" variant="primary" icon={<Paperclip />} onClick={attach}><span>Attach</span></Button>}
+                  {current && <a className={styles.iconLink} href={current.url} aria-label="Download file" title="Download"><Download /></a>}
                   <div className={styles.menuAnchor} ref={fileMenuRef}>
-                    <IconButton aria-label="Действия с файлом" title="Действия" onClick={() => setFileMenu(value => !value)}><MoreHorizontal /></IconButton>
+                    <IconButton aria-label="File actions" title="Actions" onClick={() => setFileMenu(value => !value)}><MoreHorizontal /></IconButton>
                     {fileMenu && <div className={`${styles.menu} ${styles.fileMenu}`} role="menu">
-                      <button role="menuitem" onClick={() => { setFileMenu(false); setOperation({ kind: 'rename', entry: selected }); }}>Переименовать</button>
-                      <button role="menuitem" onClick={() => { setFileMenu(false); setOperation({ kind: 'move', entry: selected }); }}>Переместить</button>
-                      <button role="menuitem" className={styles.dangerItem} onClick={() => { setFileMenu(false); setOperation({ kind: 'delete', entry: selected }); }}><Trash2 />Удалить</button>
+                      <button role="menuitem" onClick={() => { setFileMenu(false); setOperation({ kind: 'rename', entry: selected }); }}>Rename</button>
+                      <button role="menuitem" onClick={() => { setFileMenu(false); setOperation({ kind: 'move', entry: selected }); }}>Move</button>
+                      <button role="menuitem" className={styles.dangerItem} onClick={() => { setFileMenu(false); setOperation({ kind: 'delete', entry: selected }); }}><Trash2 />Delete</button>
                     </div>}
                   </div>
                 </>}
               </div>
             </header>
             <div className={styles.tabs} role="tablist">
-              <button role="tab" aria-selected={tab === 'preview'} className={tab === 'preview' ? styles.activeTab : ''} onClick={() => setTab('preview')}>Просмотр</button>
-              <button role="tab" aria-selected={tab === 'versions'} className={tab === 'versions' ? styles.activeTab : ''} onClick={() => setTab('versions')}><History />Версии{versions.data ? <em>{versions.data.length}</em> : null}</button>
+              <button role="tab" aria-selected={tab === 'preview'} className={tab === 'preview' ? styles.activeTab : ''} onClick={() => setTab('preview')}>Preview</button>
+              <button role="tab" aria-selected={tab === 'versions'} className={tab === 'versions' ? styles.activeTab : ''} onClick={() => setTab('versions')}><History />Versions{versions.data ? <em>{versions.data.length}</em> : null}</button>
             </div>
             {tab === 'preview' ? <FilePreview selected={selected} current={current} /> : <VersionHistory versions={versions.data ?? []} selected={selected} current={current} compare={compare} setCompare={setCompare} restore={version => mutate.mutate(() => roomsApi.restoreVersion(roomId, version.id))} />}
-          </> : <div className={styles.viewerEmpty}><File /><strong>{trash ? 'Выберите удалённый файл' : 'Выберите файл'}</strong><span>{trash ? 'Его можно просмотреть и восстановить.' : 'Содержимое откроется здесь.'}</span></div>}
+          </> : <div className={styles.viewerEmpty}><File /><strong>{trash ? 'Select a deleted file' : 'Select a file'}</strong><span>{trash ? 'You can preview and restore it.' : 'Its contents will open here.'}</span></div>}
         </main>}
       </div>
     </>}
@@ -300,12 +300,12 @@ function ExplorerMessage({ children, icon }: { children: ReactNode; icon?: React
 }
 
 function FilePreview({ selected, current }: { selected: WorkspaceEntry; current?: WorkspaceVersion }) {
-  if (!current) return <div className={styles.previewFallback}><File /><span>Preview пока недоступен</span></div>;
+  if (!current) return <div className={styles.previewFallback}><File /><span>Preview is not available yet</span></div>;
   if (selected.mime_type === 'text/html') return <div className={styles.preview}><iframe title={selected.name} src={current.preview_url} sandbox="allow-scripts" /></div>;
   if (selected.mime_type === 'text/markdown') return <div className={styles.preview}><MarkdownPreview url={current.preview_url} /></div>;
   if (selected.mime_type.startsWith('image/')) return <div className={`${styles.preview} ${styles.imagePreview}`}><img src={current.preview_url} alt={selected.name} /></div>;
   if (selected.mime_type.startsWith('text/') || selected.mime_type === 'application/json') return <div className={styles.preview}><iframe title={selected.name} src={current.preview_url} sandbox="" /></div>;
-  return <div className={styles.previewFallback}><File /><strong>Preview недоступен</strong><span>{selected.mime_type}</span></div>;
+  return <div className={styles.previewFallback}><File /><strong>Preview unavailable</strong><span>{selected.mime_type}</span></div>;
 }
 
 function VersionHistory({ versions, selected, current, compare, setCompare, restore }: {
@@ -317,12 +317,12 @@ function VersionHistory({ versions, selected, current, compare, setCompare, rest
   restore: (version: WorkspaceVersion) => void;
 }) {
   return <div className={styles.history}>
-    {!versions.length && <div className={styles.viewerEmpty}><History /><strong>Версий пока нет</strong></div>}
+    {!versions.length && <div className={styles.viewerEmpty}><History /><strong>No versions yet</strong></div>}
     {versions.map((version, index) => <div className={styles.versionRow} key={version.id}>
-      <span><strong>{version.id === current?.id ? 'Текущая версия' : `Версия ${versions.length - index}`}</strong><small>{new Date(version.created_at).toLocaleString()} · {version.source}{version.run_ids.length ? ` · ${version.run_ids.length} run` : ''}</small></span>
+      <span><strong>{version.id === current?.id ? 'Current version' : `Version ${versions.length - index}`}</strong><small>{new Date(version.created_at).toLocaleString('en-US')} · {version.source}{version.run_ids.length ? ` · ${version.run_ids.length} run` : ''}</small></span>
       {version.id !== current?.id && <div>
-        {selected.mime_type.startsWith('text/') && <IconButton aria-label="Сравнить версию" title="Сравнить" onClick={() => setCompare(version)}><GitCompare /></IconButton>}
-        <IconButton aria-label="Восстановить версию" title="Восстановить" onClick={() => restore(version)}><RotateCcw /></IconButton>
+        {selected.mime_type.startsWith('text/') && <IconButton aria-label="Compare version" title="Compare" onClick={() => setCompare(version)}><GitCompare /></IconButton>}
+        <IconButton aria-label="Restore version" title="Restore" onClick={() => restore(version)}><RotateCcw /></IconButton>
       </div>}
     </div>)}
     {compare && current && <TextDiff before={compare.preview_url} after={current.preview_url} close={() => setCompare(undefined)} />}
@@ -339,15 +339,15 @@ function OperationDialog({ operation, directory, pending, onClose, onSubmit }: {
   const initial = operation.kind === 'create' ? '' : operation.kind === 'rename' ? operation.entry.name : operation.kind === 'move' ? operation.entry.path : '';
   const [value, setValue] = useState(initial);
   const [validation, setValidation] = useState<string>();
-  const title = operation.kind === 'create' ? 'Создать папку' : operation.kind === 'rename' ? 'Переименовать файл' : operation.kind === 'move' ? 'Переместить файл' : 'Удалить файл';
-  const description = operation.kind === 'delete' ? `«${operation.entry.path}» будет перемещён в корзину.` : operation.kind === 'rename' ? `Текущий путь: ${operation.entry.path}` : operation.kind === 'move' ? 'Укажите новый полный путь вместе с именем файла.' : `Папка будет создана в ${directory || 'корне workspace'}.`;
+  const title = operation.kind === 'create' ? 'Create folder' : operation.kind === 'rename' ? 'Rename file' : operation.kind === 'move' ? 'Move file' : 'Delete file';
+  const description = operation.kind === 'delete' ? `“${operation.entry.path}” will be moved to the trash.` : operation.kind === 'rename' ? `Current path: ${operation.entry.path}` : operation.kind === 'move' ? 'Enter the new full path, including the file name.' : `The folder will be created in ${directory || 'the workspace root'}.`;
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const next = value.trim().replace(/^\/+|\/+$/g, '');
-    if (operation.kind !== 'delete' && !next) return setValidation('Введите непустое значение.');
-    if ((operation.kind === 'create' || operation.kind === 'rename') && next.includes('/')) return setValidation('Имя не должно содержать «/».');
-    if (operation.kind === 'rename' && next === operation.entry.name) return setValidation('Имя не изменилось.');
-    if (operation.kind === 'move' && next === operation.entry.path) return setValidation('Путь не изменился.');
+    if (operation.kind !== 'delete' && !next) return setValidation('Enter a non-empty value.');
+    if ((operation.kind === 'create' || operation.kind === 'rename') && next.includes('/')) return setValidation('The name must not contain “/”.');
+    if (operation.kind === 'rename' && next === operation.entry.name) return setValidation('The name has not changed.');
+    if (operation.kind === 'move' && next === operation.entry.path) return setValidation('The path has not changed.');
     setValidation(undefined);
     try {
       await onSubmit(operation.kind === 'delete' ? undefined : next);
@@ -356,11 +356,11 @@ function OperationDialog({ operation, directory, pending, onClose, onSubmit }: {
     }
   };
   return <Dialog open title={title} description={description} onClose={onClose} footer={<>
-    <Button variant="secondary" disabled={pending} onClick={onClose}>Отмена</Button>
-    <Button variant={operation.kind === 'delete' ? 'danger' : 'primary'} disabled={pending} type="submit" form="workspace-operation">{pending ? 'Сохраняем…' : operation.kind === 'delete' ? 'Переместить в корзину' : 'Сохранить'}</Button>
+    <Button variant="secondary" disabled={pending} onClick={onClose}>Cancel</Button>
+    <Button variant={operation.kind === 'delete' ? 'danger' : 'primary'} disabled={pending} type="submit" form="workspace-operation">{pending ? 'Saving…' : operation.kind === 'delete' ? 'Move to trash' : 'Save'}</Button>
   </>}>
     <form id="workspace-operation" className={styles.operationForm} onSubmit={submit}>
-      {operation.kind !== 'delete' && <label><span>{operation.kind === 'move' ? 'Новый путь' : operation.kind === 'rename' ? 'Новое имя' : 'Имя папки'}</span><Input autoFocus value={value} onChange={event => { setValue(event.target.value); setValidation(undefined); }} aria-invalid={Boolean(validation)} /></label>}
+      {operation.kind !== 'delete' && <label><span>{operation.kind === 'move' ? 'New path' : operation.kind === 'rename' ? 'New name' : 'Folder name'}</span><Input autoFocus value={value} onChange={event => { setValue(event.target.value); setValidation(undefined); }} aria-invalid={Boolean(validation)} /></label>}
       {validation && <small className={styles.validation}>{validation}</small>}
     </form>
   </Dialog>;
@@ -384,7 +384,7 @@ function TextDiff({ before, after, close }: { before: string; after: string; clo
     return () => controller.abort();
   }, [before, after]);
   const left = values[0].split('\n'), right = values[1].split('\n'), length = Math.max(left.length, right.length);
-  return <section className={styles.diff}><header><strong>Изменения относительно выбранной версии</strong><IconButton aria-label="Закрыть сравнение" onClick={close}><X /></IconButton></header><pre>{Array.from({ length }, (_, index) => left[index] === right[index] ? `  ${right[index] ?? ''}` : `- ${left[index] ?? ''}\n+ ${right[index] ?? ''}`).join('\n')}</pre></section>;
+  return <section className={styles.diff}><header><strong>Changes from the selected version</strong><IconButton aria-label="Close comparison" onClick={close}><X /></IconButton></header><pre>{Array.from({ length }, (_, index) => left[index] === right[index] ? `  ${right[index] ?? ''}` : `- ${left[index] ?? ''}\n+ ${right[index] ?? ''}`).join('\n')}</pre></section>;
 }
 
 function useCompactWorkspace() {
@@ -400,7 +400,7 @@ function useCompactWorkspace() {
 
 async function fetchDeletedWorkspace(roomId: string, signal?: AbortSignal): Promise<RoomWorkspace> {
   const response = await fetch(`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace?deleted=true`, { signal });
-  if (!response.ok) throw new Error(`Не удалось загрузить корзину: HTTP ${response.status}`);
+  if (!response.ok) throw new Error(`Failed to load trash: HTTP ${response.status}`);
   return response.json() as Promise<RoomWorkspace>;
 }
 
@@ -409,9 +409,9 @@ function toAttachment(version: WorkspaceVersion): WorkspaceAttachment {
 }
 
 function formatBytes(value: number) {
-  if (value < 1024) return `${value} Б`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} КБ`;
-  return `${(value / 1024 / 1024).toFixed(1)} МБ`;
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function parentPath(path: string) {

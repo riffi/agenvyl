@@ -15,21 +15,21 @@ export function AttachmentPicker({open,roomId,selected,onClose,onConfirm,onUploa
   const visible=useMemo(()=>{const normalized=search.trim().toLowerCase();const values=normalized?files.filter(item=>item.path.toLowerCase().includes(normalized)):files;return tab==='recent'?values.slice(0,12):values},[files,search,tab]);
   const toggle=(id:string)=>setChosen(current=>{const next=new Set(current);if(next.has(id))next.delete(id);else if(next.size<MAX_MESSAGE_ATTACHMENTS)next.add(id);return next});
   const confirm=()=>{onConfirm(files.flatMap(entry=>chosen.has(entry.current_version_id??'')?[attachmentFromEntry(roomId,entry)!]:[]));onClose()};
-  return <Dialog open={open} title="Прикрепить файлы" description="Загрузите новые файлы или выберите актуальные версии из workspace." onClose={onClose} footer={<><small>Выбрано {chosen.size} из {MAX_MESSAGE_ATTACHMENTS}</small><Button variant="secondary" onClick={onClose}>Отмена</Button><Button variant="primary" onClick={confirm}>Готово</Button></>}>
+  return <Dialog open={open} title="Attach files" description="Upload new files or select current versions from the workspace." onClose={onClose} footer={<><small>Selected {chosen.size} of {MAX_MESSAGE_ATTACHMENTS}</small><Button variant="secondary" onClick={onClose}>Cancel</Button><Button variant="primary" onClick={confirm}>Done</Button></>}>
     <div className={styles.picker}>
       <input ref={inputRef} hidden type="file" multiple onChange={event=>{if(event.target.files?.length){onUpload([...event.target.files]);onClose()}event.currentTarget.value=''}}/>
-      <Button className={styles.upload} variant="secondary" icon={<Upload/>} onClick={()=>inputRef.current?.click()}>Загрузить с устройства</Button>
-      <label className={styles.search}><Search/><input value={search} onChange={event=>setSearch(event.target.value)} placeholder="Поиск по имени или пути"/></label>
-      <div className={styles.tabs}><button type="button" className={tab==='recent'?styles.active:''} onClick={()=>setTab('recent')}><History/>Недавние</button><button type="button" className={tab==='browse'?styles.active:''} onClick={()=>setTab('browse')}><FolderTree/>Все файлы</button></div>
+      <Button className={styles.upload} variant="secondary" icon={<Upload/>} onClick={()=>inputRef.current?.click()}>Upload from device</Button>
+      <label className={styles.search}><Search/><input value={search} onChange={event=>setSearch(event.target.value)} placeholder="Search by name or path"/></label>
+      <div className={styles.tabs}><button type="button" className={tab==='recent'?styles.active:''} onClick={()=>setTab('recent')}><History/>Recent</button><button type="button" className={tab==='browse'?styles.active:''} onClick={()=>setTab('browse')}><FolderTree/>All files</button></div>
       <div className={styles.list}>
-        {query.isPending&&<p>Загружаем workspace…</p>}
-        {query.isError&&<p>Не удалось загрузить workspace.</p>}
-        {!query.isPending&&!visible.length&&<p>{search?'Ничего не найдено.':'В workspace пока нет файлов.'}</p>}
+        {query.isPending&&<p>Loading workspace…</p>}
+        {query.isError&&<p>Failed to load workspace.</p>}
+        {!query.isPending&&!visible.length&&<p>{search?'No files found.':'The workspace has no files yet.'}</p>}
         {visible.map(entry=><label key={entry.id} className={chosen.has(entry.current_version_id!)?styles.chosen:''} style={tab==='browse'?{paddingLeft:8+Math.min(4,entry.path.split('/').length-1)*18}:undefined}><input type="checkbox" checked={chosen.has(entry.current_version_id!)} onChange={()=>toggle(entry.current_version_id!)}/><i><File/></i><span><strong>{entry.name}</strong><small>{entry.path} · {formatBytes(entry.size)}</small></span></label>)}
       </div>
-      <button type="button" className={styles.workspaceHint} onClick={()=>setTab('browse')}><Paperclip/>Исторические версии доступны в полной панели workspace</button>
+      <button type="button" className={styles.workspaceHint} onClick={()=>setTab('browse')}><Paperclip/>Previous versions are available in the full workspace panel</button>
     </div>
   </Dialog>;
 }
 
-function formatBytes(value:number){if(value<1024)return`${value} Б`;if(value<1024*1024)return`${(value/1024).toFixed(1)} КБ`;return`${(value/1024/1024).toFixed(1)} МБ`;}
+function formatBytes(value:number){if(value<1024)return`${value} B`;if(value<1024*1024)return`${(value/1024).toFixed(1)} KB`;return`${(value/1024/1024).toFixed(1)} MB`;}

@@ -42,14 +42,14 @@ export class CreateMessageRound {
         await personas.setEffectiveModel(persona.id,model.label??model.id);
       }
     }
-    if((command.attachmentVersionIds?.length??0)>10)throw new AppError('too_many_attachments',400,'К сообщению можно прикрепить не более 10 файлов');
+    if((command.attachmentVersionIds?.length??0)>10)throw new AppError('too_many_attachments',400,'A message can include no more than 10 attachments');
     const addressedToAll=targets.length===available.length&&/(^|[^\p{L}\p{N}_])@all(?![\p{L}\p{N}_-])/iu.test(text);
-    let round;try{round=await messages.createRound(command.roomId, text, targets, command.messageId,command.attachmentVersionIds??[],addressedToAll);}catch(error){if(error instanceof Error&&error.message==='attachment_unavailable')throw new AppError('attachment_unavailable',409,'Версия вложения недоступна');throw error;}
+    let round;try{round=await messages.createRound(command.roomId, text, targets, command.messageId,command.attachmentVersionIds??[],addressedToAll);}catch(error){if(error instanceof Error&&error.message==='attachment_unavailable')throw new AppError('attachment_unavailable',409,'Attachment version is unavailable');throw error;}
     if (round.duplicate) return { status: 'duplicate' as const, message: round.message };
     for (const event of round.events) events.publishPersisted(command.roomId, event);
     for (const item of round.runs) activeRuns.add({ id: item.id, messageId:round.message.id, roomId: command.roomId, personaVersionId: item.version.id, personaHandle: item.persona.handle, requestedModel: item.version.requested_model!, harnessInstanceId:item.version.harness_instance_id,harnessType:item.version.harness_type,modelId:item.version.model_id,modeId:item.version.mode_id,conversationHistory: item.history,correlationId:command.correlationId, terminal: false,started:false,refreshContext:true });
-    const attachmentLines=await Promise.all((round.message.attachments??[]).map(async item=>`- ${item.path} (${item.mime_type}, версия ${item.version_id}): ${this.dependencies.roomWorkspace?await this.dependencies.roomWorkspace.snapshotAgentPath(command.roomId,item.version_id):item.version_id}\n  Актуальный путь: ${this.dependencies.roomWorkspace?.agentRoomPath(command.roomId)}/${item.path}`));
-    const attachmentPrompt=attachmentLines.length?`\n\nВложения пользователя. Для задачи читай зафиксированные пути, даже если актуальный файл позже изменится:\n${attachmentLines.join('\n')}`:'';
+    const attachmentLines=await Promise.all((round.message.attachments??[]).map(async item=>`- ${item.path} (${item.mime_type}, version ${item.version_id}): ${this.dependencies.roomWorkspace?await this.dependencies.roomWorkspace.snapshotAgentPath(command.roomId,item.version_id):item.version_id}\n  Current path: ${this.dependencies.roomWorkspace?.agentRoomPath(command.roomId)}/${item.path}`));
+    const attachmentPrompt=attachmentLines.length?`\n\nUser attachments. Read the captured paths for this task even if the current file changes later:\n${attachmentLines.join('\n')}`:'';
     for (const item of round.runs) runExecutor.start(item.id, `${text}${attachmentPrompt}`);
     return { status: 'created' as const, message: round.message };
   }

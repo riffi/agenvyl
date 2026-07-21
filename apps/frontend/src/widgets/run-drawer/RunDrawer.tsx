@@ -7,30 +7,30 @@ import { Avatar, Drawer } from '../../shared/ui';
 import styles from './RunDrawer.module.css';
 
 const statusCopy:Record<RunStatus,{title:string;description:string;tone:string}>={
-  queued:{title:'Ожидает запуска',description:'Ответ добавлен в очередь и скоро начнёт выполняться.',tone:'active'},
-  streaming:{title:'Готовит ответ',description:'Агент работает над вашим запросом.',tone:'active'},
-  stopping:{title:'Останавливается',description:'Завершаем текущую работу агента.',tone:'warning'},
-  waiting_approval:{title:'Требуется подтверждение',description:'Агент ждёт разрешения, прежде чем продолжить.',tone:'warning'},
-  waiting_clarification:{title:'Нужно уточнение',description:'Агенту требуется дополнительная информация.',tone:'warning'},
-  completed:{title:'Ответ готов',description:'Агент успешно завершил работу.',tone:'success'},
-  failed:{title:'Не удалось завершить',description:'Во время подготовки ответа произошла ошибка.',tone:'error'},
-  cancelled:{title:'Запуск отменён',description:'Работа агента была остановлена.',tone:'neutral'},
+  queued:{title:'Waiting to start',description:'The response is queued and will start soon.',tone:'active'},
+  streaming:{title:'Preparing response',description:'The agent is working on your request.',tone:'active'},
+  stopping:{title:'Stopping',description:'Finishing the agent’s current work.',tone:'warning'},
+  waiting_approval:{title:'Approval required',description:'The agent needs permission before it can continue.',tone:'warning'},
+  waiting_clarification:{title:'Clarification required',description:'The agent needs more information.',tone:'warning'},
+  completed:{title:'Response ready',description:'The agent completed the work successfully.',tone:'success'},
+  failed:{title:'Could not complete',description:'An error occurred while preparing the response.',tone:'error'},
+  cancelled:{title:'Run cancelled',description:'The agent’s work was stopped.',tone:'neutral'},
 };
 
-const toolStatus:Record<ToolActivity['status'],string>={started:'Запущено',progress:'Выполняется',completed:'Готово'};
+const toolStatus:Record<ToolActivity['status'],string>={started:'Started',progress:'In progress',completed:'Completed'};
 
 function modelInfo(run:Run|undefined,persona:Persona|undefined,harnessCatalog:HarnessCatalog|undefined){
   const route=run?.modelId??run?.requestedModel??persona?.model_id??persona?.requested_model;
   const full=(run?harnessCatalog?.instances.find(instance=>instance.id===run.harnessInstanceId)?.models.find(model=>model.id===run.modelId)?.label:undefined)??(!run?.requestedModel?persona?.effective_model:null)??route;
-  return{route,full,short:full?.split('/').at(-1)??'Модель не указана'};
+  return{route,full,short:full?.split('/').at(-1)??'Model not specified'};
 }
 
 const connectorStateCopy={
-  active:'Connector выполняет запуск',
-  degraded:'Connector ждёт восстановления provider',
-  terminal:'Connector завершил запуск',
-  unavailable:'Connector недоступен',
-  lost:'Выполнение Connector потеряно',
+  active:'Connector is running the task',
+  degraded:'Connector is waiting for the provider to recover',
+  terminal:'Connector completed the run',
+  unavailable:'Connector is unavailable',
+  lost:'Connector lost the run',
 } as const;
 
 function StatusGlyph({status}:{status:RunStatus}) {
@@ -47,7 +47,7 @@ function readableToolDetail(detail:string) {
   if(!detail.trim())return '';
   try{return JSON.stringify(JSON.parse(detail),null,2)}catch{return detail}
 }
-function tokens(value:number|undefined){return value===undefined?'не передано':new Intl.NumberFormat('ru-RU').format(value);}
+function tokens(value:number|undefined){return value===undefined?'not reported':new Intl.NumberFormat('en-US').format(value);}
 
 function ToolItem({tool}:{tool:ToolActivity}) {
   const detail=readableToolDetail(tool.detail);
@@ -61,11 +61,11 @@ function ToolItem({tool}:{tool:ToolActivity}) {
         <em>{toolStatus[tool.status]}</em>
       </summary>
       <div className={styles['tool-details']}>
-        {input&&<span><small>Входные данные</small><pre>{input}</pre></span>}
-        {detail&&<span><small>Подробности</small><pre>{detail}</pre></span>}
-        <span><small>ID вызова</small><code>{tool.id}</code></span>
+        {input&&<span><small>Input</small><pre>{input}</pre></span>}
+        {detail&&<span><small>Details</small><pre>{detail}</pre></span>}
+        <span><small>Call ID</small><code>{tool.id}</code></span>
       </div>
-    </details>:<div className={styles['tool-summary']}><span><strong>{tool.name}</strong><small>Дополнительные сведения не переданы.</small></span><em>{toolStatus[tool.status]}</em></div>}
+    </details>:<div className={styles['tool-summary']}><span><strong>{tool.name}</strong><small>No additional details were reported.</small></span><em>{toolStatus[tool.status]}</em></div>}
   </li>;
 }
 
@@ -89,31 +89,31 @@ export function RunDrawer({run,persona,harnessCatalog,close}:{run?:Run;persona?:
           <span><strong>{state.title}</strong><small>{state.description}</small></span>
         </section>
 
-        {run.upstreamStatus&&<section className={`${styles['status-card']} ${styles.warning}`} aria-live="polite"><TriangleAlert/><span><strong>Провайдер повторяет запрос</strong><small>Запуск остаётся активным; состояние модели не влияет на доступность harness.</small></span></section>}
+        {run.upstreamStatus&&<section className={`${styles['status-card']} ${styles.warning}`} aria-live="polite"><TriangleAlert/><span><strong>Provider is retrying the request</strong><small>The run remains active; model status does not affect harness availability.</small></span></section>}
 
-        {run.connector&&<section className={`${styles['connector-card']} ${styles[run.connector.state]}`}><Settings2/><span><strong>{connectorStateCopy[run.connector.state]}</strong><small>{run.connector.checkpointed?'Состояние подтверждено durable checkpoint в Core.':'Durable checkpoint не был создан.'}</small></span></section>}
+        {run.connector&&<section className={`${styles['connector-card']} ${styles[run.connector.state]}`}><Settings2/><span><strong>{connectorStateCopy[run.connector.state]}</strong><small>{run.connector.checkpointed?'State confirmed by a durable checkpoint in Core.':'No durable checkpoint was created.'}</small></span></section>}
 
-        {run.error&&<section className={styles['error-card']}><CircleX/><span><strong>Что произошло</strong><p>{run.error}</p></span></section>}
+        {run.error&&<section className={styles['error-card']}><CircleX/><span><strong>What happened</strong><p>{run.error}</p></span></section>}
 
         {run.request&&<section className={styles['request-card']}>
           {run.request.kind==='approval'?<TriangleAlert/>:<CircleHelp/>}
-          <span><strong>{run.request.kind==='approval'?'Запрошено подтверждение':'Запрошено уточнение'}</strong><p>{run.request.prompt}</p>{run.request.resolved&&<small>Ответ получен: {run.request.resolved}</small>}</span>
+          <span><strong>{run.request.kind==='approval'?'Approval requested':'Clarification requested'}</strong><p>{run.request.prompt}</p>{run.request.resolved&&<small>Response received: {run.request.resolved}</small>}</span>
         </section>}
 
         <section className={styles.activity}>
-          <h3><Wrench/>Активность</h3>
-          {run.tools.length?<ol>{run.tools.map(tool=><ToolItem key={tool.id} tool={tool}/>)}</ol>:<div className={styles.empty}><Wrench/><span><strong>{active?'Пока без дополнительных действий':'Дополнительные инструменты не использовались'}</strong><small>{active?'Активность появится здесь по мере работы агента.':'Ответ был подготовлен без вызова инструментов.'}</small></span></div>}
+          <h3><Wrench/>Activity</h3>
+          {run.tools.length?<ol>{run.tools.map(tool=><ToolItem key={tool.id} tool={tool}/>)}</ol>:<div className={styles.empty}><Wrench/><span><strong>{active?'No additional actions yet':'No additional tools were used'}</strong><small>{active?'Activity will appear here as the agent works.':'The response was prepared without tool calls.'}</small></span></div>}
         </section>
 
         <details className={styles.technical}>
-          <summary><Settings2/>Техническая информация</summary>
+          <summary><Settings2/>Technical information</summary>
           <dl>
             <div><dt>Harness</dt><dd><code>{run.harnessInstanceId} · {run.harnessType}</code></dd></div>
-            <div><dt>Модель snapshot</dt><dd><code>{run.modelId}</code></dd></div>
-            <div><dt>Режим snapshot</dt><dd><code>{run.modeId??'не задан'}</code></dd></div>
-            <div><dt>Попытка</dt><dd><code>{run.attemptNumber??1}</code></dd></div>
-            <div><dt>Маршрут модели</dt><dd><code>{model.route??'не указан'}</code></dd></div>
-            <div><dt>Системный статус</dt><dd><code>{run.status}</code></dd></div>
+            <div><dt>Model snapshot</dt><dd><code>{run.modelId}</code></dd></div>
+            <div><dt>Mode snapshot</dt><dd><code>{run.modeId??'not set'}</code></dd></div>
+            <div><dt>Attempt</dt><dd><code>{run.attemptNumber??1}</code></dd></div>
+            <div><dt>Model route</dt><dd><code>{model.route??'not specified'}</code></dd></div>
+            <div><dt>System status</dt><dd><code>{run.status}</code></dd></div>
             {run.usage&&<>
               <div><dt>Input tokens</dt><dd><code>{tokens(run.usage.inputTokens)}</code></dd></div>
               <div><dt>Output tokens</dt><dd><code>{tokens(run.usage.outputTokens)}</code></dd></div>
@@ -122,7 +122,7 @@ export function RunDrawer({run,persona,harnessCatalog,close}:{run?:Run;persona?:
               {run.usage.cacheReadTokens!==undefined&&<div><dt>Cache read tokens</dt><dd><code>{tokens(run.usage.cacheReadTokens)}</code></dd></div>}
               {run.usage.cacheWriteTokens!==undefined&&<div><dt>Cache write tokens</dt><dd><code>{tokens(run.usage.cacheWriteTokens)}</code></dd></div>}
             </>}
-            <div className={styles['run-id']}><dt>ID запуска</dt><dd><code>{run.id}</code><button type="button" onClick={()=>void copyId()} title="Скопировать ID">{copied?<Check/>:<Copy/>}<span>{copied?'Скопировано':'Скопировать'}</span></button></dd></div>
+            <div className={styles['run-id']}><dt>Run ID</dt><dd><code>{run.id}</code><button type="button" onClick={()=>void copyId()} title="Copy ID">{copied?<Check/>:<Copy/>}<span>{copied?'Copied':'Copy'}</span></button></dd></div>
           </dl>
         </details>
       </div>}

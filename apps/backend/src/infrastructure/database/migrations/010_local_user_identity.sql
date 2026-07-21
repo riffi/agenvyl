@@ -7,7 +7,7 @@ CREATE TABLE local_user_profiles (
 );
 
 INSERT INTO local_user_profiles(id,display_name,handle,created_at,updated_at)
-SELECT 'local-user','Пользователь',
+SELECT 'local-user','User',
   CASE WHEN EXISTS(SELECT 1 FROM personas WHERE lower(handle)='user')
     THEN 'user_'||substr(md5(clock_timestamp()::text),1,8) ELSE 'user' END,
   now(),now();

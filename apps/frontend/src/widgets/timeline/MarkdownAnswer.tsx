@@ -87,7 +87,7 @@ export const MarkdownAnswer = memo(({
           return <MentionLink handle={handle} personas={personas} onMentionPersona={onMentionPersona} />;
         },
         img: ({ node: _node, src, alt }) => {
-          if (!src?.startsWith('workspace:')) return <EmbedError title="Изображение не сохранено в workspace" detail={alt?.trim() || 'Внешние изображения не публикуются напрямую'} />;
+          if (!src?.startsWith('workspace:')) return <EmbedError title="Image is not stored in the workspace" detail={alt?.trim() || 'External images are not published directly'} />;
 
           const raw = src.slice('workspace:'.length);
           let imagePath = raw;
@@ -98,10 +98,10 @@ export const MarkdownAnswer = memo(({
           }
           const embed = run.embeds?.find(item => item.path === imagePath || item.path === raw);
 
-          if (!terminalStatuses.has(run.status)) return <span className={styles.placeholder}><ImageIcon/><span>Изображение появится после завершения ответа<small>{imagePath}</small></span></span>;
+          if (!terminalStatuses.has(run.status)) return <span className={styles.placeholder}><ImageIcon/><span>The image will appear when the response is complete<small>{imagePath}</small></span></span>;
           if (embed?.status !== 'resolved' || !embed.attachment) {
-            const reason = run.status !== 'completed' ? 'ответ не завершён' : embedError(embed?.error);
-            return <EmbedError title="Не удалось показать изображение" detail={`${imagePath} · ${reason}`} />;
+            const reason = run.status !== 'completed' ? 'response did not complete' : embedError(embed?.error);
+            return <EmbedError title="Could not display image" detail={`${imagePath} · ${reason}`} />;
           }
 
           const caption = alt?.trim() || embed.attachment.name;
@@ -110,8 +110,8 @@ export const MarkdownAnswer = memo(({
               className={styles.stage}
               type="button"
               onClick={event => openGallery(embed.path, event.currentTarget)}
-              aria-label={`Открыть изображение «${caption}» в полноэкранном просмотре`}
-              title={`Открыть ${embed.attachment.name}`}
+              aria-label={`Open image “${caption}” in full-screen view`}
+              title={`Open ${embed.attachment.name}`}
             >
               <img className={styles.image} src={embed.attachment.preview_url} alt={caption} loading="lazy" />
             </button>
@@ -132,13 +132,13 @@ export const MarkdownAnswer = memo(({
       carousel={{ finite: true, imageFit: 'contain' }}
       controller={{ aria: true, closeOnBackdropClick: true }}
       captions={{ descriptionTextAlign: 'center', descriptionMaxLines: 2, showToggle: false }}
-      counter={{ separator: ' из ' }}
+      counter={{ separator: ' of ' }}
       labels={{
-        Close: 'Закрыть просмотр',
-        Next: 'Следующее изображение',
-        Previous: 'Предыдущее изображение',
-        'Zoom in': 'Увеличить',
-        'Zoom out': 'Уменьшить',
+        Close: 'Close viewer',
+        Next: 'Next image',
+        Previous: 'Previous image',
+        'Zoom in': 'Zoom in',
+        'Zoom out': 'Zoom out',
       }}
     />
   </>;
@@ -153,11 +153,11 @@ const EmbedError = ({ title, detail }: { title: string; detail: string }) => <sp
 
 const embedError = (error?: RunEmbedError) => {
   switch (error) {
-    case 'invalid_path': return 'некорректный путь';
-    case 'not_found': return 'файл не найден';
-    case 'unsupported_type': return 'формат не поддерживается';
-    case 'invalid_content': return 'содержимое не является валидным изображением';
-    case 'limit_exceeded': return 'превышен лимит 10 изображений';
-    default: return 'вложение не зафиксировано';
+    case 'invalid_path': return 'invalid path';
+    case 'not_found': return 'file not found';
+    case 'unsupported_type': return 'unsupported format';
+    case 'invalid_content': return 'content is not a valid image';
+    case 'limit_exceeded': return 'the 10-image limit was exceeded';
+    default: return 'attachment was not captured';
   }
 };

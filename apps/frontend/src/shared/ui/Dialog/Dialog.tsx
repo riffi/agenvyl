@@ -9,7 +9,7 @@ export function Dialog({ open = true, title, description, children, footer, onCl
   const closeOnBackdrop = (event: MouseEvent<HTMLDivElement>) => { if (event.target === event.currentTarget) onClose(); };
   return <div className={styles.backdrop} role="presentation" onMouseDown={closeOnBackdrop}>
     <section className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby={titleId}>
-      <header className={styles.header}><span><h2 id={titleId}>{title}</h2>{description && <p>{description}</p>}</span><Button variant="ghost" className={styles.close} onClick={onClose} aria-label="Закрыть">×</Button></header>
+      <header className={styles.header}><span><h2 id={titleId}>{title}</h2>{description && <p>{description}</p>}</span><Button variant="ghost" className={styles.close} onClick={onClose} aria-label="Close">×</Button></header>
       <div className={styles.body}>{children}</div>
       {footer && <footer className={styles.footer}>{footer}</footer>}
     </section>

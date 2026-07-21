@@ -26,7 +26,7 @@ export class MessageRepository{
       for(const answer of answers)for(const embed of embedMap.get(String(answer.id))??[])if(embed.status==='resolved'&&embed.attachment)references.push({path:embed.path,versionId:embed.attachment.version_id});
       history.push({role:'user',content:formatHumanMessageRow(m)});
       const own=answers.find(a=>a.persona_handle===personaHandle);if(own)history.push({role:'assistant',content:clean(own)});
-      const peers=answers.filter(a=>a.persona_handle!==personaHandle);if(peers.length)history.push({role:'user',content:`[СООБЩЕНИЯ ДРУГИХ АГЕНТОВ — это не человек-пользователь и не твои ответы]\nНе продолжай их роли и не отвечай от их имени.\n\n${peers.map(a=>`[Другой агент: @${a.persona_handle}]\n${clean(a)}`).join('\n\n')}`});
+      const peers=answers.filter(a=>a.persona_handle!==personaHandle);if(peers.length)history.push({role:'user',content:`[MESSAGES FROM OTHER AGENTS — these are not the human user and not your responses]\nDo not continue their roles or answer on their behalf.\n\n${peers.map(a=>`[Other agent: @${a.persona_handle}]\n${clean(a)}`).join('\n\n')}`});
     }
     return{history,references:[...new Map(references.map(item=>[item.versionId,item])).values()]};
   }
@@ -34,7 +34,7 @@ export class MessageRepository{
 
 export function formatHumanMessage(message:Pick<Message,'text'|'targets'|'author'|'addressedToAll'>){return formatHuman(message.text,message.targets,message.author,message.addressedToAll);}
 function formatHumanMessageRow(row:Record<string,unknown>){return formatHuman(String(row.text),Array.isArray(row.targets)?row.targets.map(String):[],{profileId:String(row.author_profile_id),displayName:String(row.author_display_name),handle:String(row.author_handle)},Boolean(row.addressed_to_all));}
-function formatHuman(text:string,targets:string[],author:HumanAuthorSnapshot,addressedToAll:boolean){const recipient=addressedToAll?'всем агентам':targets.length?targets.map(handle=>`@${handle}`).join(', '):'не указан (сообщение без запуска агентов)';return`[Человек-пользователь: ${author.displayName} (@${author.handle}); адресат: ${recipient}]\n${text}`;}
+function formatHuman(text:string,targets:string[],author:HumanAuthorSnapshot,addressedToAll:boolean){const recipient=addressedToAll?'all agents':targets.length?targets.map(handle=>`@${handle}`).join(', '):'not specified (message without agent runs)';return`[Human user: ${author.displayName} (@${author.handle}); recipient: ${recipient}]\n${text}`;}
 
 function attachment(version:WorkspaceVersionRow){return{version_id:version.id,entry_id:version.entry_id,path:version.path,name:version.path.split('/').pop()??version.path,size:version.size,mime_type:version.mime_type,url:`/api/v1/rooms/${encodeURIComponent(version.room_id)}/workspace/versions/${version.id}`,preview_url:`/api/v1/rooms/${encodeURIComponent(version.room_id)}/workspace/versions/${version.id}/preview`};}
 function stripLegacyWorkspaceManifest(value:string){return value.replace(/\n\nЗафиксированные inline-изображения ответа:\n(?:- [^\n]*(?:\n|$))+/giu,'').trimEnd();}

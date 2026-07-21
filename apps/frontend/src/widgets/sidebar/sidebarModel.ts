@@ -13,9 +13,9 @@ export function groupRooms(rooms: Room[], now = new Date()): RoomListItem[] {
   previousWeek.setDate(previousWeek.getDate() - 7);
 
   const groups = [
-    { id: 'today', label: 'Сегодня', rooms: [] as Room[] },
-    { id: 'week', label: 'Предыдущие 7 дней', rooms: [] as Room[] },
-    { id: 'earlier', label: 'Ранее', rooms: [] as Room[] },
+    { id: 'today', label: 'Today', rooms: [] as Room[] },
+    { id: 'week', label: 'Previous 7 days', rooms: [] as Room[] },
+    { id: 'earlier', label: 'Earlier', rooms: [] as Room[] },
   ];
 
   for (const room of rooms) {

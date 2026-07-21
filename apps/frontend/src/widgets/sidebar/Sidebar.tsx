@@ -78,7 +78,7 @@ export function Sidebar({ open, close, view, openPersonas, rooms, selectedRoomId
   };
 
   const requestDelete = async (room: Room) => {
-    if (!confirm(`Переместить комнату «${room.title}» в корзину?\n\nИстория, ответы и workspace сохранятся и могут быть восстановлены.`)) return;
+    if (!confirm(`Move room “${room.title}” to the trash?\n\nIts history, responses, and workspace will be preserved and can be restored.`)) return;
     setDeleting(room.id);
     setRoomError(undefined);
     try {
@@ -113,15 +113,15 @@ export function Sidebar({ open, close, view, openPersonas, rooms, selectedRoomId
       <div className={styles.brand}>
         <span className={styles.logo} aria-hidden>A</span>
         <strong>agenvyl</strong>
-        <IconButton className={styles.searchButton} aria-label="Поиск комнат" title="Поиск комнат (Ctrl/Cmd+K)" onClick={openSearch}><Search /></IconButton>
+        <IconButton className={styles.searchButton} aria-label="Search rooms" title="Search rooms (Ctrl/Cmd+K)" onClick={openSearch}><Search /></IconButton>
       </div>
 
-      <nav className={styles.mainNav} aria-label="Основная навигация">
-        <button type="button" onClick={createRoom}><Plus /> <span>Новая комната</span></button>
-        <button type="button" className={view === 'personas' ? styles.active : ''} onClick={openPersonas}><Users /> <span>Персоны</span></button>
+      <nav className={styles.mainNav} aria-label="Main navigation">
+        <button type="button" onClick={createRoom}><Plus /> <span>New room</span></button>
+        <button type="button" className={view === 'personas' ? styles.active : ''} onClick={openPersonas}><Users /> <span>Agents</span></button>
       </nav>
 
-      <section className={styles.history} aria-label="История комнат">
+      <section className={styles.history} aria-label="Room history">
         {roomError && <Alert tone="error">{roomError}</Alert>}
         {roomList.length ? <div ref={scrollRef} className={styles.roomScroll} onScroll={() => setRoomMenu(undefined)}>
           <div className={styles.virtualList} style={{ height: virtualizer.getTotalSize() }}>
@@ -132,27 +132,27 @@ export function Sidebar({ open, close, view, openPersonas, rooms, selectedRoomId
               const selected = view === 'chat' && item.room.id === selectedRoomId;
               return <div key={item.id} className={`${styles.roomRow} ${selected ? styles.selected : ''}`} style={position}>
                 <button type="button" className={styles.room} title={item.room.title} onClick={() => chooseRoom(item.room)}>{item.room.title}</button>
-                <IconButton className={styles.roomMenuButton} aria-label={`Действия комнаты ${item.room.title}`} aria-haspopup="menu" aria-expanded={roomMenu?.room.id === item.room.id} onClick={event => openRoomMenu(item.room, event)}><MoreHorizontal /></IconButton>
+                <IconButton className={styles.roomMenuButton} aria-label={`Actions for room ${item.room.title}`} aria-haspopup="menu" aria-expanded={roomMenu?.room.id === item.room.id} onClick={event => openRoomMenu(item.room, event)}><MoreHorizontal /></IconButton>
               </div>;
             })}
           </div>
-        </div> : <p className={styles.emptyRooms}>Комнат пока нет</p>}
+        </div> : <p className={styles.emptyRooms}>No rooms yet</p>}
       </section>
 
-      <button ref={profileButtonRef} type="button" className={styles.profile} onClick={toggleProfileMenu} aria-label="Меню профиля пользователя" aria-haspopup="menu" aria-expanded={Boolean(profileMenu)}>
-        <b>{userProfile?.displayName.trim().slice(0, 1).toUpperCase() || 'П'}</b>
-        <span><strong>{userProfile?.displayName ?? (userProfileLoading ? 'Загрузка…' : 'Пользователь')}</strong><small>{userProfile ? `@${userProfile.handle}` : 'профиль пользователя'}</small></span>
+      <button ref={profileButtonRef} type="button" className={styles.profile} onClick={toggleProfileMenu} aria-label="User profile menu" aria-haspopup="menu" aria-expanded={Boolean(profileMenu)}>
+        <b>{userProfile?.displayName.trim().slice(0, 1).toUpperCase() || 'U'}</b>
+        <span><strong>{userProfile?.displayName ?? (userProfileLoading ? 'Loading…' : 'User')}</strong><small>{userProfile ? `@${userProfile.handle}` : 'user profile'}</small></span>
         <MoreHorizontal />
       </button>
 
       {roomMenu && <Portal><div className={styles.menuLayer} onMouseDown={() => setRoomMenu(undefined)}><div className={styles.contextMenu} role="menu" style={{ top: roomMenu.top, left: roomMenu.left }} onMouseDown={event => event.stopPropagation()}>
-        <button type="button" role="menuitem" onClick={() => { setRenaming(roomMenu.room); setRoomMenu(undefined); }}>Переименовать</button>
-        <button type="button" role="menuitem" className={styles.danger} disabled={deleting === roomMenu.room.id} onClick={() => { const room = roomMenu.room; setRoomMenu(undefined); void requestDelete(room); }}><Trash2 /> Удалить…</button>
+        <button type="button" role="menuitem" onClick={() => { setRenaming(roomMenu.room); setRoomMenu(undefined); }}>Rename</button>
+        <button type="button" role="menuitem" className={styles.danger} disabled={deleting === roomMenu.room.id} onClick={() => { const room = roomMenu.room; setRoomMenu(undefined); void requestDelete(room); }}><Trash2 /> Delete…</button>
       </div></div></Portal>}
 
       {profileMenu && <Portal><div className={styles.menuLayer} onMouseDown={() => setProfileMenu(undefined)}><div className={`${styles.contextMenu} ${styles.profileMenu}`} role="menu" style={profileMenu} onMouseDown={event => event.stopPropagation()}>
-        <button type="button" role="menuitem" onClick={() => { setProfileMenu(undefined); setProfileOpen(true); }}><Settings /> Настройки профиля</button>
-        <button type="button" role="menuitem" onClick={() => { setProfileMenu(undefined); setTrashOpen(true); }}><Trash2 /> <span>Корзина</span>{deletedRooms.length > 0 && <small>{deletedRooms.length}</small>}</button>
+        <button type="button" role="menuitem" onClick={() => { setProfileMenu(undefined); setProfileOpen(true); }}><Settings /> Profile settings</button>
+        <button type="button" role="menuitem" onClick={() => { setProfileMenu(undefined); setTrashOpen(true); }}><Trash2 /> <span>Trash</span>{deletedRooms.length > 0 && <small>{deletedRooms.length}</small>}</button>
       </div></div></Portal>}
 
       {searchOpen && <Portal><RoomSearchPalette rooms={rooms} selectedRoomId={selectedRoomId} onSelect={chooseRoom} onClose={() => setSearchOpen(false)} /></Portal>}
@@ -186,13 +186,13 @@ export function RoomSearchPalette({ rooms, selectedRoomId, onSelect, onClose }: 
   };
 
   return <div className={styles.searchBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
-    <section className={styles.searchPalette} role="dialog" aria-modal="true" aria-label="Поиск комнат">
-      <div className={styles.searchInput}><Search aria-hidden /><Input ref={inputRef} aria-label="Поиск по названиям комнат" placeholder="Найти комнату…" value={query} onChange={event => setQuery(event.target.value)} onKeyDown={keyDown} aria-controls="room-search-results" aria-activedescendant={results[active] ? `room-search-${results[active].id}` : undefined} /><kbd>Esc</kbd><IconButton className={styles.searchClose} aria-label="Закрыть поиск" onClick={onClose}><X /></IconButton></div>
+    <section className={styles.searchPalette} role="dialog" aria-modal="true" aria-label="Search rooms">
+      <div className={styles.searchInput}><Search aria-hidden /><Input ref={inputRef} aria-label="Search room names" placeholder="Find a room…" value={query} onChange={event => setQuery(event.target.value)} onKeyDown={keyDown} aria-controls="room-search-results" aria-activedescendant={results[active] ? `room-search-${results[active].id}` : undefined} /><kbd>Esc</kbd><IconButton className={styles.searchClose} aria-label="Close search" onClick={onClose}><X /></IconButton></div>
       <div id="room-search-results" className={styles.searchResults} role="listbox">
-        {results.map((room, index) => <button id={`room-search-${room.id}`} key={room.id} type="button" role="option" aria-selected={index === active} className={index === active ? styles.searchSelected : ''} onMouseEnter={() => setActive(index)} onClick={() => { onSelect(room); onClose(); }}><Search aria-hidden /><span>{room.title}</span>{room.id === selectedRoomId && <small>Открыта</small>}</button>)}
-        {!results.length && <p>Комнаты не найдены</p>}
+        {results.map((room, index) => <button id={`room-search-${room.id}`} key={room.id} type="button" role="option" aria-selected={index === active} className={index === active ? styles.searchSelected : ''} onMouseEnter={() => setActive(index)} onClick={() => { onSelect(room); onClose(); }}><Search aria-hidden /><span>{room.title}</span>{room.id === selectedRoomId && <small>Open</small>}</button>)}
+        {!results.length && <p>No rooms found</p>}
       </div>
-      <footer><span><kbd>↑</kbd><kbd>↓</kbd> выбрать</span><span><kbd>↵</kbd> открыть</span></footer>
+      <footer><span><kbd>↑</kbd><kbd>↓</kbd> select</span><span><kbd>↵</kbd> open</span></footer>
     </section>
   </div>;
 }
@@ -203,12 +203,12 @@ export function RenameRoomDialog({ room, onClose, onRename }: { room: Room; onCl
   const [error, setError] = useState<string>();
   const submit = async () => {
     const next = title.trim();
-    if (!next) { setError('Укажите название комнаты.'); return; }
+    if (!next) { setError('Enter a room name.'); return; }
     setSaving(true); setError(undefined);
     try { await onRename(room, next); onClose(); } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); setSaving(false); }
   };
-  return <Dialog title="Переименовать комнату" onClose={onClose} labelledBy="rename-room-title" footer={<><Button onClick={onClose}>Отмена</Button><Button variant="primary" disabled={saving} onClick={() => void submit()}>{saving ? 'Сохранение…' : 'Сохранить'}</Button></>}>
-    <div className={styles.renameForm}><Input autoFocus aria-label="Название комнаты" maxLength={160} value={title} onChange={event => setTitle(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void submit(); }} />{error && <Alert tone="error">{error}</Alert>}</div>
+  return <Dialog title="Rename room" onClose={onClose} labelledBy="rename-room-title" footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={saving} onClick={() => void submit()}>{saving ? 'Saving…' : 'Save'}</Button></>}>
+    <div className={styles.renameForm}><Input autoFocus aria-label="Room name" maxLength={160} value={title} onChange={event => setTitle(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void submit(); }} />{error && <Alert tone="error">{error}</Alert>}</div>
   </Dialog>;
 }
 
@@ -220,11 +220,11 @@ export function TrashDialog({ rooms, restoreRoom, purgeRoom, onClose }: { rooms:
     setBusy(key); setError(undefined);
     try { await action(); } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } finally { setBusy(undefined); }
   };
-  return <Dialog title="Корзина" description="Удалённые комнаты можно восстановить или удалить навсегда вместе с историей и workspace." onClose={onClose} labelledBy="trash-title" footer={<Button onClick={onClose}>Закрыть</Button>}>
+  return <Dialog title="Trash" description="Deleted rooms can be restored or permanently removed with their history and workspace." onClose={onClose} labelledBy="trash-title" footer={<Button onClick={onClose}>Close</Button>}>
     <div className={styles.trashList}>
       {error && <Alert tone="error">{error}</Alert>}
-      {!rooms.length && <p>Корзина пуста</p>}
-      {rooms.map(room => <div key={room.id} className={styles.trashRow}><span><strong>{room.title}</strong><small>{room.deleted_at ? `Удалена ${new Date(room.deleted_at).toLocaleDateString()}` : 'Удалена'}</small></span><IconButton aria-label={`Восстановить комнату ${room.title}`} title="Восстановить" disabled={Boolean(busy)} onClick={() => void run(`restore-${room.id}`, () => restoreRoom?.(room) ?? Promise.resolve())}>{busy === `restore-${room.id}` ? '…' : <RotateCcw />}</IconButton><IconButton className={styles.purgeButton} aria-label={`Удалить комнату ${room.title} навсегда`} title="Удалить навсегда" disabled={Boolean(busy)} onClick={() => { if (confirm(`Удалить «${room.title}» вместе с историей и workspace без возможности восстановления?`)) void run(`purge-${room.id}`, () => purgeRoom?.(room) ?? Promise.resolve()); }}>{busy === `purge-${room.id}` ? '…' : <Trash2 />}</IconButton></div>)}
+      {!rooms.length && <p>Trash is empty</p>}
+      {rooms.map(room => <div key={room.id} className={styles.trashRow}><span><strong>{room.title}</strong><small>{room.deleted_at ? `Deleted ${new Date(room.deleted_at).toLocaleDateString('en-US')}` : 'Deleted'}</small></span><IconButton aria-label={`Restore room ${room.title}`} title="Restore" disabled={Boolean(busy)} onClick={() => void run(`restore-${room.id}`, () => restoreRoom?.(room) ?? Promise.resolve())}>{busy === `restore-${room.id}` ? '…' : <RotateCcw />}</IconButton><IconButton className={styles.purgeButton} aria-label={`Permanently delete room ${room.title}`} title="Delete permanently" disabled={Boolean(busy)} onClick={() => { if (confirm(`Permanently delete “${room.title}” with its history and workspace? This cannot be undone.`)) void run(`purge-${room.id}`, () => purgeRoom?.(room) ?? Promise.resolve()); }}>{busy === `purge-${room.id}` ? '…' : <Trash2 />}</IconButton></div>)}
     </div>
   </Dialog>;
 }
@@ -233,7 +233,7 @@ export function UserProfileDialog({ open, profile, loading, loadError, onClose, 
   const [displayName, setDisplayName] = useState(profile?.displayName ?? ''), [handle, setHandle] = useState(profile?.handle ?? ''), [saving, setSaving] = useState(false), [error, setError] = useState<string>();
   useEffect(() => { if (profile) { setDisplayName(profile.displayName); setHandle(profile.handle); } }, [profile]);
   const save = async () => { if (!onSave) return; setSaving(true); setError(undefined); try { await onSave({ display_name: displayName, handle }); onClose(); } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } finally { setSaving(false); } };
-  return <Dialog open={open} title="Профиль пользователя" description="Так вас видят агенты в новых сообщениях." onClose={onClose} footer={<><Button onClick={onClose}>Отмена</Button><Button variant="primary" disabled={saving || loading || !profile} onClick={() => void save()}>{saving ? 'Сохранение…' : 'Сохранить'}</Button></>}>
-    <div className={styles.profileForm}>{loadError && <Alert tone="error">{loadError}</Alert>}{loading && !profile ? <p>Загрузка профиля…</p> : <><label><span>Отображаемое имя</span><Input aria-label="Отображаемое имя" maxLength={120} value={displayName} onChange={event => setDisplayName(event.target.value)} /></label><label><span>Handle</span><div className={styles.handleInput}><i>@</i><Input aria-label="Handle пользователя" maxLength={80} value={handle} onChange={event => setHandle(event.target.value.replace(/^@/, ''))} /></div></label><small>Имя и handle сохраняются в сообщении как снимок: старые сообщения не изменятся после переименования.</small>{error && <Alert tone="error">{error}</Alert>}</>}</div>
+  return <Dialog open={open} title="User profile" description="This is how agents see you in new messages." onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" disabled={saving || loading || !profile} onClick={() => void save()}>{saving ? 'Saving…' : 'Save'}</Button></>}>
+    <div className={styles.profileForm}>{loadError && <Alert tone="error">{loadError}</Alert>}{loading && !profile ? <p>Loading profile…</p> : <><label><span>Display name</span><Input aria-label="Display name" maxLength={120} value={displayName} onChange={event => setDisplayName(event.target.value)} /></label><label><span>Handle</span><div className={styles.handleInput}><i>@</i><Input aria-label="User handle" maxLength={80} value={handle} onChange={event => setHandle(event.target.value.replace(/^@/, ''))} /></div></label><small>Name and handle are stored as a snapshot in each message; old messages do not change when you rename the profile.</small>{error && <Alert tone="error">{error}</Alert>}</>}</div>
   </Dialog>;
 }

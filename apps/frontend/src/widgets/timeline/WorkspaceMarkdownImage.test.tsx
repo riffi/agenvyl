@@ -38,7 +38,7 @@ const attachment = (name: string): WorkspaceAttachment => ({
 describe('workspace images in agent markdown', () => {
   it('shows a placeholder while the response streams', () => {
     const html = renderToStaticMarkup(<MarkdownAnswer text="![Chart](workspace:charts/result.png)" run={run()} />);
-    expect(html).toContain('Изображение появится');
+    expect(html).toContain('The image will appear');
     expect(html).not.toContain('/preview');
   });
 
@@ -51,7 +51,7 @@ describe('workspace images in agent markdown', () => {
 
     expect(html).toContain('src="/version-result.png/preview"');
     expect(html).toContain('<button');
-    expect(html).toContain('полноэкранном просмотре');
+    expect(html).toContain('full-screen view');
     expect(html).not.toContain('target="_blank"');
     expect(html).toContain('<figcaption>Performance</figcaption>');
   });
@@ -71,11 +71,11 @@ describe('workspace images in agent markdown', () => {
       })}
     />);
 
-    const previews = screen.getAllByRole('button', { name: /полноэкранном просмотре/ });
+    const previews = screen.getAllByRole('button', { name: /full-screen view/ });
     await user.click(previews[1]);
 
     expect(await screen.findByText('second.png')).toBeTruthy();
-    expect(screen.getByText('2 из 2')).toBeTruthy();
+    expect(screen.getByText('2 of 2')).toBeTruthy();
     await user.keyboard('{Escape}');
     await waitFor(() => expect(document.activeElement).toBe(previews[1]));
   });
@@ -94,15 +94,15 @@ describe('workspace images in agent markdown', () => {
       })}
     />);
 
-    expect(screen.getByText(/файл не найден/)).toBeTruthy();
-    await user.click(screen.getByRole('button', { name: /полноэкранном просмотре/ }));
-    expect(await screen.findByText('1 из 1')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Следующее изображение' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByText(/file not found/)).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: /full-screen view/ }));
+    expect(await screen.findByText('1 of 1')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Next image' }).hasAttribute('disabled')).toBe(true);
   });
 
   it('does not hotlink external Markdown images', () => {
     const html = renderToStaticMarkup(<MarkdownAnswer text="![Remote](https://example.com/wide.png)" run={run({ status: 'completed' })} />);
-    expect(html).toContain('Изображение не сохранено в workspace');
+    expect(html).toContain('Image is not stored in the workspace');
     expect(html).not.toContain('<img');
     expect(html).not.toContain('src="https://example.com/wide.png"');
   });
@@ -112,7 +112,7 @@ describe('workspace images in agent markdown', () => {
       text="![Missing](workspace:missing.png)"
       run={run({ status: 'completed', embeds: [{ kind: 'image', path: 'missing.png', status: 'error', error: 'not_found' }] })}
     />);
-    expect(html).toContain('Не удалось показать изображение');
-    expect(html).toContain('файл не найден');
+    expect(html).toContain('Could not display image');
+    expect(html).toContain('file not found');
   });
 });

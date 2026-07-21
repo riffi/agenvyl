@@ -14,13 +14,13 @@ describe('timeline persona mentions',()=>{
   it('shows known handles as persona names and keeps unknown and bare handles intact',()=>{
     const html=renderToStaticMarkup(<MentionText text="@FOREIGN, foreign и @missing" personas={personas}/>);
     expect(html).toContain('Мимокрокодил');
-    expect(html).toContain('title="Добавить @foreign в сообщение · Наблюдатель"');
+    expect(html).toContain('title="Add @foreign to the message · Наблюдатель"');
     expect(html).toContain('foreign и @missing');
   });
 
   it('renders @all as a neutral label and ignores email fragments',()=>{
     const html=renderToStaticMarkup(<MentionText text="@all · a@foreign.dev" personas={personas}/>);
-    expect(html).toContain('Все участники');
+    expect(html).toContain('All participants');
     expect(html).toContain('a@foreign.dev');
   });
 

@@ -4,7 +4,7 @@ import type { AgentHandle, Run, RunStatus } from '../../../entities/run';
 import type { RoomEventStream } from '../../../shared/api/realtime';
 
 export type FakeEventScenario = 'parallel' | 'failure' | 'approval' | 'clarification' | 'reconnect';
-const fakeAuthor={profileId:'local-user',displayName:'Пользователь',handle:'user'};
+const fakeAuthor={profileId:'local-user',displayName:'User',handle:'user'};
 
 export class FakeRoomEventStream implements RoomEventStream<RoomEvent> {
   private listeners = new Set<(event: RoomEvent) => void>();
@@ -27,19 +27,19 @@ export class FakeRoomEventStream implements RoomEventStream<RoomEvent> {
     const id = `msg-${++this.counter}`; const runIds = targets.map((agent) => this.run(id, agent));
     const message: Message = { id, text, targets, runIds, createdAt: new Date().toISOString(),author:fakeAuthor,addressedToAll:false };
     this.emit({ type: 'message.created', payload: message });
-    runIds.forEach((runId, index) => { this.later(160 + index * 90, () => this.status(runId, 'streaming')); this.later(360 + index * 110, () => this.emit({ type: 'run.delta', payload: { runId, text: ['Разбираю задачу и контекст. ', 'Предлагаю безопасный, проверяемый вариант. ', 'Готово: ключевые решения и следующие шаги сформированы.'][index % 3] } })); this.later(900 + index * 170, () => this.status(runId, 'completed')); });
+    runIds.forEach((runId, index) => { this.later(160 + index * 90, () => this.status(runId, 'streaming')); this.later(360 + index * 110, () => this.emit({ type: 'run.delta', payload: { runId, text: ['Reviewing the task and context. ', 'Proposing a safe, verifiable approach. ', 'Done: the key decisions and next steps are ready.'][index % 3] } })); this.later(900 + index * 170, () => this.status(runId, 'completed')); });
     return message;
   }
   demo(kind: FakeEventScenario) {
-    if (kind === 'parallel') { void this.send('@architect @coder Спроектируйте устойчивое real-time соединение.', ['architect','coder']); return; }
-    const text = `Демо: ${kind}`; const messageId = `msg-${++this.counter}`; const agent: AgentHandle = kind === 'failure' ? 'debugger' : kind === 'clarification' ? 'reviewer' : 'coder'; const runId = this.run(messageId, agent);
+    if (kind === 'parallel') { void this.send('@architect @coder Design a resilient real-time connection.', ['architect','coder']); return; }
+    const text = `Demo: ${kind}`; const messageId = `msg-${++this.counter}`; const agent: AgentHandle = kind === 'failure' ? 'debugger' : kind === 'clarification' ? 'reviewer' : 'coder'; const runId = this.run(messageId, agent);
     this.emit({ type: 'message.created', payload: { id: messageId, text, targets: [agent], runIds: [runId], createdAt: new Date().toISOString(),author:fakeAuthor,addressedToAll:false } }); this.status(runId, 'streaming');
-    if (kind === 'failure') { this.emit({ type: 'run.delta', payload: { runId, text: 'Проверяю окружение…' } }); this.later(350, () => this.status(runId, 'failed', 'Tool process exited with code 1')); }
-    if (kind === 'approval') { this.emit({ type: 'tool.updated', payload: { runId, tool: { id: 'tool-write', name: 'write_file', detail: 'src/ws-manager.ts', status: 'progress' } } }); this.later(250, () => this.emit({ type: 'request.created', payload: { runId, kind: 'approval', prompt: 'Разрешить запись src/ws-manager.ts в изолированный workspace?' } })); }
-    if (kind === 'clarification') this.later(250, () => this.emit({ type: 'request.created', payload: { runId, kind: 'clarification', prompt: 'Какой режим reconnect выбрать: fixed delay или exponential backoff?' } }));
-    if (kind === 'reconnect') { this.emit({ type: 'run.delta', payload: { runId, text: 'Получен текст до разрыва. ' } }); this.emit({ type: 'connection.changed', payload: { status: 'reconnecting' } }); this.later(500, () => this.emit({ type: 'connection.changed', payload: { status: 'replaying' } })); this.later(900, () => { this.emit({ type: 'connection.changed', payload: { status: 'connected' } }); this.emit({ type: 'run.delta', payload: { runId, text: 'Replay продолжил поток без дублей.' } }); this.status(runId, 'completed'); }); }
+    if (kind === 'failure') { this.emit({ type: 'run.delta', payload: { runId, text: 'Checking the environment…' } }); this.later(350, () => this.status(runId, 'failed', 'Tool process exited with code 1')); }
+    if (kind === 'approval') { this.emit({ type: 'tool.updated', payload: { runId, tool: { id: 'tool-write', name: 'write_file', detail: 'src/ws-manager.ts', status: 'progress' } } }); this.later(250, () => this.emit({ type: 'request.created', payload: { runId, kind: 'approval', prompt: 'Allow writing src/ws-manager.ts in the isolated workspace?' } })); }
+    if (kind === 'clarification') this.later(250, () => this.emit({ type: 'request.created', payload: { runId, kind: 'clarification', prompt: 'Which reconnect strategy should be used: fixed delay or exponential backoff?' } }));
+    if (kind === 'reconnect') { this.emit({ type: 'run.delta', payload: { runId, text: 'Received text before the connection dropped. ' } }); this.emit({ type: 'connection.changed', payload: { status: 'reconnecting' } }); this.later(500, () => this.emit({ type: 'connection.changed', payload: { status: 'replaying' } })); this.later(900, () => { this.emit({ type: 'connection.changed', payload: { status: 'connected' } }); this.emit({ type: 'run.delta', payload: { runId, text: 'Replay resumed the stream without duplicates.' } }); this.status(runId, 'completed'); }); }
   }
-  resolve(runId: string, value: string) { this.emit({ type: 'request.resolved', payload: { runId, resolution: value } }); this.later(350, () => { this.emit({ type: 'run.delta', payload: { runId, text: ` Решение принято: ${value}.` } }); this.status(runId, 'completed'); }); }
+  resolve(runId: string, value: string) { this.emit({ type: 'request.resolved', payload: { runId, resolution: value } }); this.later(350, () => { this.emit({ type: 'run.delta', payload: { runId, text: ` Decision recorded: ${value}.` } }); this.status(runId, 'completed'); }); }
   cancel(runId?: string) { (runId ? [runId] : [...this.active]).forEach((id) => this.status(id, 'cancelled')); }
   dispose() { this.timers.forEach(clearTimeout); this.timers.clear(); this.listeners.clear(); }
 }

@@ -22,23 +22,23 @@ const unknownPersona = (handle: string): Persona => ({
   id: "",
   handle,
   name: `@${handle}`,
-  role: "Персона недоступна",
+  role: "Agent unavailable",
   color: "#64748b",
   requested_model: null,
   harness_instance_id:'unknown',harness_type:'unknown',model_id:'unknown',mode_id:null,
   group_id:null,
   archived_at: null,
 });
-const fakeRooms: Room[] = [{id:'demo-room',title:'WebSocket архитектура',created_at:new Date().toISOString(),participant_count:4,last_message_at:null,last_message_text:null}];
+const fakeRooms: Room[] = [{id:'demo-room',title:'WebSocket architecture',created_at:new Date().toISOString(),participant_count:4,last_message_at:null,last_message_text:null}];
 const fakeModels = [
   { key: "sol", root: "anthropic/claude-sonnet-4", provider: "anthropic" },
   { key: "qwen", root: "qwen/qwen3-coder", provider: "qwen" },
   { key: "gpt", root: "openai/gpt-5", provider: "openai" },
   { key: "deepseek", root: "deepseek/deepseek-r1", provider: "deepseek" },
 ];
-const fakeGroups:PersonaGroup[]=[{id:'fake-coding',name:'Кодинг',position:0}];
+const fakeGroups:PersonaGroup[]=[{id:'fake-coding',name:'Engineering',position:0}];
 const fakeHarnessCatalog:HarnessCatalog={connectorEpoch:'fake',instances:[{id:'local-hermes',type:'hermes',status:'healthy',capabilities:['model_catalog','text_streaming','tools','approvals'],models:fakeModels.map(model=>({id:model.key,label:model.root})),modes:[]}]};
-const fakeUserProfile:LocalUserProfile={id:'local-user',displayName:'Пользователь',handle:'user',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
+const fakeUserProfile:LocalUserProfile={id:'local-user',displayName:'User',handle:'user',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
 
 export function WorkspaceApp({
   view,
@@ -126,7 +126,7 @@ export function WorkspaceApp({
     : undefined;
   const openPersonas = () => {
     setMenu(false);
-    guardedNavigation('каталогу персон',navigateToPersonas);
+    guardedNavigation('the agent catalog',navigateToPersonas);
   };
   const currentRoom=rooms.find(room=>room.id===roomId);
   useEffect(()=>{if(!selected&&!artifacts)return;const closeDrawers=(event:KeyboardEvent)=>{if(event.key==='Escape'){setSelected(undefined);setArtifacts(false)}};addEventListener('keydown',closeDrawers);return()=>removeEventListener('keydown',closeDrawers)},[selected,artifacts]);
@@ -140,8 +140,8 @@ export function WorkspaceApp({
         openPersonas={openPersonas}
         rooms={rooms}
         selectedRoomId={roomId}
-        selectRoom={id=>guardedNavigation(`комнате «${rooms.find(room=>room.id===id)?.title??id}»`,()=>navigateToRoom(id))}
-        createRoom={()=>guardedNavigation('созданию комнаты',()=>setCreatingRoom(true))}
+        selectRoom={id=>guardedNavigation(`room “${rooms.find(room=>room.id===id)?.title??id}”`,()=>navigateToRoom(id))}
+        createRoom={()=>guardedNavigation('creating a room',()=>setCreatingRoom(true))}
         renameRoom={renameRoom}
         deleteRoom={deleteRoom}
         deletedRooms={trashQuery.data??[]}
@@ -155,15 +155,15 @@ export function WorkspaceApp({
       {menu && (
         <button
           className={styles.overlay}
-          aria-label="Закрыть меню"
+          aria-label="Close menu"
           onClick={() => setMenu(false)}
         />
       )}
       <div className={styles.workspaceMain} onDragEnter={event=>{if(event.dataTransfer.types.includes('Files')){event.preventDefault();dragDepth.current+=1;setDraggingFiles(true)}}} onDragOver={event=>{if(event.dataTransfer.types.includes('Files'))event.preventDefault()}} onDragLeave={event=>{if(!event.dataTransfer.types.includes('Files'))return;dragDepth.current=Math.max(0,dragDepth.current-1);if(!dragDepth.current)setDraggingFiles(false)}} onDrop={event=>{if(!event.dataTransfer.files.length)return;event.preventDefault();dragDepth.current=0;setDraggingFiles(false);void attachments.uploadFiles([...event.dataTransfer.files])}}>
-        {draggingFiles&&view==='chat'&&<div className={styles.dropzone}><Paperclip/><strong>Отпустите файлы, чтобы прикрепить</strong><span>Они загрузятся в Inbox workspace</span></div>}
+        {draggingFiles&&view==='chat'&&<div className={styles.dropzone}><Paperclip/><strong>Drop files to attach them</strong><span>They will be uploaded to the workspace Inbox</span></div>}
         {view==='chat'?(currentRoom?<>
           <RoomHeader
-            title={currentRoom?.title??"Комната"}
+            title={currentRoom?.title??"Room"}
             personas={personas}
             active={active}
             connection={state.connection}
@@ -173,7 +173,7 @@ export function WorkspaceApp({
           />
           <Timeline state={state} personas={personaCatalog} harnessCatalog={harnessCatalog} select={setSelected} gateway={gateway} loadOlder={loadOlder} loadingOlder={loadingOlder} initialLoading={!fake&&timelineQuery.isPending} onMentionPersona={handle=>composerRef.current?.insertMention(handle)}/>
           <Composer ref={composerRef} gateway={gateway} active={active} personas={personas} catalogReady={gateway.mode === "fake" || (!catalogLoading && !catalogError)} onSent={async()=>{await invalidateRooms()}} openWorkspace={()=>setArtifacts(true)} roomId={roomId} attachments={attachments.items} attachmentsBusy={attachments.busy} openAttachmentPicker={()=>setAttachmentPicker(true)} uploadFiles={files=>void attachments.uploadFiles(files)} removeAttachment={attachments.remove} retryAttachment={attachments.retry} clearAttachments={attachments.clear}/>
-        </>:<div className={styles['empty-chat']}><div className={styles['empty-mobile-header']}><button type="button" aria-label="Открыть меню" onClick={()=>setMenu(true)}><Menu /></button><strong>agenvyl</strong></div><EmptyState icon={<MessageCircle />} title="Нет комнат" description="Создайте комнату, чтобы начать беседу с персонами." action={<Button variant="primary" icon={<Plus />} onClick={()=>setCreatingRoom(true)}>Создать комнату</Button>} /></div>):<PersonasScreen
+        </>:<div className={styles['empty-chat']}><div className={styles['empty-mobile-header']}><button type="button" aria-label="Open menu" onClick={()=>setMenu(true)}><Menu /></button><strong>agenvyl</strong></div><EmptyState icon={<MessageCircle />} title="No rooms" description="Create a room to start a conversation with agents." action={<Button variant="primary" icon={<Plus />} onClick={()=>setCreatingRoom(true)}>Create room</Button>} /></div>):<PersonasScreen
           personas={personaCatalog}
           harnessCatalog={harnessCatalog}
           harnessError={harnessError}
@@ -190,7 +190,7 @@ export function WorkspaceApp({
           registerNavigationGuard={guard=>{personaNavigationGuardRef.current=guard}}
         />}
       </div>
-      {selectedRun&&<button className="drawer-overlay" aria-label="Закрыть панель" onClick={()=>setSelected(undefined)}/>}
+      {selectedRun&&<button className="drawer-overlay" aria-label="Close panel" onClick={()=>setSelected(undefined)}/>}
       <RunDrawer
         run={selectedRun}
         persona={selectedPersona}

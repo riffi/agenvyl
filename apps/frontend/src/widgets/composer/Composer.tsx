@@ -55,7 +55,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   );
   const highlightedText=useMemo(()=>highlightMentions(text,personas),[text,personas]);
   const byHandle = new Map(personas.map((p) => [p.handle, p]));
-  const mentionCandidates=useMemo(()=>[{handle:'all',name:'Все персоны',role:`Вызвать всех участников`,color:'#4f6ef7'},...personas].filter(persona=>!mention||!mention.query||persona.handle.toLowerCase().includes(mention.query)||persona.name.toLowerCase().includes(mention.query)||persona.role.toLowerCase().includes(mention.query)).slice(0,8),[mention,personas]);
+  const mentionCandidates=useMemo(()=>[{handle:'all',name:'All agents',role:'Notify every participant',color:'#4f6ef7'},...personas].filter(persona=>!mention||!mention.query||persona.handle.toLowerCase().includes(mention.query)||persona.name.toLowerCase().includes(mention.query)||persona.role.toLowerCase().includes(mention.query)).slice(0,8),[mention,personas]);
   useEffect(()=>setMentionIndex(0),[mention?.query]);
   useEffect(()=>{setText('');setMention(undefined);setSendError(undefined)},[roomId]);
   useEffect(()=>{const editor=editorRef.current;if(!editor)return;editor.style.height='auto';editor.style.height=`${Math.min(Math.max(editor.scrollHeight,72),220)}px`;if(mirrorRef.current){mirrorRef.current.scrollTop=editor.scrollTop;mirrorRef.current.scrollLeft=editor.scrollLeft}},[text]);
@@ -74,7 +74,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
     <div className={styles.composer} ui-spec-block-id="room_composer">
       {gateway.mode === "fake" && (
         <div className={styles.demo}>
-          <span>Демо-события · fake</span>
+          <span>Demo events · fake</span>
           {(
             [
               "parallel",
@@ -93,11 +93,11 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
               {
                 (
                   {
-                    parallel: "Параллельно",
-                    failure: "Ошибка",
-                    approval: "Подтверждение",
-                    clarification: "Уточнение",
-                    reconnect: "Переподключение",
+                    parallel: "Parallel",
+                    failure: "Failure",
+                    approval: "Approval",
+                    clarification: "Clarification",
+                    reconnect: "Reconnect",
                   } as Record<DemoKind, string>
                 )[k]
               }
@@ -105,24 +105,24 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
           ))}
         </div>
       )}
-      {active > 0 && <div className={styles['active-runs']}><span><i />{active} {active===1?'агент отвечает':active<5?'агента отвечают':'агентов отвечают'}</span><Button size="sm" variant="danger" onClick={() => void gateway.cancel()}><Square /> Остановить все</Button></div>}
-      {sendError&&<Alert className={styles['send-error']} tone="error">Не удалось отправить: {sendError.message} <Button size="sm" variant="danger" onClick={()=>void send(sendError)} disabled={sending}>Повторить</Button></Alert>}
+      {active > 0 && <div className={styles['active-runs']}><span><i />{active} {active===1?'agent is responding':'agents are responding'}</span><Button size="sm" variant="danger" onClick={() => void gateway.cancel()}><Square /> Stop all</Button></div>}
+      {sendError&&<Alert className={styles['send-error']} tone="error">Failed to send: {sendError.message} <Button size="sm" variant="danger" onClick={()=>void send(sendError)} disabled={sending}>Retry</Button></Alert>}
       <div className={styles['compose-card']}>
-        {attachments.length>0&&<div className={styles.attachments}>{attachments.map(item=><span key={item.id} className={[item.status==='error'?styles['attachment-error']:'',item.mimeType.startsWith('image/')&&item.attachment?styles['image-attachment']:''].filter(Boolean).join(' ')}>{item.status==='uploading'?<LoaderCircle className={styles.spinning}/>:item.mimeType.startsWith('image/')&&item.attachment?<img src={item.attachment.preview_url} alt=""/>:<FileText/>}<button type="button" disabled={!item.attachment} onClick={()=>item.attachment&&window.open(item.attachment.preview_url,'_blank')}>{item.name}</button><small>{item.status==='uploading'?`${item.progress}%`:item.status==='error'?item.error:formatBytes(item.size)}</small>{item.status==='uploading'&&<i style={{width:`${item.progress}%`}}/>}{item.status==='error'&&<button type="button" aria-label={`Повторить загрузку ${item.name}`} onClick={()=>retryAttachment(item.id)}><RefreshCw/></button>}<button type="button" aria-label={`Убрать ${item.name}`} onClick={()=>removeAttachment(item.id)}><X/></button></span>)}</div>}
+        {attachments.length>0&&<div className={styles.attachments}>{attachments.map(item=><span key={item.id} className={[item.status==='error'?styles['attachment-error']:'',item.mimeType.startsWith('image/')&&item.attachment?styles['image-attachment']:''].filter(Boolean).join(' ')}>{item.status==='uploading'?<LoaderCircle className={styles.spinning}/>:item.mimeType.startsWith('image/')&&item.attachment?<img src={item.attachment.preview_url} alt=""/>:<FileText/>}<button type="button" disabled={!item.attachment} onClick={()=>item.attachment&&window.open(item.attachment.preview_url,'_blank')}>{item.name}</button><small>{item.status==='uploading'?`${item.progress}%`:item.status==='error'?item.error:formatBytes(item.size)}</small>{item.status==='uploading'&&<i style={{width:`${item.progress}%`}}/>}{item.status==='error'&&<button type="button" aria-label={`Retry upload ${item.name}`} onClick={()=>retryAttachment(item.id)}><RefreshCw/></button>}<button type="button" aria-label={`Remove ${item.name}`} onClick={()=>removeAttachment(item.id)}><X/></button></span>)}</div>}
         {targets.length>0&&<div className={styles['target-row']}>
-          <span>Ответят:</span>
+          <span>Responders:</span>
           <div className={styles.targets}>
             {targets.map((h) => {
               const p = byHandle.get(h)!;
-              return <button key={h} title={`Убрать @${h}`} onClick={() => setText(value=>removeMentionTarget(value,h,personas))}><i style={{ background: p.color }}>{p.name[0]}</i><span>{p.name}</span><X /></button>;
+              return <button key={h} title={`Remove @${h}`} onClick={() => setText(value=>removeMentionTarget(value,h,personas))}><i style={{ background: p.color }}>{p.name[0]}</i><span>{p.name}</span><X /></button>;
             })}
           </div>
         </div>}
         <div className={styles['editor-wrap']}>
-          {mention&&mentionCandidates.length>0&&<div ref={mentionPopoverRef} className={styles['mention-popover']} role="listbox" aria-label="Выберите персону для упоминания">
-            <header><span>Упомянуть</span><small>↑↓ выбор · Enter вставить</small></header>
+          {mention&&mentionCandidates.length>0&&<div ref={mentionPopoverRef} className={styles['mention-popover']} role="listbox" aria-label="Select an agent to mention">
+            <header><span>Mention</span><small>↑↓ select · Enter insert</small></header>
             {mentionCandidates.map((candidate,index)=><button key={candidate.handle} type="button" role="option" aria-selected={index===mentionIndex} className={index===mentionIndex?styles.selected:''} onMouseDown={event=>event.preventDefault()} onClick={()=>chooseMention(candidate.handle)}>
-              <i style={{background:candidate.color}}>{candidate.name[0]}</i><span><strong>{candidate.name}</strong><small><b>@{candidate.handle}</b><span> · {candidate.role}</span></small></span>{candidate.handle==='all'&&<em>все</em>}
+              <i style={{background:candidate.color}}>{candidate.name[0]}</i><span><strong>{candidate.name}</strong><small><b>@{candidate.handle}</b><span> · {candidate.role}</span></small></span>{candidate.handle==='all'&&<em>all</em>}
             </button>)}
           </div>}
           <div ref={mirrorRef} className={styles['editor-mirror']} aria-hidden="true">{highlightedText}</div>
@@ -147,21 +147,21 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
                 e.preventDefault();void send();
               }
             }}
-            placeholder="Сообщение… Используйте @handle или @all"
+            placeholder="Message… Use @handle or @all"
           />
         </div>
         <footer>
-        <div className={styles['compose-tools']}><Button className={styles['attachment-button']} size="sm" variant="ghost" title="Прикрепить файлы" aria-label="Прикрепить файлы" disabled={attachments.length>=10} onClick={openAttachmentPicker} icon={attachmentsBusy?<LoaderCircle className={styles.spinning}/>:<Paperclip/>}><span className={styles['action-label']}>Прикрепить</span></Button><Button className={styles['workspace-button']} size="sm" variant="ghost" title="Открыть workspace комнаты" aria-label="Открыть workspace комнаты" onClick={openWorkspace} icon={<FolderOpen />}><span className={styles['action-label']}>Workspace</span></Button></div>
-        <small>{!catalogReady?'Каталог персон недоступен':`${text.length} / 4000`}</small>
+        <div className={styles['compose-tools']}><Button className={styles['attachment-button']} size="sm" variant="ghost" title="Attach files" aria-label="Attach files" disabled={attachments.length>=10} onClick={openAttachmentPicker} icon={attachmentsBusy?<LoaderCircle className={styles.spinning}/>:<Paperclip/>}><span className={styles['action-label']}>Attach</span></Button><Button className={styles['workspace-button']} size="sm" variant="ghost" title="Open room workspace" aria-label="Open room workspace" onClick={openWorkspace} icon={<FolderOpen />}><span className={styles['action-label']}>Workspace</span></Button></div>
+        <small>{!catalogReady?'Agent catalog unavailable':`${text.length} / 4000`}</small>
         <Button
           className={styles.send}
           size="sm"
           variant="primary"
-          aria-label={sending?'Отправляем сообщение':'Отправить сообщение'}
+          aria-label={sending?'Sending message':'Send message'}
           disabled={(!text.trim()&&!attachments.some(item=>item.status==='ready')) || !catalogReady || sending || attachmentsBusy}
           onClick={()=>void send()}
         >
-          {sending?<><LoaderCircle className={styles.spinning}/><span className={styles['action-label']}>Отправляем…</span></>:<><span className={styles['action-label']}>Отправить</span><Send /></>}
+          {sending?<><LoaderCircle className={styles.spinning}/><span className={styles['action-label']}>Sending…</span></>:<><span className={styles['action-label']}>Send</span><Send /></>}
         </Button>
         </footer>
       </div>
@@ -186,4 +186,4 @@ type ComposerProps={
   clearAttachments:()=>void;
 };
 
-function formatBytes(value:number){if(value<1024)return`${value} Б`;if(value<1024*1024)return`${(value/1024).toFixed(1)} КБ`;return`${(value/1024/1024).toFixed(1)} МБ`;}
+function formatBytes(value:number){if(value<1024)return`${value} B`;if(value<1024*1024)return`${(value/1024).toFixed(1)} KB`;return`${(value/1024/1024).toFixed(1)} MB`;}

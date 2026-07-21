@@ -15,19 +15,19 @@ describe('persona harness route fields',()=>{
     const html=renderToStaticMarkup(<PersonaInstructionFields value="Be precise" onChange={vi.fn()}/>);
     expect(html).toContain('<details');
     expect(html).not.toContain('<details open=""');
-    expect(html).toContain('System prompt и правила поведения');
+    expect(html).toContain('System prompt and behavior rules');
   });
   it('renders the Hermes instance and model without a mode selector',()=>{
     const html=renderToStaticMarkup(<HarnessRouteFields form={persona()} catalog={catalog} onChange={vi.fn()}/>);
     expect(html).toContain('local-hermes · hermes');
     expect(html).toContain('Sonnet');
-    expect(html).not.toContain('Режим harness');
+    expect(html).not.toContain('Harness mode');
   });
 
   it('renders OpenCode models and optional modes for an OpenCode persona',()=>{
     const html=renderToStaticMarkup(<HarnessRouteFields form={persona({requested_model:'gpt-5',harness_instance_id:'local-opencode',harness_type:'opencode',model_id:'gpt-5',mode_id:'build'})} catalog={catalog} onChange={vi.fn()}/>);
     expect(html).toContain('GPT-5');
-    expect(html).toContain('Режим harness');
+    expect(html).toContain('Harness mode');
     expect(html).toContain('Build');
     expect(html).toContain('Plan');
   });
@@ -35,8 +35,8 @@ describe('persona harness route fields',()=>{
   it('requires an explicit AGY mode and does not offer a default mode',()=>{
     const agyCatalog:HarnessCatalog={connectorEpoch:'agy',instances:[{id:'local-antigravity',type:'antigravity',status:'healthy',capabilities:['model_catalog','mode_catalog'],models:[{id:'gemini'}],modes:[{id:'plan',label:'Plan'},{id:'accept-edits',label:'Accept edits'}]}]};
     const html=renderToStaticMarkup(<HarnessRouteFields form={persona({harness_instance_id:'local-antigravity',harness_type:'antigravity',model_id:'gemini',requested_model:'gemini',mode_id:null})} catalog={agyCatalog} onChange={vi.fn()}/>);
-    expect(html).toContain('Выберите режим');
-    expect(html).not.toContain('По умолчанию');
+    expect(html).toContain('Select a mode');
+    expect(html).not.toContain('Default');
     expect(html).toContain('Plan');
   });
 
@@ -44,6 +44,6 @@ describe('persona harness route fields',()=>{
     const html=renderToStaticMarkup(<HarnessRouteFields form={persona()} error="Connector offline" onChange={vi.fn()}/>);
     expect(html).toContain('Connector offline');
     expect(html).toContain('local-hermes · hermes · unavailable');
-    expect(html).toContain('sol (сохранено)');
+    expect(html).toContain('sol (saved)');
   });
 });

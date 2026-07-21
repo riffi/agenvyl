@@ -15,14 +15,14 @@ import {MentionText} from './mentions';
 export { MarkdownAnswer } from './MarkdownAnswer';
 
 const statusLabel: Record<Run['status'], string> = {
-  queued: 'в очереди',
-  streaming: 'пишет',
-  stopping: 'останавливается',
-  waiting_approval: 'ждёт approval',
-  waiting_clarification: 'нужно уточнение',
-  completed: 'готово',
-  failed: 'ошибка',
-  cancelled: 'отменён',
+  queued: 'queued',
+  streaming: 'responding',
+  stopping: 'stopping',
+  waiting_approval: 'waiting for approval',
+  waiting_clarification: 'needs clarification',
+  completed: 'completed',
+  failed: 'failed',
+  cancelled: 'cancelled',
 };
 
 const activeStatuses = new Set<Run['status']>(['queued', 'streaming', 'stopping']);
@@ -42,7 +42,7 @@ function StatusIcon({status}:{status:Run['status']}) {
             : status==='waiting_clarification'
               ? <CircleHelp />
               : <Clock3 />;
-  return <span className={`${styles['status-icon']} ${styles[status]} ${activeStatuses.has(status)?styles.spinning:''}`} role="img" aria-label={`Статус: ${label}`} title={label}>{icon}</span>;
+  return <span className={`${styles['status-icon']} ${styles[status]} ${activeStatuses.has(status)?styles.spinning:''}`} role="img" aria-label={`Status: ${label}`} title={label}>{icon}</span>;
 }
 
 function catalogModel(run:Run,catalog:HarnessCatalog|undefined){return catalog?.instances.find(instance=>instance.id===run.harnessInstanceId)?.models.find(model=>model.id===run.modelId)?.label;}
@@ -50,7 +50,7 @@ function catalogModel(run:Run,catalog:HarnessCatalog|undefined){return catalog?.
 function modelName(run:Run,persona:Persona,catalog:HarnessCatalog|undefined) {
   const route=run.modelId??run.requestedModel??persona.model_id??persona.requested_model;
   const value=catalogModel(run,catalog)??(!run.requestedModel?persona.effective_model:null)??route;
-  if(!value)return 'модель не задана';
+  if(!value)return 'model not set';
   return value.split('/').at(-1)??value;
 }
 
@@ -60,29 +60,29 @@ function fullModelName(run:Run,persona:Persona,catalog:HarnessCatalog|undefined)
 }
 
 const unknownPersona = (handle: string): Persona => ({
-  id: '', handle, name: `@${handle}`, role: 'Персона недоступна', color: '#64748b', requested_model: null, harness_instance_id:'unknown',harness_type:'unknown',model_id:'unknown',mode_id:null,group_id:null, archived_at: null,
+  id: '', handle, name: `@${handle}`, role: 'Agent unavailable', color: '#64748b', requested_model: null, harness_instance_id:'unknown',harness_type:'unknown',model_id:'unknown',mode_id:null,group_id:null, archived_at: null,
 });
 
 export function ReasoningBlock({text}:{text:string}) {
   return <details className={styles.reasoning}>
-    <summary><Brain/>Ход рассуждений</summary>
+    <summary><Brain/>Reasoning</summary>
     <pre>{text}</pre>
   </details>;
 }
 
 export function UpstreamStatusNotice({status}:{status:UpstreamStatus}) {
   const text=status.state==='waiting_upstream'
-    ? 'Ожидаем ответа провайдера…'
+    ? 'Waiting for the provider…'
     : status.reason==='rate_limited'
-      ? 'Провайдер ограничил частоту запросов. Повторная попытка…'
+      ? 'The provider rate-limited the request. Retrying…'
       : status.reason==='authentication_failed'
-        ? 'Провайдер отклонил авторизацию. Повторная попытка…'
+        ? 'The provider rejected authentication. Retrying…'
         : status.reason==='provider_timeout'
-          ? 'Провайдер не ответил вовремя. Повторная попытка…'
+          ? 'The provider did not respond in time. Retrying…'
           : status.reason==='model_unavailable'
-            ? 'Модель временно недоступна. Повторная попытка…'
-            : 'Провайдер временно недоступен. Повторная попытка…';
-  return <div className={styles['upstream-status']} role="status" aria-live="polite"><RotateCcw/><span>{text}{status.attempt!==undefined&&<small>Попытка {status.attempt}</small>}</span></div>;
+            ? 'The model is temporarily unavailable. Retrying…'
+            : 'The provider is temporarily unavailable. Retrying…';
+  return <div className={styles['upstream-status']} role="status" aria-live="polite"><RotateCcw/><span>{text}{status.attempt!==undefined&&<small>Attempt {status.attempt}</small>}</span></div>;
 }
 
 function Request({ run, resolve }: { run: Run; resolve: (v: string) => void }) {
@@ -91,17 +91,17 @@ function Request({ run, resolve }: { run: Run; resolve: (v: string) => void }) {
   return (
     <div className={`${styles.request} ${styles[run.request.kind] ?? ''}`}>
       <strong>{run.request.kind === "approval"
-        ? <><TriangleAlert /> Подтверждение действия</>
-        : <><CircleHelp /> Уточнение от агента</>}</strong>
+        ? <><TriangleAlert /> Action approval</>
+        : <><CircleHelp /> Agent clarification</>}</strong>
       <p>{run.request.prompt}</p>
       {run.request.resolved ? (
-        <small>Ответ: {run.request.resolved}</small>
+        <small>Response: {run.request.resolved}</small>
       ) : run.request.kind === "approval" ? (
         <div>
           <Button variant="primary" size="sm" onClick={() => resolve("approved")}>
-            Разрешить
+            Allow
           </Button>
-          <Button size="sm" onClick={() => resolve("denied")}>Отклонить</Button>
+          <Button size="sm" onClick={() => resolve("denied")}>Deny</Button>
         </div>
       ) : (<>
         {run.request.choices?.length ? <div className={styles['request-choices']}>{run.request.choices.map(choice=><Button key={choice} type="button" size="sm" onClick={()=>setReply(choice)}>{choice}</Button>)}</div> : null}
@@ -114,9 +114,9 @@ function Request({ run, resolve }: { run: Run; resolve: (v: string) => void }) {
           <Input
             value={reply}
             onChange={(e) => setReply(e.target.value)}
-            placeholder="Ваш ответ…"
+            placeholder="Your response…"
           />
-          <Button variant="primary" size="sm">Ответить</Button>
+          <Button variant="primary" size="sm">Respond</Button>
         </form>
       </>)}
     </div>
@@ -158,9 +158,9 @@ function RunCard({
   onMentionPersona:(handle:string)=>void;
 }) {
   const [retrying,setRetrying]=useState(false);const [retryError,setRetryError]=useState<string>();const [toolsOpen,setToolsOpen]=useState(false);
-  const answer = run.text || (run.status === "queued" ? "Ожидает свободный слот…" : "Анализирую…");
+  const answer = run.text || (run.status === "queued" ? "Waiting for an available slot…" : "Analyzing…");
   const canCancel=['queued','streaming','waiting_approval','waiting_clarification'].includes(run.status);
-  const retryLabel=run.status==='completed'?'Создать другой вариант':'Запустить снова';
+  const retryLabel=run.status==='completed'?'Create another response':'Run again';
   const retryRun=async()=>{setRetrying(true);setRetryError(undefined);try{await retry()}catch(error){setRetryError(error instanceof Error?error.message:String(error))}finally{setRetrying(false)}};
   return (
     <article
@@ -177,8 +177,8 @@ function RunCard({
           <span className={styles['run-header-actions']}>
             <StatusIcon status={run.status}/>
             {(canCancel||canRetry)&&<span className={styles['run-actions']}>
-              {canCancel&&<IconButton className={styles['stop-run']} onClick={cancel} title="Остановить" aria-label={`Остановить ответ ${persona.name}`}><Square/></IconButton>}
-              {canRetry&&<IconButton className={styles['retry-run']} disabled={retrying} onClick={()=>void retryRun()} title={retrying?'Запускаем…':retryLabel} aria-label={`${retryLabel}: ${persona.name}`}>{retrying?<LoaderCircle className={styles['action-spinner']}/>:<RotateCcw/>}</IconButton>}
+              {canCancel&&<IconButton className={styles['stop-run']} onClick={cancel} title="Stop" aria-label={`Stop ${persona.name} response`}><Square/></IconButton>}
+              {canRetry&&<IconButton className={styles['retry-run']} disabled={retrying} onClick={()=>void retryRun()} title={retrying?'Starting…':retryLabel} aria-label={`${retryLabel}: ${persona.name}`}>{retrying?<LoaderCircle className={styles['action-spinner']}/>:<RotateCcw/>}</IconButton>}
             </span>}
           </span>
         </header>
@@ -188,16 +188,16 @@ function RunCard({
           <MarkdownAnswer text={answer} run={run} personas={personas} onMentionPersona={onMentionPersona}/>
           {run.status === "streaming" && <i className={styles.cursor} />}
         </div>
-        {isLongAnswer(run.text)&&run.status==='completed'&&<button className={`${styles['answer-toggle']} ${collapsed?styles.expand:styles.collapse}`} type="button" onClick={toggleCollapsed} aria-expanded={!collapsed}>{collapsed?<><span>Развернуть ответ</span><ChevronDown/></>:<><span>Свернуть ответ</span><ChevronUp/></>}</button>}
+        {isLongAnswer(run.text)&&run.status==='completed'&&<button className={`${styles['answer-toggle']} ${collapsed?styles.expand:styles.collapse}`} type="button" onClick={toggleCollapsed} aria-expanded={!collapsed}>{collapsed?<><span>Expand response</span><ChevronDown/></>:<><span>Collapse response</span><ChevronUp/></>}</button>}
         {run.error && <Alert tone="error">{run.error}</Alert>}
         <Request run={run} resolve={resolve} />
-        {run.artifacts?.some(item=>item.attribution==='exact'&&!run.embeds?.some(embed=>embed.status==='resolved'&&embed.attachment?.version_id===item.version_id))&&<div className={styles.artifacts}>{run.artifacts.filter(item=>item.attribution==='exact'&&!run.embeds?.some(embed=>embed.status==='resolved'&&embed.attachment?.version_id===item.version_id)).map(item=><a key={item.version_id} href={item.preview_url} target="_blank" rel="noreferrer"><File/><span><strong>{item.name}</strong><small>{item.change==='created'?'Создан':item.change==='updated'?'Изменён':'Удалён'}</small></span></a>)}</div>}
+        {run.artifacts?.some(item=>item.attribution==='exact'&&!run.embeds?.some(embed=>embed.status==='resolved'&&embed.attachment?.version_id===item.version_id))&&<div className={styles.artifacts}>{run.artifacts.filter(item=>item.attribution==='exact'&&!run.embeds?.some(embed=>embed.status==='resolved'&&embed.attachment?.version_id===item.version_id)).map(item=><a key={item.version_id} href={item.preview_url} target="_blank" rel="noreferrer"><File/><span><strong>{item.name}</strong><small>{item.change==='created'?'Created':item.change==='updated'?'Updated':'Deleted'}</small></span></a>)}</div>}
         <div className={styles['run-footer']}>
           <span className={styles['run-footer-actions']}>
-            {run.tools.length>0&&<button type="button" className={styles['footer-action']} onClick={()=>setToolsOpen(open=>!open)} aria-expanded={toolsOpen} aria-controls={`run-tools-${run.id}`}><Wrench/><span>Действия</span><em>{run.tools.length}</em>{toolsOpen?<ChevronUp className={styles.disclosure}/>:<ChevronDown className={styles.disclosure}/>}</button>}
-            <button type="button" className={styles['footer-action']} onClick={select}><Info/><span>Детали запуска</span></button>
+            {run.tools.length>0&&<button type="button" className={styles['footer-action']} onClick={()=>setToolsOpen(open=>!open)} aria-expanded={toolsOpen} aria-controls={`run-tools-${run.id}`}><Wrench/><span>Actions</span><em>{run.tools.length}</em>{toolsOpen?<ChevronUp className={styles.disclosure}/>:<ChevronDown className={styles.disclosure}/>}</button>}
+            <button type="button" className={styles['footer-action']} onClick={select}><Info/><span>Run details</span></button>
           </span>
-          {attemptCount>1&&<span className={styles['attempt-carousel']}><IconButton onClick={previousAttempt} disabled={attemptIndex===0} aria-label="Предыдущая попытка">‹</IconButton><small>{attemptIndex+1} из {attemptCount}</small><IconButton onClick={nextAttempt} disabled={attemptIndex===attemptCount-1} aria-label="Следующая попытка">›</IconButton></span>}
+          {attemptCount>1&&<span className={styles['attempt-carousel']}><IconButton onClick={previousAttempt} disabled={attemptIndex===0} aria-label="Previous attempt">‹</IconButton><small>{attemptIndex+1} of {attemptCount}</small><IconButton onClick={nextAttempt} disabled={attemptIndex===attemptCount-1} aria-label="Next attempt">›</IconButton></span>}
         </div>
         {run.tools.length>0&&toolsOpen&&<div id={`run-tools-${run.id}`} className={styles['tool-activity']}>
           {run.tools.map(tool=><div key={tool.id}><i className={tool.status}/><span><strong>{tool.name}</strong><small>{tool.detail}</small></span><em>{tool.status}</em></div>)}
@@ -255,22 +255,22 @@ export function Timeline({
       onPointerCancel={()=>{pointerScrollingRef.current=false}}
       onScroll={event=>{const timeline=event.currentTarget;const atBottom=timeline.scrollHeight-timeline.scrollTop-timeline.clientHeight<80;if(atBottom)followLatestRef.current=true;else if(pointerScrollingRef.current)followLatestRef.current=false;if(timeline.scrollTop<120&&state.hasMore&&!loadingOlder)void loadPrevious()}}
     >
-      {loadingOlder&&<div className={styles.reconnect}>Загружаем предыдущие сообщения…</div>}
+      {loadingOlder&&<div className={styles.reconnect}>Loading earlier messages…</div>}
       {state.messages.length === 0 && !initialLoading && (
-        <EmptyState compact title="Начните диалог" description={<p>
-            Упомяните <code>@handle</code> или <code>@all</code>, чтобы вызвать
-            персон параллельно.
+        <EmptyState compact title="Start a conversation" description={<p>
+            Mention <code>@handle</code> or <code>@all</code> to run agents in
+            parallel.
           </p>} />
       )}
-      {initialLoading&&<div className={styles.reconnect}>Загружаем историю…</div>}
+      {initialLoading&&<div className={styles.reconnect}>Loading history…</div>}
       {state.connection !== "connected" && (
         <div className={styles.reconnect}>
           <RotateCcw />{" "}
           {state.connection === "connecting"
-            ? "Подключаемся к комнате…"
+            ? "Connecting to the room…"
             : state.connection === "reconnecting"
-              ? "Соединение потеряно. Переподключаемся…"
-              : "Восстанавливаем события…"}
+              ? "Connection lost. Reconnecting…"
+              : "Restoring events…"}
         </div>
       )}
       {state.messages.map((m,messageIndex) => {
@@ -288,7 +288,7 @@ export function Timeline({
         <section className={`${styles.round} ${longRuns.length?styles['has-answer-navigation']:''}`} data-timeline-layout key={m.id}>
           <div className={`${styles['user-message']} ${imageAttachments.length?styles['with-images']:''}`}>
             <p><MentionText text={m.text} personas={personas} onMentionPersona={onMentionPersona}/></p>
-            {imageAttachments.length>0&&<div className={styles['image-attachments']} data-count={Math.min(imageAttachments.length,4)}>{imageAttachments.map(item=><a href={item.preview_url} target="_blank" rel="noreferrer" key={item.version_id} title={`Открыть ${item.name}`}><img src={item.preview_url} alt={item.name} loading="lazy"/><span>{item.name}</span></a>)}</div>}
+            {imageAttachments.length>0&&<div className={styles['image-attachments']} data-count={Math.min(imageAttachments.length,4)}>{imageAttachments.map(item=><a href={item.preview_url} target="_blank" rel="noreferrer" key={item.version_id} title={`Open ${item.name}`}><img src={item.preview_url} alt={item.name} loading="lazy"/><span>{item.name}</span></a>)}</div>}
             {fileAttachments.length>0&&<div className={styles.attachments}>{fileAttachments.map(item=><a href={item.preview_url} target="_blank" rel="noreferrer" key={item.version_id}><Paperclip/><span>{item.name}</span><small>{formatBytes(item.size)}</small></a>)}</div>}
             <small>
               {new Date(m.createdAt).toLocaleTimeString("ru", {
@@ -297,11 +297,11 @@ export function Timeline({
               })}{" "}
               ·{" "}
               {m.targets.length
-                ? <>Вызваны: <MentionText text={m.targets.map((x) => "@" + x).join(", ")} personas={personas} onMentionPersona={onMentionPersona}/></>
-                : "Без запуска агентов"}
+                ? <>Invoked: <MentionText text={m.targets.map((x) => "@" + x).join(", ")} personas={personas} onMentionPersona={onMentionPersona}/></>
+                : "No agents invoked"}
             </small>
           </div>
-          {longRuns.length>0&&<nav className={styles['answer-navigation']} aria-label="Длинные ответы раунда"><span>Ответы:</span>{longRuns.map(run=><button type="button" key={run.id} onClick={()=>document.getElementById(`run-${run.id}`)?.scrollIntoView({behavior:'smooth',block:'start'})}>{byHandle.get(run.agent)?.name??`@${run.agent}`}</button>)}{longRuns.length>1&&<span className={styles['answer-navigation-actions']}><button type="button" aria-label="Развернуть все длинные ответы" title="Развернуть все" onClick={()=>setLongRunsExpanded(true)}><UnfoldVertical/></button><button type="button" aria-label="Свернуть все длинные ответы" title="Свернуть длинные" onClick={()=>setLongRunsExpanded(false)}><FoldVertical/></button></span>}</nav>}
+          {longRuns.length>0&&<nav className={styles['answer-navigation']} aria-label="Long responses in this round"><span>Responses:</span>{longRuns.map(run=><button type="button" key={run.id} onClick={()=>document.getElementById(`run-${run.id}`)?.scrollIntoView({behavior:'smooth',block:'start'})}>{byHandle.get(run.agent)?.name??`@${run.agent}`}</button>)}{longRuns.length>1&&<span className={styles['answer-navigation-actions']}><button type="button" aria-label="Expand all long responses" title="Expand all" onClick={()=>setLongRunsExpanded(true)}><UnfoldVertical/></button><button type="button" aria-label="Collapse all long responses" title="Collapse long responses" onClick={()=>setLongRunsExpanded(false)}><FoldVertical/></button></span>}</nav>}
           <div className={`${styles.runs} ${singleColumn?styles['runs-list']:styles['runs-grid']}`}>
             {visibleGroups.map(
               ({slot,attemptIds,activeAttempt,shownIndex,id}) => {
@@ -339,4 +339,4 @@ export function Timeline({
         )})}
     </main>;
 }
-function formatBytes(value:number){if(value<1024)return`${value} Б`;if(value<1024*1024)return`${(value/1024).toFixed(1)} КБ`;return`${(value/1024/1024).toFixed(1)} МБ`;}
+function formatBytes(value:number){if(value<1024)return`${value} B`;if(value<1024*1024)return`${(value/1024).toFixed(1)} KB`;return`${(value/1024/1024).toFixed(1)} MB`;}

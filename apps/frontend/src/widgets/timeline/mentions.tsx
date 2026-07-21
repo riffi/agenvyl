@@ -39,15 +39,15 @@ function mentionNodes(text:string,known:Set<string>):MarkdownNode[]{
 }
 
 export function MentionLink({handle,personas,onMentionPersona}:{handle:string;personas:readonly Persona[];onMentionPersona?:(handle:string)=>void}){
-  if(handle==='all')return <span className={`${styles.mention} ${styles['mention-all']}`} title="@all">Все участники</span>;
+  if(handle==='all')return <span className={`${styles.mention} ${styles['mention-all']}`} title="@all">All participants</span>;
   const persona=personas.find(item=>item.handle.toLocaleLowerCase()===handle.toLocaleLowerCase());
   if(!persona)return <>@{handle}</>;
   return <button
     type="button"
     className={styles.mention}
     style={{'--mention-color':persona.color} as CSSProperties}
-    title={`Добавить @${persona.handle} в сообщение${persona.role?` · ${persona.role}`:''}`}
-    aria-label={`Добавить ${persona.name}, @${persona.handle}, в сообщение`}
+    title={`Add @${persona.handle} to the message${persona.role?` · ${persona.role}`:''}`}
+    aria-label={`Add ${persona.name}, @${persona.handle}, to the message`}
     onClick={()=>onMentionPersona?.(persona.handle)}
   >{persona.name}</button>;
 }

@@ -25,8 +25,8 @@ export const roomsApi = {
     request.upload.onprogress=event=>{if(event.lengthComputable)options.onProgress?.(Math.round(event.loaded/event.total*100))};
     const abort=()=>request.abort();
     options.signal?.addEventListener('abort',abort,{once:true});
-    request.onerror=()=>reject(new Error('Не удалось загрузить файл'));
-    request.onabort=()=>reject(new DOMException('Загрузка отменена','AbortError'));
+    request.onerror=()=>reject(new Error('Failed to upload file'));
+    request.onabort=()=>reject(new DOMException('Upload cancelled','AbortError'));
     request.onload=()=>{options.signal?.removeEventListener('abort',abort);let data:unknown;try{data=JSON.parse(request.responseText)}catch{data=undefined}if(request.status<200||request.status>=300){const error=data as {error?:string;message?:string}|undefined;const value=new Error(error?.message??`HTTP ${request.status}`) as Error&{code?:string};value.code=error?.error;reject(value);return}options.onProgress?.(100);resolve(data as {entry:WorkspaceEntry;version?:WorkspaceVersion})};
     request.send(file);
   }),

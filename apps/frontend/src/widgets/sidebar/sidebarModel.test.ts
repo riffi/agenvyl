@@ -20,7 +20,7 @@ describe('sidebar room model', () => {
     ], new Date('2026-07-20T14:00:00'));
 
     expect(items.map(item => item.type === 'group' ? item.label : item.room.id)).toEqual([
-      'Сегодня', 'today', 'Предыдущие 7 дней', 'week', 'Ранее', 'earlier',
+      'Today', 'today', 'Previous 7 days', 'week', 'Earlier', 'earlier',
     ]);
   });
 

@@ -27,13 +27,13 @@ describe('RunExecutor', () => {
     await vi.waitFor(()=>expect(registry.get('identity-run')).toBeUndefined());
 
     expect(instructions).toContain('Architect (@architect)');
-    expect(instructions).toContain('Упоминание @architect означает обращение к тебе');
+    expect(instructions).toContain('A mention of @architect addresses you');
     expect(instructions).toContain('- @coder — Coder — Реализация');
-    expect(instructions).toContain('всегда используй его точный @handle');
-    expect(instructions).toContain('Все изображения в ответе обязаны быть сохранены в workspace комнаты');
-    expect(instructions).toContain('Никогда не вставляй внешнее изображение');
-    expect(instructions).toContain('никогда не используй /tmp');
-    expect(instructions).toContain('Не используй sudo');
+    expect(instructions).toContain('always use the exact @handle');
+    expect(instructions).toContain('Every image in the response must be stored in the room workspace');
+    expect(instructions).toContain('Never embed an external image');
+    expect(instructions).toContain('never use /tmp');
+    expect(instructions).toContain('Do not use sudo');
     await executor.shutdown();
     await database.close();
   });
@@ -97,7 +97,7 @@ describe('RunExecutor', () => {
     await vi.waitFor(() => expect(registry.get('role-leak')).toBeUndefined());
 
     const statuses = (await events.replay('demo-room', 0)).filter(event => event.type === 'run.status').map(event => event.payload as { status: string; error?: string });
-    expect(statuses.at(-1)).toMatchObject({ status: 'failed', error: expect.stringContaining('другой роли') });
+    expect(statuses.at(-1)).toMatchObject({ status: 'failed', error: expect.stringContaining('another role') });
     expect((await events.replay('demo-room', 0)).some(event => event.type === 'run.selected')).toBe(false);
     await executor.shutdown();
     await database.close();
@@ -220,7 +220,7 @@ describe('RunExecutor', () => {
     const transport=new ConnectorRunAdapter(connector),{executor,registry,database,personas,messages}=await fixture(vi.fn<typeof fetch>(),4,connector,transport),persona=(await personas.find('persona-architect'))!,round=await messages.createRound('demo-room','hello',[persona]),runId=round.runs[0].id;
     registry.add(run(runId,round.message.id));executor.start(runId,'hello');await vi.waitFor(()=>expect(registry.get(runId)).toBeUndefined());
 
-    expect(startRequest).toMatchObject({executionId:runId,harnessInstanceId:'local-hermes',modelId:'sol',modeId:null,workspace:{roomId:'demo-room',relativePath:'.'},input:{message:'[Человек-пользователь: Пользователь (@user); адресат: @architect]\nhello'}});
+    expect(startRequest).toMatchObject({executionId:runId,harnessInstanceId:'local-hermes',modelId:'sol',modeId:null,workspace:{roomId:'demo-room',relativePath:'.'},input:{message:'[Human user: User (@user); recipient: @architect]\nhello'}});
     expect(streamOptions).toMatchObject({executionId:runId,after:2,connectorEpoch:'epoch-1'});
     expect((await database.sql`SELECT upstream_run_id,connector_execution_id,connector_epoch,connector_cursor,upstream_metadata,status,text FROM agent_runs WHERE id=${runId}`)[0]).toEqual({upstream_run_id:null,connector_execution_id:runId,connector_epoch:'epoch-1',connector_cursor:'4',upstream_metadata:{harnessType:'hermes'},status:'completed',text:'Hello'});
     await executor.shutdown();await database.close();

@@ -21,11 +21,11 @@ describe('execution routing',()=>{
     expect((await app.inject({method:'POST',url:'/api/v1/rooms/demo-room/messages',payload:{text:'а ты раньше думал, что Мим — это я?',targets:['deeflash']}})).statusCode).toBe(202);
     await vi.waitFor(()=>expect(submitted).toHaveLength(2));
     const firstInput=submitted[0].input as {message:string;systemPrompt:string;history:Array<{role:string;content:string}>},secondInput=submitted[1].input as typeof firstInput;
-    expect(firstInput.message).toContain('[Человек-пользователь: Владимир (@vladimir); адресат: @deeflash]\n@deeflash что скажешь о миме?');
-    expect(secondInput.message).toContain('[Человек-пользователь: Владимир (@vladimir); адресат: @deeflash]\nа ты раньше думал, что Мим — это я?');
-    expect(secondInput.systemPrompt).toContain('Человек-пользователь — Владимир (@vladimir)');expect(secondInput.systemPrompt).toContain('- @mim — Coder');expect(secondInput.systemPrompt).toContain('Никогда не отождествляй человека-пользователя с агентом');
-    expect(secondInput.history[0].content).toContain('[Человек-пользователь: Владимир (@vladimir); адресат: @deeflash]');
-    expect(JSON.stringify(submitted[1])).not.toContain('Человек-пользователь: Mim (@mim)');
+    expect(firstInput.message).toContain('[Human user: Владимир (@vladimir); recipient: @deeflash]\n@deeflash что скажешь о миме?');
+    expect(secondInput.message).toContain('[Human user: Владимир (@vladimir); recipient: @deeflash]\nа ты раньше думал, что Мим — это я?');
+    expect(secondInput.systemPrompt).toContain('The human user is Владимир (@vladimir)');expect(secondInput.systemPrompt).toContain('- @mim — Coder');expect(secondInput.systemPrompt).toContain('Never identify the human user as an agent');
+    expect(secondInput.history[0].content).toContain('[Human user: Владимир (@vladimir); recipient: @deeflash]');
+    expect(JSON.stringify(submitted[1])).not.toContain('Human user: Mim (@mim)');
     await sql.end();await app.close();
   });
 
@@ -137,8 +137,8 @@ describe('Runs API backend', () => {
     expect((await app.inject({method:'POST',url:'/api/v1/rooms/demo-room/messages',payload:{text:'second',targets:['architect','coder']}})).statusCode).toBe(202);
     await vi.waitFor(()=>expect(submitted).toHaveLength(3));
     const histories=new Map(submitted.slice(1).map(run=>[run.modelId,(run.input as {history:unknown}).history]));
-    expect(histories.get('sol')).toEqual([{role:'user',content:'[Человек-пользователь: Пользователь (@user); адресат: @architect]\n@architect first'},{role:'assistant',content:'prior answer'}]);
-    expect(histories.get('qwen')).toEqual([{role:'user',content:'[Человек-пользователь: Пользователь (@user); адресат: @architect]\n@architect first'},{role:'user',content:expect.stringContaining('[Другой агент: @architect]\nprior answer')}]);
+    expect(histories.get('sol')).toEqual([{role:'user',content:'[Human user: User (@user); recipient: @architect]\n@architect first'},{role:'assistant',content:'prior answer'}]);
+    expect(histories.get('qwen')).toEqual([{role:'user',content:'[Human user: User (@user); recipient: @architect]\n@architect first'},{role:'user',content:expect.stringContaining('[Other agent: @architect]\nprior answer')}]);
     expect(new Set(submitted.map(run=>run.executionId)).size).toBe(3);
     await app.close();
   });

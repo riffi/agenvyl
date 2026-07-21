@@ -42,7 +42,7 @@ describe('room search palette', () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
     render(<RoomSearchPalette rooms={rooms} selectedRoomId="one" onSelect={vi.fn()} onClose={onClose} />);
-    await user.click(screen.getByRole('button', { name: 'Закрыть поиск' }));
+    await user.click(screen.getByRole('button', { name: 'Close search' }));
     expect(onClose).toHaveBeenCalledOnce();
   });
 });
