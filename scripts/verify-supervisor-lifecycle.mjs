@@ -19,6 +19,7 @@ const executable = name => join(postgresRoot, 'bin', process.platform === 'win32
 const env = {
   ...process.env,
   AGENVYL_BUNDLE_ROOT: temporaryRoot,
+  AGENVYL_HOME: userRoot,
   AGENVYL_APP_ROOT: appRoot,
   AGENVYL_NODE_EXECUTABLE: process.execPath,
   AGENVYL_CORE_ENTRYPOINT: join(appRoot, 'core.mjs'),
@@ -84,7 +85,11 @@ try {
 }
 
 async function managedDatabaseUrl() {
-  const configRoot = process.platform === 'win32' ? join(userRoot, 'Agenvyl') : join(userRoot, 'config', 'agenvyl');
+  const configRoot = process.platform === 'win32'
+    ? join(userRoot, 'Agenvyl')
+    : process.platform === 'darwin'
+      ? join(userRoot, 'Library', 'Application Support', 'Agenvyl')
+      : join(userRoot, 'config', 'agenvyl');
   const secrets = JSON.parse(await readFile(join(configRoot, 'secrets.json'), 'utf8'));
   return `postgresql://agenvyl:${encodeURIComponent(secrets.postgresPassword)}@127.0.0.1:${postgresPort}/agenvyl`;
 }

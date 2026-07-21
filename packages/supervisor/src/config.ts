@@ -29,7 +29,7 @@ export function resolveSupervisorConfig(
   options: { home?: string; platform?: AgenvylPlatform; cwd?: string } = {},
 ): SupervisorConfig {
   const platform = options.platform ?? supportedPlatform(process.platform);
-  const paths = resolveAgenvylPaths(env, options.home, platform);
+  const paths = resolveAgenvylPaths(env, options.home ?? env.AGENVYL_HOME, platform);
   const bundleRoot = absolute(env.AGENVYL_BUNDLE_ROOT ?? options.cwd ?? process.cwd(), 'AGENVYL_BUNDLE_ROOT');
   const appRoot = absolute(env.AGENVYL_APP_ROOT ?? join(bundleRoot, 'app'), 'AGENVYL_APP_ROOT');
   const postgresRoot = absolute(env.AGENVYL_POSTGRES_ROOT ?? join(bundleRoot, 'postgres'), 'AGENVYL_POSTGRES_ROOT');

@@ -17,4 +17,9 @@ describe('resolveSupervisorConfig', () => {
   it('rejects invalid ports', () => {
     expect(() => resolveSupervisorConfig({ AGENVYL_PORT: '0', XDG_CONFIG_HOME: '/tmp/config', XDG_DATA_HOME: '/tmp/data' }, { platform: 'linux', home: '/home/test' })).toThrow('AGENVYL_PORT');
   });
+
+  it('supports an explicit portable home for isolated macOS lifecycle', () => {
+    const config = resolveSupervisorConfig({ AGENVYL_HOME: '/tmp/portable-home' }, { platform: 'darwin', cwd: '/opt/agenvyl' });
+    expect(config.paths.config).toBe('/tmp/portable-home/Library/Application Support/Agenvyl');
+  });
 });
