@@ -84,7 +84,12 @@ try {
   throw error;
 } finally {
   try { cliJson(['stop', '--json'], false); } catch { /* best-effort exact cleanup */ }
-  await rm(temporaryRoot, { recursive: true, force: true });
+  await rm(temporaryRoot, {
+    recursive: true,
+    force: true,
+    maxRetries: process.platform === 'win32' ? 10 : 0,
+    retryDelay: 250,
+  });
 }
 
 async function printDiagnostics() {
