@@ -157,6 +157,11 @@ async function installLaunchers(bundleRoot, platform) {
     await cp(join(repositoryRoot, `packaging/launchers/unix/${action.toLowerCase()}.sh`), destination);
     await chmod(destination, 0o755);
   }
+  for (const [name, source] of [['Uninstall Agenvyl', 'uninstall.sh'], ['Uninstall Agenvyl and Data', 'uninstall-purge.sh']]) {
+    const destination = join(bundleRoot, `${name}.${extension}`);
+    await cp(join(repositoryRoot, `packaging/launchers/unix/${source}`), destination);
+    await chmod(destination, 0o755);
+  }
 }
 
 function createArchive(archive, parent, bundleRoot, target) {

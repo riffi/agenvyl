@@ -31,4 +31,11 @@ describe('Connector v1 contract fixtures', () => {
     expect(isResolveConnectorRequest({ resolution: ' ' })).toBe(false);
     expect(isResolveConnectorRequest({ resolution: 'x'.repeat(2_001) })).toBe(false);
   });
+
+  it('accepts boolean managed ownership and rejects non-boolean values',()=>{
+    const instance=connectorContractFixtures.instances.instances[0];
+    expect(isConnectorInstanceList({...connectorContractFixtures.instances,instances:[{...instance,type:'opencode',managed:true}]})).toBe(true);
+    expect(isConnectorInstanceList({...connectorContractFixtures.instances,instances:[{...instance,type:'opencode',managed:'yes'}]})).toBe(false);
+    expect(isConnectorInstanceList({...connectorContractFixtures.instances,instances:[{...instance,type:'hermes',managed:true}]})).toBe(false);
+  });
 });

@@ -113,6 +113,10 @@ export AGENVYL_CONNECTOR_AGY_COMMAND="$HOME/.local/bin/agy"
 export AGENVYL_CONNECTOR_AGY_PRINT_TIMEOUT_MS=1800000
 ```
 
+On Windows, the official `agy.exe` distribution is discovered from `PATH`.
+An explicit path can be configured with
+`AGENVYL_CONNECTOR_AGY_COMMAND=C:\path\to\agy.exe`.
+
 The timeout should be longer than Core's `AGENVYL_RUN_TIMEOUT_MS`, so Core owns
 the product deadline. Connector disables AGY auto-update for child processes.
 
@@ -123,8 +127,10 @@ for AGY. Prefer `plan` for read-only work.
 
 The CLI does not expose a documented structured event protocol. The adapter
 therefore publishes final text and terminal state only, does not fabricate
-tools or usage, bounds prompt/stdout/stderr sizes, and cancels the POSIX process
-group with TERM followed by KILL.
+tools or usage, and bounds prompt/stdout/stderr sizes. Cancellation terminates
+the detached POSIX process group with TERM followed by KILL; on Windows it
+terminates the complete process tree with `taskkill /T` and escalates to `/F`
+after the configured grace period.
 
 ## Core settings
 

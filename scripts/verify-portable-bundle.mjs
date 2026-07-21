@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { cp, mkdir, mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { basename, join, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { NODE_VERSION, runtimeBundleTarget } from './runtime-bundle-config.mjs';
 import { POSTGRES_RUNTIME_CONFIG } from './postgres-runtime-config.mjs';
 
@@ -11,11 +11,12 @@ if (!process.argv[2]) throw new Error('Usage: node scripts/verify-portable-bundl
 const sourceArchive = resolve(process.argv[2]);
 const sourceSidecar = `${sourceArchive}.sha256`;
 const target = runtimeBundleTarget(process.platform, process.arch);
-const temporaryRoot = await mkdtemp(join(tmpdir(), 'agenvyl portable ü '));
+const unicodeProbe = process.platform === 'win32' ? '' : ' ü';
+const temporaryRoot = await mkdtemp(join(tmpdir(), `agenvyl portable${unicodeProbe} `));
 const archiveRoot = join(temporaryRoot, 'incoming archives');
-const extractionRoot = join(temporaryRoot, 'unpacked target ü');
+const extractionRoot = join(temporaryRoot, 'unpacked target');
 const archive = join(archiveRoot, basename(sourceArchive));
-const home = join(temporaryRoot, 'personal data ü');
+const home = join(temporaryRoot, `personal data${unicodeProbe}`);
 const [corePort, connectorPort, postgresPort] = await distinctPorts(3);
 let bundleRoot;
 
@@ -59,6 +60,7 @@ try {
   const cli = join(bundleRoot, 'bin', process.platform === 'win32' ? 'agenvyl.cmd' : 'agenvyl');
   const extension = process.platform === 'win32' ? 'cmd' : process.platform === 'darwin' ? 'command' : 'sh';
   const launcher = action => join(bundleRoot, `${action} Agenvyl.${extension}`);
+  for (const name of [`Uninstall Agenvyl.${extension}`, `Uninstall Agenvyl and Data.${extension}`]) await readFile(join(bundleRoot, name));
 
   const doctor = cliJson(cli, ['doctor', '--json'], env);
   if (!doctor.ok) throw new Error(`Portable doctor failed: ${JSON.stringify(doctor)}`);
@@ -97,7 +99,8 @@ try {
 async function extract(archive, destination, format) {
   await mkdir(destination, { recursive: true });
   const mode = format === 'tar.xz' ? '-xJf' : '-xf';
-  run(tarCommand(), [mode, archive, '-C', destination]);
+  const workingDirectory=dirname(archive);
+  run(tarCommand(), [mode, basename(archive), '-C', relative(workingDirectory,destination)],workingDirectory);
 }
 function cliJson(cli, args, env) {
   const result = runCli(cli, args, env, true);
@@ -124,8 +127,8 @@ function expectOutput(command, args, expected) {
   const result = spawnSync(command, args, { encoding: 'utf8', windowsHide: true });
   if (result.status !== 0 || !result.stdout.trim().includes(expected)) throw new Error(`${basename(command)} returned unexpected version: ${result.stderr || result.stdout}`);
 }
-function run(command, args) {
-  const result = spawnSync(command, args, { stdio: 'inherit', windowsHide: true });
+function run(command, args, cwd) {
+  const result = spawnSync(command, args, { cwd, stdio: 'inherit', windowsHide: true });
   if (result.status !== 0) throw new Error(`${command} failed with status ${result.status}`);
 }
 async function diagnostics(homeRoot) {

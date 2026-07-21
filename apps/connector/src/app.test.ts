@@ -54,6 +54,14 @@ describe('Connector shell', () => {
     await app.close();
   });
 
+  it('reports managed OpenCode ownership even when its adapter is unavailable',async()=>{
+    const app=buildConnectorApp({...config,instances:[{id:'local-opencode',type:'opencode',enabled:true,endpoint:'http://127.0.0.1:4096',managed:true}]});
+    const response=await app.inject({url:'/v1/instances',headers:auth});
+    expect(isConnectorInstanceList(response.json())).toBe(true);
+    expect(response.json().instances[0]).toMatchObject({id:'local-opencode',status:'unavailable',managed:true});
+    await app.close();
+  });
+
   it('discovers and atomically applies bootstrap configuration behind bearer auth',async()=>{
     const adapter=new ControlledAdapter(),persisted:unknown[]=[];
     const app=buildConnectorApp({...config,instances:[]},{discover:async()=>({apiVersion:'v1',candidates:[]}),configureInstances:async instances=>new Map(instances.map(instance=>[instance.id,adapter])),persistInstances:async instances=>{persisted.push(structuredClone(instances));}});

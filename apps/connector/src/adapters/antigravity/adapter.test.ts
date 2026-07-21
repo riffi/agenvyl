@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -11,7 +11,7 @@ afterEach(async () => { await Promise.all(directories.splice(0).map(directory =>
 describe('AntigravityConnectorAdapter', () => {
   it('discovers exact models and the two supported modes after checking the CLI version', async () => {
     const fixture = await fakeAgy();
-    const adapter = new AntigravityConnectorAdapter({ command: fixture.command, env: { FAKE_AGY_VERSION: '1.1.3', FAKE_AGY_MODELS: 'Gemini 3.5 Flash (High)\nClaude Sonnet 4.6 (Thinking)\nGemini 3.5 Flash (High)\n' } });
+    const adapter = fixture.adapter({ env: { FAKE_AGY_VERSION: '1.1.3', FAKE_AGY_MODELS: 'Gemini 3.5 Flash (High)\nClaude Sonnet 4.6 (Thinking)\nGemini 3.5 Flash (High)\n' } });
     await expect(adapter.catalog()).resolves.toEqual({
       models: [
         { id: 'Gemini 3.5 Flash (High)', label: 'Gemini 3.5 Flash (High)' },
@@ -19,14 +19,14 @@ describe('AntigravityConnectorAdapter', () => {
       ],
       modes: [{ id: 'plan', label: 'Plan' }, { id: 'accept-edits', label: 'Accept edits' }],
     });
-    const old = new AntigravityConnectorAdapter({ command: fixture.command, env: { FAKE_AGY_VERSION: '1.1.2' } });
+    const old = fixture.adapter({ env: { FAKE_AGY_VERSION: '1.1.2' } });
     await expect(old.catalog()).rejects.toThrow('1.1.3 or newer');
   });
 
   it('runs one fresh process with exact routing, cwd, auto-update guard and deterministic flattened context', async () => {
     const fixture = await fakeAgy();
     const capturePath = join(fixture.directory, 'capture.json');
-    const adapter = new AntigravityConnectorAdapter({ command: fixture.command, env: { FAKE_AGY_CAPTURE: capturePath, FAKE_AGY_OUTPUT: 'Final answer\n' }, printTimeoutMs: 42_000 });
+    const adapter = fixture.adapter({ env: { FAKE_AGY_CAPTURE: capturePath, FAKE_AGY_OUTPUT: 'Final answer\n' }, printTimeoutMs: 42_000 });
     const request = execution(fixture.directory);
     const handle = await adapter.start(request);
     expect(handle).toEqual({ upstreamId: request.executionId });
@@ -44,23 +44,23 @@ describe('AntigravityConnectorAdapter', () => {
 
   it('fails closed for unsupported modes, oversized prompts, empty output and non-zero exits', async () => {
     const fixture = await fakeAgy();
-    const adapter = new AntigravityConnectorAdapter({ command: fixture.command, env: {}, maxPromptBytes: 300 });
+    const adapter = fixture.adapter({ env: {}, maxPromptBytes: 300 });
     await expect(adapter.start({ ...execution(fixture.directory), modeId: null })).rejects.toThrow('plan or accept-edits');
     await expect(adapter.start({ ...execution(fixture.directory), executionId: 'large', input: { systemPrompt: '', history: [], message: 'x'.repeat(400) } })).rejects.toThrow('argv boundary');
 
-    const empty = new AntigravityConnectorAdapter({ command: fixture.command, env: { FAKE_AGY_OUTPUT: '' } });
+    const empty = fixture.adapter({ env: { FAKE_AGY_OUTPUT: '' } });
     const emptyHandle = await empty.start({ ...execution(fixture.directory), executionId: 'empty' });
     await expect(collect(empty.events(emptyHandle))).resolves.toEqual([{ type: 'execution.failed', payload: { error: { code: 'agy_empty_output', message: expect.any(String) } } }]);
 
-    const failed = new AntigravityConnectorAdapter({ command: fixture.command, env: { FAKE_AGY_EXIT: '7', FAKE_AGY_STDERR: 'token=secret-value failed' } });
+    const failed = fixture.adapter({ env: { FAKE_AGY_EXIT: '7', FAKE_AGY_STDERR: 'token=secret-value failed' } });
     const failedHandle = await failed.start({ ...execution(fixture.directory), executionId: 'failed' });
     await expect(collect(failed.events(failedHandle))).resolves.toEqual([{ type: 'execution.failed', payload: { error: { code: 'agy_execution_failed', message: 'token=[REDACTED] failed' } } }]);
   });
 
-  it('terminates a stubborn POSIX process group and reports cancellation', async () => {
+  it('terminates a stubborn process tree and reports cancellation', async () => {
     const fixture = await fakeAgy();
     const capturePath = join(fixture.directory, 'capture.json');
-    const adapter = new AntigravityConnectorAdapter({ command: fixture.command, env: { FAKE_AGY_CAPTURE: capturePath, FAKE_AGY_BEHAVIOR: 'hang' }, stopGraceMs: 25 });
+    const adapter = fixture.adapter({ env: { FAKE_AGY_CAPTURE: capturePath, FAKE_AGY_BEHAVIOR: 'hang' }, stopGraceMs: 25 });
     const handle = await adapter.start({ ...execution(fixture.directory), executionId: 'cancelled' });
     await waitForFile(capturePath);
     const eventsPromise = collect(adapter.events(handle));
@@ -83,8 +83,8 @@ async function collect(source: AsyncIterable<unknown>) { const values: unknown[]
 async function fakeAgy() {
   const directory = await mkdtemp(join(tmpdir(), 'agenvyl-agy-'));
   directories.push(directory);
-  const command = join(directory, 'agy');
-  await writeFile(command, `#!${process.execPath}
+  const script = join(directory, 'agy.cjs');
+  await writeFile(script, `
 const { writeFileSync } = require('node:fs');
 const args=process.argv.slice(2);
 if(args[0]==='--version'){console.log(process.env.FAKE_AGY_VERSION||'1.1.3');process.exit(0)}
@@ -93,8 +93,10 @@ if(process.env.FAKE_AGY_CAPTURE)writeFileSync(process.env.FAKE_AGY_CAPTURE,JSON.
 if(process.env.FAKE_AGY_BEHAVIOR==='hang'){process.on('SIGTERM',()=>{});setInterval(()=>{},1000)}
 else{if(process.env.FAKE_AGY_STDERR)process.stderr.write(process.env.FAKE_AGY_STDERR);process.stdout.write(process.env.FAKE_AGY_OUTPUT??'ok');process.exit(Number(process.env.FAKE_AGY_EXIT||0))}
 `);
-  await chmod(command, 0o755);
-  return { directory, command };
+  return {
+    directory,
+    adapter: (options: Omit<import('./adapter.js').AntigravityAdapterOptions, 'command' | 'commandArgsPrefix'>) => new AntigravityConnectorAdapter({ ...options, command: process.execPath, commandArgsPrefix: [script] }),
+  };
 }
 
 async function waitForFile(path: string) {

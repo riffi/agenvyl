@@ -67,12 +67,13 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
     connectorEpoch,
     instances: enabledInstances.map(instance => {
       const adapter = adapters.get(instance.id);
+      const ownership=instance.type==='opencode'&&instance.managed!==undefined?{managed:instance.managed}:{};
       if (adapter?.type !== instance.type) {
-        return { id: instance.id, type: instance.type, status: 'unavailable' as const, capabilities: [], error: { code: 'adapter_not_loaded', message: 'Adapter module is not loaded in this Connector build' } };
+        return { id: instance.id, type: instance.type, status: 'unavailable' as const, capabilities: [],...ownership, error: { code: 'adapter_not_loaded', message: 'Adapter module is not loaded in this Connector build' } };
       }
       return workspacePolicy.configured
-        ? { id: instance.id, type: instance.type, status: 'healthy' as const, capabilities: adapter.capabilities }
-        : { id: instance.id, type: instance.type, status: 'degraded' as const, capabilities: adapter.capabilities, error: { code: 'workspace_not_configured', message: 'Connector workspace roots are not configured' } };
+        ? { id: instance.id, type: instance.type, status: 'healthy' as const, capabilities: adapter.capabilities,...ownership }
+        : { id: instance.id, type: instance.type, status: 'degraded' as const, capabilities: adapter.capabilities,...ownership, error: { code: 'workspace_not_configured', message: 'Connector workspace roots are not configured' } };
     }),
   }));
 
@@ -90,7 +91,7 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
       adapters.clear();for(const [id,adapter] of configured)adapters.set(id,adapter);
       instanceTypes.clear();for(const instance of enabledInstances)instanceTypes.set(instance.id,instance.type);
       return{apiVersion:CONNECTOR_API_VERSION,instances};
-    }catch{await options.configureInstances(previous).catch(()=>undefined);await options.persistInstances(previous).catch(()=>undefined);return reply.code(409).send({apiVersion:CONNECTOR_API_VERSION,error:'configuration_failed',message:'Connector configuration could not be applied'});}
+    }catch(error){app.log.error({err:error},'Connector configuration failed');await options.configureInstances(previous).catch(()=>undefined);await options.persistInstances(previous).catch(()=>undefined);return reply.code(409).send({apiVersion:CONNECTOR_API_VERSION,error:'configuration_failed',message:'Connector configuration could not be applied'});}
   });
 
   app.get<{ Params: { id: string } }>('/v1/instances/:id/catalog', async (request, reply) => {

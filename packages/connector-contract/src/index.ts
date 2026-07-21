@@ -47,6 +47,7 @@ export type ConnectorInstance = {
   type: string;
   status: ConnectorInstanceStatus;
   capabilities: ConnectorCapability[];
+  managed?: boolean;
   error?: ConnectorError;
 };
 
@@ -220,6 +221,8 @@ export function isConnectorInstanceList(value: unknown): value is ConnectorInsta
   return isRecord(value) && value.apiVersion === CONNECTOR_API_VERSION && typeof value.connectorEpoch === 'string' && Array.isArray(value.instances)
     && value.instances.every(instance => isRecord(instance) && strings(instance, 'id', 'type', 'status') && ['healthy', 'degraded', 'unavailable'].includes(String(instance.status))
       && Array.isArray(instance.capabilities) && instance.capabilities.every(capability => typeof capability === 'string' && capabilities.has(capability))
+      && (instance.managed === undefined || typeof instance.managed === 'boolean')
+      && (instance.type === 'opencode' || instance.managed === undefined)
       && (instance.error === undefined || isError(instance.error)));
 }
 

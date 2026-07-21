@@ -30,7 +30,7 @@
     "check:local": "npm test && npm run typecheck && npm run lint:boundaries",
     "check:full": "npm run check:local && npm run build && npm run audit:oss && npm audit --omit=dev --audit-level=high",
     "build:contracts": "tsc -p packages/contracts/tsconfig.json && tsc -p packages/connector-contract/tsconfig.json && tsc -p packages/runtime-config/tsconfig.json && tsc -p packages/supervisor/tsconfig.json",
-    "build": "npm run build:contracts && tsc -b --force && vite build --config apps/frontend/vite.config.ts && tsc -p tsconfig.server.json && cp apps/backend/src/infrastructure/database/migrations/*.sql apps/backend/dist/infrastructure/database/migrations/",
+    "build": "npm run build:contracts && tsc -b --force && vite build --config apps/frontend/vite.config.ts && tsc -p tsconfig.server.json && node scripts/copy-database-migrations.mjs",
     "typecheck": "npm run build:contracts && tsc -b --pretty false",
     "lint:boundaries": "node scripts/check-frontend-boundaries.mjs && node scripts/check-backend-boundaries.mjs",
     "audit:oss": "node scripts/audit-oss-baseline.mjs",

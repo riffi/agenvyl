@@ -9,7 +9,7 @@ type SetupState={completed:boolean;firstRoomId?:string;candidates:SetupCandidate
 export async function runSetup(config:SupervisorConfig,cliPath:string,options:{all?:boolean;openBrowser?:boolean}={}){
   await startSupervisor(config,cliPath);
   const base=`http://127.0.0.1:${config.corePort}`,state=await json<SetupState>(`${base}/api/v1/setup`);
-  if(state.completed){if(options.openBrowser!==false)openBrowser(config,`${base}/rooms/${state.firstRoomId??''}`);return{completed:true,selected:[]};}
+  if(state.completed){const url=`${base}/setup?configure=1`;if(options.openBrowser!==false)openBrowser(config,url);return{completed:true,selected:[],url};}
   const safe=state.candidates.filter(candidate=>candidate.safeToSelect);
   process.stdout.write(`${state.candidates.map(candidate=>`${candidate.safeToSelect?'[x]':'[ ]'} ${candidate.label}: ${candidate.endpoint?.reachable?'endpoint ready':candidate.cli.found?candidate.cli.version??'CLI found':'not detected'}`).join('\n')}\n`);
   let selected=safe;

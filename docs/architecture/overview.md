@@ -120,7 +120,7 @@ payloads are not part of the Core API.
 | --- | --- | --- |
 | Hermes | HTTP and event stream | catalog, text, tools, approvals, usage, cancel |
 | OpenCode | pinned native SDK over HTTP/SSE | catalog and modes, text/reasoning, tools, approvals, one-question clarifications, usage, cancel |
-| Antigravity | fresh `agy --print` subprocess | exact model/mode catalog, final text, process-group cancel |
+| Antigravity | fresh `agy --print` subprocess | exact model/mode catalog, final text, POSIX process-group or Windows process-tree cancel |
 
 OpenCode uses its native server and SDK because that path exposes the lifecycle
 needed by Agenvyl without introducing a second translation layer. ACP is not a

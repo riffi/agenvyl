@@ -5,7 +5,7 @@ import type { ConnectorDiscovery, HarnessDiscoveryCandidate, HarnessType } from 
 import { CONNECTOR_API_VERSION } from '@agenvyl/connector-contract';
 
 const execute=promisify(execFile);
-type VersionExecutor=(file:string,args:string[],options:{timeout:number;windowsHide:boolean;env:NodeJS.ProcessEnv})=>Promise<{stdout:string;stderr:string}>;
+type VersionExecutor=(file:string,args:string[],options:{timeout:number;windowsHide:boolean;windowsVerbatimArguments?:boolean;env:NodeJS.ProcessEnv})=>Promise<{stdout:string;stderr:string}>;
 
 export async function discoverHarnesses(options:{env?:NodeJS.ProcessEnv;request?:typeof fetch;run?:typeof runVersion}={}):Promise<ConnectorDiscovery>{
   const env=options.env??process.env,request=options.request??fetch,run=options.run??runVersion;
@@ -26,7 +26,7 @@ export async function discoverHarnesses(options:{env?:NodeJS.ProcessEnv;request?
 
 export async function runVersion(command:string,options:{platform?:NodeJS.Platform;env?:NodeJS.ProcessEnv;execute?:VersionExecutor}={}){
   const platform=options.platform??process.platform,env=options.env??process.env,run=options.execute??execute as VersionExecutor;
-  try{const executable=await resolveCommand(command,{platform,env,execute:run}),invocation=commandInvocation(executable,['--version'],platform,env),{stdout,stderr}=await run(invocation.file,invocation.args,executionOptions(env));return{found:true,command,version:firstVersion(`${stdout}\n${stderr}`)};}
+  try{const executable=await resolveCommand(command,{platform,env,execute:run}),invocation=commandInvocation(executable,['--version'],platform,env),{stdout,stderr}=await run(invocation.file,invocation.args,{...executionOptions(env),windowsVerbatimArguments:invocation.windowsVerbatimArguments});return{found:true,command,version:firstVersion(`${stdout}\n${stderr}`)};}
   catch{return{found:false,command};}
 }
 
@@ -44,7 +44,7 @@ export function commandInvocation(executable:string,args:string[],platform:NodeJ
   const extension=extname(executable).toLowerCase();
   if(platform!=='win32'||(extension!=='.cmd'&&extension!=='.bat'))return{file:executable,args};
   if(/["\r\n]/.test(executable)||args.some(value=>!/^[-A-Za-z0-9_.:\[\]]+$/.test(value)))throw new Error('Windows command invocation is invalid');
-  return{file:env.ComSpec??env.COMSPEC??'cmd.exe',args:['/d','/s','/c',`""${executable}" ${args.join(' ')}"`]};
+  return{file:env.ComSpec??env.COMSPEC??'cmd.exe',args:['/d','/s','/c',`""${executable}" ${args.join(' ')}"`],windowsVerbatimArguments:true};
 }
 
 function executionOptions(env:NodeJS.ProcessEnv){return{timeout:3_000,windowsHide:true,env};}

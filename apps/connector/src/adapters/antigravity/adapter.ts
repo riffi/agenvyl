@@ -1,8 +1,9 @@
 import { Buffer } from 'node:buffer';
-import { spawn, type ChildProcessByStdio } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcessByStdio } from 'node:child_process';
 import type { Readable } from 'node:stream';
 import type { ExecutionStatus } from '@agenvyl/connector-contract';
 import type { AdapterExecution, AdapterExecutionEvent, AdapterStartExecutionRequest, ConnectorAdapter } from '../../adapter.js';
+import { commandInvocation, resolveCommand } from '../../discovery.js';
 import { redactConnectorText } from '../../safety.js';
 
 const minimumVersion = [1, 1, 3] as const;
@@ -10,6 +11,7 @@ const supportedModes = new Set(['plan', 'accept-edits']);
 
 export type AntigravityAdapterOptions = {
   command?: string;
+  commandArgsPrefix?: string[];
   env?: NodeJS.ProcessEnv;
   printTimeoutMs?: number;
   catalogTimeoutMs?: number;
@@ -38,6 +40,7 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
   readonly type = 'antigravity';
   readonly capabilities: ConnectorAdapter['capabilities'] = ['model_catalog', 'mode_catalog'];
   private readonly command: string;
+  private readonly commandArgsPrefix: string[];
   private readonly env: NodeJS.ProcessEnv;
   private readonly printTimeoutMs: number;
   private readonly catalogTimeoutMs: number;
@@ -46,10 +49,11 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
   private readonly maxOutputBytes: number;
   private readonly executions = new Map<string, ActiveExecution>();
   private versionCheck?: Promise<void>;
+  private resolvedCommand?: Promise<string>;
 
   constructor(options: AntigravityAdapterOptions = {}) {
-    if (process.platform === 'win32') throw new Error('Antigravity adapter currently supports POSIX hosts only');
     this.command = options.command?.trim() || 'agy';
+    this.commandArgsPrefix = [...(options.commandArgsPrefix ?? [])];
     this.env = { ...(options.env ?? process.env), AGY_CLI_DISABLE_AUTO_UPDATE: 'true' };
     this.printTimeoutMs = positiveInteger(options.printTimeoutMs, 30 * 60_000, 'printTimeoutMs');
     this.catalogTimeoutMs = positiveInteger(options.catalogTimeoutMs, 10_000, 'catalogTimeoutMs');
@@ -78,12 +82,7 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
       '--print-timeout', `${this.printTimeoutMs}ms`,
       '--print', prompt,
     ];
-    const child = spawn(this.command, args, {
-      cwd: request.workspace.absolutePath,
-      env: this.env,
-      detached: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    const child = await this.spawnAgy(args, request.workspace.absolutePath);
     const active: ActiveExecution = {
       child,
       completion: collectProcess(child, this.maxOutputBytes),
@@ -147,7 +146,7 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
   }
 
   private async runProbe(args: string[]) {
-    const child = spawn(this.command, args, { env: this.env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = await this.spawnAgy(args);
     const completion = collectProcess(child, 256 * 1_024);
     const timeout = setTimeout(() => signalProcessGroup(child, 'SIGKILL'), this.catalogTimeoutMs);
     const result = await completion.finally(() => clearTimeout(timeout));
@@ -158,6 +157,19 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
       throw new Error(detail || `Antigravity CLI command failed with code ${result.code ?? 'unknown'}`);
     }
     return result;
+  }
+
+  private async spawnAgy(args: string[], cwd?: string) {
+    const executable = await (this.resolvedCommand ??= resolveCommand(this.command, { env: this.env }));
+    const invocation = commandInvocation(executable, [...this.commandArgsPrefix, ...args], process.platform, this.env);
+    return spawn(invocation.file, invocation.args, {
+      ...(cwd ? { cwd } : {}),
+      env: this.env,
+      detached: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+      windowsVerbatimArguments: invocation.windowsVerbatimArguments,
+    });
   }
 
   private async ensureSupportedVersion() {
@@ -226,6 +238,11 @@ function collectProcess(child: RunningChild, maxOutputBytes: number): Promise<Pr
 
 function signalProcessGroup(child: RunningChild, signal: NodeJS.Signals) {
   if (!child.pid) return;
+  if (process.platform === 'win32') {
+    const force = signal === 'SIGKILL';
+    spawnSync('taskkill.exe', ['/PID', String(child.pid), '/T', ...(force ? ['/F'] : [])], { stdio: 'ignore', windowsHide: true });
+    return;
+  }
   try { process.kill(-child.pid, signal); }
   catch (error) {
     if (!isMissingProcess(error)) {

@@ -33,6 +33,7 @@ describe('Connector config', () => {
   });
 
   it('atomically persists non-secret instance settings without the bearer token',async()=>{const path=await config('version: 1\ninstances: []\n'),loaded=await loadConnectorConfig({path,env:{AGENVYL_CONNECTOR_TOKEN:'x'.repeat(32),AGENVYL_WORKSPACE_ROOT:'/srv/workspaces'}});await saveConnectorInstances(loaded,[{id:'local-opencode',type:'opencode',enabled:true,endpoint:'http://127.0.0.1:4096',managed:true}]);const saved=await readFile(path,'utf8');expect(saved).toContain('managed: true');expect(saved).not.toContain('xxxxxxxx');expect((await loadConnectorConfig({path,env:{AGENVYL_CONNECTOR_TOKEN:'x'.repeat(32)}})).instances[0]).toMatchObject({id:'local-opencode',managed:true});});
+  it('persists only declared config fields after a server mutates its listen options',async()=>{const path=await config('version: 1\nlisten: { host: 127.0.0.1, port: 4310 }\ninstances: []\n'),loaded=await loadConnectorConfig({path,env:{AGENVYL_CONNECTOR_TOKEN:'x'.repeat(32),AGENVYL_WORKSPACE_ROOT:'/srv/workspaces'}});Object.assign(loaded.listen,{listenTextResolver:()=>''});await expect(saveConnectorInstances(loaded,[])).resolves.toBeUndefined();expect(await readFile(path,'utf8')).not.toContain('listenTextResolver');});
 
   it('loads only explicit absolute workspace roots', async () => {
     const path = await config('version: 1\nworkspaces:\n  roots: [/srv/agenvyl/rooms, /mnt/team/rooms]\ninstances: []\n');

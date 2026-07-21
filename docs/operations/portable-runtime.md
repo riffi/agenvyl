@@ -38,6 +38,8 @@ bin/agenvyl logs supervisor --lines 100
 bin/agenvyl backup
 bin/agenvyl stop
 bin/agenvyl restore /absolute/path/to/agenvyl-backup.dump
+bin/agenvyl uninstall
+bin/agenvyl uninstall --purge --yes
 ```
 
 On Windows use `bin\agenvyl.cmd` with the same arguments. `setup` starts the
@@ -48,6 +50,20 @@ personal PostgreSQL cluster, and starts PostgreSQL → Connector → Core. `stop
 uses the reverse order and escalates process-tree termination after a bounded
 grace period. A singleton lock plus PID, stale-state, health, and port checks
 drive `status` and `doctor` diagnostics.
+
+## Uninstall
+
+Run `Uninstall Agenvyl` (or `bin/agenvyl uninstall`) to stop Agenvyl and
+remove the extracted portable application while preserving personal data.
+This is the recommended mode before replacing the application with a newer
+archive.
+
+Run `Uninstall Agenvyl and Data` to permanently remove both the application
+and all personal Agenvyl data. The equivalent CLI command is
+`bin/agenvyl uninstall --purge --yes`; `--yes` is required to make destructive
+automation explicit. On Windows, a temporary cleanup process performs removal
+after the bundled Node process exits. Uninstall refuses to operate unless the
+application directory contains a recognized portable manifest.
 
 ## Personal data
 

@@ -14,9 +14,8 @@ export class SetupService{
   constructor(private readonly database:Database,private readonly connector:HttpConnectorClient,private readonly workspaceRoot:string){}
   async state():Promise<SetupState>{
     const[row]=await this.database.sql`SELECT completed_at,locale,first_room_id FROM installation_state WHERE id=true`;
-    if(row.completed_at)return{completed:true,locale:row.locale==='ru'?'ru':'en',workspaceRoot:this.workspaceRoot,...(row.first_room_id?{firstRoomId:String(row.first_room_id)}:{}),instances:[],candidates:[]};
     const [discovery,instances]=await Promise.all([this.connector.discover().catch(()=>({apiVersion:'v1' as const,candidates:[]})),this.connector.instances().catch(()=>({apiVersion:'v1' as const,connectorEpoch:'',instances:[]}))]);
-    return{completed:false,locale:row.locale==='ru'?'ru':'en',workspaceRoot:this.workspaceRoot,instances:instances.instances.map(instance=>({id:instance.id,type:instance.type,status:instance.status})),candidates:discovery.candidates};
+    return{completed:Boolean(row.completed_at),locale:row.locale==='ru'?'ru':'en',workspaceRoot:this.workspaceRoot,...(row.first_room_id?{firstRoomId:String(row.first_room_id)}:{}),instances:instances.instances.map(instance=>({id:instance.id,type:instance.type,status:instance.status,...(instance.managed!==undefined?{managed:instance.managed}:{})})),candidates:discovery.candidates};
   }
   async configure(input:ConfigureSetupHarnessesRequest){
     if(!isConfigureConnectorInstancesRequest(input))throw new AppError('invalid_setup_harnesses',400,'Harness selection is invalid');
