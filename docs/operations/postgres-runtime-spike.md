@@ -1,8 +1,8 @@
 # PostgreSQL runtime supply-chain spike
 
-This spike validates the storage prerequisite for the cross-platform portable
-runtime. It does not install Agenvyl, replace the existing Compose deployment,
-or implement the production supervisor.
+This spike established the storage prerequisite for the cross-platform portable
+runtime. Its payloads are now consumed by the native portable bundle builder;
+it still does not replace the existing Compose deployment.
 
 ## Source of truth
 
@@ -47,12 +47,12 @@ PID status, and port-release checks.
 CI runs this gate natively on all five GitHub-hosted runner targets. Build or
 verification failure on any target blocks completion of the spike.
 
-## Boundaries carried into the supervisor
+## Boundaries carried into the supervisor and final assembly
 
 - Personal portable data uses a new platform-local cluster directory.
 - Existing Docker volumes and the private dev stand are never adopted
   automatically; explicit backup/restore is the migration path.
-- The future supervisor starts PostgreSQL before Connector and Core, and stops
+- The supervisor starts PostgreSQL before Connector and Core, and stops
   components in reverse order.
 - Process-tree termination has a graceful deadline followed by forced
   termination; no child process may survive a successful stop.

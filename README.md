@@ -12,8 +12,21 @@ The Connector runs next to the installed harness CLIs and their credential
 stores. Credentials stay out of Core, the browser, YAML configuration, and the
 application database.
 
-> Agenvyl is currently a pre-release project. The source-run path is supported;
-> a packaged one-command installer is a later roadmap milestone.
+> Agenvyl is currently a pre-release project. Native portable archives are CI
+> artifacts; a public signed installer is a later roadmap milestone.
+
+## Portable Technical Preview
+
+The native build matrix produces self-contained archives for Linux x64/arm64,
+macOS x64/arm64, and Windows x64. They include Node.js, PostgreSQL, Core/Web UI,
+Connector, and the supervisor; Docker, a system Node installation, and a source
+checkout are not required.
+
+Extract one archive and run `Start Agenvyl.sh`, `Start Agenvyl.command`, or
+`Start Agenvyl.cmd`. The launcher starts PostgreSQL → Connector → Core and opens
+the loopback Web UI. Matching Stop and Status launchers call the same supervisor
+CLI. See the [portable runtime guide](docs/operations/portable-runtime.md) for
+data locations, backups, diagnostics, and the unsigned preview boundary.
 
 ## Prerequisites
 
@@ -67,9 +80,9 @@ available but disabled until their host runtimes are configured.
 Open <http://127.0.0.1:8791>. Persistent PostgreSQL data lives in a named Docker
 volume; room files live under the configured host workspace path.
 
-Self-contained Linux x64/arm64 archives and user-systemd units are covered by
-the [portable runtime guide](docs/operations/portable-runtime.md). Detailed
-setup for Hermes, OpenCode, and Antigravity is in
+Portable archives are covered by the
+[portable runtime guide](docs/operations/portable-runtime.md). Detailed setup
+for Hermes, OpenCode, and Antigravity is in
 [the Connector operations guide](docs/operations/connector.md).
 
 ## Local development
@@ -95,8 +108,9 @@ npm test
 npm run typecheck
 npm run lint:boundaries
 npm run build
-npm run bundle:x64
-npm run verify:bundle
+npm run postgres:runtime:build
+npm run bundle
+npm run verify:bundle -- artifacts/portable/<archive>
 npm run audit:oss
 npm audit --omit=dev --audit-level=high
 ```

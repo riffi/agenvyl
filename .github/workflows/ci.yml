@@ -65,29 +65,8 @@ jobs:
       - run: npm run audit:oss
       - run: npm audit --omit=dev --audit-level=high
 
-  runtime-bundles:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    strategy:
-      matrix:
-        arch: [x64, arm64]
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: node scripts/build-runtime-bundle.mjs --arch ${{ matrix.arch }}
-      - uses: actions/upload-artifact@v4
-        with:
-          name: agenvyl-linux-${{ matrix.arch }}
-          path: |
-            artifacts/*.tar.xz
-            artifacts/*.sha256
-
-  postgres-runtime-probes:
-    name: PostgreSQL ${{ matrix.target }}
+  portable-bundles:
+    name: Portable ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
@@ -164,10 +143,27 @@ jobs:
         run: node scripts/verify-postgres-runtime.mjs artifacts/postgres-runtime/*.tar.gz
       - shell: bash
         run: npm run build:contracts && node scripts/verify-supervisor-lifecycle.mjs artifacts/postgres-runtime/*.tar.gz
+      - shell: bash
+        run: >-
+          node scripts/build-runtime-bundle.mjs
+          --platform ${{ matrix.platform }}
+          --arch ${{ matrix.arch }}
+          --postgres-artifact artifacts/postgres-runtime/*.tar.gz
+      - shell: bash
+        run: |
+          portable_archive=$(find artifacts/portable -type f ! -name '*.sha256' -print -quit)
+          node scripts/verify-portable-bundle.mjs "$portable_archive"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agenvyl-${{ matrix.target }}
+          path: |
+            artifacts/portable/*.tar.xz
+            artifacts/portable/*.zip
+            artifacts/portable/*.sha256
 
   preview-signing-boundary:
     if: ${{ vars.AGENVYL_ENABLE_PREVIEW_SIGNING == 'true' }}
-    needs: postgres-runtime-probes
+    needs: portable-bundles
     runs-on: ubuntu-latest
     steps:
       - run: >-

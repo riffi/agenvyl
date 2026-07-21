@@ -1,117 +1,93 @@
-# Portable host runtime
+# Portable runtime
 
-> The portable supervisor and PostgreSQL payload are validated together on
-> Linux x64/arm64, macOS x64/arm64, and Windows x64. The release assembly that
-> combines both artifacts is a separate packaging milestone; the existing
-> production archive below remains Linux-only until that assembly lands.
+Agenvyl is assembled natively for five targets:
 
-## Portable supervisor contract
+| Target | Archive | Start launcher |
+| --- | --- | --- |
+| Linux x64 | `agenvyl-0.1.0-linux-x64.tar.xz` | `Start Agenvyl.sh` |
+| Linux arm64 | `agenvyl-0.1.0-linux-arm64.tar.xz` | `Start Agenvyl.sh` |
+| macOS x64 | `agenvyl-0.1.0-darwin-x64.zip` | `Start Agenvyl.command` |
+| macOS arm64 | `agenvyl-0.1.0-darwin-arm64.zip` | `Start Agenvyl.command` |
+| Windows x64 | `agenvyl-0.1.0-windows-x64.zip` | `Start Agenvyl.cmd` |
 
-The same Node-based CLI owns the personal runtime on every supported target;
-it does not require PM2, systemd, launchd, or a Windows service:
+Each archive contains compiled Core/Web UI and Connector code, production npm
+dependencies, the shared supervisor CLI, Node 22.23.1, PostgreSQL 17.10, license
+metadata, a manifest, and a SHA-256 sidecar. It does not require Docker, system
+Node, PM2, systemd, launchd, a Windows service, or a source checkout.
+
+The Technical Preview archives are unsigned. macOS Gatekeeper and Windows
+SmartScreen may therefore require an explicit user trust override until release
+signing identities are configured.
+
+## Start, status, and stop
+
+Extract the archive to any user-writable directory and run the platform Start
+launcher. Paths containing spaces and Unicode are supported. After the stack is
+healthy, Start opens `http://127.0.0.1:8791` in the default browser. The launcher
+does not open a browser when `AGENVYL_NO_OPEN_BROWSER=1`, which is intended for
+automation and CI.
+
+Start, Stop, and Status launchers are thin wrappers around the same CLI:
 
 ```bash
-agenvyl doctor
-agenvyl start
-agenvyl status
-agenvyl logs supervisor --lines 100
-agenvyl backup
-agenvyl stop
-agenvyl restore /absolute/path/to/agenvyl-backup.dump
+bin/agenvyl doctor
+bin/agenvyl start
+bin/agenvyl status
+bin/agenvyl logs supervisor --lines 100
+bin/agenvyl backup
+bin/agenvyl stop
+bin/agenvyl restore /absolute/path/to/agenvyl-backup.dump
 ```
 
-`start` is idempotent. On first run it creates user-only configuration, state,
-log, workspace, backup, and PostgreSQL directories, generates secrets with
-user-only permissions, initializes the personal database cluster, and starts
-PostgreSQL → Connector → Core. `stop` reverses that order and escalates after a
-bounded grace period. A singleton lock plus PID and port checks diagnose stale
-process state and conflicts; `doctor` reports the exact failing boundary.
+On Windows use `bin\agenvyl.cmd` with the same arguments. `start` is idempotent.
+On first run the supervisor generates user-only secrets, initializes the
+personal PostgreSQL cluster, and starts PostgreSQL → Connector → Core. `stop`
+uses the reverse order and escalates process-tree termination after a bounded
+grace period. A singleton lock plus PID, stale-state, health, and port checks
+drive `status` and `doctor` diagnostics.
 
-Personal data is stored in the platform application-data location:
+## Personal data
 
 - Linux: `${XDG_DATA_HOME:-$HOME/.local/share}/agenvyl`
 - macOS: `$HOME/Library/Application Support/Agenvyl`
-- Windows: `%LOCALAPPDATA%\\Agenvyl`
+- Windows: `%LOCALAPPDATA%\Agenvyl`
 
-Setting `AGENVYL_DATABASE_URL` explicitly switches to server/development mode:
-the supervisor checks and uses that database but never initializes, stops, or
-restores it. Existing Compose/dev-stand clusters are never discovered or
-claimed automatically. Moving data into the personal cluster requires an
-explicit dump and `agenvyl restore` while the stack is stopped.
+The application directory can be replaced without deleting personal rooms,
+workspaces, logs, backups, or the PostgreSQL cluster. Use `agenvyl backup` before
+upgrades and `agenvyl restore <file>` only while the stack is stopped.
 
-The five-target lifecycle probe is:
+Setting `AGENVYL_DATABASE_URL` explicitly switches the supervisor to
+server/development mode. It checks and uses that database but never initializes,
+stops, backs up, or restores it. Existing Compose/dev-stand clusters are never
+discovered or claimed automatically; migration into the personal cluster is an
+explicit dump and restore operation.
 
-```bash
-npm run build:contracts
-node scripts/verify-supervisor-lifecycle.mjs <postgres-runtime-artifact.tar.gz>
-```
+## Native build and verification
 
-The legacy production topology runs Core/Web UI and Connector directly on the
-Linux host. Docker runs only `postgres:17-alpine`; its published port is bound to
-`127.0.0.1` and data remains in the `postgres-data` named volume.
-
-## Build release bundles
+Build the PostgreSQL payload and portable archive for the current native target:
 
 ```bash
 npm ci
+npm run postgres:runtime:build
 npm run bundle
+npm run verify:bundle -- artifacts/portable/<archive>
 ```
 
-This creates Linux x64 and arm64 archives plus SHA-256 sidecars under
-`artifacts/`. Each archive contains compiled Core, Web UI and Connector code,
-production npm dependencies, launchers, user-systemd units, and Node 22.23.1
-for the target architecture. The build verifies the downloaded Node archive
-against its pinned official checksum.
+The builder accepts `--platform`, `--arch`, and `--postgres-artifact` for CI but
+rejects cross-assembly: the requested target must match the native runner. Node
+downloads are checked against pinned official SHA-256 values. PostgreSQL payload
+checksums and target manifests are verified, and absolute library symlinks are
+normalized to relocatable relative aliases during final assembly.
 
-## Manual runtime layout
+The archive probe copies and extracts the artifact through paths containing
+spaces and Unicode, invokes the real platform Start/Status/Stop launchers, checks
+the bundled Node and PostgreSQL versions, waits for the Web UI, and verifies that
+all three ports and all recorded processes are released after Stop. CI runs this
+gate on Linux x64/arm64, macOS x64/arm64, and Windows x64.
 
-This section describes the existing Linux server bundle and remains available
-as the Compose/server path.
+## Server and development mode
 
-Extract the matching archive as
-`${XDG_DATA_HOME:-$HOME/.local/share}/agenvyl/current`. Copy
-`share/agenvyl/.env.example` to
-`${XDG_CONFIG_HOME:-$HOME/.config}/agenvyl/agenvyl.env`, and copy
-`share/agenvyl/connector.example.yaml` to `connector.yaml` in the same config
-directory. Replace both secrets and keep the database password identical in
-`POSTGRES_PASSWORD` and `AGENVYL_DATABASE_URL`.
-
-```bash
-mkdir -p "${XDG_DATA_HOME:-$HOME/.local/share}/agenvyl/workspaces"
-```
-
-Start PostgreSQL from the extracted runtime:
-
-```bash
-docker compose --env-file "$HOME/.config/agenvyl/agenvyl.env" \
-  -f "$HOME/.local/share/agenvyl/current/share/agenvyl/compose.yaml" up -d --wait
-```
-
-Install and start the user units:
-
-```bash
-mkdir -p "$HOME/.config/systemd/user"
-cp "$HOME/.local/share/agenvyl/current/systemd/"*.service "$HOME/.config/systemd/user/"
-systemctl --user daemon-reload
-systemctl --user enable --now agenvyl-connector.service agenvyl-core.service
-```
-
-Both processes use the same host workspace root:
-`${XDG_DATA_HOME:-$HOME/.local/share}/agenvyl/workspaces`. An explicit absolute
-`AGENVYL_WORKSPACE_ROOT` overrides it for both processes. There is no container
-path mapping.
-
-## Health and recovery
-
-```bash
-"$HOME/.local/share/agenvyl/current/bin/agenvyl-health" all
-systemctl --user status agenvyl-connector.service agenvyl-core.service
-docker compose -f "$HOME/.local/share/agenvyl/current/share/agenvyl/compose.yaml" ps
-```
-
-The systemd units restart failed host processes. PostgreSQL uses
-`restart: unless-stopped`, and its named volume survives container replacement.
-Run `npm run verify:bundle` in a source checkout to exercise the unpacked x64
-bundle through Core → Connector → a fake Antigravity-compatible harness,
-including forced process restarts, database restart/persistence, and direct
-workspace mutation without using the system Node runtime for Agenvyl.
+The repository still supports the Compose/source workflow documented in the
+README. Production Compose owns only PostgreSQL; Core and Connector remain host
+processes. This server/development path is separate from the personal portable
+runtime and is not modified or adopted by the portable launchers.
