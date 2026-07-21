@@ -31,7 +31,7 @@
     "typecheck": "npm run build:contracts && tsc -b --pretty false",
     "lint:boundaries": "node scripts/check-frontend-boundaries.mjs && node scripts/check-backend-boundaries.mjs",
     "audit:oss": "node scripts/audit-oss-baseline.mjs",
-    "test": "npm run build:contracts && vitest run --config vitest.unit.config.ts --exclude 'apps/backend/src/e2e/**' --exclude 'apps/connector/src/e2e/**' --exclude 'apps/backend/dist/**' --exclude 'apps/frontend/dist/**' --exclude 'server-dist/**' --exclude 'dist/**' --exclude 'packages/contracts/dist/**'",
+    "test": "npm run build:contracts && vitest run --config vitest.unit.config.ts --exclude 'apps/backend/src/e2e/**' --exclude 'apps/connector/src/e2e/**' --exclude 'apps/backend/dist/**' --exclude 'apps/frontend/dist/**' --exclude 'server-dist/**' --exclude 'dist/**' --exclude 'packages/contracts/dist/**' --exclude 'packages/runtime-config/dist/**'",
     "test:e2e:hermes": "npm run build:contracts && vitest run apps/backend/src/e2e/hermes-connector.e2e.test.ts",
     "test:e2e:opencode": "npm run build:contracts && vitest run apps/backend/src/e2e/opencode-connector.e2e.test.ts",
     "smoke:hermes:live": "npm run build:contracts && vitest run apps/backend/src/e2e/hermes-live.smoke.test.ts",
@@ -41,6 +41,8 @@
     "bundle:x64": "node scripts/build-runtime-bundle.mjs --arch x64",
     "bundle:arm64": "node scripts/build-runtime-bundle.mjs --arch arm64",
     "verify:bundle": "node scripts/verify-runtime-bundle.mjs",
+    "postgres:runtime:build": "node scripts/build-postgres-runtime.mjs",
+    "postgres:runtime:verify": "node scripts/verify-postgres-runtime.mjs",
     "start": "node apps/backend/dist/index.js",
     "start:connector": "node apps/connector/dist/index.js"
   },

@@ -1,0 +1,25 @@
+{
+  "version": "17.10",
+  "source": {
+    "url": "https://ftp.postgresql.org/pub/source/v17.10/postgresql-17.10.tar.bz2",
+    "sha256": "078a03516dcdbdb705fecaf415ea3d13a956c589e46f09fed68a06fb00598c90"
+  },
+  "targets": [
+    { "platform": "linux", "architecture": "x64" },
+    { "platform": "linux", "architecture": "arm64" },
+    { "platform": "darwin", "architecture": "x64" },
+    { "platform": "darwin", "architecture": "arm64" },
+    { "platform": "win32", "architecture": "x64" }
+  ],
+  "binaries": [
+    "createdb",
+    "dropdb",
+    "initdb",
+    "pg_ctl",
+    "pg_dump",
+    "pg_isready",
+    "pg_restore",
+    "postgres",
+    "psql"
+  ]
+}

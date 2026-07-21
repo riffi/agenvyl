@@ -79,3 +79,73 @@ jobs:
           path: |
             artifacts/*.tar.xz
             artifacts/*.sha256
+
+  postgres-runtime-probes:
+    name: PostgreSQL ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            os: ubuntu-24.04
+            platform: linux
+            arch: x64
+          - target: linux-arm64
+            os: ubuntu-24.04-arm
+            platform: linux
+            arch: arm64
+          - target: darwin-x64
+            os: macos-15-intel
+            platform: darwin
+            arch: x64
+          - target: darwin-arm64
+            os: macos-15
+            platform: darwin
+            arch: arm64
+          - target: windows-x64
+            os: windows-2025
+            platform: win32
+            arch: x64
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y bison flex
+      - if: runner.os == 'macOS'
+        run: |
+          brew install bison flex
+          echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix flex)/bin" >> "$GITHUB_PATH"
+      - if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install winflexbison3 --no-progress -y
+          py -m pip install meson ninja
+      - run: >-
+          node scripts/build-postgres-runtime.mjs
+          --platform ${{ matrix.platform }}
+          --arch ${{ matrix.arch }}
+          --jobs 2
+      - shell: bash
+        run: node scripts/verify-postgres-runtime.mjs artifacts/postgres-runtime/*.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agenvyl-postgres-${{ matrix.target }}
+          path: |
+            artifacts/postgres-runtime/*.tar.gz
+            artifacts/postgres-runtime/*.sha256
+
+  preview-signing-boundary:
+    if: ${{ vars.AGENVYL_ENABLE_PREVIEW_SIGNING == 'true' }}
+    needs: postgres-runtime-probes
+    runs-on: ubuntu-latest
+    steps:
+      - run: >-
+          echo "Preview signing is enabled, but publisher-specific signing remains
+          intentionally external to the unsigned runtime probe artifacts."

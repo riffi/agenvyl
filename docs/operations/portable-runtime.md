@@ -1,5 +1,10 @@
 # Portable host runtime
 
+> The implemented production bundle is currently Linux-only and still uses
+> PostgreSQL Compose. The cross-platform bundled PostgreSQL supply-chain gate
+> is documented in [the runtime spike](postgres-runtime-spike.md); that spike
+> does not change this baseline yet.
+
 The production topology runs Core/Web UI and Connector directly on the Linux
 host. Docker runs only `postgres:17-alpine`; its published port is bound to
 `127.0.0.1` and data remains in the `postgres-data` named volume.
