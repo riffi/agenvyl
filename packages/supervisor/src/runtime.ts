@@ -32,7 +32,7 @@ export async function startSupervisor(config: SupervisorConfig, cliPath: string,
   return waitForState(config, state => {
     if (state?.phase === 'failed') throw new Error(state.failure?.message ?? 'Agenvyl failed to start');
     return state?.phase === 'running' ? state : undefined;
-  }, config.readinessTimeoutMs);
+  }, config.readinessTimeoutMs * (config.managedPostgres ? 4 : 3));
 }
 
 export async function runSupervisorDaemon(config: SupervisorConfig, env = process.env) {

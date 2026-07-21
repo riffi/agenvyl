@@ -79,9 +79,23 @@ try {
   const stopped = cliJson(['status', '--json'], false);
   if (stopped.running || stopped.state) throw new Error('Supervisor left runtime state after stop');
   console.log(`Supervisor lifecycle verified: ${process.platform}-${process.arch}`);
+} catch (error) {
+  await printDiagnostics();
+  throw error;
 } finally {
   try { cliJson(['stop', '--json'], false); } catch { /* best-effort exact cleanup */ }
   await rm(temporaryRoot, { recursive: true, force: true });
+}
+
+async function printDiagnostics() {
+  const dataRoot = process.platform === 'win32'
+    ? join(userRoot, 'Agenvyl')
+    : process.platform === 'darwin'
+      ? join(userRoot, 'Library', 'Application Support', 'Agenvyl')
+      : join(userRoot, 'data', 'agenvyl');
+  for (const file of [join(dataRoot, 'state', 'supervisor.json'), ...['supervisor', 'postgresql', 'connector', 'core'].map(name => join(dataRoot, 'logs', `${name}.log`))]) {
+    try { console.error(`\n--- ${file} ---\n${(await readFile(file, 'utf8')).slice(-8000)}`); } catch { /* diagnostic file was not created */ }
+  }
 }
 
 async function managedDatabaseUrl() {
