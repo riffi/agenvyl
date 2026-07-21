@@ -275,9 +275,11 @@ export function Timeline({
       {state.connection !== "connected" && (
         <div className={styles.reconnect}>
           <RotateCcw />{" "}
-          {state.connection === "reconnecting"
-            ? "Соединение потеряно. Переподключаемся…"
-            : "Восстанавливаем события…"}
+          {state.connection === "connecting"
+            ? "Подключаемся к комнате…"
+            : state.connection === "reconnecting"
+              ? "Соединение потеряно. Переподключаемся…"
+              : "Восстанавливаем события…"}
         </div>
       )}
       {state.messages.map((m,messageIndex) => {

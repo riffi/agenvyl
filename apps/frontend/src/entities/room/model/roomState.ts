@@ -1,13 +1,13 @@
 import type { Message } from '../../message';
 import type { Run } from '../../run';
 import type { ServerRoomEvent, TimelinePage, UpstreamStatus } from '@agenvyl/contracts';
-export type Connection = 'connected' | 'reconnecting' | 'replaying';
+export type Connection = 'connecting' | 'connected' | 'reconnecting' | 'replaying';
 export type { TimelinePage } from '@agenvyl/contracts';
 export type RoomState = { messages: Message[]; runs: Record<string, Run>; runOrder: string[]; selectedRuns:Record<string,string>; connection: Connection; lastSequence: number; selectedRunId?: string; appliedPatch: boolean; hydrated:boolean; hasMore:boolean; nextCursor?:string };
 
 export type RoomEvent = ServerRoomEvent | { id: string; sequence: number; type: 'connection.changed'; payload: { status: Connection } };
 
-export const initialState: RoomState = { messages: [], runs: {}, runOrder: [], selectedRuns:{}, connection: 'connected', lastSequence: 0, appliedPatch: false, hydrated:false, hasMore:false };
+export const initialState: RoomState = { messages: [], runs: {}, runOrder: [], selectedRuns:{}, connection: 'connecting', lastSequence: 0, appliedPatch: false, hydrated:false, hasMore:false };
 
 export function stateFromTimeline(page:TimelinePage):RoomState{return{...initialState,messages:page.messages,runs:Object.fromEntries(page.runs.map(run=>[run.id,run])),runOrder:page.runs.map(run=>run.id),selectedRuns:page.selectedRuns,lastSequence:page.lastSequence,hydrated:true,hasMore:page.hasMore,nextCursor:page.nextCursor};}
 export function prependTimeline(state:RoomState,page:TimelinePage):RoomState{const known=new Set(state.messages.map(message=>message.id));const runs={...state.runs};for(const run of page.runs)runs[run.id]??=run;return{...state,messages:[...page.messages.filter(message=>!known.has(message.id)),...state.messages],runs,runOrder:[...page.runs.map(run=>run.id).filter(id=>!state.runs[id]),...state.runOrder],selectedRuns:{...page.selectedRuns,...state.selectedRuns},hasMore:page.hasMore,nextCursor:page.nextCursor};}

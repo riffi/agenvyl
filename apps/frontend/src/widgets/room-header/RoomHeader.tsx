@@ -20,13 +20,19 @@ function activeRunsLabel(count: number) {
   return `${count} ${noun}`;
 }
 
+const connectionLabels:Record<Connection,string>={
+  connecting:'Подключение…',
+  connected:'На связи',
+  reconnecting:'Переподключение…',
+  replaying:'Восстановление истории…',
+};
+
 export function RoomHeader({ title, personas, active, connection, openMenu, openArtifacts, manageAgents }: RoomHeaderProps) {
-  const connectionLabel=connection==='connected'?'Hermes подключён':connection==='reconnecting'?'Переподключение…':'Восстановление истории…';
   return <header className={styles['room-header']} ui-spec-block-id="room_header">
     <button className={styles['menu-button']} onClick={openMenu} aria-label="Открыть меню"><Menu /></button>
     <div className={styles.identity}>
       <h1>{title}</h1>
-      <small className={connection==='connected'?styles.connected:styles.reconnecting}><i /> {connectionLabel}{active>0&&<> · {activeRunsLabel(active)}</>}</small>
+      <small className={connection==='connected'?styles.connected:styles.reconnecting}><i /> {connectionLabels[connection]}{active>0&&<> · {activeRunsLabel(active)}</>}</small>
     </div>
     <div className={styles.actions}>
       <button className={styles.roster} onClick={manageAgents} aria-label="Управлять агентами комнаты" title="Управлять агентами комнаты">

@@ -13,7 +13,11 @@ export class FakeRoomEventStream implements RoomEventStream<RoomEvent> {
   private sequence = 0;
   private counter = 0;
 
-  subscribe(listener: (event: RoomEvent) => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
+  subscribe(listener: (event: RoomEvent) => void) {
+    this.listeners.add(listener);
+    listener({id:`evt-${++this.counter}`,sequence:this.sequence,type:'connection.changed',payload:{status:'connected'}});
+    return () => { this.listeners.delete(listener); };
+  }
   private emit(event: Omit<RoomEvent, 'id' | 'sequence'>) { const full = { ...event, id: `evt-${++this.counter}`, sequence: ++this.sequence } as RoomEvent; this.listeners.forEach((listener) => listener(full)); }
   private later(ms: number, callback: () => void) { const timer = setTimeout(() => { this.timers.delete(timer); callback(); }, ms); this.timers.add(timer); }
   private run(messageId: string, agent: AgentHandle) { const id = `run-${++this.counter}-${agent}`; const run: Run = { id, messageId, agent, harnessInstanceId:'local-hermes',harnessType:'hermes',modelId:'fake',modeId:null,status: 'queued', text: '', tools: [] }; this.active.add(id); this.emit({ type: 'run.created', payload: run }); return id; }
