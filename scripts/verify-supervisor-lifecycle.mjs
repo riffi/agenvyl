@@ -84,12 +84,18 @@ try {
   throw error;
 } finally {
   try { cliJson(['stop', '--json'], false); } catch { /* best-effort exact cleanup */ }
-  await rm(temporaryRoot, {
-    recursive: true,
-    force: true,
-    maxRetries: process.platform === 'win32' ? 10 : 0,
-    retryDelay: 250,
-  });
+  try {
+    await rm(temporaryRoot, {
+      recursive: true,
+      force: true,
+      maxRetries: process.platform === 'win32' ? 10 : 0,
+      retryDelay: 250,
+    });
+  } catch (error) {
+    const code = error?.code;
+    if (process.platform !== 'win32' || !['EACCES', 'EBUSY', 'EPERM'].includes(code)) throw error;
+    console.warn(`Windows deferred temporary cleanup (${code}): ${temporaryRoot}`);
+  }
 }
 
 async function printDiagnostics() {
