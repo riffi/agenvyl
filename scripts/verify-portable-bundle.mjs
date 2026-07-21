@@ -118,8 +118,7 @@ function runLauncher(path, env) {
   return result;
 }
 function runWindowsCommand(command, args, env) {
-  const invocation = `call "${command}" ${args.map(argument => `"${argument.replaceAll('"', '""')}"`).join(' ')}`;
-  return spawnSync(process.env.ComSpec ?? 'cmd.exe', ['/d', '/c', invocation], { env, encoding: 'utf8', timeout: 300000, windowsHide: true });
+  return spawnSync(process.env.ComSpec ?? 'cmd.exe', ['/d', '/c', 'call', command, ...args], { env, encoding: 'utf8', timeout: 300000, windowsHide: true });
 }
 function expectOutput(command, args, expected) {
   const result = spawnSync(command, args, { encoding: 'utf8', windowsHide: true });
