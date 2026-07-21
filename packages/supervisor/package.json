@@ -1,0 +1,20 @@
+{
+  "name": "@agenvyl/supervisor",
+  "private": true,
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "agenvyl": "dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "dependencies": {
+    "@agenvyl/runtime-config": "0.1.0"
+  }
+}

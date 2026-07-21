@@ -49,9 +49,10 @@ curl -fsS \
   http://127.0.0.1:4310/v1/health
 ```
 
-The repository does not prescribe a supervisor. A deployment may use systemd,
-launchd, a container sidecar, or a manual process, provided that Connector keeps
-access to the host harness runtimes and canonical room workspaces.
+The personal portable runtime uses the repository's Node-based supervisor. A
+server deployment may still use systemd, a container sidecar, or a manual
+process, provided that Connector keeps access to the host harness runtimes and
+canonical room workspaces.
 
 ## Hermes
 

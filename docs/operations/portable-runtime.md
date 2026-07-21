@@ -1,12 +1,53 @@
 # Portable host runtime
 
-> The implemented production bundle is currently Linux-only and still uses
-> PostgreSQL Compose. The cross-platform bundled PostgreSQL supply-chain gate
-> is documented in [the runtime spike](postgres-runtime-spike.md); that spike
-> does not change this baseline yet.
+> The portable supervisor and PostgreSQL payload are validated together on
+> Linux x64/arm64, macOS x64/arm64, and Windows x64. The release assembly that
+> combines both artifacts is a separate packaging milestone; the existing
+> production archive below remains Linux-only until that assembly lands.
 
-The production topology runs Core/Web UI and Connector directly on the Linux
-host. Docker runs only `postgres:17-alpine`; its published port is bound to
+## Portable supervisor contract
+
+The same Node-based CLI owns the personal runtime on every supported target;
+it does not require PM2, systemd, launchd, or a Windows service:
+
+```bash
+agenvyl doctor
+agenvyl start
+agenvyl status
+agenvyl logs supervisor --lines 100
+agenvyl backup
+agenvyl stop
+agenvyl restore /absolute/path/to/agenvyl-backup.dump
+```
+
+`start` is idempotent. On first run it creates user-only configuration, state,
+log, workspace, backup, and PostgreSQL directories, generates secrets with
+user-only permissions, initializes the personal database cluster, and starts
+PostgreSQL → Connector → Core. `stop` reverses that order and escalates after a
+bounded grace period. A singleton lock plus PID and port checks diagnose stale
+process state and conflicts; `doctor` reports the exact failing boundary.
+
+Personal data is stored in the platform application-data location:
+
+- Linux: `${XDG_DATA_HOME:-$HOME/.local/share}/agenvyl`
+- macOS: `$HOME/Library/Application Support/Agenvyl`
+- Windows: `%LOCALAPPDATA%\\Agenvyl`
+
+Setting `AGENVYL_DATABASE_URL` explicitly switches to server/development mode:
+the supervisor checks and uses that database but never initializes, stops, or
+restores it. Existing Compose/dev-stand clusters are never discovered or
+claimed automatically. Moving data into the personal cluster requires an
+explicit dump and `agenvyl restore` while the stack is stopped.
+
+The five-target lifecycle probe is:
+
+```bash
+npm run build:contracts
+node scripts/verify-supervisor-lifecycle.mjs <postgres-runtime-artifact.tar.gz>
+```
+
+The legacy production topology runs Core/Web UI and Connector directly on the
+Linux host. Docker runs only `postgres:17-alpine`; its published port is bound to
 `127.0.0.1` and data remains in the `postgres-data` named volume.
 
 ## Build release bundles
@@ -23,6 +64,9 @@ for the target architecture. The build verifies the downloaded Node archive
 against its pinned official checksum.
 
 ## Manual runtime layout
+
+This section describes the existing Linux server bundle and remains available
+as the Compose/server path.
 
 Extract the matching archive as
 `${XDG_DATA_HOME:-$HOME/.local/share}/agenvyl/current`. Copy

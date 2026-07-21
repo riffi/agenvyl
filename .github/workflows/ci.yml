@@ -113,6 +113,8 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 22
+          cache: npm
+      - run: npm ci
       - if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y bison flex
       - if: runner.os == 'macOS'
@@ -141,6 +143,8 @@ jobs:
             artifacts/postgres-runtime/*.sha256
       - shell: bash
         run: node scripts/verify-postgres-runtime.mjs artifacts/postgres-runtime/*.tar.gz
+      - shell: bash
+        run: npm run build:contracts && node scripts/verify-supervisor-lifecycle.mjs artifacts/postgres-runtime/*.tar.gz
 
   preview-signing-boundary:
     if: ${{ vars.AGENVYL_ENABLE_PREVIEW_SIGNING == 'true' }}

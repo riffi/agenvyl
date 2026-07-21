@@ -48,6 +48,7 @@ const localPackages = new Set([
   'node_modules/@agenvyl/connector-contract',
   'node_modules/@agenvyl/contracts',
   'node_modules/@agenvyl/runtime-config',
+  'node_modules/@agenvyl/supervisor',
 ]);
 const licenseCounts = new Map();
 

@@ -31,11 +31,11 @@ async function buildBundle(arch) {
   await mkdir(appRoot, { recursive: true });
 
   for (const file of ['package.json', 'package-lock.json']) await cp(join(repositoryRoot, file), join(appRoot, file));
-  for (const directory of ['apps/connector', 'packages/contracts', 'packages/connector-contract', 'packages/runtime-config']) {
+  for (const directory of ['apps/connector', 'packages/contracts', 'packages/connector-contract', 'packages/runtime-config', 'packages/supervisor']) {
     await mkdir(join(appRoot, directory), { recursive: true });
     await cp(join(repositoryRoot, directory, 'package.json'), join(appRoot, directory, 'package.json'));
   }
-  for (const directory of ['apps/backend/dist', 'apps/frontend/dist', 'apps/connector/dist', 'packages/contracts/dist', 'packages/connector-contract/dist', 'packages/runtime-config/dist']) {
+  for (const directory of ['apps/backend/dist', 'apps/frontend/dist', 'apps/connector/dist', 'packages/contracts/dist', 'packages/connector-contract/dist', 'packages/runtime-config/dist', 'packages/supervisor/dist']) {
     await cp(join(repositoryRoot, directory), join(appRoot, directory), {
       recursive: true,
       filter: source => !source.endsWith('.d.ts') && !source.endsWith('.d.ts.map') && !basename(source).includes('.test.'),
@@ -52,7 +52,7 @@ async function buildBundle(arch) {
   for (const file of ['compose.yaml', '.env.example', 'connector.example.yaml']) {
     await cp(join(repositoryRoot, file), join(bundleRoot, 'share/agenvyl', file));
   }
-  for (const executable of ['agenvyl-core', 'agenvyl-connector', 'agenvyl-health']) await chmod(join(bundleRoot, 'bin', executable), 0o755);
+  for (const executable of ['agenvyl', 'agenvyl-core', 'agenvyl-connector', 'agenvyl-health']) await chmod(join(bundleRoot, 'bin', executable), 0o755);
 
   const nodeArchiveName = `node-v${NODE_VERSION}-linux-${arch}.tar.xz`;
   const nodeArchive = join(temporaryRoot, nodeArchiveName);

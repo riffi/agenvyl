@@ -1,4 +1,4 @@
 {
   "files": [],
-  "references": [{ "path": "./tsconfig.app.json" }, { "path": "./tsconfig.node.json" }, { "path": "./tsconfig.server.json" }, { "path": "./apps/connector/tsconfig.json" }, { "path": "./packages/runtime-config/tsconfig.json" }]
+  "references": [{ "path": "./tsconfig.app.json" }, { "path": "./tsconfig.node.json" }, { "path": "./tsconfig.server.json" }, { "path": "./apps/connector/tsconfig.json" }, { "path": "./packages/runtime-config/tsconfig.json" }, { "path": "./packages/supervisor/tsconfig.json" }]
 }

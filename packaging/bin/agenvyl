@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+bundle_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+export AGENVYL_BUNDLE_ROOT="$bundle_root"
+export AGENVYL_APP_ROOT="$bundle_root/app"
+export AGENVYL_NODE_EXECUTABLE="$bundle_root/runtime/bin/node"
+export AGENVYL_POSTGRES_ROOT="${AGENVYL_POSTGRES_ROOT:-$bundle_root/postgres}"
+exec "$bundle_root/runtime/bin/node" "$bundle_root/app/packages/supervisor/dist/cli.js" "$@"
