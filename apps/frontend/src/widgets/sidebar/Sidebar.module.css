@@ -541,25 +541,42 @@
 }
 
 .handleInput {
-  display: flex;
-  align-items: center;
+  display: grid;
+  min-height: 38px;
+  grid-template-columns: auto minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: white;
+  transition: border-color .15s, box-shadow .15s;
+}
+
+.handleInput:focus-within {
+  border-color: #a5b4fc;
+  box-shadow: 0 0 0 3px #4f6ef71a;
 }
 
 .handleInput > i {
   display: grid;
-  height: 36px;
+  min-width: 34px;
+  align-self: stretch;
   place-items: center;
-  border: 1px solid #d9dee8;
-  border-right: 0;
-  border-radius: 7px 0 0 7px;
-  padding-left: 11px;
+  border-right: 1px solid var(--border);
   background: #f8fafc;
   color: #64748b;
   font-style: normal;
 }
 
 .handleInput input {
-  border-radius: 0 7px 7px 0;
+  min-height: 36px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.handleInput input:focus {
+  border: 0;
+  box-shadow: none;
 }
 
 @media (max-width: 767px) {

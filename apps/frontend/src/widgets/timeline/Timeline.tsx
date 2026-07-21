@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Ban, Brain, CircleCheck, CircleHelp, CircleX, Clock3, File, FoldVertical, LoaderCircle, Paperclip, RotateCcw, Square, TriangleAlert, UnfoldVertical, Wrench } from 'lucide-react';
+import { Ban, Brain, ChevronDown, ChevronUp, CircleCheck, CircleHelp, CircleX, Clock3, File, FoldVertical, Info, LoaderCircle, Paperclip, RotateCcw, Square, TriangleAlert, UnfoldVertical, Wrench } from 'lucide-react';
 import type {UpstreamStatus} from '@agenvyl/contracts';
 import type { HarnessCatalog } from '../../entities/harness';
 import type { Persona } from '../../entities/persona';
@@ -157,7 +157,7 @@ function RunCard({
   personas:Persona[];
   onMentionPersona:(handle:string)=>void;
 }) {
-  const [retrying,setRetrying]=useState(false);const [retryError,setRetryError]=useState<string>();
+  const [retrying,setRetrying]=useState(false);const [retryError,setRetryError]=useState<string>();const [toolsOpen,setToolsOpen]=useState(false);
   const answer = run.text || (run.status === "queued" ? "Ожидает свободный слот…" : "Анализирую…");
   const canCancel=['queued','streaming','waiting_approval','waiting_clarification'].includes(run.status);
   const retryLabel=run.status==='completed'?'Создать другой вариант':'Запустить снова';
@@ -188,29 +188,20 @@ function RunCard({
           <MarkdownAnswer text={answer} run={run} personas={personas} onMentionPersona={onMentionPersona}/>
           {run.status === "streaming" && <i className={styles.cursor} />}
         </div>
-        {isLongAnswer(run.text)&&run.status==='completed'&&<button className={styles['answer-toggle']} type="button" onClick={toggleCollapsed} aria-expanded={!collapsed}>{collapsed?'Показать полностью':'Свернуть'}</button>}
+        {isLongAnswer(run.text)&&run.status==='completed'&&<button className={`${styles['answer-toggle']} ${collapsed?styles.expand:styles.collapse}`} type="button" onClick={toggleCollapsed} aria-expanded={!collapsed}>{collapsed?<><span>Развернуть ответ</span><ChevronDown/></>:<><span>Свернуть ответ</span><ChevronUp/></>}</button>}
         {run.error && <Alert tone="error">{run.error}</Alert>}
-        {run.tools.length > 0 && (
-          <details className={styles.tools}>
-            <summary><Wrench /> Tool activity · {run.tools.length}</summary>
-            {run.tools.map((t) => (
-              <div key={t.id}>
-                <i className={t.status} />
-                <span>
-                  <strong>{t.name}</strong>
-                  <small>{t.detail}</small>
-                </span>
-                <em>{t.status}</em>
-              </div>
-            ))}
-          </details>
-        )}
-        <button type="button" className={styles['run-details']} onClick={select}>
-          Подробнее о запуске →
-        </button>
         <Request run={run} resolve={resolve} />
         {run.artifacts?.some(item=>item.attribution==='exact'&&!run.embeds?.some(embed=>embed.status==='resolved'&&embed.attachment?.version_id===item.version_id))&&<div className={styles.artifacts}>{run.artifacts.filter(item=>item.attribution==='exact'&&!run.embeds?.some(embed=>embed.status==='resolved'&&embed.attachment?.version_id===item.version_id)).map(item=><a key={item.version_id} href={item.preview_url} target="_blank" rel="noreferrer"><File/><span><strong>{item.name}</strong><small>{item.change==='created'?'Создан':item.change==='updated'?'Изменён':'Удалён'}</small></span></a>)}</div>}
-        {attemptCount>1&&<div className={styles['attempt-actions']}><span className={styles['attempt-carousel']}><IconButton onClick={previousAttempt} disabled={attemptIndex===0} aria-label="Предыдущая попытка">‹</IconButton><small>{attemptIndex+1} из {attemptCount}</small><IconButton onClick={nextAttempt} disabled={attemptIndex===attemptCount-1} aria-label="Следующая попытка">›</IconButton></span></div>}
+        <div className={styles['run-footer']}>
+          <span className={styles['run-footer-actions']}>
+            {run.tools.length>0&&<button type="button" className={styles['footer-action']} onClick={()=>setToolsOpen(open=>!open)} aria-expanded={toolsOpen} aria-controls={`run-tools-${run.id}`}><Wrench/><span>Действия</span><em>{run.tools.length}</em>{toolsOpen?<ChevronUp className={styles.disclosure}/>:<ChevronDown className={styles.disclosure}/>}</button>}
+            <button type="button" className={styles['footer-action']} onClick={select}><Info/><span>Детали запуска</span></button>
+          </span>
+          {attemptCount>1&&<span className={styles['attempt-carousel']}><IconButton onClick={previousAttempt} disabled={attemptIndex===0} aria-label="Предыдущая попытка">‹</IconButton><small>{attemptIndex+1} из {attemptCount}</small><IconButton onClick={nextAttempt} disabled={attemptIndex===attemptCount-1} aria-label="Следующая попытка">›</IconButton></span>}
+        </div>
+        {run.tools.length>0&&toolsOpen&&<div id={`run-tools-${run.id}`} className={styles['tool-activity']}>
+          {run.tools.map(tool=><div key={tool.id}><i className={tool.status}/><span><strong>{tool.name}</strong><small>{tool.detail}</small></span><em>{tool.status}</em></div>)}
+        </div>}
         {retryError&&<Alert tone="error">{retryError}</Alert>}
       </div>
     </article>
@@ -319,6 +310,7 @@ export function Timeline({
                 return run && (
                   <div id={`run-${id}`} className={styles['run-anchor']} key={slot}>
                   <RunCard
+                    key={id}
                     run={run}
                     persona={
                       byHandle.get(state.runs[id].agent) ??

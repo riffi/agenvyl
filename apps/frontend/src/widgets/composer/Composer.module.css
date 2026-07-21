@@ -18,9 +18,11 @@
   box-shadow: none;
 }
 .composer {
+  --timeline-inline-padding: max(24px, calc((100vw - 260px - 940px) / 2));
+  --timeline-scrollbar-gutter: 15px;
   background: white;
   border-top: 1px solid var(--border);
-  padding: 10px max(20px, calc((100vw - 260px - 940px) / 2));
+  padding: 10px calc(var(--timeline-inline-padding) + var(--timeline-scrollbar-gutter)) 10px var(--timeline-inline-padding);
   z-index: 4;
   flex: 0 0 auto;
 }
@@ -45,11 +47,21 @@
   font-size: 11px;
 }
 .compose-card {
-  border: 1px solid var(--border);
+  position: relative;
+  border: 1px solid transparent;
   border-radius: 12px;
   background: white;
   box-shadow: 0 3px 12px #0f172a0a;
   overflow: visible;
+}
+.compose-card::after {
+  position: absolute;
+  inset: -1px;
+  z-index: 2;
+  border: 1px solid var(--border);
+  border-radius: inherit;
+  content: '';
+  pointer-events: none;
 }
 .attachments{display:flex;gap:6px;overflow-x:auto;padding:7px 9px;border-bottom:1px solid #eef2f7}.attachments>span{position:relative;display:flex;align-items:center;gap:4px;flex:none;max-width:300px;padding:4px 6px;overflow:hidden;border:1px solid #c7d2fe;border-radius:7px;background:#eef2ff;color:#3730a3;font-size:10px}.attachments>span.image-attachment{border:0;border-radius:0;background:transparent}.attachments svg{width:13px;flex:none}.attachments img{width:28px;height:28px;flex:none;object-fit:cover}.attachments button{min-width:0;overflow:hidden;border:0;background:transparent;color:inherit;text-overflow:ellipsis;white-space:nowrap}.attachments small{max-width:120px;overflow:hidden;color:#64748b;text-overflow:ellipsis;white-space:nowrap}.attachments button:not(:first-of-type){display:grid;padding:0;place-items:center}.attachments button svg{width:11px}.attachments>span>i{position:absolute;bottom:0;left:0;height:2px;background:#6366f1}.attachments .attachment-error{border-color:#fecaca;background:#fef2f2;color:#b91c1c}.attachments .attachment-error small{color:#b91c1c}
 .editor-wrap { position: relative;background:white; }
@@ -163,7 +175,8 @@
 @keyframes spin { to { transform:rotate(360deg); } }
 @media (max-width: 900px) {
 .composer {
-    padding: 9px 14px;
+    --timeline-inline-padding: 18px;
+    padding-block: 9px;
   }
 }
 @media (max-width: 767px) {
@@ -183,6 +196,7 @@
     white-space: nowrap;
   }
 .compose-card { display:grid;grid-template-columns:minmax(0,1fr) 52px;border:0;border-radius:0;box-shadow:none; }
+.compose-card::after { content:none; }
 .target-row { min-height:44px;padding:5px 10px;overflow:hidden; }
 .target-row { grid-column:1 / -1; }
 .attachments { grid-column:1 / -1; }
