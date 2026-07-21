@@ -32,6 +32,7 @@ Start, Stop, and Status launchers are thin wrappers around the same CLI:
 ```bash
 bin/agenvyl doctor
 bin/agenvyl start
+bin/agenvyl setup
 bin/agenvyl status
 bin/agenvyl logs supervisor --lines 100
 bin/agenvyl backup
@@ -39,7 +40,9 @@ bin/agenvyl stop
 bin/agenvyl restore /absolute/path/to/agenvyl-backup.dump
 ```
 
-On Windows use `bin\agenvyl.cmd` with the same arguments. `start` is idempotent.
+On Windows use `bin\agenvyl.cmd` with the same arguments. `setup` starts the
+stack if needed, discovers host harnesses, saves the safe selection, and opens
+the browser setup screen. `start` is idempotent.
 On first run the supervisor generates user-only secrets, initializes the
 personal PostgreSQL cluster, and starts PostgreSQL → Connector → Core. `stop`
 uses the reverse order and escalates process-tree termination after a bounded

@@ -24,7 +24,10 @@ checkout are not required.
 
 Extract one archive and run `Start Agenvyl.sh`, `Start Agenvyl.command`, or
 `Start Agenvyl.cmd`. The launcher starts PostgreSQL → Connector → Core and opens
-the loopback Web UI. Matching Stop and Status launchers call the same supervisor
+the loopback Web UI. A fresh install opens the EN/RU setup flow; it discovers
+local harnesses and can continue with none configured. You can run
+`bin/agenvyl setup` (`bin\agenvyl.cmd setup` on Windows) for terminal-first
+bootstrap. Matching Stop and Status launchers call the same supervisor
 CLI. See the [portable runtime guide](docs/operations/portable-runtime.md) for
 data locations, backups, diagnostics, and the unsigned preview boundary.
 
@@ -32,7 +35,7 @@ data locations, backups, diagnostics, and the unsigned preview boundary.
 
 - Node.js 22 and npm
 - Docker with Compose v2
-- one supported harness installed and authenticated on the host
+- optionally, one supported harness installed and authenticated on the host
 
 The default example enables Hermes. OpenCode and Antigravity instances are
 available but disabled until their host runtimes are configured.
@@ -77,7 +80,7 @@ available but disabled until their host runtimes are configured.
    curl -fsS http://127.0.0.1:8791/api/v1/health
    ```
 
-Open <http://127.0.0.1:8791>. Persistent PostgreSQL data lives in a named Docker
+Open <http://127.0.0.1:8791> and complete the setup screen. Persistent PostgreSQL data lives in a named Docker
 volume; room files live under the configured host workspace path.
 
 Portable archives are covered by the

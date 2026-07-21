@@ -1,8 +1,8 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { loadConnectorConfig } from './config.js';
+import { loadConnectorConfig,saveConnectorInstances } from './config.js';
 
 const directories: string[] = [];
 async function config(markdown: string) {
@@ -19,6 +19,7 @@ describe('Connector config', () => {
     const path = await config('version: 1\ninstances:\n  - id: local-hermes\n    type: hermes\n');
     await expect(loadConnectorConfig({ path, env: { AGENVYL_CONNECTOR_TOKEN: 'x'.repeat(32), XDG_DATA_HOME: '/tmp/agenvyl-test-data' } })).resolves.toEqual({
       version: 1, listen: { host: '127.0.0.1', port: 4310 }, token: 'x'.repeat(32),
+      path,
       workspaces: { roots: ['/tmp/agenvyl-test-data/agenvyl/workspaces'] },
       instances: [{ id: 'local-hermes', type: 'hermes', enabled: true }],
     });
@@ -30,6 +31,8 @@ describe('Connector config', () => {
       workspaces: { roots: ['/srv/agenvyl/workspaces'] },
     });
   });
+
+  it('atomically persists non-secret instance settings without the bearer token',async()=>{const path=await config('version: 1\ninstances: []\n'),loaded=await loadConnectorConfig({path,env:{AGENVYL_CONNECTOR_TOKEN:'x'.repeat(32),AGENVYL_WORKSPACE_ROOT:'/srv/workspaces'}});await saveConnectorInstances(loaded,[{id:'local-opencode',type:'opencode',enabled:true,endpoint:'http://127.0.0.1:4096',managed:true}]);const saved=await readFile(path,'utf8');expect(saved).toContain('managed: true');expect(saved).not.toContain('xxxxxxxx');expect((await loadConnectorConfig({path,env:{AGENVYL_CONNECTOR_TOKEN:'x'.repeat(32)}})).instances[0]).toMatchObject({id:'local-opencode',managed:true});});
 
   it('loads only explicit absolute workspace roots', async () => {
     const path = await config('version: 1\nworkspaces:\n  roots: [/srv/agenvyl/rooms, /mnt/team/rooms]\ninstances: []\n');

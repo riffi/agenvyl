@@ -7,31 +7,31 @@ import { AntigravityConnectorAdapter } from './antigravity/adapter.js';
 export function buildConfiguredAdapters(config: ConnectorConfig, env: NodeJS.ProcessEnv = process.env, request: typeof fetch = fetch) {
   const adapters = new Map<string, ConnectorAdapter>();
   const hermesInstances = config.instances.filter(instance => instance.enabled && instance.type === 'hermes');
-  const hermesUrl = env.AGENVYL_CONNECTOR_HERMES_URL;
-  if (hermesInstances.length && hermesUrl) {
-    const adapter = new HermesConnectorAdapter({ baseUrl: hermesUrl, token: env.AGENVYL_CONNECTOR_HERMES_TOKEN, request });
-    for (const instance of hermesInstances) adapters.set(instance.id, adapter);
+  for (const instance of hermesInstances) {
+    const hermesUrl=instance.endpoint??env.AGENVYL_CONNECTOR_HERMES_URL;
+    if(!hermesUrl)continue;
+    adapters.set(instance.id,new HermesConnectorAdapter({ baseUrl: hermesUrl, token: env.AGENVYL_CONNECTOR_HERMES_TOKEN, request }));
   }
   const openCodeInstances = config.instances.filter(instance => instance.enabled && instance.type === 'opencode');
-  const openCodeUrl = env.AGENVYL_CONNECTOR_OPENCODE_URL;
-  if (openCodeInstances.length && openCodeUrl) {
-    const adapter = new OpenCodeConnectorAdapter({
+  for (const instance of openCodeInstances) {
+    const openCodeUrl=instance.endpoint??env.AGENVYL_CONNECTOR_OPENCODE_URL;
+    if(!openCodeUrl)continue;
+    adapters.set(instance.id,new OpenCodeConnectorAdapter({
       baseUrl: openCodeUrl,
       username: env.AGENVYL_CONNECTOR_OPENCODE_USERNAME,
       password: env.AGENVYL_CONNECTOR_OPENCODE_PASSWORD,
       request,
       catalogDirectory: env.AGENVYL_CONNECTOR_OPENCODE_CATALOG_DIRECTORY,
-    });
-    for (const instance of openCodeInstances) adapters.set(instance.id, adapter);
+    }));
   }
   const antigravityInstances = config.instances.filter(instance => instance.enabled && instance.type === 'antigravity');
-  if (antigravityInstances.length && env.AGENVYL_CONNECTOR_AGY_DANGEROUSLY_SKIP_PERMISSIONS === 'true') {
+  if (antigravityInstances.length) {
     const adapter = new AntigravityConnectorAdapter({
       command: env.AGENVYL_CONNECTOR_AGY_COMMAND,
       env,
       printTimeoutMs: positiveInteger(env.AGENVYL_CONNECTOR_AGY_PRINT_TIMEOUT_MS, 30 * 60_000, 'AGENVYL_CONNECTOR_AGY_PRINT_TIMEOUT_MS'),
     });
-    for (const instance of antigravityInstances) adapters.set(instance.id, adapter);
+    for (const instance of antigravityInstances) if(instance.permissionMode)adapters.set(instance.id, adapter);
   }
   return adapters;
 }

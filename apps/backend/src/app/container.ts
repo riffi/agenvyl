@@ -15,9 +15,10 @@ import {HttpConnectorClient} from '../integrations/connector/HttpConnectorClient
 import {HarnessCatalogService} from '../modules/connector/HarnessCatalogService.js';
 import {ConnectorRunAdapter} from '../integrations/connector/ConnectorRunAdapter.js';
 import {UserProfileService} from '../modules/user-profile/userProfile.service.js';
+import {SetupService} from '../modules/setup/SetupService.js';
 
-export async function createAppContainer(config: AppConfig, fetchImplementation?: typeof fetch,logger?:FastifyBaseLogger) {
-  const {database,personas,userProfile,personaGroups,rooms,roomEvents,messages,runs,workspace}=await createRepositories(config.databaseUrl);
+export async function createAppContainer(config: AppConfig, fetchImplementation?: typeof fetch,logger?:FastifyBaseLogger,legacySeed?:boolean) {
+  const {database,personas,userProfile,personaGroups,rooms,roomEvents,messages,runs,workspace}=await createRepositories(config.databaseUrl,{legacySeed:legacySeed??process.env.NODE_ENV==='test'});
   const eventBus = new RoomEventBus();
   const events = new RoomEventService(roomEvents,eventBus);
   const connector=new HttpConnectorClient(config.connectorUrl,config.connectorToken,fetchImplementation);
@@ -46,6 +47,7 @@ export async function createAppContainer(config: AppConfig, fetchImplementation?
     runsService:new RunsService({runs,events,activeRuns,executor:runExecutor}),
     harnessCatalogService,
     roomWorkspace,
+    setupService:new SetupService(database,connector,config.workspaceRoot),
   };
 }
 

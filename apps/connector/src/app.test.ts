@@ -54,6 +54,17 @@ describe('Connector shell', () => {
     await app.close();
   });
 
+  it('discovers and atomically applies bootstrap configuration behind bearer auth',async()=>{
+    const adapter=new ControlledAdapter(),persisted:unknown[]=[];
+    const app=buildConnectorApp({...config,instances:[]},{discover:async()=>({apiVersion:'v1',candidates:[]}),configureInstances:async instances=>new Map(instances.map(instance=>[instance.id,adapter])),persistInstances:async instances=>{persisted.push(structuredClone(instances));}});
+    expect((await app.inject('/v1/discovery')).statusCode).toBe(401);
+    expect((await app.inject({url:'/v1/discovery',headers:auth})).json()).toEqual({apiVersion:'v1',candidates:[]});
+    const response=await app.inject({method:'PUT',url:'/v1/instances',headers:auth,payload:{instances:[{id:'local-hermes',type:'hermes',enabled:true,endpoint:'http://127.0.0.1:8642'}]}});
+    expect(response.statusCode).toBe(200);expect(persisted).toHaveLength(1);
+    expect((await app.inject({url:'/v1/instances',headers:auth})).json().instances[0]).toMatchObject({id:'local-hermes',status:'healthy'});
+    await app.close();
+  });
+
   it('fails closed until adapters implement catalog and execution lifecycle', async () => {
     const app = buildConnectorApp(config);
     expect((await app.inject({ url: '/v1/instances/missing/catalog', headers: auth })).statusCode).toBe(404);

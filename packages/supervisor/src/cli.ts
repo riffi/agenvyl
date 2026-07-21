@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { backupDatabase, doctor, getSupervisorStatus, readLogs, restoreDatabase, runSupervisorDaemon, startSupervisor, stopSupervisor } from './runtime.js';
 import { resolveSupervisorConfig } from './config.js';
+import {runSetup} from './setup.js';
 
 const [command = 'status', ...args] = process.argv.slice(2);
 const json = args.includes('--json');
@@ -10,6 +11,7 @@ const json = args.includes('--json');
 try {
   const config = resolveSupervisorConfig();
   if (command === 'daemon') await runSupervisorDaemon(config);
+  else if(command==='setup')output(await runSetup(config,fileURLToPath(import.meta.url),{all:args.includes('--all'),openBrowser:!args.includes('--no-open')}),json);
   else if (command === 'start') output(await startSupervisor(config, fileURLToPath(import.meta.url)), json);
   else if (command === 'stop') output(await stopSupervisor(config), json);
   else if (command === 'status') {
@@ -29,7 +31,7 @@ try {
     const archive = positional(args, 0);
     if (!archive) throw new Error('Usage: agenvyl restore <file>');
     output({ restored: await restoreDatabase(config, resolve(archive)) }, json);
-  } else throw new Error('Usage: agenvyl <start|stop|status|logs|doctor|backup|restore>');
+  } else throw new Error('Usage: agenvyl <setup|start|stop|status|logs|doctor|backup|restore>');
 } catch (error) {
   process.stderr.write(`agenvyl: ${error instanceof Error ? error.message : String(error)}\n`);
   process.exitCode = 1;

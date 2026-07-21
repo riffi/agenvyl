@@ -11,4 +11,5 @@ export const migrations = [
   { version: 10, name: 'local_user_identity', file: '010_local_user_identity.sql' },
   { version: 11, name: 'run_upstream_status', file: '011_run_upstream_status.sql' },
   { version: 12, name: 'run_usage', file: '012_run_usage.sql' },
+  { version: 13, name: 'installation_state', file: '013_installation_state.sql' },
 ] as const;

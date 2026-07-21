@@ -64,6 +64,34 @@ export type ConnectorCatalog = {
   modes: Array<{ id: string; label?: string }>;
 };
 
+export type HarnessType = 'hermes' | 'opencode' | 'antigravity';
+export type ConnectorInstanceConfiguration = {
+  id: string;
+  type: HarnessType;
+  enabled: boolean;
+  endpoint?: string;
+  managed?: boolean;
+  permissionMode?: 'plan' | 'accept-edits';
+};
+export type HarnessDiscoveryCandidate = {
+  type: HarnessType;
+  label: string;
+  cli: { found: boolean; command: string; version?: string; compatible?: boolean };
+  endpoint?: { url: string; reachable: boolean };
+  safeToSelect: boolean;
+  supportsManagedServer: boolean;
+  warning?: string;
+};
+export type ConnectorDiscovery = {
+  apiVersion: ConnectorApiVersion;
+  candidates: HarnessDiscoveryCandidate[];
+};
+export type ConfigureConnectorInstancesRequest = { instances: ConnectorInstanceConfiguration[] };
+export type ConnectorConfigurationResult = {
+  apiVersion: ConnectorApiVersion;
+  instances: ConnectorInstanceConfiguration[];
+};
+
 export type CanonicalConversationItem = { role: 'user' | 'assistant'; content: string };
 export type StartExecutionRequest = {
   executionId: string;
@@ -201,6 +229,32 @@ export function isConnectorCatalog(value: unknown): value is ConnectorCatalog {
     && Array.isArray(value.modes) && value.modes.every(isCatalogItem);
 }
 
+export function isConnectorDiscovery(value: unknown): value is ConnectorDiscovery {
+  return isRecord(value) && value.apiVersion === CONNECTOR_API_VERSION && Array.isArray(value.candidates)
+    && value.candidates.every(candidate => isRecord(candidate) && harnessTypes.has(String(candidate.type)) && strings(candidate, 'label')
+      && isRecord(candidate.cli) && typeof candidate.cli.found === 'boolean' && typeof candidate.cli.command === 'string'
+      && (candidate.cli.version === undefined || typeof candidate.cli.version === 'string')
+      && (candidate.cli.compatible === undefined || typeof candidate.cli.compatible === 'boolean')
+      && (candidate.endpoint === undefined || (isRecord(candidate.endpoint) && typeof candidate.endpoint.url === 'string' && typeof candidate.endpoint.reachable === 'boolean'))
+      && typeof candidate.safeToSelect === 'boolean' && typeof candidate.supportsManagedServer === 'boolean'
+      && (candidate.warning === undefined || typeof candidate.warning === 'string'));
+}
+
+export function isConfigureConnectorInstancesRequest(value: unknown): value is ConfigureConnectorInstancesRequest {
+  if (!isRecord(value) || !Array.isArray(value.instances)) return false;
+  const ids = new Set<string>();
+  return value.instances.every(instance => {
+    if (!isRecord(instance) || typeof instance.id !== 'string' || !/^[a-z0-9][a-z0-9_-]*$/.test(instance.id) || ids.has(instance.id)) return false;
+    ids.add(instance.id);
+    return harnessTypes.has(String(instance.type)) && typeof instance.enabled === 'boolean'
+      && (instance.endpoint === undefined || safeEndpoint(instance.endpoint))
+      && (instance.managed === undefined || typeof instance.managed === 'boolean')
+      && (instance.permissionMode === undefined || instance.permissionMode === 'plan' || instance.permissionMode === 'accept-edits')
+      && (instance.type === 'antigravity' || instance.permissionMode === undefined)
+      && (instance.type === 'opencode' || instance.managed === undefined);
+  });
+}
+
 export function isConnectorCommandResult(value:unknown):value is ConnectorCommandResult {
   return isRecord(value)&&isExecutionSnapshot(value.execution);
 }
@@ -248,6 +302,7 @@ export function isConnectorExecutionEvent(value: unknown): value is ConnectorExe
 }
 
 const capabilities = new Set<string>(['model_catalog', 'mode_catalog', 'text_streaming', 'reasoning', 'tools', 'approvals', 'clarifications', 'usage']);
+const harnessTypes = new Set<string>(['hermes', 'opencode', 'antigravity']);
 const executionStatuses = new Set<string>(['queued', 'running', 'waiting_for_user', 'stopping', 'completed', 'failed', 'cancelled']);
 const requestResolutions = new Set<string>(['answered', 'declined', 'cancelled', 'expired', 'superseded']);
 const upstreamStatusStates = new Set<string>(['waiting_upstream', 'retrying', 'recovered']);
@@ -275,3 +330,4 @@ function strings(value: Record<string, unknown>, ...keys: string[]) { return key
 function integers(value: Record<string, unknown>, ...keys: string[]) { return keys.every(key => Number.isSafeInteger(value[key]) && Number(value[key]) >= 0); }
 function nonNegativeInteger(value:unknown){return Number.isSafeInteger(value)&&Number(value)>=0;}
 function isIsoDate(value: unknown) { return typeof value === 'string' && Number.isFinite(Date.parse(value)); }
+function safeEndpoint(value: unknown) { try { const url = new URL(String(value)); return (url.protocol === 'http:' || url.protocol === 'https:') && !url.username && !url.password && !url.search && !url.hash; } catch { return false; } }

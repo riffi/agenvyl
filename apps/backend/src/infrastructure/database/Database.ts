@@ -3,7 +3,6 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import postgres, { type Sql, type TransactionSql } from 'postgres';
 import { migrations } from './migrations/manifest.js';
-import { seedDatabase } from './seed.js';
 
 export type DatabaseSql = Sql<Record<string, unknown>>;
 export type QueryContext = DatabaseSql | TransactionSql<Record<string, unknown>>;
@@ -25,7 +24,6 @@ export class Database {
     const database = new Database(sql);
     try {
       await database.migrate();
-      await seedDatabase(database);
       return database;
     } catch (error) {
       await sql.end();

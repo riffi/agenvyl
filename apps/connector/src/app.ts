@@ -4,11 +4,13 @@ import Fastify, { type FastifyRequest } from 'fastify';
 import {
   CONNECTOR_API_VERSION,
   isResolveConnectorRequest,
+  isConfigureConnectorInstancesRequest,
   isStartExecutionRequest,
   type ConnectorExecutionEvent,
   type ConnectorHealth,
   type ConnectorInstanceList,
   type ConnectorCatalog,
+  type ConnectorDiscovery,
 } from '@agenvyl/connector-contract';
 import type { ConnectorAdapter } from './adapter.js';
 import type { ConnectorConfig } from './config.js';
@@ -22,17 +24,21 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
   adapters?: ReadonlyMap<string, ConnectorAdapter>;
   replayLimit?: number;
   now?: () => string;
+  discover?:()=>Promise<ConnectorDiscovery>;
+  configureInstances?:(instances:ConnectorConfig['instances'])=>Promise<ReadonlyMap<string,ConnectorAdapter>>;
+  persistInstances?:(instances:ConnectorConfig['instances'])=>Promise<void>;
 } = {}) {
   const app = Fastify({ logger: options.logger ? { redact: ['req.headers.authorization', 'req.headers.x-api-key'] } : false });
   const connectorEpoch = options.connectorEpoch ?? randomUUID(), startedAt = options.startedAt ?? new Date().toISOString();
-  const enabledInstances = config.instances.filter(instance => instance.enabled);
-  const adapters = options.adapters ?? new Map<string, ConnectorAdapter>();
+  let enabledInstances = config.instances.filter(instance => instance.enabled);
+  const adapters = new Map(options.adapters ?? new Map<string, ConnectorAdapter>());
+  const instanceTypes=new Map(enabledInstances.map(instance => [instance.id,instance.type]));
   const hasAdapter = (instance: ConnectorConfig['instances'][number]) => adapters.get(instance.id)?.type === instance.type;
   const workspacePolicy = new WorkspacePolicy(config.workspaces.roots);
   const isReady = (instance: ConnectorConfig['instances'][number]) => hasAdapter(instance) && workspacePolicy.configured;
   const registry = new ExecutionRegistry(
     connectorEpoch,
-    new Map(enabledInstances.map(instance => [instance.id, instance.type])),
+    instanceTypes,
     adapters,
     workspacePolicy,
     options.replayLimit,
@@ -69,6 +75,23 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
         : { id: instance.id, type: instance.type, status: 'degraded' as const, capabilities: adapter.capabilities, error: { code: 'workspace_not_configured', message: 'Connector workspace roots are not configured' } };
     }),
   }));
+
+  app.get('/v1/discovery',async(_request,reply)=>options.discover?options.discover():reply.code(503).send({apiVersion:CONNECTOR_API_VERSION,error:'discovery_unavailable',message:'Harness discovery is unavailable'}));
+
+  app.put('/v1/instances',async(request,reply)=>{
+    if(!isConfigureConnectorInstancesRequest(request.body))return reply.code(400).send({apiVersion:CONNECTOR_API_VERSION,error:'invalid_request',message:'Connector instances do not match the v1 contract'});
+    if(!options.configureInstances||!options.persistInstances)return reply.code(503).send({apiVersion:CONNECTOR_API_VERSION,error:'configuration_unavailable',message:'Connector configuration is unavailable'});
+    const instances=structuredClone(request.body.instances) as ConnectorConfig['instances'];
+    const previous=structuredClone(config.instances);
+    try{
+      const configured=await options.configureInstances(instances);
+      await options.persistInstances(instances);
+      config.instances=instances;enabledInstances=instances.filter(instance=>instance.enabled);
+      adapters.clear();for(const [id,adapter] of configured)adapters.set(id,adapter);
+      instanceTypes.clear();for(const instance of enabledInstances)instanceTypes.set(instance.id,instance.type);
+      return{apiVersion:CONNECTOR_API_VERSION,instances};
+    }catch{await options.configureInstances(previous).catch(()=>undefined);await options.persistInstances(previous).catch(()=>undefined);return reply.code(409).send({apiVersion:CONNECTOR_API_VERSION,error:'configuration_failed',message:'Connector configuration could not be applied'});}
+  });
 
   app.get<{ Params: { id: string } }>('/v1/instances/:id/catalog', async (request, reply) => {
     const instance=enabledInstances.find(candidate=>candidate.id===request.params.id);

@@ -1,15 +1,16 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
-import { parse } from 'yaml';
+import { parse, stringify } from 'yaml';
 import { resolveAgenvylPaths } from '@agenvyl/runtime-config';
 
-export type ConnectorInstanceConfig = { id: string; type: string; enabled: boolean };
+export type ConnectorInstanceConfig = { id: string; type: 'hermes'|'opencode'|'antigravity'; enabled: boolean; endpoint?:string; managed?:boolean; permissionMode?:'plan'|'accept-edits' };
 export type ConnectorConfig = {
   version: 1;
   listen: { host: string; port: number };
   workspaces: { roots: string[] };
   instances: ConnectorInstanceConfig[];
   token: string;
+  path?: string;
 };
 
 export async function loadConnectorConfig(options: { path?: string; env?: NodeJS.ProcessEnv } = {}): Promise<ConnectorConfig> {
@@ -28,7 +29,19 @@ export async function loadConnectorConfig(options: { path?: string; env?: NodeJS
   const listen = parseListen(document.listen);
   const workspaces = parseWorkspaces(document.workspaces, env.AGENVYL_WORKSPACE_ROOT ?? paths.workspaces);
   const instances = parseInstances(document.instances);
-  return { version: 1, listen, workspaces, instances, token };
+  return { version: 1, listen, workspaces, instances, token, path };
+}
+
+export async function saveConnectorInstances(config:ConnectorConfig,instances:ConnectorInstanceConfig[]){
+  if(!config.path)throw new Error('Connector config path is unavailable');
+  const document={version:1,listen:config.listen,workspaces:config.workspaces,instances};
+  const temporary=`${config.path}.${process.pid}.tmp`;
+  await writeFile(temporary,stringify(document),{encoding:'utf8',mode:0o600});
+  if(process.platform!=='win32'){await rename(temporary,config.path);return;}
+  const backup=`${config.path}.${process.pid}.bak`;
+  try{await rename(config.path,backup);await rename(temporary,config.path);}
+  catch(error){await rename(backup,config.path).catch(()=>undefined);throw error;}
+  finally{await rm(temporary,{force:true});await rm(backup,{force:true});}
 }
 
 function parseListen(value: unknown) {
@@ -47,13 +60,16 @@ function parseInstances(value: unknown): ConnectorInstanceConfig[] {
   const seen = new Set<string>();
   return value.map((item, index) => {
     if (!isRecord(item)) throw new Error(`instances[${index}] must be an object`);
-    exactKeys(item, ['id', 'type', 'enabled'], `instances[${index}]`);
+    exactKeys(item, ['id', 'type', 'enabled','endpoint','managed','permissionMode'], `instances[${index}]`);
     if (typeof item.id !== 'string' || !/^[a-z0-9][a-z0-9_-]*$/.test(item.id)) throw new Error(`instances[${index}].id is invalid`);
     if (seen.has(item.id)) throw new Error(`Duplicate Connector instance id: ${item.id}`);
     seen.add(item.id);
-    if (typeof item.type !== 'string' || !/^[a-z0-9][a-z0-9_-]*$/.test(item.type)) throw new Error(`instances[${index}].type is invalid`);
+    if (item.type!=='hermes'&&item.type!=='opencode'&&item.type!=='antigravity') throw new Error(`instances[${index}].type is invalid`);
     if (item.enabled !== undefined && typeof item.enabled !== 'boolean') throw new Error(`instances[${index}].enabled must be boolean`);
-    return { id: item.id, type: item.type, enabled: item.enabled ?? true };
+    if(item.endpoint!==undefined&&!safeEndpoint(item.endpoint))throw new Error(`instances[${index}].endpoint is invalid`);
+    if(item.managed!==undefined&&(item.type!=='opencode'||typeof item.managed!=='boolean'))throw new Error(`instances[${index}].managed is invalid`);
+    if(item.permissionMode!==undefined&&(item.type!=='antigravity'||(item.permissionMode!=='plan'&&item.permissionMode!=='accept-edits')))throw new Error(`instances[${index}].permissionMode is invalid`);
+    return { id: item.id, type: item.type, enabled: item.enabled ?? true, ...(item.endpoint?{endpoint:String(item.endpoint)}:{}), ...(item.managed!==undefined?{managed:item.managed}:{}), ...(item.permissionMode?{permissionMode:item.permissionMode}:{}) };
   });
 }
 
@@ -76,3 +92,4 @@ function exactKeys(value: Record<string, unknown>, allowed: string[], label: str
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> { return Boolean(value && typeof value === 'object' && !Array.isArray(value)); }
+function safeEndpoint(value:unknown){try{const url=new URL(String(value));return ['http:','https:'].includes(url.protocol)&&!url.username&&!url.password&&!url.search&&!url.hash;}catch{return false;}}

@@ -28,19 +28,18 @@ describe('buildConfiguredAdapters', () => {
     expect(adapters.get('local-opencode')).toMatchObject({ type: 'opencode', capabilities: ['model_catalog', 'mode_catalog', 'text_streaming', 'reasoning', 'tools', 'approvals', 'clarifications', 'usage'] });
   });
 
-  it('loads Antigravity only behind the explicit dangerous-permissions opt-in', () => {
+  it('loads Antigravity only behind the persisted explicit permission mode', () => {
     const value = config();
     value.instances = [{ id: 'local-antigravity', type: 'antigravity', enabled: true }];
     expect(buildConfiguredAdapters(value, {})).toHaveLength(0);
-    expect(buildConfiguredAdapters(value, { AGENVYL_CONNECTOR_AGY_DANGEROUSLY_SKIP_PERMISSIONS: 'false' })).toHaveLength(0);
+    value.instances=[{...value.instances[0],permissionMode:'plan'}];
     const adapters = buildConfiguredAdapters(value, {
-      AGENVYL_CONNECTOR_AGY_DANGEROUSLY_SKIP_PERMISSIONS: 'true',
       AGENVYL_CONNECTOR_AGY_COMMAND: '/opt/agy',
       AGENVYL_CONNECTOR_AGY_PRINT_TIMEOUT_MS: '1200000',
     });
     expect([...adapters.keys()]).toEqual(['local-antigravity']);
     expect(adapters.get('local-antigravity')).toMatchObject({ type: 'antigravity', capabilities: ['model_catalog', 'mode_catalog'] });
-    expect(() => buildConfiguredAdapters(value, { AGENVYL_CONNECTOR_AGY_DANGEROUSLY_SKIP_PERMISSIONS: 'true', AGENVYL_CONNECTOR_AGY_PRINT_TIMEOUT_MS: 'invalid' })).toThrow('must be a positive integer');
+    expect(() => buildConfiguredAdapters(value, { AGENVYL_CONNECTOR_AGY_PRINT_TIMEOUT_MS: 'invalid' })).toThrow('must be a positive integer');
   });
 });
 

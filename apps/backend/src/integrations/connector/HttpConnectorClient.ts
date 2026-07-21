@@ -1,4 +1,4 @@
-import { isConnectorCatalog, isConnectorCommandResult, isConnectorExecutionEvent, isConnectorHealth, isConnectorInstanceList, isConnectorRequestCommandResult, isExecutionSnapshot, type ConnectorCatalog, type ConnectorExecutionEvent, type ConnectorHealth, type ConnectorInstanceList, type ConnectorRequestCommandResult, type ExecutionSnapshot, type StartExecutionRequest } from '@agenvyl/connector-contract';
+import { isConnectorCatalog, isConnectorCommandResult, isConnectorDiscovery, isConnectorExecutionEvent, isConnectorHealth, isConnectorInstanceList, isConnectorRequestCommandResult, isExecutionSnapshot, type ConfigureConnectorInstancesRequest, type ConnectorCatalog, type ConnectorConfigurationResult, type ConnectorDiscovery, type ConnectorExecutionEvent, type ConnectorHealth, type ConnectorInstanceList, type ConnectorRequestCommandResult, type ExecutionSnapshot, type StartExecutionRequest } from '@agenvyl/connector-contract';
 import type { ConnectorExecutionClient, ConnectorLifecycleErrorCode } from '../../modules/connector/connector.ports.js';
 import {parseSse} from '../../infrastructure/http/parseSse.js';
 
@@ -46,6 +46,9 @@ export class HttpConnectorClient implements ConnectorExecutionClient {
     return value;
   }
 
+  async discover():Promise<ConnectorDiscovery>{const value=await this.get('/v1/discovery','discovery');if(!isConnectorDiscovery(value))throw invalidResponse('Connector returned invalid discovery');return value;}
+  async configureInstances(input:ConfigureConnectorInstancesRequest):Promise<ConnectorConfigurationResult>{const value=await this.json('/v1/instances','PUT',input,'discovery',15_000);if(!isRecord(value)||value.apiVersion!=='v1'||!Array.isArray(value.instances))throw invalidResponse('Connector returned invalid configuration');return value as ConnectorConfigurationResult;}
+
   async start(request:StartExecutionRequest):Promise<ExecutionSnapshot>{
     const value=await this.json('/v1/executions','POST',request,'execution');
     if(!isConnectorCommandResult(value)||value.execution.executionId!==request.executionId)throw invalidResponse('Connector returned an invalid start response');
@@ -85,12 +88,12 @@ export class HttpConnectorClient implements ConnectorExecutionClient {
     return this.json(path,'GET',undefined,resource);
   }
 
-  private async json(path:string,method:'GET'|'POST',body:unknown,resource:'health'|'execution'|'discovery'){
+  private async json(path:string,method:'GET'|'POST'|'PUT',body:unknown,resource:'health'|'execution'|'discovery',timeoutMs=3_000){
     let response: Response;
     try {
       response = await this.request(`${this.baseUrl}${path}`, {
         method,headers:this.headers(body!==undefined),...(body===undefined?{}:{body:JSON.stringify(body)}),
-        signal: AbortSignal.timeout(3_000),
+        signal: AbortSignal.timeout(timeoutMs),
       });
     } catch {
       throw new ConnectorClientError('connector_unavailable', 'Connector is unavailable');

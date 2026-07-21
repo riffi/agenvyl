@@ -8,8 +8,9 @@ import { Database } from './Database.js';
 import {WorkspaceRepository} from '../../modules/workspace/workspace.repository.js';
 import {UserProfileRepository} from '../../modules/user-profile/userProfile.repository.js';
 
-export async function createRepositories(databaseUrl:string){
+export async function createRepositories(databaseUrl:string,options:{legacySeed?:boolean}={}){
   const database=await Database.connect(databaseUrl);
+  if(options.legacySeed??process.env.NODE_ENV==='test'){const{seedLegacyTestDatabase}=await import('../../test/legacySeed.js');await seedLegacyTestDatabase(database);}
   const personas=new PersonaRepository(database);
   const roomEvents=new RoomEventRepository(database);
   const workspace=new WorkspaceRepository(database),rooms=new RoomRepository(database,personas,workspace);

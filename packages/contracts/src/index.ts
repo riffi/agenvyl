@@ -42,6 +42,12 @@ export type Message = {
 export type HumanAuthorSnapshot = { profileId: string; displayName: string; handle: string };
 export type LocalUserProfile = { id: string; displayName: string; handle: string; createdAt: string; updatedAt: string };
 export type UpdateLocalUserProfileRequest = { display_name: string; handle: string };
+export type SetupHarnessCandidate={type:'hermes'|'opencode'|'antigravity';label:string;cli:{found:boolean;command:string;version?:string;compatible?:boolean};endpoint?:{url:string;reachable:boolean};safeToSelect:boolean;supportsManagedServer:boolean;warning?:string};
+export type SetupState={completed:boolean;locale:'en'|'ru';workspaceRoot:string;firstRoomId?:string;instances:Array<{id:string;type:string;status:string}>;candidates:SetupHarnessCandidate[]};
+export type SetupHarnessInstance={id:string;type:'hermes'|'opencode'|'antigravity';enabled:boolean;endpoint?:string;managed?:boolean;permissionMode?:'plan'|'accept-edits'};
+export type ConfigureSetupHarnessesRequest={instances:SetupHarnessInstance[]};
+export type CompleteSetupRequest={locale:'en'|'ru';workspace_root:string;profile:{display_name:string;handle:string};room_title:string;route:{harness_instance_id:string;harness_type:string;model_id:string;mode_id:string|null}|null};
+export type CompleteSetupResult={roomId:string};
 
 export type Run = {
   id: string;

@@ -18,9 +18,15 @@ export AGENVYL_CONNECTOR_TOKEN="$(openssl rand -hex 32)"
 ```
 
 `connector.yaml` contains only the listen address, allowed workspace roots, and
-enabled instance definitions. Tokens, harness URLs, executable paths, passwords,
-and OAuth state must remain in the process environment or native harness stores.
+non-secret instance definitions. Loopback endpoints, managed OpenCode state, and
+the explicit AGY permission mode may be persisted. Tokens, passwords, executable
+paths, and OAuth state remain in the process environment or native harness stores.
 Unknown YAML fields are rejected.
+
+The bearer-protected `GET /v1/discovery` reports local CLI/endpoint readiness.
+`PUT /v1/instances` atomically persists a validated selection and applies its
+adapter lifecycle. Hermes is attach-only; OpenCode can attach to an endpoint or
+run as a Connector-managed `opencode serve` child.
 
 Every workspace root must be an existing absolute directory. For a room run,
 Connector resolves exactly one `<root>/<roomId>` and rejects traversal, absolute
@@ -97,13 +103,13 @@ them safely.
 ## Antigravity / AGY
 
 Install and authenticate `agy >= 1.1.3`, trust the configured workspace root,
-and enable `local-antigravity`. The adapter is disabled unless the dangerous
-mode is explicitly accepted:
+and enable `local-antigravity`. AGY is never included in the safe-all selection;
+the browser requires a separate confirmation and stores `permissionMode: plan`
+by default (or the explicitly selected `accept-edits`):
 
 ```bash
 agy
 export AGENVYL_CONNECTOR_AGY_COMMAND="$HOME/.local/bin/agy"
-export AGENVYL_CONNECTOR_AGY_DANGEROUSLY_SKIP_PERMISSIONS=true
 export AGENVYL_CONNECTOR_AGY_PRINT_TIMEOUT_MS=1800000
 ```
 

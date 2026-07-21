@@ -4,9 +4,11 @@ import postgres from 'postgres';
 import {connectTestDatabase,testDatabaseUrl} from '../../testDatabase.js';
 import {stableSessionId} from '../../modules/runs/stableSessionId.js';
 import {createRepositories} from './createRepositories.js';
+import {Database} from './Database.js';
 
 describe('PostgreSQL repositories',()=>{
-  it('applies migrations and seed idempotently',async()=>{const url=testDatabaseUrl('migrations');let p=await createRepositories(url);expect(await p.personas.list()).toHaveLength(4);expect((await p.rooms.list()).map(r=>r.id)).toContain('demo-room');expect((await p.database.sql`SELECT version FROM schema_migrations ORDER BY version`).map(row=>row.version)).toEqual([1,2,3,4,5,6,7,8,9,10,11,12]);expect(await p.database.sql`SELECT to_regclass('hermes_session_mappings') name`).toEqual([{name:null}]);expect((await p.personas.list()).every(persona=>persona.group_id===null&&persona.harness_instance_id==='local-hermes'&&persona.harness_type==='hermes'&&persona.model_id===persona.requested_model&&persona.mode_id===null)).toBe(true);await p.database.close();p=await createRepositories(url);expect(await p.personas.list()).toHaveLength(4);await p.database.close();});
+  it('applies migrations and the explicit legacy test seed idempotently',async()=>{const url=testDatabaseUrl('migrations');let p=await createRepositories(url);expect(await p.personas.list()).toHaveLength(4);expect((await p.rooms.list()).map(r=>r.id)).toContain('demo-room');expect((await p.database.sql`SELECT version FROM schema_migrations ORDER BY version`).map(row=>row.version)).toEqual([1,2,3,4,5,6,7,8,9,10,11,12,13]);expect(await p.database.sql`SELECT to_regclass('hermes_session_mappings') name`).toEqual([{name:null}]);expect((await p.personas.list()).every(persona=>persona.group_id===null&&persona.harness_instance_id==='local-hermes'&&persona.harness_type==='hermes'&&persona.model_id===persona.requested_model&&persona.mode_id===null)).toBe(true);await p.database.close();p=await createRepositories(url);expect(await p.personas.list()).toHaveLength(4);await p.database.close();});
+  it('leaves a fresh production database empty and awaiting setup',async()=>{const database=await Database.connect(testDatabaseUrl('fresh_setup'));expect(await database.sql`SELECT COUNT(*)::int count FROM rooms`).toEqual([{count:0}]);expect(await database.sql`SELECT COUNT(*)::int count FROM personas`).toEqual([{count:0}]);expect((await database.sql`SELECT completed_at FROM installation_state WHERE id=true`)[0]?.completed_at).toBeNull();await database.close();});
   it('backfills immutable snapshots when upgrading an initial-schema database',async()=>{
     const url=testDatabaseUrl('migration_v1'),parsed=new URL(url),schema=parsed.searchParams.get('schema')!;
     parsed.searchParams.delete('schema');
@@ -25,7 +27,8 @@ describe('PostgreSQL repositories',()=>{
     await sql`INSERT INTO room_events(id,event_id,room_id,sequence,type,payload,created_at) VALUES('legacy-event','legacy-event','legacy-room',1,'run.created',${sql.json({id:'legacy-run',messageId:'legacy-message',agent:'legacy',requestedModel:'legacy-model',status:'completed',text:'',tools:[]})},${now})`;
     await sql.end();
     const repositories=await createRepositories(url);
-    expect((await repositories.database.sql`SELECT version FROM schema_migrations ORDER BY version`).map(row=>row.version)).toEqual([1,2,3,4,5,6,7,8,9,10,11,12]);
+    expect((await repositories.database.sql`SELECT version FROM schema_migrations ORDER BY version`).map(row=>row.version)).toEqual([1,2,3,4,5,6,7,8,9,10,11,12,13]);
+    expect((await repositories.database.sql`SELECT completed_at,first_room_id FROM installation_state WHERE id=true`)[0]).toMatchObject({first_room_id:'legacy-room',completed_at:expect.any(Date)});
     expect((await repositories.database.sql`SELECT author_profile_id,author_display_name,author_handle FROM room_messages WHERE id='legacy-message'`)[0]).toEqual({author_profile_id:'local-user',author_display_name:'Пользователь',author_handle:'user'});
     expect((await repositories.database.sql`SELECT harness_instance_id,harness_type,model_id,mode_id FROM personas WHERE id='legacy-persona'`)[0]).toEqual({harness_instance_id:'local-hermes',harness_type:'hermes',model_id:'legacy-model',mode_id:null});
     expect((await repositories.database.sql`SELECT harness_instance_id,harness_type,model_id,mode_id FROM persona_versions WHERE id='legacy-version'`)[0]).toEqual({harness_instance_id:'local-hermes',harness_type:'hermes',model_id:'legacy-model',mode_id:null});
