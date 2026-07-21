@@ -1,3 +1,5 @@
+const nullableStringSchema={anyOf:[{type:'null'},{type:'string'}]} as const;
+
 export const idParamsSchema = objectSchema({ id: { type: 'string' } }, ['id']);
 export const roomParamsSchema = objectSchema({ roomId: { type: 'string' } }, ['roomId']);
 export const runParamsSchema = objectSchema({ runId: { type: 'string' } }, ['runId']);
@@ -30,12 +32,12 @@ export const createPersonaBodySchema = objectSchema({
   room_id: { type: 'string' },
   role: { type: 'string' },
   color: { type: 'string' },
-  requested_model: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+  requested_model: nullableStringSchema,
   harness_instance_id: { type: 'string' },
   model_id: { type: 'string' },
-  mode_id: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+  mode_id: nullableStringSchema,
   system_prompt: { type: 'string' },
-  group_id: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+  group_id: nullableStringSchema,
 });
 
 export const groupBodySchema=objectSchema({name:{type:'string',maxLength:80}});
@@ -62,8 +64,8 @@ export const runRequestResolutionBodySchema = objectSchema({ resolution: { type:
 
 export const roomResponseSchema = objectSchema({
   id:{type:'string'},title:{type:'string'},created_at:{type:'string'},participant_count:{type:'integer'},
-  last_message_at:{anyOf:[{type:'string'},{type:'null'}]},last_message_text:{anyOf:[{type:'string'},{type:'null'}]},
-  deleted_at:{anyOf:[{type:'string'},{type:'null'}]},
+  last_message_at:nullableStringSchema,last_message_text:nullableStringSchema,
+  deleted_at:nullableStringSchema,
 },['id','title','created_at','participant_count','last_message_at','last_message_text','deleted_at']);
 
 export const personaGroupResponseSchema=objectSchema({
@@ -72,10 +74,10 @@ export const personaGroupResponseSchema=objectSchema({
 
 export const personaResponseSchema=objectSchema({
   id:{type:'string'},handle:{type:'string'},name:{type:'string'},role:{type:'string'},color:{type:'string'},
-  requested_model:{anyOf:[{type:'string'},{type:'null'}]},effective_model:{anyOf:[{type:'string'},{type:'null'}]},
-  harness_instance_id:{type:'string'},harness_type:{type:'string'},model_id:{type:'string'},mode_id:{anyOf:[{type:'string'},{type:'null'}]},
-  current_version_id:{type:'string'},system_prompt:{type:'string'},group_id:{anyOf:[{type:'string'},{type:'null'}]},
-  created_at:{type:'string'},updated_at:{type:'string'},archived_at:{anyOf:[{type:'string'},{type:'null'}]},
+  requested_model:nullableStringSchema,effective_model:nullableStringSchema,
+  harness_instance_id:{type:'string'},harness_type:{type:'string'},model_id:{type:'string'},mode_id:nullableStringSchema,
+  current_version_id:{type:'string'},system_prompt:{type:'string'},group_id:nullableStringSchema,
+  created_at:{type:'string'},updated_at:{type:'string'},archived_at:nullableStringSchema,
 },['id','handle','name','role','color','requested_model','harness_instance_id','harness_type','model_id','mode_id','group_id','archived_at']);
 
 export const messageResponseSchema=objectSchema({
@@ -87,7 +89,7 @@ const upstreamStatusResponseSchema=objectSchema({state:{type:'string',enum:['wai
 const connectorRunStateResponseSchema=objectSchema({state:{type:'string',enum:['active','degraded','terminal','unavailable','lost']},checkpointed:{type:'boolean'}},['state','checkpointed']);
 const runRequestResponseSchema=objectSchema({kind:{type:'string',enum:['approval','clarification']},prompt:{type:'string'},choices:{type:'array',items:{type:'string'}},resolved:{type:'string'}},['kind','prompt']);
 const timelineRunResponseSchema=objectSchema({
-  id:{type:'string'},messageId:{type:'string'},agent:{type:'string'},requestedModel:{type:'string'},harnessInstanceId:{type:'string'},harnessType:{type:'string'},modelId:{type:'string'},modeId:{anyOf:[{type:'string'},{type:'null'}]},status:{type:'string'},upstreamStatus:upstreamStatusResponseSchema,connector:connectorRunStateResponseSchema,usage:{type:'object',additionalProperties:false,required:['inputTokens','outputTokens'],properties:{inputTokens:{type:'integer',minimum:0},outputTokens:{type:'integer',minimum:0},totalTokens:{type:'integer',minimum:0},reasoningTokens:{type:'integer',minimum:0},cacheReadTokens:{type:'integer',minimum:0},cacheWriteTokens:{type:'integer',minimum:0}}},text:{type:'string'},reasoning:{type:'string'},tools:{type:'array',items:toolActivityResponseSchema},retryOfRunId:{type:'string'},responseSlotId:{type:'string'},attemptNumber:{type:'integer',minimum:1},request:runRequestResponseSchema,error:{type:'string'},errorCode:{type:'string'},artifacts:{type:'array'},embeds:{type:'array'},
+  id:{type:'string'},messageId:{type:'string'},agent:{type:'string'},requestedModel:{type:'string'},harnessInstanceId:{type:'string'},harnessType:{type:'string'},modelId:{type:'string'},modeId:nullableStringSchema,status:{type:'string'},upstreamStatus:upstreamStatusResponseSchema,connector:connectorRunStateResponseSchema,usage:{type:'object',additionalProperties:false,required:['inputTokens','outputTokens'],properties:{inputTokens:{type:'integer',minimum:0},outputTokens:{type:'integer',minimum:0},totalTokens:{type:'integer',minimum:0},reasoningTokens:{type:'integer',minimum:0},cacheReadTokens:{type:'integer',minimum:0},cacheWriteTokens:{type:'integer',minimum:0}}},text:{type:'string'},reasoning:{type:'string'},tools:{type:'array',items:toolActivityResponseSchema},retryOfRunId:{type:'string'},responseSlotId:{type:'string'},attemptNumber:{type:'integer',minimum:1},request:runRequestResponseSchema,error:{type:'string'},errorCode:{type:'string'},artifacts:{type:'array'},embeds:{type:'array'},
 },['id','messageId','agent','harnessInstanceId','harnessType','modelId','modeId','status','text','tools']);
 export const roomTimelineResponseSchema=objectSchema({
   messages:{type:'array',items:messageResponseSchema},runs:{type:'array',items:timelineRunResponseSchema},selectedRuns:{type:'object',additionalProperties:{type:'string'}},lastSequence:{type:'integer',minimum:0},hasMore:{type:'boolean'},nextCursor:{type:'string'},

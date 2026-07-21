@@ -23,6 +23,15 @@ describe('AntigravityConnectorAdapter', () => {
     await expect(old.catalog()).rejects.toThrow('1.1.3 or newer');
   });
 
+  it('serializes version and model probes and shares concurrent catalog requests',async()=>{
+    const fixture=await fakeAgy();
+    const adapter=fixture.adapter({env:{FAKE_AGY_LOCK:join(fixture.directory,'agy.lock'),FAKE_AGY_MODELS:'gemini\n'}});
+    const [first,second]=await Promise.all([adapter.catalog(),adapter.catalog()]);
+    expect(first).toBe(second);
+    expect(first.models).toEqual([{id:'gemini',label:'gemini'}]);
+    await expect(adapter.catalog()).resolves.toBe(first);
+  });
+
   it('runs one fresh process with exact routing, cwd, auto-update guard and deterministic flattened context', async () => {
     const fixture = await fakeAgy();
     const capturePath = join(fixture.directory, 'capture.json');
@@ -85,8 +94,13 @@ async function fakeAgy() {
   directories.push(directory);
   const script = join(directory, 'agy.cjs');
   await writeFile(script, `
-const { writeFileSync } = require('node:fs');
+const { closeSync, openSync, unlinkSync, writeFileSync } = require('node:fs');
 const args=process.argv.slice(2);
+if(process.env.FAKE_AGY_LOCK){
+  try{closeSync(openSync(process.env.FAKE_AGY_LOCK,'wx'))}catch{process.stderr.write('concurrent agy invocation');process.exit(9)}
+  process.on('exit',()=>{try{unlinkSync(process.env.FAKE_AGY_LOCK)}catch{}});
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,50);
+}
 if(args[0]==='--version'){console.log(process.env.FAKE_AGY_VERSION||'1.1.3');process.exit(0)}
 if(args[0]==='models'){process.stdout.write(process.env.FAKE_AGY_MODELS||'Gemini 3.5 Flash (High)\\n');process.exit(0)}
 if(process.env.FAKE_AGY_CAPTURE)writeFileSync(process.env.FAKE_AGY_CAPTURE,JSON.stringify({args,cwd:process.cwd(),disableAutoUpdate:process.env.AGY_CLI_DISABLE_AUTO_UPDATE,pid:process.pid}));

@@ -25,6 +25,8 @@
   ],
   "scripts": {
     "dev": "npm run build:contracts && vite --config apps/frontend/vite.config.ts",
+    "dev:all": "node scripts/run-local-development.mjs",
+    "dev:down": "docker compose stop postgres",
     "dev:server": "tsx watch apps/backend/src/index.ts",
     "dev:connector": "npm run build:contracts && tsx watch apps/connector/src/index.ts",
     "check:local": "npm test && npm run typecheck && npm run lint:boundaries",

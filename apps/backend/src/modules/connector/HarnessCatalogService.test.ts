@@ -4,6 +4,29 @@ import type {ConnectorDiscovery} from './connector.ports.js';
 import {HarnessCatalogService} from './HarnessCatalogService.js';
 
 describe('HarnessCatalogService',()=>{
+  it('keeps available catalogs when one instance catalog is unavailable',async()=>{
+    const instances={...connectorContractFixtures.instances,instances:[
+      connectorContractFixtures.instances.instances[0],
+      {...connectorContractFixtures.instances.instances[0],id:'local-opencode',type:'opencode'},
+    ]};
+    const connector:ConnectorDiscovery={
+      health:vi.fn().mockResolvedValue(connectorContractFixtures.health),inspect:vi.fn().mockResolvedValue(connectorContractFixtures.execution),
+      instances:vi.fn().mockResolvedValue(instances),
+      catalog:vi.fn().mockImplementation(async instanceId=>{
+        if(instanceId==='local-hermes')throw new Error('Hermes is offline');
+        return{...connectorContractFixtures.catalog,instanceId};
+      }),
+    };
+
+    await expect(new HarnessCatalogService(connector).catalog()).resolves.toEqual({
+      connectorEpoch:'epoch-1',
+      instances:[
+        {...instances.instances[0],status:'unavailable',error:{code:'catalog_unavailable',message:'Connector instance catalog is unavailable'},models:[],modes:[]},
+        {...instances.instances[1],models:connectorContractFixtures.catalog.models,modes:[]},
+      ],
+    });
+  });
+
   it('rejects a catalog observed across a Connector epoch change',async()=>{
     const connector:ConnectorDiscovery={
       health:vi.fn().mockResolvedValue(connectorContractFixtures.health),inspect:vi.fn().mockResolvedValue(connectorContractFixtures.execution),

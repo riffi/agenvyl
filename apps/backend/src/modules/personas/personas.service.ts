@@ -27,6 +27,7 @@ export class PersonasService{
     if(instance.status!=='healthy')throw new AppError('harness_unavailable',409,'Harness instance is unavailable',{harnessInstanceId:instanceId,status:instance.status});
     if(!instance.models.some(model=>model.id===modelId))throw new AppError('unknown_model',400,'Unknown model',{model:modelId,harnessInstanceId:instanceId});
     const modeId=input.mode_id??null;
+    if(instance.type==='antigravity'&&modeId===null)throw new AppError('agy_mode_required',400,'AGY requires plan or accept-edits mode',{harnessInstanceId:instanceId});
     if(modeId!==null&&!instance.modes.some(mode=>mode.id===modeId))throw new AppError('unknown_mode',400,'Unknown harness mode',{mode:modeId,harnessInstanceId:instanceId});
     return{requested_model:modelId,harness_instance_id:instance.id,harness_type:instance.type,model_id:modelId,mode_id:modeId};
   }

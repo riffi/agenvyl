@@ -9,7 +9,7 @@ import { roomsApi } from '../../entities/room';
 import { Alert, Avatar, Button, Dialog, Input, Select, Spinner, TextArea } from '../../shared/ui';
 import {PersonaCatalog} from './PersonaCatalog';
 import styles from './PersonasScreen.module.css';
-import {isPersonaDraftDirty,newPersonaDraft,personaInputFromDraft,selectHarnessInstance,selectHarnessModel} from './personaDraft';
+import {isPersonaDraftDirty,newPersonaDraft,personaHandleAfterNameChange,personaInputFromDraft,personaSaveAvailable,selectHarnessInstance,selectHarnessModel} from './personaDraft';
 
 const PERSONA_COLORS=['#e0a33e','#62c98f','#5ba3f0','#c78bf0','#ef8fb0','#4fd0c3','#a7c957','#f0805a'];
 
@@ -75,15 +75,23 @@ export function HarnessRouteFields({form,catalog,error,onChange}:{form:Persona;c
   const visibleInstances=form.harness_instance_id&&!selectedInstance?[...discovered,{id:form.harness_instance_id,type:form.harness_type,status:'unavailable' as const,capabilities:[],models:[],modes:[]}]:discovered;
   const visibleModels=selectedInstance?.models??(form.model_id?[{id:form.model_id,label:`${form.model_id} (сохранено)`}]:[]);
   const selectedModel=visibleModels.find(model=>model.id===form.model_id);
+  const requiresExplicitMode=selectedInstance?.type==='antigravity';
   return <>
     {error&&<Alert tone="error">Каталог harness недоступен: {error}. Сохранённый выбор не изменён.</Alert>}
     <div className={styles['harness-grid']}>
       <label>Harness instance<Select aria-label="Harness instance" value={form.harness_instance_id} onChange={event=>{const instance=visibleInstances.find(item=>item.id===event.target.value);if(instance)onChange(selectHarnessInstance(form,instance))}}>{visibleInstances.length===0&&<option value="">Нет доступных instances</option>}{visibleInstances.map(instance=><option key={instance.id} value={instance.id} disabled={instance.status==='unavailable'}>{instance.id} · {instance.type}{instance.status==='healthy'?'':` · ${instance.status}`}</option>)}</Select></label>
       <ModelPicker models={visibleModels} value={form.model_id} onChange={modelId=>onChange(selectHarnessModel(form,modelId))}/>
-      {selectedInstance&&selectedInstance.modes.length>0&&<label>Режим<Select aria-label="Режим harness" value={form.mode_id??''} onChange={event=>onChange({...form,mode_id:event.target.value||null})}><option value="">По умолчанию</option>{selectedInstance.modes.map(mode=><option key={mode.id} value={mode.id}>{mode.label??mode.id}</option>)}</Select></label>}
+      {selectedInstance&&selectedInstance.modes.length>0&&<label>Режим<Select aria-label="Режим harness" value={form.mode_id??''} onChange={event=>onChange({...form,mode_id:event.target.value||null})}>{requiresExplicitMode?(form.mode_id===null&&<option value="" disabled>Выберите режим</option>):<option value="">По умолчанию</option>}{selectedInstance.modes.map(mode=><option key={mode.id} value={mode.id}>{mode.label??mode.id}</option>)}</Select></label>}
     </div>
     {form.harness_instance_id&&<details className={styles['model-technical']}><summary>Технические параметры</summary><p><b>Instance:</b> {form.harness_instance_id} · <b>Type:</b> {form.harness_type}</p><p><b>Model:</b> {(selectedModel?.label??form.model_id)||'недоступна'}{form.mode_id&&<> · <b>Mode:</b> {form.mode_id}</>}</p></details>}
   </>;
+}
+
+export function PersonaInstructionFields({value,onChange}:{value:string;onChange:(value:string)=>void}){
+  return <details className={`${styles['editor-section']} ${styles['instruction-section']}`} ui-spec-block-id="persona_behavior">
+    <summary><span><strong>Инструкция персоны</strong><small>System prompt и правила поведения</small></span><ChevronDown aria-hidden="true"/></summary>
+    <div className={styles['instruction-content']}><TextArea aria-label="Инструкция персоны" value={value} onChange={event=>onChange(event.target.value)}/><p className={styles['field-description']}>System prompt определяет поведение и область ответственности персоны.</p></div>
+  </details>;
 }
 
 export function PersonasScreen({
@@ -235,19 +243,19 @@ export function PersonasScreen({
                   <Avatar label={form.name||'Новая персона'} color={form.color}/>
                   <span><strong>{form.name||'Новая персона'}</strong><small>@{form.handle||'handle'} · {form.role||'роль не указана'}{form.group_id&&<> · {groups.find(group=>group.id===form.group_id)?.name}</>}</small></span>
                   <b className={dirty?styles['draft-dirty']:styles['draft-saved']}>{saving?'Сохраняем…':dirty?'Есть несохранённые изменения':'Сохранено'}</b>
-                  <Button type="submit" variant="primary" disabled={saving||!dirty||!real}>{creating?'Создать':'Сохранить'}</Button>
+                  <Button type="submit" variant="primary" disabled={!personaSaveAvailable({creating,dirty,real,saving})}>{creating?'Создать':'Сохранить'}</Button>
                 </header>
                 <section className={styles['editor-section']} ui-spec-block-id="persona_identity"><h3>Профиль</h3><div className={styles['profile-grid']}>
-                  <label className={styles['validation-field']}>Имя<Input placeholder="Имя персоны" value={form.name} onChange={e=>edit({name:e.target.value})}/><small className={styles['field-message']} aria-hidden="true" /></label>
+                  <label className={styles['validation-field']}>Имя<Input placeholder="Имя персоны" value={form.name} onChange={event=>setForm(current=>current?{...current,name:event.target.value,handle:personaHandleAfterNameChange(current.name,event.target.value,current.handle)}:current)}/><small className={styles['field-message']} aria-hidden="true" /></label>
                   <label className={styles['validation-field']}>Уникальный handle<span className={`${styles['handle-wrap']} ${handleIssue?styles.invalid:''}`}><b aria-hidden="true">@</b><Input aria-label="Handle персоны" placeholder="например, analyst" value={form.handle} onChange={e=>edit({handle:e.target.value.toLowerCase().replace(/^@/,'')})}/></span><small className={`${styles['field-message']} ${styles['handle-message']} ${handleIssue?styles.error:normalizedHandle?styles.available:''}`}>{handleIssue??(normalizedHandle?`@${normalizedHandle} — доступен`:'Используется в упоминаниях.')}</small></label>
                   <label>Роль<Input value={form.role} onChange={e=>edit({role:e.target.value})}/></label>
                   <label>Группа<Select value={form.group_id??''} onChange={e=>edit({group_id:e.target.value||null})}><option value="">Без группы</option>{groups.map(group=><option key={group.id} value={group.id}>{group.name}</option>)}</Select></label>
                   <fieldset className={styles['color-swatches']}><legend>Устойчивый цвет персоны</legend><div>{[...new Set([...PERSONA_COLORS,form.color])].map(color=><label key={color} className={styles.swatch} style={{'--swatch-color':color} as CSSProperties}><input type="radio" name="persona-color" value={color} checked={form.color.toLowerCase()===color.toLowerCase()} onChange={()=>edit({color})}/><i aria-hidden="true"/></label>)}</div></fieldset>
                 </div></section>
-                <section className={`${styles['editor-section']} ${styles['instruction-section']}`} ui-spec-block-id="persona_behavior"><h3>Инструкция персоны</h3><TextArea aria-label="Инструкция персоны" value={form.system_prompt??''} onChange={e=>edit({system_prompt:e.target.value})}/><p className={styles['field-description']}>System prompt определяет поведение и область ответственности персоны.</p></section>
                 <section className={styles['editor-section']} ui-spec-block-id="persona_harness_route"><h3>Среда запуска</h3>
                   <HarnessRouteFields form={form} catalog={harnessCatalog} error={harnessError} onChange={setForm}/>
                 </section>
+                <PersonaInstructionFields value={form.system_prompt??''} onChange={value=>edit({system_prompt:value})}/>
                 {saveError&&<div className={styles['editor-alert']}><Alert tone="error">{saveError}</Alert></div>}
                 {!creating&&real&&<><section className={styles['editor-section']} ui-spec-block-id="room_membership"><h3>Участие в комнате</h3><div className={styles['lifecycle-row']}><span><strong>{roomPersonaIds.has(form.id)?'Персона участвует в текущей комнате':'Персона не участвует в текущей комнате'}</strong><small>Это не меняет глобальные настройки персоны.</small></span>{!form.archived_at&&<Button type="button" variant="secondary" onClick={()=>void toggleMembership()} disabled={saving}>{roomPersonaIds.has(form.id)?'Убрать из комнаты':'Добавить в комнату'}</Button>}</div></section>
                 <section className={styles['editor-section']} ui-spec-block-id="persona_lifecycle"><h3>Жизненный цикл</h3><div className={styles['lifecycle-row']}><span><strong>{form.archived_at?'Персона находится в архиве':'Персона активна'}</strong><small>{form.archived_at?'Её можно восстановить или удалить навсегда.':'Архивирование скроет её из активного каталога.'}</small></span>{form.archived_at?<><Button type="button" onClick={()=>requestLifecycle('restore')} disabled={saving}>Восстановить</Button><Button type="button" variant="danger" onClick={()=>requestLifecycle('delete')} disabled={saving}>Удалить навсегда…</Button></>:<Button type="button" onClick={()=>requestLifecycle('archive')} disabled={saving}>Архивировать</Button>}</div></section></>}

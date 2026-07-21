@@ -2532,6 +2532,24 @@
   line-height: 1.55;
 }
 
+.instruction-section summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.instruction-section summary::-webkit-details-marker { display: none; }
+.instruction-section summary > span { display: grid; gap: 3px; }
+.instruction-section summary strong { color: #334155; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
+.instruction-section summary small { color: #94a3b8; font-size: 11px; font-weight: 500; }
+.instruction-section summary svg { width: 16px; color: #94a3b8; transition: transform .18s ease; }
+.instruction-section[open] summary svg { transform: rotate(180deg); }
+.instruction-content { padding-top: 15px; }
+.instruction-content .field-description { margin: 7px 0 0; color: #94a3b8; font-size: 11px; line-height: 1.45; }
+
 .color-field {
   grid-template-columns: 38px minmax(0, 1fr);
   gap: 8px;

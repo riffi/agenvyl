@@ -8,7 +8,7 @@ type Catalog={instances:Array<{id:string;type:string;status:string;models:Array<
 
 export function SetupPage(){
   const navigate=useNavigate(),location=useLocation(),configure=new URLSearchParams(location.search).get('configure')==='1',[state,setState]=useState<SetupState>(),[selected,setSelected]=useState<string[]>([]),[agy,setAgy]=useState(false),[agyConfirmation,setAgyConfirmation]=useState(''),[locale,setLocale]=useState<'en'|'ru'>('en'),[name,setName]=useState('User'),[handle,setHandle]=useState('user'),[roomTitle,setRoomTitle]=useState('First room'),[busy,setBusy]=useState(false),[error,setError]=useState('');
-  useEffect(()=>{void apiRequest<SetupState>('/api/v1/setup').then(value=>{setState(value);setLocale(value.locale);setSelected(value.instances.filter(instance=>instance.type!=='antigravity').map(instance=>instance.type));setAgy(value.instances.some(instance=>instance.type==='antigravity'));if(value.completed&&!configure&&value.firstRoomId)navigate(`/rooms/${value.firstRoomId}`,{replace:true});}).catch(issue=>setError(message(issue)));},[configure,navigate]);
+  useEffect(()=>{void apiRequest<SetupState>('/api/v1/setup').then(value=>{const initial=initialConnectorSelection(value);setState(value);setLocale(value.locale);setSelected(initial.selected);setAgy(initial.agy);if(value.completed&&!configure&&value.firstRoomId)navigate(`/rooms/${value.firstRoomId}`,{replace:true});}).catch(issue=>setError(message(issue)));},[configure,navigate]);
   const safe=useMemo(()=>state?.candidates.filter(candidate=>candidate.safeToSelect).map(candidate=>candidate.type)??[],[state]);
   const toggle=(type:string)=>setSelected(value=>value.includes(type)?value.filter(item=>item!==type):[...value,type]);
   const submit=async(event:FormEvent)=>{event.preventDefault();if(agy&&agyConfirmation!=='AGY'){setError(locale==='ru'?'Введите AGY для подтверждения':'Type AGY to confirm');return;}setBusy(true);setError('');try{
@@ -30,6 +30,14 @@ export function SetupPage(){
   </form></main>;
 }
 
-function Candidate({candidate,checked,onChange}:{candidate:SetupHarnessCandidate;checked:boolean;onChange:()=>void}){const available=candidate.safeToSelect;return <label className={`${styles.option} ${available?'':styles.unavailable}`}><input type="checkbox" checked={checked} disabled={!available} onChange={onChange}/><span><strong>{candidate.label}</strong><small>{candidate.endpoint?.reachable?'Endpoint ready':candidate.cli.found?`${candidate.cli.version??'CLI'} detected`:'Not detected'}</small></span></label>}
+function Candidate({candidate,checked,onChange}:{candidate:SetupHarnessCandidate;checked:boolean;onChange:()=>void}){const available=candidate.safeToSelect;return <label className={`${styles.option} ${available?'':styles.unavailable}`}><input type="checkbox" checked={checked} disabled={!available&&!checked} onChange={onChange}/><span><strong>{candidate.label}</strong><small>{candidate.endpoint?.reachable?'Endpoint ready':candidate.cli.found?`${candidate.cli.version??'CLI'} detected`:'Not detected'}</small></span></label>}
+export function initialConnectorSelection(state:SetupState){
+  const enabled=new Set(state.instances.map(instance=>instance.type));
+  const selectable=new Set<string>(state.candidates.filter(candidate=>candidate.safeToSelect).map(candidate=>candidate.type));
+  return{
+    selected:[...enabled].filter(type=>type!=='antigravity'&&(state.completed||selectable.has(type))),
+    agy:state.completed&&enabled.has('antigravity'),
+  };
+}
 export function instanceConfig(candidate:SetupHarnessCandidate,existing?:SetupState['instances'][number]):SetupHarnessInstance{return{id:`local-${candidate.type}`,type:candidate.type,enabled:true,...(candidate.endpoint?{endpoint:candidate.endpoint.url}:{}),...(candidate.type==='opencode'&&(existing?.managed===true||!candidate.endpoint?.reachable)?{managed:true}:{}),...(candidate.type==='antigravity'?{permissionMode:'plan' as const}:{})};}
 function message(value:unknown){return value instanceof Error?value.message:'Setup failed';}

@@ -90,13 +90,19 @@ for Hermes, OpenCode, and Antigravity is in
 
 ## Local development
 
+Start PostgreSQL, Connector, backend, and Vite from one terminal:
+
 ```bash
 npm ci
-docker compose up -d postgres
-npm run dev:connector  # host-side process
-npm run dev:server     # Fastify backend
-npm run dev            # Vite frontend
+npm run dev:all
 ```
+
+The command creates the ignored local Connector configuration and workspace
+directory when needed, generates one shared development token, and prefixes
+each service's output. Press `Ctrl+C` to stop the three application processes.
+PostgreSQL stays available for the next run; stop it with `npm run dev:down`.
+The development database uses host port `55432` by default to avoid collisions;
+override it with `AGENVYL_POSTGRES_PORT` when necessary.
 
 For a Compose-based watch environment:
 

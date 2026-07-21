@@ -1,10 +1,29 @@
 import {describe,expect,it} from 'vitest';
-import type {SetupHarnessCandidate} from '@agenvyl/contracts';
-import {instanceConfig} from './SetupPage';
+import type {SetupHarnessCandidate,SetupState} from '@agenvyl/contracts';
+import {initialConnectorSelection,instanceConfig} from './SetupPage';
 
 const candidate:SetupHarnessCandidate={type:'opencode',label:'OpenCode',cli:{found:true,command:'opencode',version:'1.17.20'},endpoint:{url:'http://127.0.0.1:4096',reachable:true},safeToSelect:true,supportsManagedServer:true};
 
 describe('setup harness configuration',()=>{
+  it('does not preselect unavailable configured connectors during first setup',()=>{
+    const state:SetupState={completed:false,locale:'en',workspaceRoot:'C:/workspaces',instances:[
+      {id:'local-hermes',type:'hermes',status:'healthy'},
+      {id:'local-opencode',type:'opencode',status:'healthy',managed:true},
+      {id:'local-antigravity',type:'antigravity',status:'healthy'},
+    ],candidates:[
+      {type:'hermes',label:'Hermes',cli:{found:false,command:'hermes'},safeToSelect:false,supportsManagedServer:false},
+      candidate,
+      {type:'antigravity',label:'AGY',cli:{found:true,command:'agy'},safeToSelect:false,supportsManagedServer:false},
+    ]};
+
+    expect(initialConnectorSelection(state)).toEqual({selected:['opencode'],agy:false});
+  });
+
+  it('preserves configured selections after setup so unavailable connectors can be disabled explicitly',()=>{
+    const state:SetupState={completed:true,locale:'en',workspaceRoot:'C:/workspaces',instances:[{id:'local-hermes',type:'hermes',status:'unavailable'},{id:'local-antigravity',type:'antigravity',status:'healthy'}],candidates:[]};
+    expect(initialConnectorSelection(state)).toEqual({selected:['hermes'],agy:true});
+  });
+
   it('preserves managed OpenCode ownership after terminal setup made its endpoint reachable',()=>{
     expect(instanceConfig(candidate,{id:'local-opencode',type:'opencode',status:'healthy',managed:true})).toEqual({id:'local-opencode',type:'opencode',enabled:true,endpoint:'http://127.0.0.1:4096',managed:true});
   });

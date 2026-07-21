@@ -36,6 +36,8 @@ type ActiveExecution = {
   stopRequested: boolean;
 };
 
+type AntigravityCatalog = { models: Array<{ id: string; label: string }>; modes: Array<{ id: string; label: string }> };
+
 export class AntigravityConnectorAdapter implements ConnectorAdapter {
   readonly type = 'antigravity';
   readonly capabilities: ConnectorAdapter['capabilities'] = ['model_catalog', 'mode_catalog'];
@@ -50,6 +52,8 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
   private readonly executions = new Map<string, ActiveExecution>();
   private versionCheck?: Promise<void>;
   private resolvedCommand?: Promise<string>;
+  private catalogRequest?: Promise<AntigravityCatalog>;
+  private catalogValue?: AntigravityCatalog;
 
   constructor(options: AntigravityAdapterOptions = {}) {
     this.command = options.command?.trim() || 'agy';
@@ -63,7 +67,15 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
   }
 
   async catalog() {
-    const [, result] = await Promise.all([this.ensureSupportedVersion(), this.runProbe(['models'])]);
+    if(this.catalogValue)return this.catalogValue;
+    const request=this.catalogRequest??=this.loadCatalog();
+    try{const catalog=await request;this.catalogValue=catalog;return catalog;}
+    finally{if(this.catalogRequest===request)this.catalogRequest=undefined;}
+  }
+
+  private async loadCatalog():Promise<AntigravityCatalog>{
+    await this.ensureSupportedVersion();
+    const result = await this.runProbe(['models']);
     const seen = new Set<string>();
     const models = result.stdout.split(/\r?\n/).map(value => value.trim()).filter(value => value && !seen.has(value) && seen.add(value)).map(id => ({ id, label: id }));
     if (!models.length) throw new Error('Antigravity model catalog returned no models');
