@@ -3,7 +3,9 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, parse, relative, resolve } from 'node:path';
 import type { SupervisorConfig } from './config.js';
-import { stopSupervisor } from './runtime.js';
+import { purgeWindowsPostgresStorage, stopSupervisor } from './runtime.js';
+import { loadSettings } from './preferences.js';
+import { removeOwnedShortcuts } from './shortcuts.js';
 
 export type UninstallResult = { scheduled: boolean; purge: boolean; removed: string[]; preserved: string[] };
 
@@ -14,7 +16,9 @@ export async function uninstallPortable(config: SupervisorConfig, options: { pur
   const dataRoots = uniquePaths([config.paths.config, config.paths.data]);
   validateTargets(config.bundleRoot, dataRoots, purge);
   await stopSupervisor(config);
-  const removed = [config.bundleRoot, ...(purge ? dataRoots : [])];
+  const shortcuts = await removeOwnedShortcuts(await loadSettings(config));
+  if (purge) await purgeWindowsPostgresStorage(config);
+  const removed = [config.bundleRoot, ...shortcuts, ...(purge ? dataRoots : [])];
   const preserved = purge ? [] : dataRoots;
   if (config.platform === 'win32') {
     await scheduleWindowsRemoval(config.bundleRoot, purge ? dataRoots : []);

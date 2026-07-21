@@ -20,6 +20,7 @@ export type SupervisorConfig = {
   stopRequestFile: string;
   secretsFile: string;
   connectorConfigFile: string;
+  settingsFile: string;
   gracePeriodMs: number;
   readinessTimeoutMs: number;
 };
@@ -53,6 +54,7 @@ export function resolveSupervisorConfig(
     stopRequestFile: join(paths.state, 'stop-request'),
     secretsFile: join(paths.config, 'secrets.json'),
     connectorConfigFile: env.AGENVYL_CONNECTOR_CONFIG ?? paths.connectorConfig,
+    settingsFile: join(paths.config, 'supervisor-settings.json'),
     gracePeriodMs: positiveInteger(env.AGENVYL_SHUTDOWN_TIMEOUT_MS, 10_000, 'AGENVYL_SHUTDOWN_TIMEOUT_MS'),
     readinessTimeoutMs: positiveInteger(env.AGENVYL_READINESS_TIMEOUT_MS, 60_000, 'AGENVYL_READINESS_TIMEOUT_MS'),
   };

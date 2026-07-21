@@ -39,6 +39,8 @@ const allowedLicenses = new Set([
   'CC0-1.0',
   'ISC',
   'MIT',
+  'MIT OR CC0-1.0',
+  '(MIT OR CC0-1.0)',
   'MIT-0',
   'MPL-2.0',
   'Unlicense',

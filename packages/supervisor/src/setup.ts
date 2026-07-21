@@ -1,26 +1,58 @@
-import {spawn} from 'node:child_process';
-import {createInterface} from 'node:readline/promises';
-import type {SupervisorConfig} from './config.js';
-import {startSupervisor} from './runtime.js';
+import { createInterface } from 'node:readline/promises';
+import type { SupervisorConfig } from './config.js';
+import { openWebUi } from './browser.js';
+import { startSupervisor } from './runtime.js';
 
-export type SetupCandidate={type:'hermes'|'opencode'|'antigravity';label:string;cli:{found:boolean;version?:string};endpoint?:{url:string;reachable:boolean};safeToSelect:boolean};
-type SetupState={completed:boolean;firstRoomId?:string;candidates:SetupCandidate[]};
+export type HarnessType = 'hermes' | 'opencode' | 'antigravity';
+export type SetupCandidate = { type: HarnessType; label: string; cli: { found: boolean; version?: string }; endpoint?: { url: string; reachable: boolean }; safeToSelect: boolean; supportsManagedServer?: boolean; warning?: string };
+export type SetupInstance = { id: string; type: HarnessType; enabled: boolean; endpoint?: string; managed?: boolean; permissionMode?: 'plan' | 'accept-edits' };
+export type SetupState = { completed: boolean; firstRoomId?: string; candidates: SetupCandidate[]; instances: Array<{ id: string; type: string; status: string; managed?: boolean }> };
 
-export async function runSetup(config:SupervisorConfig,cliPath:string,options:{all?:boolean;openBrowser?:boolean}={}){
-  await startSupervisor(config,cliPath);
-  const base=`http://127.0.0.1:${config.corePort}`,state=await json<SetupState>(`${base}/api/v1/setup`);
-  if(state.completed){const url=`${base}/setup?configure=1`;if(options.openBrowser!==false)openBrowser(config,url);return{completed:true,selected:[],url};}
-  const safe=state.candidates.filter(candidate=>candidate.safeToSelect);
-  process.stdout.write(`${state.candidates.map(candidate=>`${candidate.safeToSelect?'[x]':'[ ]'} ${candidate.label}: ${candidate.endpoint?.reachable?'endpoint ready':candidate.cli.found?candidate.cli.version??'CLI found':'not detected'}`).join('\n')}\n`);
-  let selected=safe;
-  if(!options.all&&process.stdin.isTTY){const prompt=createInterface({input:process.stdin,output:process.stdout});try{const answer=await prompt.question('Use all safe detected harnesses? [Y/n] ');if(/^n/i.test(answer.trim()))selected=[];}finally{prompt.close();}}
-  const instances=selectSafeInstances(selected);
-  await json(`${base}/api/v1/setup/harnesses`,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({instances})});
-  if(options.openBrowser!==false)openBrowser(config,`${base}/setup`);
-  return{completed:false,selected:instances.map(instance=>instance.id),url:`${base}/setup`};
+export async function runSetup(config: SupervisorConfig, cliPath: string, options: { all?: boolean; openBrowser?: boolean } = {}) {
+  await startSupervisor(config, cliPath);
+  const state = await getSetupState(config);
+  if (state.completed) {
+    const url = webUrl(config, '/setup?configure=1');
+    if (options.openBrowser !== false) openWebUi(config, '/setup?configure=1');
+    return { completed: true, selected: [], url };
+  }
+  const safe = state.candidates.filter(candidate => candidate.safeToSelect);
+  process.stdout.write(`${state.candidates.map(candidate => `${candidate.safeToSelect ? '[x]' : '[ ]'} ${candidate.label}: ${candidate.endpoint?.reachable ? 'endpoint ready' : candidate.cli.found ? candidate.cli.version ?? 'CLI found' : 'not detected'}`).join('\n')}\n`);
+  let selected = safe;
+  if (!options.all && process.stdin.isTTY) {
+    const prompt = createInterface({ input: process.stdin, output: process.stdout });
+    try { if (/^n/i.test((await prompt.question('Use all safe detected connectors? [Y/n] ')).trim())) selected = []; }
+    finally { prompt.close(); }
+  }
+  const instances = mergeConnectorSelection(state, selected.filter(candidate => candidate.type !== 'antigravity').map(candidate => candidate.type), false);
+  await configureConnectors(config, instances);
+  if (options.openBrowser !== false) openWebUi(config, '/setup');
+  return { completed: false, selected: instances.filter(item => item.enabled).map(item => item.id), url: webUrl(config, '/setup') };
 }
 
-export function selectSafeInstances(candidates:SetupCandidate[]){return candidates.filter(candidate=>candidate.safeToSelect&&candidate.type!=='antigravity').map(candidate=>({id:`local-${candidate.type}`,type:candidate.type,enabled:true,...(candidate.endpoint?{endpoint:candidate.endpoint.url}:{}),...(candidate.type==='opencode'&&!candidate.endpoint?.reachable?{managed:true}:{})}));}
+export async function getSetupState(config: SupervisorConfig) { return json<SetupState>(webUrl(config, '/api/v1/setup')); }
+export async function configureConnectors(config: SupervisorConfig, instances: SetupInstance[]) {
+  return json(webUrl(config, '/api/v1/setup/harnesses'), { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ instances }) });
+}
 
-async function json<T=unknown>(url:string,init?:RequestInit):Promise<T>{const response=await fetch(url,{...init,signal:AbortSignal.timeout(15_000)});if(!response.ok)throw new Error(`Setup API returned HTTP ${response.status}`);return response.json() as Promise<T>;}
-function openBrowser(config:SupervisorConfig,url:string){const command=config.platform==='win32'?{file:'cmd.exe',args:['/c','start','',url]}:config.platform==='darwin'?{file:'open',args:[url]}:{file:'xdg-open',args:[url]};const child=spawn(command.file,command.args,{detached:true,stdio:'ignore',windowsHide:true});child.on('error',()=>undefined);child.unref();}
+export function mergeConnectorSelection(state: SetupState, selected: HarnessType[], agyConfirmed: boolean): SetupInstance[] {
+  return state.candidates.filter(candidate => candidate.safeToSelect).map(candidate => {
+    const enabled = selected.includes(candidate.type);
+    const current = state.instances.find(instance => instance.type === candidate.type);
+    return {
+      id: current?.id ?? `local-${candidate.type}`,
+      type: candidate.type,
+      enabled,
+      ...(candidate.endpoint ? { endpoint: candidate.endpoint.url } : {}),
+      ...(candidate.type === 'opencode' && (current?.managed === true || !candidate.endpoint?.reachable) ? { managed: true } : {}),
+      ...(candidate.type === 'antigravity' && enabled && agyConfirmed ? { permissionMode: 'plan' as const } : {}),
+    };
+  });
+}
+
+export function selectSafeInstances(candidates: SetupCandidate[]) {
+  const state: SetupState = { completed: false, candidates, instances: [] };
+  return mergeConnectorSelection(state, candidates.filter(candidate => candidate.safeToSelect && candidate.type !== 'antigravity').map(candidate => candidate.type), false).filter(item => item.enabled);
+}
+function webUrl(config: SupervisorConfig, path: string) { return `http://127.0.0.1:${config.corePort}${path}`; }
+async function json<T = unknown>(url: string, init?: RequestInit): Promise<T> { const response = await fetch(url, { ...init, signal: AbortSignal.timeout(15_000) }); if (!response.ok) throw new Error(`Setup API returned HTTP ${response.status}`); return response.json() as Promise<T>; }

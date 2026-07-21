@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
@@ -14,8 +14,10 @@ const appRoot = join(temporaryRoot, 'app fixture');
 const userRoot = join(temporaryRoot, 'user data');
 const artifactName = basename(archive, '.tar.gz');
 const postgresRoot = join(temporaryRoot, artifactName, 'postgres');
+const executionAliasRoot = process.platform === 'win32' ? await mkdtemp(join(tmpdir(), 'agenvyl-supervisor-runtime-')) : undefined;
+const postgresExecutionRoot = executionAliasRoot ? join(executionAliasRoot, 'postgres') : postgresRoot;
 const [corePort, connectorPort, postgresPort] = await distinctPorts(3);
-const executable = name => join(postgresRoot, 'bin', process.platform === 'win32' ? `${name}.exe` : name);
+const executable = name => join(postgresExecutionRoot, 'bin', process.platform === 'win32' ? `${name}.exe` : name);
 const env = {
   ...process.env,
   AGENVYL_BUNDLE_ROOT: temporaryRoot,
@@ -30,13 +32,17 @@ const env = {
   AGENVYL_POSTGRES_PORT: String(postgresPort),
   AGENVYL_READINESS_TIMEOUT_MS: '30000',
   AGENVYL_SHUTDOWN_TIMEOUT_MS: '10000',
+  ...(executionAliasRoot ? { TEMP: executionAliasRoot, TMP: executionAliasRoot, PUBLIC: executionAliasRoot } : {}),
   ...(process.platform === 'win32'
     ? { LOCALAPPDATA: userRoot }
     : { XDG_CONFIG_HOME: join(userRoot, 'config'), XDG_DATA_HOME: join(userRoot, 'data') }),
 };
 
 try {
-  run(tar, ['-xzf', archive, '-C', temporaryRoot]);
+  const localArchive = join(temporaryRoot, basename(archive));
+  await cp(archive, localArchive);
+  run(tar, ['-xzf', basename(localArchive)], temporaryRoot);
+  if (executionAliasRoot) await symlink(postgresRoot, postgresExecutionRoot, 'junction');
   await mkdir(appRoot, { recursive: true });
   await writeFixture(join(appRoot, 'connector.mjs'), connectorFixture());
   await writeFixture(join(appRoot, 'core.mjs'), coreFixture());
@@ -96,6 +102,7 @@ try {
     if (process.platform !== 'win32' || !['EACCES', 'EBUSY', 'EPERM'].includes(code)) throw error;
     console.warn(`Windows deferred temporary cleanup (${code}): ${temporaryRoot}`);
   }
+  if (executionAliasRoot) await rm(executionAliasRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 }
 
 async function printDiagnostics() {

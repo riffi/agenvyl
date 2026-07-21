@@ -11,8 +11,9 @@ if (!process.argv[2]) throw new Error('Usage: node scripts/verify-portable-bundl
 const sourceArchive = resolve(process.argv[2]);
 const sourceSidecar = `${sourceArchive}.sha256`;
 const target = runtimeBundleTarget(process.platform, process.arch);
-const unicodeProbe = process.platform === 'win32' ? '' : ' ü';
+const unicodeProbe = ' ü';
 const temporaryRoot = await mkdtemp(join(tmpdir(), `agenvyl portable${unicodeProbe} `));
+const executionStorageRoot = process.platform === 'win32' ? await mkdtemp(join(tmpdir(), 'agenvyl-portable-storage-')) : undefined;
 const archiveRoot = join(temporaryRoot, 'incoming archives');
 const extractionRoot = join(temporaryRoot, 'unpacked target');
 const archive = join(archiveRoot, basename(sourceArchive));
@@ -54,14 +55,18 @@ try {
     AGENVYL_READINESS_TIMEOUT_MS: '60000',
     AGENVYL_SHUTDOWN_TIMEOUT_MS: '10000',
     LOCALAPPDATA: home,
+    ...(executionStorageRoot ? { PUBLIC: executionStorageRoot } : {}),
     XDG_CONFIG_HOME: join(home, 'config'),
     XDG_DATA_HOME: join(home, 'data'),
   };
   const cli = join(bundleRoot, 'bin', process.platform === 'win32' ? 'agenvyl.cmd' : 'agenvyl');
   const extension = process.platform === 'win32' ? 'cmd' : process.platform === 'darwin' ? 'command' : 'sh';
   const launcher = action => join(bundleRoot, `${action} Agenvyl.${extension}`);
+  await readFile(join(bundleRoot, `Agenvyl.${extension}`));
   for (const name of [`Uninstall Agenvyl.${extension}`, `Uninstall Agenvyl and Data.${extension}`]) await readFile(join(bundleRoot, name));
 
+  const initialized = cliJson(cli, ['init', '--locale', 'en', '--shortcuts', 'none', '--json'], env);
+  if (!initialized.initialized || initialized.locale !== 'en') throw new Error(`Portable init failed: ${JSON.stringify(initialized)}`);
   const doctor = cliJson(cli, ['doctor', '--json'], env);
   if (!doctor.ok) throw new Error(`Portable doctor failed: ${JSON.stringify(doctor)}`);
   runLauncher(launcher('Start'), env);
@@ -94,6 +99,7 @@ try {
     if (process.platform !== 'win32' || !['EACCES', 'EBUSY', 'EPERM'].includes(error?.code)) throw error;
     console.warn(`Windows deferred temporary cleanup (${error.code}): ${temporaryRoot}`);
   }
+  if (executionStorageRoot) await rm(executionStorageRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 }
 
 async function extract(archive, destination, format) {

@@ -43,7 +43,7 @@ try {
     archiveFormat: target.archiveFormat,
     node: { version: NODE_VERSION, archive: target.nodeArchive, sha256: nodeSha256 },
     postgres: { version: POSTGRES_RUNTIME_CONFIG.version, artifact: basename(postgresArtifact), sha256: postgresSha256 },
-    entrypoint: target.platform === 'win32' ? 'Start Agenvyl.cmd' : `Start Agenvyl.${target.platform === 'darwin' ? 'command' : 'sh'}`,
+    entrypoint: target.platform === 'win32' ? 'Agenvyl.cmd' : `Agenvyl.${target.platform === 'darwin' ? 'command' : 'sh'}`,
     signing: { requiredForPreview: false, status: 'unsigned' },
   };
   await writeFile(join(bundleRoot, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
@@ -152,6 +152,9 @@ async function installLaunchers(bundleRoot, platform) {
   await cp(join(repositoryRoot, 'packaging/bin/agenvyl'), join(bundleRoot, 'bin/agenvyl'));
   await chmod(join(bundleRoot, 'bin/agenvyl'), 0o755);
   const extension = platform === 'darwin' ? 'command' : 'sh';
+  const unified = join(bundleRoot, `Agenvyl.${extension}`);
+  await cp(join(repositoryRoot, `packaging/launchers/unix/agenvyl.${extension}`), unified);
+  await chmod(unified, 0o755);
   for (const action of ['Start', 'Stop', 'Status']) {
     const destination = join(bundleRoot, `${action} Agenvyl.${extension}`);
     await cp(join(repositoryRoot, `packaging/launchers/unix/${action.toLowerCase()}.sh`), destination);
