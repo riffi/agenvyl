@@ -39,6 +39,11 @@ The installer verifies the release index, archive size, and SHA-256 checksum,
 then registers the user-level `agenvyl` command. Set `AGENVYL_VERSION` to pin a
 version or `AGENVYL_NO_PATH=1` to skip command registration.
 
+The preview is unsigned. Release archives include SHA-256 checksums, CycloneDX
+SBOMs, and GitHub build-provenance attestations. Read the
+[Technical Preview trust guide](docs/operations/preview-trust.md) before
+accepting a Gatekeeper or SmartScreen prompt.
+
 Alternatively, extract one archive and run `Start Agenvyl.sh`, `Start
 Agenvyl.command`, or `Start Agenvyl.cmd`. The launcher starts PostgreSQL →
 Connector → Core and opens the loopback Web UI. A fresh install opens the English setup flow; it discovers

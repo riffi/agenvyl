@@ -1,0 +1,80 @@
+name: Release Smoke
+run-name: Release Smoke (v${{ inputs.version }})
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Published prerelease version without the v prefix
+        required: true
+        default: 0.1.0
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    name: Install ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            os: ubuntu-24.04
+          - target: linux-arm64
+            os: ubuntu-24.04-arm
+          - target: darwin-x64
+            os: macos-15-intel
+          - target: darwin-arm64
+            os: macos-15
+          - target: windows-x64
+            os: windows-2025
+    env:
+      AGENVYL_VERSION: ${{ inputs.version }}
+      AGENVYL_NO_OPEN_BROWSER: "1"
+      AGENVYL_PORT: "18791"
+      AGENVYL_CONNECTOR_PORT: "14310"
+      AGENVYL_POSTGRES_PORT: "18793"
+      AGENVYL_READINESS_TIMEOUT_MS: "60000"
+      AGENVYL_SHUTDOWN_TIMEOUT_MS: "10000"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Install and verify POSIX release
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          export HOME="$RUNNER_TEMP/agenvyl-home"
+          export AGENVYL_HOME="$HOME"
+          export XDG_CONFIG_HOME="$HOME/config"
+          export XDG_DATA_HOME="$HOME/data"
+          export AGENVYL_INSTALL_ROOT="$HOME/versions"
+          mkdir -p "$HOME"
+          curl -fsSL "https://github.com/${{ github.repository }}/releases/download/v${AGENVYL_VERSION}/install.sh" | sh
+          command_path="$HOME/.local/bin/agenvyl"
+          test -x "$command_path"
+          if [ "${{ runner.os }}" = macOS ]; then
+            grep -F "$HOME/.local/bin" "$HOME/.zprofile"
+          else
+            grep -F "$HOME/.local/bin" "$HOME/.profile"
+          fi
+          node scripts/verify-installed-release.mjs "$command_path"
+      - name: Install and verify Windows release
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:AGENVYL_HOME = Join-Path $env:RUNNER_TEMP 'agenvyl-home'
+          $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP 'local-app-data'
+          $env:AGENVYL_INSTALL_ROOT = Join-Path $env:AGENVYL_HOME 'versions'
+          New-Item -ItemType Directory -Path $env:AGENVYL_HOME -Force | Out-Null
+          Invoke-RestMethod "https://github.com/${{ github.repository }}/releases/download/v$env:AGENVYL_VERSION/install.ps1" | Invoke-Expression
+          $commandPath = Join-Path $env:LOCALAPPDATA 'Agenvyl\bin\agenvyl.cmd'
+          if (-not (Test-Path -LiteralPath $commandPath)) { throw 'The installer did not create agenvyl.cmd.' }
+          $userPath = [Environment]::GetEnvironmentVariable('Path', 'User') -split ';'
+          if ($userPath -notcontains (Split-Path -Parent $commandPath)) { throw 'The installer did not add the owned command directory to User PATH.' }
+          node scripts/verify-installed-release.mjs $commandPath

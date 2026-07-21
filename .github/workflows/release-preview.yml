@@ -16,6 +16,8 @@ on:
 permissions:
   contents: write
   actions: read
+  id-token: write
+  attestations: write
 
 jobs:
   portable:
@@ -75,6 +77,19 @@ jobs:
           artifacts/portable/agenvyl-${{ steps.metadata.outputs.version }}-windows-x64.zip
       - name: Validate installer syntax
         run: sh -n packaging/install.sh
+      - name: Assemble supply-chain assets
+        shell: bash
+        run: |
+          cp artifacts/portable/agenvyl-* artifacts/release/
+          cp packaging/install.sh packaging/install.ps1 artifacts/release/
+          cp docs/operations/preview-trust.md artifacts/release/TRUST.md
+          npm sbom --package-lock-only --omit=dev --sbom-format cyclonedx > artifacts/release/agenvyl-sbom.cdx.json
+          node -e "const fs=require('node:fs'); JSON.parse(fs.readFileSync('artifacts/release/agenvyl-sbom.cdx.json','utf8'))"
+          (cd artifacts/release && sha256sum agenvyl-* install.sh install.ps1 TRUST.md > SHA256SUMS)
+      - name: Attest release build provenance
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: artifacts/release/*
       - name: Create or update draft release assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -82,11 +97,8 @@ jobs:
         run: |
           tag='${{ steps.metadata.outputs.tag }}'
           if ! gh release view "$tag" >/dev/null 2>&1; then
-            gh release create "$tag" --draft --title "Agenvyl $tag Technical Preview" --notes "Unsigned Technical Preview. Verify checksums and review the trust documentation before installation."
+            gh release create "$tag" --draft --prerelease --target "$GITHUB_SHA" --title "Agenvyl $tag Technical Preview" --notes-file docs/operations/release-notes-v0.1.0.md
+          else
+            gh release edit "$tag" --draft --prerelease --title "Agenvyl $tag Technical Preview" --notes-file docs/operations/release-notes-v0.1.0.md
           fi
-          gh release upload "$tag" --clobber \
-            artifacts/portable/agenvyl-* \
-            artifacts/release/agenvyl-release.json \
-            artifacts/release/agenvyl-release.txt \
-            packaging/install.sh \
-            packaging/install.ps1
+          gh release upload "$tag" --clobber artifacts/release/*

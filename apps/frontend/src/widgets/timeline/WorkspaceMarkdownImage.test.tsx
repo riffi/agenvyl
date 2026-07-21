@@ -77,7 +77,7 @@ describe('workspace images in agent markdown', () => {
     expect(await screen.findByText('second.png')).toBeTruthy();
     expect(screen.getByText('2 of 2')).toBeTruthy();
     await user.keyboard('{Escape}');
-    await waitFor(() => expect(document.activeElement).toBe(previews[1]));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getAllByRole('button', { name: /full-screen view/ })[1]));
   });
 
   it('excludes failed images from the lightbox gallery', async () => {

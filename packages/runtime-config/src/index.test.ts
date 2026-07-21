@@ -3,7 +3,7 @@ import { resolveAgenvylPaths } from './index.js';
 
 describe('resolveAgenvylPaths', () => {
   it('uses the standard XDG layout below the user home', () => {
-    expect(resolveAgenvylPaths({}, '/home/alice')).toEqual({
+    expect(resolveAgenvylPaths({}, '/home/alice', 'linux')).toEqual({
       config: '/home/alice/.config/agenvyl',
       data: '/home/alice/.local/share/agenvyl',
       backups: '/home/alice/.local/share/agenvyl/backups',
@@ -16,8 +16,8 @@ describe('resolveAgenvylPaths', () => {
   });
 
   it('honors absolute XDG roots and rejects relative roots', () => {
-    expect(resolveAgenvylPaths({ XDG_CONFIG_HOME: '/config', XDG_DATA_HOME: '/data' }, '/ignored').workspaces).toBe('/data/agenvyl/workspaces');
-    expect(() => resolveAgenvylPaths({ XDG_DATA_HOME: 'relative' }, '/home/alice')).toThrow('XDG_DATA_HOME must be an absolute path');
+    expect(resolveAgenvylPaths({ XDG_CONFIG_HOME: '/config', XDG_DATA_HOME: '/data' }, '/ignored', 'linux').workspaces).toBe('/data/agenvyl/workspaces');
+    expect(() => resolveAgenvylPaths({ XDG_DATA_HOME: 'relative' }, '/home/alice', 'linux')).toThrow('XDG_DATA_HOME must be an absolute path');
   });
 
   it('uses Application Support on macOS', () => {

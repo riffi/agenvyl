@@ -73,6 +73,9 @@ async function assembleApplication(bundleRoot) {
   }
   runNpm(['ci', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund'], appRoot);
   runNpm(['prune', '--omit=dev', '--ignore-scripts'], appRoot);
+  const metadataRoot = join(bundleRoot, 'share', 'agenvyl');
+  await mkdir(metadataRoot, { recursive: true });
+  await writeFile(join(metadataRoot, 'application-sbom.cdx.json'), npmOutput(['sbom', '--package-lock-only', '--omit=dev', '--sbom-format', 'cyclonedx'], appRoot));
 }
 
 async function installNode(bundleRoot, target) {
@@ -200,6 +203,13 @@ async function download(url, destination) {
 function runNpm(args, cwd) {
   const command = process.platform === 'win32' ? join(dirname(process.execPath), 'npm.cmd') : 'npm';
   run(command, args, cwd);
+}
+function npmOutput(args, cwd) {
+  const command = process.platform === 'win32' ? join(dirname(process.execPath), 'npm.cmd') : 'npm';
+  const result = spawnSync(command, args, { cwd, encoding: 'utf8', windowsHide: true, shell: process.platform === 'win32' });
+  if (result.status !== 0) throw new Error(`${command} failed: ${result.stderr || result.stdout}`);
+  JSON.parse(result.stdout);
+  return result.stdout.endsWith('\n') ? result.stdout : `${result.stdout}\n`;
 }
 function run(command, args, cwdOrEnv = repositoryRoot, extraEnv = undefined) {
   const cwd = typeof cwdOrEnv === 'string' ? cwdOrEnv : repositoryRoot;

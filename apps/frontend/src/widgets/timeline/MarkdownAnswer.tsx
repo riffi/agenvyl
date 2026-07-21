@@ -1,4 +1,4 @@
-import { memo, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Image as ImageIcon, ImageOff } from 'lucide-react';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -33,6 +33,7 @@ export const MarkdownAnswer = memo(({
 }: MarkdownAnswerProps) => {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const openerRef = useRef<HTMLButtonElement | null>(null);
+  const openerPathRef = useRef<string | null>(null);
   const galleryImages = useMemo(
     () => (run.embeds ?? []).flatMap(embed => embed.status === 'resolved' && embed.attachment
       ? [{ path: embed.path, attachment: embed.attachment }]
@@ -51,16 +52,32 @@ export const MarkdownAnswer = memo(({
   const openGallery = (path: string, trigger: HTMLButtonElement) => {
     const index = galleryImages.findIndex(image => image.path === path);
     if (index < 0) return;
+    openerPathRef.current = path;
     openerRef.current = trigger;
     setOpenIndex(index);
   };
 
   const closeGallery = () => {
     setOpenIndex(null);
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      openerRef.current?.focus({ preventScroll: true });
-    }));
   };
+
+  useEffect(() => {
+    if (openIndex !== null || !openerRef.current) return;
+    let timeout: ReturnType<typeof setTimeout>;
+    let attempts = 0;
+    const restore = () => {
+      const opener = openerRef.current;
+      if (!opener?.isConnected) return;
+      if (opener.closest('[inert]') && attempts < 50) {
+        attempts += 1;
+        timeout = setTimeout(restore, 20);
+        return;
+      }
+      opener.focus({ preventScroll: true });
+    };
+    timeout = setTimeout(restore, 0);
+    return () => clearTimeout(timeout);
+  }, [openIndex]);
 
   return <>
     <Markdown
@@ -107,6 +124,9 @@ export const MarkdownAnswer = memo(({
           const caption = alt?.trim() || embed.attachment.name;
           return <figure className={styles.figure}>
             <button
+              ref={node => {
+                if (node && openerPathRef.current === embed.path) openerRef.current = node;
+              }}
               className={styles.stage}
               type="button"
               onClick={event => openGallery(embed.path, event.currentTarget)}

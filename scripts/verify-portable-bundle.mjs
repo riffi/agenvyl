@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { NODE_VERSION, runtimeBundleTarget } from './runtime-bundle-config.mjs';
 import { POSTGRES_RUNTIME_CONFIG } from './postgres-runtime-config.mjs';
+import { assertLoopbackOnly, assertSecretsConfined } from './portable-security-audit.mjs';
 
 if (!process.argv[2]) throw new Error('Usage: node scripts/verify-portable-bundle.mjs <portable-archive>');
 const sourceArchive = resolve(process.argv[2]);
@@ -38,6 +39,10 @@ try {
   }
   if (manifest.node?.version !== NODE_VERSION || manifest.postgres?.version !== POSTGRES_RUNTIME_CONFIG.version) {
     throw new Error(`Portable manifest dependency mismatch: ${JSON.stringify(manifest)}`);
+  }
+  for (const name of ['application-sbom.cdx.json', 'postgres-sbom.cdx.json']) {
+    const sbom = JSON.parse(await readFile(join(bundleRoot, 'share', 'agenvyl', name), 'utf8'));
+    if (sbom.bomFormat !== 'CycloneDX') throw new Error(`Portable ${name} is not a CycloneDX SBOM`);
   }
 
   const node = join(bundleRoot, 'runtime', process.platform === 'win32' ? 'node.exe' : 'bin/node');
@@ -76,6 +81,7 @@ try {
   await waitForHttp(`http://127.0.0.1:${corePort}/api/v1/health`);
   const frontend = await fetch(`http://127.0.0.1:${corePort}/`, { signal: AbortSignal.timeout(2000) });
   if (!frontend.ok || !(await frontend.text()).includes('<!doctype html>')) throw new Error('Portable Web UI was not served');
+  await assertLoopbackOnly([corePort, connectorPort, postgresPort]);
   const humanStatus = runLauncher(launcher('Status'), env);
   if (!humanStatus.stdout.includes('Agenvyl is running')) throw new Error(`Status launcher returned unexpected output: ${humanStatus.stdout}`);
 
@@ -85,6 +91,11 @@ try {
   const stopped = runCli(cli, ['status', '--json'], env, false);
   if (stopped.status !== 3 || JSON.parse(stopped.stdout).running) throw new Error(`Portable Stop left a running state: ${stopped.stdout || stopped.stderr}`);
   for (const port of [corePort, connectorPort, postgresPort]) if (!(await portAvailable(port))) throw new Error(`Portable Stop did not release port ${port}`);
+  await assertSecretsConfined({
+    roots: [configRoot(home), dataRoot(home)],
+    secretsFile: join(configRoot(home), 'secrets.json'),
+    observed: [JSON.stringify(initialized), JSON.stringify(doctor), JSON.stringify(status), humanStatus.stdout, stopped.stdout, stopped.stderr],
+  });
   const uninstalled = cliJson(cli, ['uninstall', '--json'], env);
   if (uninstalled.purge || !uninstalled.removed.includes(initialized.command)) throw new Error(`Portable uninstall did not remove owned command integration: ${JSON.stringify(uninstalled)}`);
   await waitFor(async () => !await exists(bundleRoot) && !await exists(initialized.command), 30_000);
@@ -142,8 +153,8 @@ function run(command, args, cwd) {
   if (result.status !== 0) throw new Error(`${command} failed with status ${result.status}`);
 }
 async function diagnostics(homeRoot) {
-  const dataRoot = process.platform === 'win32' ? join(homeRoot, 'Agenvyl') : process.platform === 'darwin' ? join(homeRoot, 'Library/Application Support/Agenvyl') : join(homeRoot, 'data/agenvyl');
-  for (const file of [join(dataRoot, 'state/supervisor.json'), ...['supervisor', 'postgresql', 'connector', 'core'].map(name => join(dataRoot, `logs/${name}.log`))]) {
+  const root = dataRoot(homeRoot);
+  for (const file of [join(root, 'state/supervisor.json'), ...['supervisor', 'postgresql', 'connector', 'core'].map(name => join(root, `logs/${name}.log`))]) {
     try { console.error(`\n--- ${file} ---\n${(await readFile(file, 'utf8')).slice(-8000)}`); } catch { /* file was not created */ }
   }
 }
@@ -180,3 +191,5 @@ function processAlive(pid) { try { process.kill(pid, 0); return true; } catch { 
 async function exists(path) { try { await readFile(path); return true; } catch (error) { if (error?.code === 'ENOENT' || error?.code === 'EISDIR') return error?.code === 'EISDIR'; throw error; } }
 function tarCommand() { return process.platform === 'win32' ? join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar'; }
 function digest(buffer) { return createHash('sha256').update(buffer).digest('hex'); }
+function configRoot(homeRoot) { return process.platform === 'win32' ? join(homeRoot, 'Agenvyl') : process.platform === 'darwin' ? join(homeRoot, 'Library/Application Support/Agenvyl') : join(homeRoot, 'config/agenvyl'); }
+function dataRoot(homeRoot) { return process.platform === 'win32' ? join(homeRoot, 'Agenvyl') : process.platform === 'darwin' ? join(homeRoot, 'Library/Application Support/Agenvyl') : join(homeRoot, 'data/agenvyl'); }

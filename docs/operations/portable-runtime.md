@@ -126,7 +126,11 @@ normalized to relocatable relative aliases during final assembly.
 The archive probe copies and extracts the artifact through paths containing
 spaces and Unicode, invokes the real platform Start/Status/Stop launchers, checks
 the bundled Node and PostgreSQL versions, waits for the Web UI, and verifies that
-all three ports and all recorded processes are released after Stop.
+all three ports and all recorded processes are released after Stop. It also
+checks that the three services are unreachable through non-loopback interfaces
+and that generated Connector/PostgreSQL credentials do not escape their
+permission-restricted secrets file into command output, configuration, state,
+or logs.
 
 Normal pushes run only the fast `Checks` workflow. Native archive gates are
 explicit so routine development does not consume five GitHub-hosted runners:
@@ -142,7 +146,18 @@ gh workflow run Portable --ref main -f target=all \
 # Build all five targets and assemble a draft GitHub release with installers.
 gh workflow run 'Preview Release' --ref main \
   -f postgres_artifact_run_id=<postgres-runtime-run-id>
+
+# After publishing the draft as a prerelease, test the real tagged installers.
+gh workflow run 'Release Smoke' --ref main -f version=0.1.0
 ```
+
+The Preview Release adds a CycloneDX application SBOM, embeds application and
+PostgreSQL SBOMs in every archive, creates `SHA256SUMS`, and records GitHub
+build-provenance attestations for all assets. The tagged release remains a
+prerelease until the five-target `Release Smoke` matrix passes fresh download,
+PATH command, lifecycle, Web UI, stop, and preserving-uninstall checks. See the
+[unsigned preview trust guide](preview-trust.md) for checksum, provenance,
+Gatekeeper, and SmartScreen instructions.
 
 Set `rebuild_postgres=true` only when intentionally testing PostgreSQL assembly
 inside the portable workflow. Prefer the separate `PostgreSQL Runtime` workflow
