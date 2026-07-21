@@ -61,7 +61,8 @@ export async function runSupervisorDaemon(config: SupervisorConfig, env = proces
     const databaseUrl = config.externalDatabaseUrl ?? managedDatabaseUrl(config, secrets);
     if (config.managedPostgres) {
       await initializePostgres(config, secrets);
-      children.postgresql = await startPostgres(config, secrets, state);
+      const postgres = await startPostgres(config, secrets, state);
+      if (postgres) children.postgresql = postgres;
       await waitForPostgres(config, secrets);
     } else {
       await waitForExternalDatabase(config, databaseUrl);
@@ -96,8 +97,8 @@ export async function runSupervisorDaemon(config: SupervisorConfig, env = proces
           resolvePromise();
           return;
         }
-        for (const [name, child] of Object.entries(children) as [ManagedComponent, ChildProcess][]) {
-          if (child.exitCode !== null || child.signalCode !== null) {
+        for (const [name, component] of Object.entries(state.components) as [ManagedComponent, { pid: number }][]) {
+          if (!isProcessAlive(component.pid)) {
             state.failure = { component: name, message: `${name} exited unexpectedly` };
             state.phase = 'failed';
             await writeState(config, state);
@@ -274,8 +275,17 @@ async function initializePostgres(config: SupervisorConfig, secrets: Secrets) {
 }
 
 async function startPostgres(config: SupervisorConfig, secrets: Secrets, state: RuntimeState) {
+  const logFile = join(config.paths.logs, 'postgresql.log');
+  if (config.platform === 'win32') {
+    runTool(postgresTool(config, 'pg_ctl'), ['-D', config.paths.postgres, '-l', logFile, '-o', `-h 127.0.0.1 -p ${config.postgresPort}`, '-w', '-t', String(Math.ceil(config.readinessTimeoutMs / 1000)), 'start'], postgresEnv(config, secrets));
+    const pid = Number((await readFile(join(config.paths.postgres, 'postmaster.pid'), 'utf8')).split(/\r?\n/, 1)[0]);
+    if (!Number.isSafeInteger(pid) || pid < 1) throw new Error('Managed PostgreSQL did not provide a valid postmaster PID');
+    state.components.postgresql = { pid, startedAt: new Date().toISOString(), logFile };
+    await writeState(config, state);
+    return undefined;
+  }
   const component = await spawnLogged(postgresTool(config, 'postgres'), ['-D', config.paths.postgres, '-h', '127.0.0.1', '-p', String(config.postgresPort)], {
-    cwd: config.paths.data, env: postgresEnv(config, secrets), logFile: join(config.paths.logs, 'postgresql.log'),
+    cwd: config.paths.data, env: postgresEnv(config, secrets), logFile,
   });
   await recordComponent(config, state, 'postgresql', component);
   return component;
@@ -310,10 +320,10 @@ async function recordComponent(config: SupervisorConfig, state: RuntimeState, na
 
 async function stopChildren(config: SupervisorConfig, children: ChildMap) {
   for (const name of ['core', 'connector'] as const) if (children[name]) await terminateChild(children[name]!, config.platform, config.gracePeriodMs);
-  if (children.postgresql) {
+  if (config.managedPostgres) {
     const secrets = await loadOrCreateSecrets(config).catch(() => undefined);
     if (secrets) runTool(postgresTool(config, 'pg_ctl'), ['-D', config.paths.postgres, '-m', 'fast', '-w', '-t', String(Math.ceil(config.gracePeriodMs / 1000)), 'stop'], postgresEnv(config, secrets), true);
-    await terminateChild(children.postgresql, config.platform, config.gracePeriodMs);
+    if (children.postgresql) await terminateChild(children.postgresql, config.platform, config.gracePeriodMs);
   }
 }
 
