@@ -1,8 +1,6 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Ban, Brain, CircleCheck, CircleHelp, CircleX, Clock3, File, FoldVertical, Image as ImageIcon, ImageOff, LoaderCircle, Paperclip, RotateCcw, Square, TriangleAlert, UnfoldVertical, Wrench } from 'lucide-react';
-import Markdown,{defaultUrlTransform} from 'react-markdown';
-import type {RunEmbedError,UpstreamStatus} from '@agenvyl/contracts';
-import remarkGfm from 'remark-gfm';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Ban, Brain, CircleCheck, CircleHelp, CircleX, Clock3, File, FoldVertical, LoaderCircle, Paperclip, RotateCcw, Square, TriangleAlert, UnfoldVertical, Wrench } from 'lucide-react';
+import type {UpstreamStatus} from '@agenvyl/contracts';
 import type { HarnessCatalog } from '../../entities/harness';
 import type { Persona } from '../../entities/persona';
 import type { RoomState } from '../../entities/room';
@@ -11,7 +9,10 @@ import type { RoomGateway } from '../../features/room-session';
 import { Alert, Avatar, Button, EmptyState, IconButton, Input } from '../../shared/ui';
 import styles from './Timeline.module.css';
 import { isLongAnswer, shouldUseSingleColumn } from './layout';
-import {MentionLink,MentionText,remarkPersonaMentions} from './mentions';
+import { MarkdownAnswer } from './MarkdownAnswer';
+import {MentionText} from './mentions';
+
+export { MarkdownAnswer } from './MarkdownAnswer';
 
 const statusLabel: Record<Run['status'], string> = {
   queued: 'в очереди',
@@ -61,8 +62,6 @@ function fullModelName(run:Run,persona:Persona,catalog:HarnessCatalog|undefined)
 const unknownPersona = (handle: string): Persona => ({
   id: '', handle, name: `@${handle}`, role: 'Персона недоступна', color: '#64748b', requested_model: null, harness_instance_id:'unknown',harness_type:'unknown',model_id:'unknown',mode_id:null,group_id:null, archived_at: null,
 });
-
-export const MarkdownAnswer=memo(function MarkdownAnswer({text,run,personas=[],onMentionPersona}:{text:string;run:Run;personas?:Persona[];onMentionPersona?:(handle:string)=>void}){return <Markdown remarkPlugins={[remarkGfm,[remarkPersonaMentions,{handles:personas.map(persona=>persona.handle)}]]} skipHtml urlTransform={(url,key,node)=>url.startsWith('mention:')&&key==='href'&&node.tagName==='a'||url.startsWith('workspace:')&&key==='src'&&node.tagName==='img'?url:defaultUrlTransform(url)} components={{a:({node:_node,href,...props})=>{if(href?.startsWith('mention:')){let handle=href.slice('mention:'.length);try{handle=decodeURIComponent(handle)}catch{return <>{props.children}</>}return <MentionLink handle={handle} personas={personas} onMentionPersona={onMentionPersona}/>;}return <a {...props} href={href} target="_blank" rel="noopener noreferrer"/>},img:({node:_node,src,alt})=>{if(!src?.startsWith('workspace:'))return <span className={styles['embed-error']}><ImageOff/><span><strong>Изображение не сохранено в workspace</strong><small>{alt?.trim()||'Внешние изображения не публикуются напрямую'}</small></span></span>;const raw=src.slice('workspace:'.length);let imagePath=raw;try{imagePath=decodeURIComponent(raw)}catch{/* backend reports invalid_path */}const embed=run.embeds?.find(item=>item.path===imagePath||item.path===raw);if(!['completed','failed','cancelled'].includes(run.status))return <span className={styles['embed-placeholder']}><ImageIcon/><span>Изображение появится после завершения ответа<small>{imagePath}</small></span></span>;if(embed?.status==='resolved'&&embed.attachment){const caption=alt?.trim()||embed.attachment.name;return <figure className={styles['workspace-image']}><a href={embed.attachment.preview_url} target="_blank" rel="noreferrer" title={`Открыть ${embed.attachment.name}`}><img className={styles['markdown-image']} src={embed.attachment.preview_url} alt={caption} loading="lazy"/></a><figcaption>{caption}</figcaption></figure>}const reason=run.status!=='completed'?'ответ не завершён':embedError(embed?.error);return <span className={styles['embed-error']}><ImageOff/><span><strong>Не удалось показать изображение</strong><small>{imagePath} · {reason}</small></span></span>}}}>{text}</Markdown>});
 
 export function ReasoningBlock({text}:{text:string}) {
   return <details className={styles.reasoning}>
@@ -347,4 +346,3 @@ export function Timeline({
     </main>;
 }
 function formatBytes(value:number){if(value<1024)return`${value} Б`;if(value<1024*1024)return`${(value/1024).toFixed(1)} КБ`;return`${(value/1024/1024).toFixed(1)} МБ`;}
-function embedError(error?:RunEmbedError){switch(error){case'invalid_path':return'некорректный путь';case'not_found':return'файл не найден';case'unsupported_type':return'формат не поддерживается';case'invalid_content':return'содержимое не является валидным изображением';case'limit_exceeded':return'превышен лимит 10 изображений';default:return'вложение не зафиксировано'}}

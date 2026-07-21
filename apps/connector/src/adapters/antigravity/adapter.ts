@@ -177,7 +177,11 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
     return spawn(invocation.file, invocation.args, {
       ...(cwd ? { cwd } : {}),
       env: this.env,
-      detached: true,
+      // A detached process gets its own console window on Windows. Besides the
+      // visible flash, that new console can also be inherited by AGY helpers.
+      // taskkill /T still terminates the complete child tree on Windows, while
+      // POSIX needs a detached process group for negative-pid signalling.
+      detached: shouldDetachAntigravityProcess(process.platform),
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
       windowsVerbatimArguments: invocation.windowsVerbatimArguments,
@@ -199,6 +203,10 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
     if (!active) throw new Error('Antigravity execution is not active');
     return active;
   }
+}
+
+export function shouldDetachAntigravityProcess(platform: NodeJS.Platform) {
+  return platform !== 'win32';
 }
 
 export function antigravityPrompt(request: AdapterStartExecutionRequest) {

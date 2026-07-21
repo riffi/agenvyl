@@ -377,7 +377,6 @@
 .answer a {
   color: var(--primary);
 }
-.markdown-image{display:block;max-width:100%;height:auto}.workspace-image{min-width:0;max-width:100%;overflow:hidden;margin:.85em 0}.workspace-image a{display:block;min-width:0;max-width:100%}.workspace-image img{width:auto;max-height:560px;object-fit:contain}.workspace-image figcaption{padding-top:5px;color:var(--muted);font-size:10px}.embed-placeholder,.embed-error{display:flex;align-items:center;gap:9px;margin:.7em 0;padding:10px;border:1px dashed #cbd5e1;border-radius:9px;background:#f8fafc;color:#64748b}.embed-placeholder>svg,.embed-error>svg{width:20px;flex:none}.embed-placeholder>span,.embed-error>span{display:flex;min-width:0;flex-direction:column}.embed-placeholder small,.embed-error small{overflow:hidden;font-size:10px;text-overflow:ellipsis;white-space:nowrap}.embed-error{border-style:solid;border-color:#fecaca;background:#fef2f2;color:#b91c1c}.embed-error strong{font-size:11px}
 .answer table {
   display: block;
   width: 100%;

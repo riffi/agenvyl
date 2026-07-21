@@ -3,12 +3,18 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AdapterStartExecutionRequest } from '../../adapter.js';
-import { AntigravityConnectorAdapter, antigravityPrompt } from './adapter.js';
+import { AntigravityConnectorAdapter, antigravityPrompt, shouldDetachAntigravityProcess } from './adapter.js';
 
 const directories: string[] = [];
 afterEach(async () => { await Promise.all(directories.splice(0).map(directory => rm(directory, { recursive: true, force: true }))); });
 
 describe('AntigravityConnectorAdapter', () => {
+  it('keeps AGY in the hidden parent console on Windows and creates a process group on POSIX', () => {
+    expect(shouldDetachAntigravityProcess('win32')).toBe(false);
+    expect(shouldDetachAntigravityProcess('linux')).toBe(true);
+    expect(shouldDetachAntigravityProcess('darwin')).toBe(true);
+  });
+
   it('discovers exact models and the two supported modes after checking the CLI version', async () => {
     const fixture = await fakeAgy();
     const adapter = fixture.adapter({ env: { FAKE_AGY_VERSION: '1.1.3', FAKE_AGY_MODELS: 'Gemini 3.5 Flash (High)\nClaude Sonnet 4.6 (Thinking)\nGemini 3.5 Flash (High)\n' } });

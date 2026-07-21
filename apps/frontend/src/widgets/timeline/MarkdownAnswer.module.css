@@ -1,0 +1,83 @@
+.figure {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  margin: 0.9em 0;
+}
+
+.stage {
+  display: grid;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  padding: 0;
+  overflow: hidden;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: #475569;
+  cursor: zoom-in;
+}
+
+.stage:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+.figure figcaption {
+  padding-top: 5px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.placeholder,
+.error {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0.7em 0;
+  padding: 10px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 9px;
+  background: #f8fafc;
+  color: #64748b;
+}
+
+.placeholder > svg,
+.error > svg { width: 20px; flex: none; }
+.placeholder > span,
+.error > span { display: flex; min-width: 0; flex-direction: column; }
+.placeholder small,
+.error small { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.error { border-style: solid; border-color: #fecaca; background: #fef2f2; color: #b91c1c; }
+.error strong { font-size: 11px; }
+
+.lightbox {
+  --yarl__color_backdrop: #080b12f2;
+  --yarl__color_button: #f8fafc;
+  --yarl__color_button_active: #fff;
+  --yarl__color_button_disabled: #94a3b866;
+}
+
+.lightbox :global(.yarl__slide_image) {
+  border-radius: 5px;
+  box-shadow: 0 16px 52px #0009;
+}
+
+.lightbox :global(.yarl__slide_title) {
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+}
+
+@media (max-width: 767px) {
+  .image { border-radius: 6px; }
+}
