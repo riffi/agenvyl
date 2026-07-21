@@ -19,6 +19,30 @@ The Technical Preview archives are unsigned. macOS Gatekeeper and Windows
 SmartScreen may therefore require an explicit user trust override until release
 signing identities are configured.
 
+## Versioned installer
+
+The release publishes `install.sh`, `install.ps1`, `agenvyl-release.json`, and a
+shell-readable `agenvyl-release.txt` beside the five archives. Both installers
+select the native target, validate the release index, byte size, and SHA-256,
+stage extraction, run `agenvyl init --path user`, and roll back a same-version
+replacement if initialization fails.
+
+```bash
+curl -fsSL https://github.com/riffi/agenvyl/releases/latest/download/install.sh | sh
+```
+
+```powershell
+irm https://github.com/riffi/agenvyl/releases/latest/download/install.ps1 | iex
+```
+
+Use `AGENVYL_VERSION=0.1.0` for version pinning and `AGENVYL_NO_PATH=1` to skip
+the stable command shim. Linux/macOS use `${AGENVYL_USER_BIN_DIR:-$HOME/.local/bin}`
+and add one marked line to `.profile` or `.zprofile` only when needed. Windows
+uses `%LOCALAPPDATA%\Agenvyl\bin` and records the exact User PATH entry it adds.
+`supervisor-settings.json` v2 records this ownership. Repeated installation
+repairs the shim without duplicating PATH; a successful upgrade removes only
+the prior recognized version directory.
+
 ## Start, status, and stop
 
 Extract the archive to any user-writable directory and run the platform Start
@@ -54,7 +78,8 @@ drive `status` and `doctor` diagnostics.
 ## Uninstall
 
 Run `Uninstall Agenvyl` (or `bin/agenvyl uninstall`) to stop Agenvyl and
-remove the extracted portable application while preserving personal data.
+remove the extracted portable application, owned command shim, owned Windows
+User PATH entry, and shortcuts while preserving personal data.
 This is the recommended mode before replacing the application with a newer
 archive.
 
@@ -112,6 +137,10 @@ gh workflow run Portable --ref main -f target=linux-x64
 
 # Build all five targets from PostgreSQL artifacts produced by an earlier run.
 gh workflow run Portable --ref main -f target=all \
+  -f postgres_artifact_run_id=<postgres-runtime-run-id>
+
+# Build all five targets and assemble a draft GitHub release with installers.
+gh workflow run 'Preview Release' --ref main \
   -f postgres_artifact_run_id=<postgres-runtime-run-id>
 ```
 

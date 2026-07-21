@@ -10,13 +10,16 @@ host paths.
 - building Core and the host-side Connector from source;
 - running PostgreSQL and Core with Docker Compose;
 - running Connector beside locally installed harnesses;
+- building five native portable archives and a versioned installer release;
 - local development through Vite and `tsx watch`;
 - deterministic unit, integration, boundary, build, dependency, license,
   secret-pattern, internal-reference, and branding checks.
 
-The current release boundary is source-run deployment. A versioned image,
-installer, upgrade command, rollback command, and multi-architecture release are
-future milestones and must not be inferred from the development Compose files.
+The current release boundary includes an unsigned single-user portable runtime,
+versioned release manifest, checksum-validating installers, and safe repeated
+install/upgrade. A container image, service deployment, automatic updater, and
+signed distribution are future milestones and must not be inferred from the
+development Compose files.
 
 ## Trust model
 

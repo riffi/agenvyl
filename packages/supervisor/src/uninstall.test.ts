@@ -30,6 +30,21 @@ describe('portable uninstall cleanup', () => {
     await expect(readFile(join(fixture.config.paths.data, 'keep.txt'), 'utf8')).resolves.toBe('user data');
   });
 
+  it('defers removal of the running Windows command shim', () => {
+    const script = windowsCleanupScript(0, 1);
+    expect(script).toContain('AGENVYL_UNINSTALL_FILE_0');
+    expect(script).toContain('del /q');
+  });
+
+  it('removes the recorded owned command while preserving user data', async () => {
+    const fixture = await portableFixture();
+    await mkdir(fixture.config.userBinDirectory, { recursive: true });
+    await writeFile(fixture.config.userCommandPath, `#!/bin/sh\n# Agenvyl owned command\n# Agenvyl bundle: ${fixture.bundleRoot}\n`);
+    await writeFile(fixture.config.settingsFile, JSON.stringify({ schemaVersion: 2, locale: 'en', initializedAt: 'now', shortcuts: [], command: { path: fixture.config.userCommandPath, bundleRoot: fixture.bundleRoot, pathEntryAdded: false } }));
+    await uninstallPortable(fixture.config);
+    await waitForMissing(fixture.config.userCommandPath);
+  });
+
   it('requires confirmation and purges portable files plus user data', async () => {
     const fixture = await portableFixture();
     await expect(uninstallPortable(fixture.config, { purge: true })).rejects.toThrow('--purge --yes');

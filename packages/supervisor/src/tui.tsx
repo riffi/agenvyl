@@ -87,7 +87,7 @@ function ControlCenter({ config, cliPath, onUninstall }: { config: SupervisorCon
       const selected = input === '1' || input.toLowerCase() === 'r' ? 'ru' : input === '2' || input.toLowerCase() === 'e' ? 'en' : undefined;
       if (selected) {
         setLocale(selected); setNeedsLocale(false);
-        void saveSettings(config, { schemaVersion: 1, locale: selected, initializedAt: new Date().toISOString(), shortcuts: [] }).catch(error => setTechnical(errorMessage(error)));
+        void saveSettings(config, { schemaVersion: 2, locale: selected, initializedAt: new Date().toISOString(), shortcuts: [] }).catch(error => setTechnical(errorMessage(error)));
       }
       return;
     }

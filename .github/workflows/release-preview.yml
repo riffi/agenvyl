@@ -1,0 +1,92 @@
+name: Preview Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      postgres_artifact_run_id:
+        description: PostgreSQL Runtime run ID used when native caches miss
+        required: false
+        type: string
+      rebuild_postgres:
+        description: Rebuild PostgreSQL payloads
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  portable:
+    uses: ./.github/workflows/portable.yml
+    with:
+      target: all
+      postgres_artifact_run_id: ${{ inputs.postgres_artifact_run_id }}
+      rebuild_postgres: ${{ inputs.rebuild_postgres }}
+
+  draft-release:
+    needs: portable
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: agenvyl-linux-x64
+          path: artifacts/portable
+      - uses: actions/download-artifact@v4
+        with:
+          name: agenvyl-linux-arm64
+          path: artifacts/portable
+      - uses: actions/download-artifact@v4
+        with:
+          name: agenvyl-darwin-x64
+          path: artifacts/portable
+      - uses: actions/download-artifact@v4
+        with:
+          name: agenvyl-darwin-arm64
+          path: artifacts/portable
+      - uses: actions/download-artifact@v4
+        with:
+          name: agenvyl-windows-x64
+          path: artifacts/portable
+      - id: metadata
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+      - name: Build release manifest and shell index
+        shell: bash
+        run: >-
+          node scripts/release-manifest.mjs
+          --version "${{ steps.metadata.outputs.version }}"
+          --channel preview
+          --base-url "https://github.com/${{ github.repository }}/releases/download/${{ steps.metadata.outputs.tag }}/"
+          artifacts/portable/agenvyl-${{ steps.metadata.outputs.version }}-linux-x64.tar.xz
+          artifacts/portable/agenvyl-${{ steps.metadata.outputs.version }}-linux-arm64.tar.xz
+          artifacts/portable/agenvyl-${{ steps.metadata.outputs.version }}-darwin-x64.zip
+          artifacts/portable/agenvyl-${{ steps.metadata.outputs.version }}-darwin-arm64.zip
+          artifacts/portable/agenvyl-${{ steps.metadata.outputs.version }}-windows-x64.zip
+      - name: Validate installer syntax
+        run: sh -n packaging/install.sh
+      - name: Create or update draft release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          tag='${{ steps.metadata.outputs.tag }}'
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --draft --title "Agenvyl $tag Technical Preview" --notes "Unsigned Technical Preview. Verify checksums and review the trust documentation before installation."
+          fi
+          gh release upload "$tag" --clobber \
+            artifacts/portable/agenvyl-* \
+            artifacts/release/agenvyl-release.json \
+            artifacts/release/agenvyl-release.txt \
+            packaging/install.sh \
+            packaging/install.ps1

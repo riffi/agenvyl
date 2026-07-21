@@ -5,6 +5,7 @@ export * from './runtime.js';
 export * from './setup.js';
 export * from './uninstall.js';
 export * from './initialization.js';
+export * from './command-integration.js';
 export * from './preferences.js';
 export * from './shortcuts.js';
 export * from './errors.js';

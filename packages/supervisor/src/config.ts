@@ -1,4 +1,5 @@
 import { resolveAgenvylPaths, type AgenvylPlatform } from '@agenvyl/runtime-config';
+import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 export type SupervisorConfig = {
@@ -21,6 +22,9 @@ export type SupervisorConfig = {
   secretsFile: string;
   connectorConfigFile: string;
   settingsFile: string;
+  userBinDirectory: string;
+  userCommandPath: string;
+  userProfileFile: string;
   gracePeriodMs: number;
   readinessTimeoutMs: number;
 };
@@ -35,6 +39,8 @@ export function resolveSupervisorConfig(
   const appRoot = absolute(env.AGENVYL_APP_ROOT ?? join(bundleRoot, 'app'), 'AGENVYL_APP_ROOT');
   const postgresRoot = absolute(env.AGENVYL_POSTGRES_ROOT ?? join(bundleRoot, 'postgres'), 'AGENVYL_POSTGRES_ROOT');
   const externalDatabaseUrl = env.AGENVYL_DATABASE_URL?.trim() || undefined;
+  const userHome = options.home ?? env.AGENVYL_HOME ?? homedir();
+  const userBinDirectory = absolute(env.AGENVYL_USER_BIN_DIR ?? (platform === 'win32' ? join(paths.data, 'bin') : join(userHome, '.local', 'bin')), 'AGENVYL_USER_BIN_DIR');
   return {
     platform,
     bundleRoot,
@@ -55,6 +61,9 @@ export function resolveSupervisorConfig(
     secretsFile: join(paths.config, 'secrets.json'),
     connectorConfigFile: env.AGENVYL_CONNECTOR_CONFIG ?? paths.connectorConfig,
     settingsFile: join(paths.config, 'supervisor-settings.json'),
+    userBinDirectory,
+    userCommandPath: join(userBinDirectory, platform === 'win32' ? 'agenvyl.cmd' : 'agenvyl'),
+    userProfileFile: absolute(env.AGENVYL_PATH_PROFILE ?? join(userHome, platform === 'darwin' ? '.zprofile' : '.profile'), 'AGENVYL_PATH_PROFILE'),
     gracePeriodMs: positiveInteger(env.AGENVYL_SHUTDOWN_TIMEOUT_MS, 10_000, 'AGENVYL_SHUTDOWN_TIMEOUT_MS'),
     readinessTimeoutMs: positiveInteger(env.AGENVYL_READINESS_TIMEOUT_MS, 60_000, 'AGENVYL_READINESS_TIMEOUT_MS'),
   };

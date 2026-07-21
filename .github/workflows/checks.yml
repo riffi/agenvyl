@@ -43,3 +43,4 @@ jobs:
       - run: npm ci
       - run: npm run check:local
       - run: npm run build
+      - run: sh -n packaging/install.sh

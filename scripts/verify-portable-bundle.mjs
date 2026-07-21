@@ -65,8 +65,9 @@ try {
   await readFile(join(bundleRoot, `Agenvyl.${extension}`));
   for (const name of [`Uninstall Agenvyl.${extension}`, `Uninstall Agenvyl and Data.${extension}`]) await readFile(join(bundleRoot, name));
 
-  const initialized = cliJson(cli, ['init', '--locale', 'en', '--shortcuts', 'none', '--json'], env);
-  if (!initialized.initialized || initialized.locale !== 'en') throw new Error(`Portable init failed: ${JSON.stringify(initialized)}`);
+  const initialized = cliJson(cli, ['init', '--locale', 'en', '--shortcuts', 'none', '--path', 'user', '--json'], env);
+  if (!initialized.initialized || initialized.locale !== 'en' || !initialized.command) throw new Error(`Portable init failed: ${JSON.stringify(initialized)}`);
+  if (!(await readFile(initialized.command, 'utf8')).includes(bundleRoot)) throw new Error(`Portable command shim does not target the bundle: ${initialized.command}`);
   const doctor = cliJson(cli, ['doctor', '--json'], env);
   if (!doctor.ok) throw new Error(`Portable doctor failed: ${JSON.stringify(doctor)}`);
   runLauncher(launcher('Start'), env);
@@ -84,7 +85,10 @@ try {
   const stopped = runCli(cli, ['status', '--json'], env, false);
   if (stopped.status !== 3 || JSON.parse(stopped.stdout).running) throw new Error(`Portable Stop left a running state: ${stopped.stdout || stopped.stderr}`);
   for (const port of [corePort, connectorPort, postgresPort]) if (!(await portAvailable(port))) throw new Error(`Portable Stop did not release port ${port}`);
-  console.log(`Portable bundle verified: ${process.platform}-${process.arch}, bundled Node/PostgreSQL, launchers, Web UI, and orphan-free stop.`);
+  const uninstalled = cliJson(cli, ['uninstall', '--json'], env);
+  if (uninstalled.purge || !uninstalled.removed.includes(initialized.command)) throw new Error(`Portable uninstall did not remove owned command integration: ${JSON.stringify(uninstalled)}`);
+  await waitFor(async () => !await exists(bundleRoot) && !await exists(initialized.command), 30_000);
+  console.log(`Portable bundle verified: ${process.platform}-${process.arch}, bundled Node/PostgreSQL, command integration, launchers, Web UI, uninstall, and orphan-free stop.`);
 } catch (error) {
   await diagnostics(home);
   throw error;
@@ -173,5 +177,6 @@ function portAvailable(port) {
   });
 }
 function processAlive(pid) { try { process.kill(pid, 0); return true; } catch { return false; } }
+async function exists(path) { try { await readFile(path); return true; } catch (error) { if (error?.code === 'ENOENT' || error?.code === 'EISDIR') return error?.code === 'EISDIR'; throw error; } }
 function tarCommand() { return process.platform === 'win32' ? join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar'; }
 function digest(buffer) { return createHash('sha256').update(buffer).digest('hex'); }

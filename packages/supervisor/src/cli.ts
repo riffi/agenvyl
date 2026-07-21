@@ -25,9 +25,11 @@ try {
   else if (command === 'init') {
     const selectedLocale = option(args, '--locale') ?? locale;
     const shortcuts = option(args, '--shortcuts') ?? 'recommended';
+    const path = option(args, '--path') ?? 'none';
     if (!isLocale(selectedLocale)) throw new SupervisorError('INVALID_LOCALE', '--locale must be ru or en');
     if (!isShortcutPolicy(shortcuts)) throw new SupervisorError('INVALID_SHORTCUT_POLICY', '--shortcuts must be none, recommended, or all');
-    output(await initializePortable(config, { locale: selectedLocale, shortcuts }), json, selectedLocale);
+    if (path !== 'none' && path !== 'user') throw new SupervisorError('INVALID_PATH_POLICY', '--path must be none or user');
+    output(await initializePortable(config, { locale: selectedLocale, shortcuts, path }), json, selectedLocale);
   } else if (command === 'setup') output(await runSetup(config, fileURLToPath(import.meta.url), { all: args.includes('--all'), openBrowser: !args.includes('--no-open') }), json, locale);
   else if (command === 'start') output(await startSupervisor(config, fileURLToPath(import.meta.url)), json, locale);
   else if (command === 'stop') output(await stopSupervisor(config), json, locale);

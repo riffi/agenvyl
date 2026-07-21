@@ -6,6 +6,7 @@ import type { SupervisorConfig } from './config.js';
 import { purgeWindowsPostgresStorage, stopSupervisor } from './runtime.js';
 import { loadSettings } from './preferences.js';
 import { removeOwnedShortcuts } from './shortcuts.js';
+import { removeOwnedCommand } from './command-integration.js';
 
 export type UninstallResult = { scheduled: boolean; purge: boolean; removed: string[]; preserved: string[] };
 
@@ -16,12 +17,14 @@ export async function uninstallPortable(config: SupervisorConfig, options: { pur
   const dataRoots = uniquePaths([config.paths.config, config.paths.data]);
   validateTargets(config.bundleRoot, dataRoots, purge);
   await stopSupervisor(config);
-  const shortcuts = await removeOwnedShortcuts(await loadSettings(config));
+  const settings = await loadSettings(config);
+  const shortcuts = await removeOwnedShortcuts(settings);
+  const command = await removeOwnedCommand(settings, config.platform, config.platform === 'win32');
   if (purge) await purgeWindowsPostgresStorage(config);
-  const removed = [config.bundleRoot, ...shortcuts, ...(purge ? dataRoots : [])];
+  const removed = [config.bundleRoot, ...shortcuts, ...command.removed, ...(purge ? dataRoots : [])];
   const preserved = purge ? [] : dataRoots;
   if (config.platform === 'win32') {
-    await scheduleWindowsRemoval(config.bundleRoot, purge ? dataRoots : []);
+    await scheduleWindowsRemoval(config.bundleRoot, purge ? dataRoots : [], command.deferredFiles);
     return { scheduled: true, purge, removed, preserved };
   }
   if (purge) for (const path of dataRoots) await rm(path, { recursive: true, force: true });
@@ -56,17 +59,19 @@ function contains(parent: string, child: string) {
 
 function uniquePaths(values: string[]) { return [...new Set(values.map(value => resolve(value)))]; }
 
-async function scheduleWindowsRemoval(bundleRoot: string, dataRoots: string[]) {
+async function scheduleWindowsRemoval(bundleRoot: string, dataRoots: string[], files: string[]) {
   const cleanupRoot = await mkdtemp(join(tmpdir(), 'agenvyl-uninstall-'));
   const script = join(cleanupRoot, 'uninstall.cmd');
-  await writeFile(script, windowsCleanupScript(dataRoots.length), 'utf8');
+  await writeFile(script, windowsCleanupScript(dataRoots.length, files.length), 'utf8');
   const env: NodeJS.ProcessEnv = { ...process.env, AGENVYL_UNINSTALL_BUNDLE: bundleRoot };
   dataRoots.forEach((path, index) => { env[`AGENVYL_UNINSTALL_DATA_${index}`] = path; });
+  files.forEach((path, index) => { env[`AGENVYL_UNINSTALL_FILE_${index}`] = path; });
   const child = spawn(process.env.ComSpec ?? 'cmd.exe', ['/d', '/q', '/v:off', '/c', script], { cwd: tmpdir(), env, detached: true, stdio: 'ignore', windowsHide: true });
   child.unref();
 }
 
-export function windowsCleanupScript(dataRootCount: number) {
+export function windowsCleanupScript(dataRootCount: number, fileCount = 0) {
   const removeData = Array.from({ length: dataRootCount }, (_, index) => `if defined AGENVYL_UNINSTALL_DATA_${index} rmdir /s /q "%AGENVYL_UNINSTALL_DATA_${index}%"`).join('\r\n');
-  return `@echo off\r\nsetlocal\r\nfor /L %%I in (1,1,60) do (\r\n  rmdir /s /q "%AGENVYL_UNINSTALL_BUNDLE%" 2>nul\r\n  if not exist "%AGENVYL_UNINSTALL_BUNDLE%\\." goto removed\r\n  >nul 2>&1 ping 127.0.0.1 -n 2\r\n)\r\nexit /b 1\r\n:removed\r\n${removeData}${removeData ? '\r\n' : ''}del /q "%~f0" 2>nul\r\nrmdir /q "%~dp0" 2>nul\r\n`;
+  const removeFiles = Array.from({ length: fileCount }, (_, index) => `if defined AGENVYL_UNINSTALL_FILE_${index} del /q "%AGENVYL_UNINSTALL_FILE_${index}%" 2>nul`).join('\r\n');
+  return `@echo off\r\nsetlocal\r\nfor /L %%I in (1,1,60) do (\r\n  rmdir /s /q "%AGENVYL_UNINSTALL_BUNDLE%" 2>nul\r\n  if not exist "%AGENVYL_UNINSTALL_BUNDLE%\\." goto removed\r\n  >nul 2>&1 ping 127.0.0.1 -n 2\r\n)\r\nexit /b 1\r\n:removed\r\n${removeFiles}${removeFiles ? '\r\n' : ''}${removeData}${removeData ? '\r\n' : ''}del /q "%~f0" 2>nul\r\nrmdir /q "%~dp0" 2>nul\r\n`;
 }

@@ -12,8 +12,9 @@ The Connector runs next to the installed harness CLIs and their credential
 stores. Credentials stay out of Core, the browser, YAML configuration, and the
 application database.
 
-> Agenvyl is currently a pre-release project. Native portable archives are CI
-> artifacts; a public signed installer is a later roadmap milestone.
+> Agenvyl is currently an unsigned Technical Preview. The release workflow
+> produces native archives, checksums, a versioned manifest, and installers;
+> signing identities remain a later milestone.
 
 ## Portable Technical Preview
 
@@ -22,9 +23,25 @@ macOS x64/arm64, and Windows x64. They include Node.js, PostgreSQL, Core/Web UI,
 Connector, and the supervisor; Docker, a system Node installation, and a source
 checkout are not required.
 
-Extract one archive and run `Start Agenvyl.sh`, `Start Agenvyl.command`, or
-`Start Agenvyl.cmd`. The launcher starts PostgreSQL → Connector → Core and opens
-the loopback Web UI. A fresh install opens the EN/RU setup flow; it discovers
+Install the latest preview on Linux/macOS:
+
+```bash
+curl -fsSL https://github.com/riffi/agenvyl/releases/latest/download/install.sh | sh
+```
+
+Or on Windows:
+
+```powershell
+irm https://github.com/riffi/agenvyl/releases/latest/download/install.ps1 | iex
+```
+
+The installer verifies the release index, archive size, and SHA-256 checksum,
+then registers the user-level `agenvyl` command. Set `AGENVYL_VERSION` to pin a
+version or `AGENVYL_NO_PATH=1` to skip command registration.
+
+Alternatively, extract one archive and run `Start Agenvyl.sh`, `Start
+Agenvyl.command`, or `Start Agenvyl.cmd`. The launcher starts PostgreSQL →
+Connector → Core and opens the loopback Web UI. A fresh install opens the English setup flow; it discovers
 local harnesses and can continue with none configured. You can run
 `bin/agenvyl setup` (`bin\agenvyl.cmd setup` on Windows) for terminal-first
 bootstrap. Matching Stop and Status launchers call the same supervisor

@@ -12,7 +12,7 @@ describe('shortcut ownership', () => {
     const root = await mkdtemp(join(tmpdir(), 'agenvyl-shortcuts-')); roots.push(root);
     const bundleRoot = join(root, 'bundle'), owned = join(root, 'owned.cmd'), foreign = join(root, 'foreign.cmd');
     await writeFile(owned, `rem Agenvyl bundle: ${bundleRoot}`); await writeFile(foreign, 'rem another application');
-    const settings = { schemaVersion: 1 as const, locale: 'en' as const, initializedAt: 'now', shortcuts: [{ kind: 'desktop' as const, path: owned, bundleRoot }, { kind: 'desktop' as const, path: foreign, bundleRoot }] };
+    const settings = { schemaVersion: 2 as const, locale: 'en' as const, initializedAt: 'now', shortcuts: [{ kind: 'desktop' as const, path: owned, bundleRoot }, { kind: 'desktop' as const, path: foreign, bundleRoot }] };
     await expect(removeOwnedShortcuts(settings)).resolves.toEqual([owned]);
     await expect(stat(owned)).rejects.toMatchObject({ code: 'ENOENT' });
     await expect(readFile(foreign, 'utf8')).resolves.toBe('rem another application');

@@ -6,20 +6,23 @@ import { SupervisorError } from './errors.js';
 export type Locale = 'ru' | 'en';
 export type ShortcutKind = 'start-menu' | 'application-menu' | 'applications' | 'desktop';
 export type ShortcutRecord = { kind: ShortcutKind; path: string; bundleRoot: string };
+export type CommandRecord = { path: string; bundleRoot: string; pathEntry?: string; pathProfile?: string; pathEntryAdded: boolean };
 export type SupervisorSettings = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   locale: Locale;
   initializedAt: string;
   shortcuts: ShortcutRecord[];
+  command?: CommandRecord;
 };
 
 export async function loadSettings(config: SupervisorConfig): Promise<SupervisorSettings | undefined> {
   try {
-    const value = JSON.parse(await readFile(config.settingsFile, 'utf8')) as Partial<SupervisorSettings>;
-    if (value.schemaVersion !== 1 || !isLocale(value.locale) || typeof value.initializedAt !== 'string' || !Array.isArray(value.shortcuts)) {
+    const value = JSON.parse(await readFile(config.settingsFile, 'utf8')) as { schemaVersion?: number; locale?: unknown; initializedAt?: unknown; shortcuts?: unknown; command?: unknown };
+    if ((value.schemaVersion !== 1 && value.schemaVersion !== 2) || !isLocale(value.locale) || typeof value.initializedAt !== 'string' || !Array.isArray(value.shortcuts)) {
       throw new Error('unsupported or malformed settings');
     }
-    return value as SupervisorSettings;
+    if (value.schemaVersion === 2 && value.command !== undefined && !isCommandRecord(value.command)) throw new Error('unsupported or malformed command integration');
+    return { schemaVersion: 2, locale: value.locale, initializedAt: value.initializedAt, shortcuts: value.shortcuts, command: value.schemaVersion === 2 ? value.command : undefined } as SupervisorSettings;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
     throw new SupervisorError('SETTINGS_INVALID', 'Agenvyl settings are damaged.', 'Run repair from the dashboard.', { cause: message(error) });
@@ -45,5 +48,10 @@ export function defaultLocale(env = process.env): Locale {
 }
 
 export function isLocale(value: unknown): value is Locale { return value === 'ru' || value === 'en'; }
+function isCommandRecord(value: unknown): value is CommandRecord {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Partial<CommandRecord>;
+  return typeof record.path === 'string' && typeof record.bundleRoot === 'string' && typeof record.pathEntryAdded === 'boolean' && (record.pathEntry === undefined || typeof record.pathEntry === 'string') && (record.pathProfile === undefined || typeof record.pathProfile === 'string');
+}
 async function exists(path: string) { try { await stat(path); return true; } catch { return false; } }
 function message(error: unknown) { return error instanceof Error ? error.message : String(error); }

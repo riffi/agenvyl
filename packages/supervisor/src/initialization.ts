@@ -5,23 +5,29 @@ import { SupervisorError } from './errors.js';
 import { loadSettings, saveSettings, type Locale } from './preferences.js';
 import { initializePortableRuntime } from './runtime.js';
 import { createShortcuts, type ShortcutPolicy } from './shortcuts.js';
+import { installUserCommand } from './command-integration.js';
 
-export type InitializationResult = { initialized: true; repaired: boolean; locale: Locale; shortcuts: string[]; settingsFile: string };
+export type PathPolicy = 'none' | 'user';
+export type InitializationResult = { initialized: true; repaired: boolean; locale: Locale; shortcuts: string[]; command?: string; settingsFile: string };
 
-export async function initializePortable(config: SupervisorConfig, options: { locale: Locale; shortcuts: ShortcutPolicy }): Promise<InitializationResult> {
+export async function initializePortable(config: SupervisorConfig, options: { locale: Locale; shortcuts: ShortcutPolicy; path?: PathPolicy }): Promise<InitializationResult> {
   await validateManifest(config);
   const previous = await loadSettings(config);
   const installedBefore = await isPortableInitialized(config);
   await initializePortableRuntime(config);
   const shortcuts = await createShortcuts(config, options.shortcuts, previous);
+  const command = options.path === 'user' || (previous?.command !== undefined && previous.command.bundleRoot !== config.bundleRoot)
+    ? await installUserCommand(config, previous)
+    : previous?.command;
   const settings = {
-    schemaVersion: 1 as const,
+    schemaVersion: 2 as const,
     locale: options.locale,
     initializedAt: previous?.initializedAt ?? new Date().toISOString(),
     shortcuts,
+    command,
   };
   await saveSettings(config, settings);
-  return { initialized: true, repaired: installedBefore, locale: settings.locale, shortcuts: shortcuts.map(item => item.path), settingsFile: config.settingsFile };
+  return { initialized: true, repaired: installedBefore, locale: settings.locale, shortcuts: shortcuts.map(item => item.path), command: command?.path, settingsFile: config.settingsFile };
 }
 
 export async function isPortableInitialized(config: SupervisorConfig) {
