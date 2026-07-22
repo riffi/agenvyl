@@ -3,6 +3,7 @@ import {isConfigureConnectorInstancesRequest} from '@agenvyl/connector-contract'
 import type {Database} from '../../infrastructure/database/Database.js';
 import type {HttpConnectorClient} from '../../integrations/connector/HttpConnectorClient.js';
 import {AppError} from '../../shared/errors/AppError.js';
+import {isAvailableStarterRoute,selectStarterAgentRoutes,type StarterAgentRoute,type StarterHarnessCatalog} from './starterAgentRoutes.js';
 
 const templates=[
   {handle:'architect',name:'Architect',role:'Architecture',color:'#3b82f6',prompt:'Analyze the system, contracts, risks, and trade-offs before implementation.'},
@@ -50,7 +51,7 @@ export class SetupService{
   async complete(input:CompleteSetupRequest){
     validate(input);
     if(input.workspace_root!==this.workspaceRoot)throw new AppError('invalid_workspace_root',400,'Workspace root does not match this installation');
-    if(input.route){try{const instances=await this.connector.instances(),instance=instances.instances.find(candidate=>candidate.id===input.route!.harness_instance_id&&candidate.type===input.route!.harness_type&&candidate.status!=='unavailable');if(!instance)throw new Error('missing');const catalog=await this.connector.catalog(instance.id),model=catalog.models.find(candidate=>candidate.id===input.route!.model_id);if(!model||(input.route.mode_id!==null&&(!catalog.modes.some(mode=>mode.id===input.route!.mode_id)||(model.supportedModeIds&&!model.supportedModeIds.includes(input.route.mode_id)))))throw new Error('route');}catch{throw new AppError('setup_route_unavailable',400,'Selected harness route is unavailable');}}
+    const starterRoutes=input.route?await this.starterRoutes(input.route):[];
     const now=new Date().toISOString(),roomId=crypto.randomUUID();
     return this.database.transaction(async tx=>{
       const[state]=await tx`SELECT completed_at,first_room_id FROM installation_state WHERE id=true FOR UPDATE`;
@@ -58,15 +59,27 @@ export class SetupService{
       await tx`UPDATE local_user_profiles SET display_name=${input.profile.display_name.trim()},handle=${input.profile.handle.trim().toLowerCase()},updated_at=${now} WHERE id='local-user'`;
       await tx`INSERT INTO rooms(id,title,created_at) VALUES(${roomId},${input.room_title.trim()},${now})`;
       const existing=await tx`SELECT id FROM personas WHERE archived_at IS NULL ORDER BY created_at`;
-      if(input.route&&!existing.length)for(const template of templates){const id=crypto.randomUUID(),versionId=crypto.randomUUID();
-        await tx`INSERT INTO personas(id,handle,name,role,color,requested_model,effective_model,harness_instance_id,harness_type,model_id,mode_id,current_version_id,created_at,updated_at) VALUES(${id},${template.handle},${template.name},${template.role},${template.color},${input.route.model_id},NULL,${input.route.harness_instance_id},${input.route.harness_type},${input.route.model_id},${input.route.mode_id},${versionId},${now},${now})`;
-        await tx`INSERT INTO persona_versions(id,persona_id,version,requested_model,system_prompt,created_at,harness_instance_id,harness_type,model_id,mode_id) VALUES(${versionId},${id},1,${input.route.model_id},${template.prompt},${now},${input.route.harness_instance_id},${input.route.harness_type},${input.route.model_id},${input.route.mode_id})`;
+      if(starterRoutes.length&&!existing.length)for(const[templateIndex,template]of templates.entries()){const id=crypto.randomUUID(),versionId=crypto.randomUUID(),route=starterRoutes[templateIndex]!;
+        await tx`INSERT INTO personas(id,handle,name,role,color,requested_model,effective_model,harness_instance_id,harness_type,model_id,mode_id,current_version_id,created_at,updated_at) VALUES(${id},${template.handle},${template.name},${template.role},${template.color},${route.model_id},NULL,${route.harness_instance_id},${route.harness_type},${route.model_id},${route.mode_id},${versionId},${now},${now})`;
+        await tx`INSERT INTO persona_versions(id,persona_id,version,requested_model,system_prompt,created_at,harness_instance_id,harness_type,model_id,mode_id) VALUES(${versionId},${id},1,${route.model_id},${template.prompt},${now},${route.harness_instance_id},${route.harness_type},${route.model_id},${route.mode_id})`;
         await tx`INSERT INTO room_participants(room_id,persona_id) VALUES(${roomId},${id})`;
       }
       else for(const persona of existing)await tx`INSERT INTO room_participants(room_id,persona_id) VALUES(${roomId},${String(persona.id)})`;
       await tx`UPDATE installation_state SET completed_at=${now},locale=${input.locale},workspace_root=${this.workspaceRoot},first_room_id=${roomId},updated_at=${now} WHERE id=true`;
       return{roomId};
     });
+  }
+  private async starterRoutes(preferred:StarterAgentRoute){
+    try{
+      const instances=(await this.connector.instances()).instances.filter(instance=>instance.status!=='unavailable');
+      const sources=(await Promise.all(instances.map(async instance=>{
+        try{return{id:instance.id,type:instance.type,catalog:await this.connector.catalog(instance.id)} satisfies StarterHarnessCatalog;}
+        catch{return undefined;}
+      }))).filter((source):source is StarterHarnessCatalog=>Boolean(source));
+      const preferredSource=sources.find(source=>source.id===preferred.harness_instance_id&&source.type===preferred.harness_type);
+      if(!preferredSource||!isAvailableStarterRoute(preferred,preferredSource))throw new Error('route');
+      return selectStarterAgentRoutes(preferred,sources,templates.length);
+    }catch{throw new AppError('setup_route_unavailable',400,'Selected harness route is unavailable');}
   }
 }
 
