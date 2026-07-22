@@ -99,7 +99,7 @@ export const roomTimelineResponseSchema=objectSchema({
 },['messages','runs','selectedRuns','lastSequence','hasMore']);
 
 export const roomListResponseSchema={type:'array',items:roomResponseSchema} as const;
-const connectorCatalogItemSchema=objectSchema({id:{type:'string'},label:{type:'string'}},['id']);
+const connectorCatalogItemSchema=objectSchema({id:{type:'string'},label:{type:'string'},supportedModeIds:{type:'array',items:{type:'string'}}},['id']);
 const connectorErrorSchema=objectSchema({code:{type:'string'},message:{type:'string'}},['code','message']);
 const harnessInstanceCatalogSchema=objectSchema({
   id:{type:'string'},type:{type:'string'},status:{type:'string',enum:['healthy','degraded','unavailable']},capabilities:{type:'array',items:{type:'string'}},error:connectorErrorSchema,

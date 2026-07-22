@@ -144,6 +144,51 @@ floor, validates the narrow protocol at runtime, ignores unknown notifications,
 and fails closed on unknown server requests. Agenvyl does not bundle Codex CLI or
 the Codex SDK and does not enable first-party app-server analytics.
 
+## Claude Code CLI (experimental)
+
+Install and authenticate Claude Code CLI `2.1.217` or newer yourself, then verify
+the account and environment used by Connector:
+
+```bash
+claude --version
+claude auth status
+```
+
+Connector runs one ephemeral process per execution using `--print`, bidirectional
+`stream-json`, partial messages, and `--no-session-persistence`. Runs therefore do
+not appear in Claude resume history. Model and effort choices come from the CLI's
+runtime `initialize` response; incompatible versions remain unavailable even when
+their version number is new enough. Override an installation path with:
+
+```bash
+export AGENVYL_CONNECTOR_CLAUDE_COMMAND="$HOME/.local/bin/claude"
+```
+
+Windows `.exe`, `.cmd`, and `.bat` installations are supported without inserting
+the prompt or model into an interpolated shell command. Cancellation sends a
+protocol interrupt first, then terminates the complete POSIX process group or
+Windows process tree if the CLI does not exit.
+
+Agenvyl does not pass `--bare`: Claude's normal user, project, and local settings,
+`CLAUDE.md`, skills, plugins, hooks, MCP configuration, provider credentials, and
+telemetry behavior remain in effect. Agenvyl adds no telemetry of its own for this
+adapter, but it does not disable telemetry or hooks configured by Claude.
+
+API keys and supported cloud-provider authentication need no special Agenvyl
+confirmation. Subscription OAuth is never selected automatically and requires the
+exact phrase `CLAUDE OAUTH`; the confirmation is stored as
+`allowSubscriptionOAuth: true`, separately from credentials. This opt-in does not
+change Anthropic's terms. Anthropic states that third-party products should use
+API/cloud authentication and should not route Free/Pro/Max credentials, so a public
+experimental OAuth deployment carries a deliberate policy and terms risk. See the
+official [CLI reference](https://code.claude.com/docs/en/cli-usage),
+[headless mode](https://code.claude.com/docs/en/headless),
+[permission modes](https://code.claude.com/docs/en/permission-modes), and
+[legal and compliance guidance](https://code.claude.com/docs/en/legal-and-compliance).
+
+Claude is not part of the portable payload. Agenvyl neither bundles the Claude
+binary nor depends on `@anthropic-ai/claude-agent-sdk` or its platform packages.
+
 ## Antigravity / AGY
 
 Install and authenticate `agy >= 1.1.3`, trust the configured workspace root,
@@ -197,6 +242,8 @@ npm run test:e2e:hermes
 npm run test:e2e:opencode
 npm run test:codex
 npm run test:e2e:codex
+npm run test:claude
+npm run test:e2e:claude
 ```
 
 Live smoke tests are opt-in and require separately running harnesses, isolated
@@ -207,6 +254,7 @@ npm run smoke:hermes:live
 npm run smoke:opencode:live
 npm run smoke:antigravity:live
 npm run smoke:codex:live
+npm run smoke:claude:live
 ```
 
 Never place live credentials in repository files or shared shell history.

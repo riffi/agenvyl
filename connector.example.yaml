@@ -20,6 +20,11 @@ instances:
     enabled: false
     # Publishes danger-full-access modes. Keep false unless the machine is trusted.
     allowDangerFullAccess: false
+  - id: local-claude
+    type: claude
+    enabled: false
+    # Set only after the exact CLAUDE OAUTH confirmation. Prefer API/cloud auth.
+    allowSubscriptionOAuth: false
   - id: local-antigravity
     type: antigravity
     enabled: false

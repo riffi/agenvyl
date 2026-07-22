@@ -66,7 +66,7 @@ export type ConnectorCatalog = {
 };
 
 export type ConnectorCatalogItem = { id: string; label?: string; supportedModeIds?: string[] };
-export type HarnessType = 'hermes' | 'opencode' | 'antigravity' | 'codex';
+export type HarnessType = 'hermes' | 'opencode' | 'antigravity' | 'codex' | 'claude';
 export type ConnectorInstanceConfiguration = {
   id: string;
   type: HarnessType;
@@ -75,6 +75,11 @@ export type ConnectorInstanceConfiguration = {
   managed?: boolean;
   permissionMode?: 'plan' | 'accept-edits';
   allowDangerFullAccess?: boolean;
+  allowSubscriptionOAuth?: boolean;
+};
+export type HarnessAuthentication = {
+  authenticated: boolean;
+  kind: 'api' | 'cloud' | 'subscription_oauth' | 'none' | 'unknown';
 };
 export type HarnessDiscoveryCandidate = {
   type: HarnessType;
@@ -83,6 +88,8 @@ export type HarnessDiscoveryCandidate = {
   endpoint?: { url: string; reachable: boolean };
   safeToSelect: boolean;
   supportsManagedServer: boolean;
+  auth?: HarnessAuthentication;
+  requiresConfirmation?: 'claude_oauth';
   warning?: string;
 };
 export type ConnectorDiscovery = {
@@ -123,6 +130,7 @@ export type ConnectorQuestion = {
   options?: Array<{ label: string; description?: string }>;
   isOther: boolean;
   isSecret: boolean;
+  multiSelect?: boolean;
 };
 export type ConnectorRequestSnapshot = {
   id: string;
@@ -253,6 +261,8 @@ export function isConnectorDiscovery(value: unknown): value is ConnectorDiscover
       && (candidate.cli.compatible === undefined || typeof candidate.cli.compatible === 'boolean')
       && (candidate.endpoint === undefined || (isRecord(candidate.endpoint) && typeof candidate.endpoint.url === 'string' && typeof candidate.endpoint.reachable === 'boolean'))
       && typeof candidate.safeToSelect === 'boolean' && typeof candidate.supportsManagedServer === 'boolean'
+      && (candidate.auth === undefined || (isRecord(candidate.auth) && typeof candidate.auth.authenticated === 'boolean' && ['api', 'cloud', 'subscription_oauth', 'none', 'unknown'].includes(String(candidate.auth.kind))))
+      && (candidate.requiresConfirmation === undefined || candidate.requiresConfirmation === 'claude_oauth')
       && (candidate.warning === undefined || typeof candidate.warning === 'string'));
 }
 
@@ -267,10 +277,13 @@ export function isConfigureConnectorInstancesRequest(value: unknown): value is C
       && (instance.managed === undefined || typeof instance.managed === 'boolean')
       && (instance.permissionMode === undefined || instance.permissionMode === 'plan' || instance.permissionMode === 'accept-edits')
       && (instance.allowDangerFullAccess === undefined || typeof instance.allowDangerFullAccess === 'boolean')
+      && (instance.allowSubscriptionOAuth === undefined || typeof instance.allowSubscriptionOAuth === 'boolean')
       && (instance.type === 'antigravity' || instance.permissionMode === undefined)
       && (instance.type === 'opencode' || instance.managed === undefined)
       && (instance.type !== 'codex' || instance.endpoint === undefined)
-      && (instance.type === 'codex' || instance.allowDangerFullAccess === undefined);
+      && (instance.type !== 'claude' || instance.endpoint === undefined)
+      && (instance.type === 'codex' || instance.allowDangerFullAccess === undefined)
+      && (instance.type === 'claude' || instance.allowSubscriptionOAuth === undefined);
   });
 }
 
@@ -308,7 +321,7 @@ export function isResolveConnectorRequest(value: unknown): value is ResolveConne
   if (typeof value.resolution === 'string') return value.resolution.trim().length > 0 && value.resolution.length <= 2_000;
   if (!isRecord(value.answers)) return false;
   const entries=Object.entries(value.answers);
-  return entries.length>0&&entries.length<=3&&entries.every(([id,answers])=>id.length>0&&id.length<=128&&Array.isArray(answers)&&answers.length>0&&answers.length<=10&&answers.every(answer=>typeof answer==='string'&&answer.trim().length>0&&answer.length<=2_000));
+  return entries.length>0&&entries.length<=4&&entries.every(([id,answers])=>id.length>0&&id.length<=128&&Array.isArray(answers)&&answers.length>0&&answers.length<=10&&answers.every(answer=>typeof answer==='string'&&answer.trim().length>0&&answer.length<=2_000));
 }
 
 export function isConnectorExecutionEvent(value: unknown): value is ConnectorExecutionEvent {
@@ -330,7 +343,7 @@ export function isConnectorExecutionEvent(value: unknown): value is ConnectorExe
 }
 
 const capabilities = new Set<string>(['model_catalog', 'mode_catalog', 'text_streaming', 'reasoning', 'tools', 'approvals', 'clarifications', 'usage']);
-const harnessTypes = new Set<string>(['hermes', 'opencode', 'antigravity', 'codex']);
+const harnessTypes = new Set<string>(['hermes', 'opencode', 'antigravity', 'codex', 'claude']);
 const executionStatuses = new Set<string>(['queued', 'running', 'waiting_for_user', 'stopping', 'completed', 'failed', 'cancelled']);
 const requestResolutions = new Set<string>(['answered', 'declined', 'cancelled', 'expired', 'superseded']);
 const upstreamStatusStates = new Set<string>(['waiting_upstream', 'retrying', 'recovered']);
@@ -351,11 +364,11 @@ function isTokenUsage(value:unknown):value is TokenUsage{
 function isRequest(value: unknown): value is ConnectorRequestSnapshot {
   if (!isRecord(value) || !strings(value, 'id', 'kind', 'prompt') || (value.kind !== 'approval' && value.kind !== 'clarification')) return false;
   if (value.choices !== undefined && (!Array.isArray(value.choices) || value.choices.some(choice => typeof choice !== 'string'))) return false;
-  if(value.questions!==undefined&&(!Array.isArray(value.questions)||value.questions.length<1||value.questions.length>3||!value.questions.every(isQuestion)))return false;
+  if(value.questions!==undefined&&(!Array.isArray(value.questions)||value.questions.length<1||value.questions.length>4||!value.questions.every(isQuestion)))return false;
   if(value.autoResolutionMs!==undefined&&(!Number.isSafeInteger(value.autoResolutionMs)||Number(value.autoResolutionMs)<0))return false;
   return value.resolution === undefined || (isRecord(value.resolution) && typeof value.resolution.outcome === 'string' && requestResolutions.has(value.resolution.outcome) && (value.resolution.value === undefined || typeof value.resolution.value === 'string'));
 }
-function isQuestion(value:unknown){return isRecord(value)&&strings(value,'id','header','question')&&typeof value.isOther==='boolean'&&typeof value.isSecret==='boolean'&&(value.options===undefined||(Array.isArray(value.options)&&value.options.every(option=>isRecord(option)&&typeof option.label==='string'&&(option.description===undefined||typeof option.description==='string'))));}
+function isQuestion(value:unknown){return isRecord(value)&&strings(value,'id','header','question')&&typeof value.isOther==='boolean'&&typeof value.isSecret==='boolean'&&(value.multiSelect===undefined||typeof value.multiSelect==='boolean')&&(value.options===undefined||(Array.isArray(value.options)&&value.options.every(option=>isRecord(option)&&typeof option.label==='string'&&(option.description===undefined||typeof option.description==='string'))));}
 function isRecord(value: unknown): value is Record<string, unknown> { return Boolean(value && typeof value === 'object' && !Array.isArray(value)); }
 function strings(value: Record<string, unknown>, ...keys: string[]) { return keys.every(key => typeof value[key] === 'string'); }
 function integers(value: Record<string, unknown>, ...keys: string[]) { return keys.every(key => Number.isSafeInteger(value[key]) && Number(value[key]) >= 0); }

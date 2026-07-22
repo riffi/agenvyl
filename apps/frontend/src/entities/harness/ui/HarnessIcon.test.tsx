@@ -4,12 +4,13 @@ import {HarnessIcon} from './HarnessIcon';
 
 describe('HarnessIcon',()=>{
   it('maps supported harness types to their accessible product names',()=>{
-    const html=renderToStaticMarkup(<>{['hermes','opencode','codex','antigravity'].map(type=><HarnessIcon key={type} type={type}/>)}</>);
+    const html=renderToStaticMarkup(<>{['hermes','opencode','codex','claude','antigravity'].map(type=><HarnessIcon key={type} type={type}/>)}</>);
     expect(html).toContain('aria-label="Hermes"');
     expect(html).toContain('aria-label="OpenCode"');
     expect(html).toContain('aria-label="Antigravity"');
     expect(html).toContain('aria-label="Codex"');
-    expect(html.match(/data-harness-size="sm"/g)).toHaveLength(4);
+    expect(html).toContain('aria-label="Claude"');
+    expect(html.match(/data-harness-size="sm"/g)).toHaveLength(5);
   });
 
   it('uses a generic local icon and the raw name for an unknown harness',()=>{

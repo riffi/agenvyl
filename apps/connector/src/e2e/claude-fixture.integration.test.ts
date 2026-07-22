@@ -1,0 +1,34 @@
+import {mkdtemp,mkdir,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {afterEach,describe,expect,it} from 'vitest';
+import {buildConnectorApp} from '../app.js';
+import {ClaudeConnectorAdapter} from '../adapters/claude/adapter.js';
+import type {ClaudeProcessPort} from '../adapters/claude/process.js';
+import type {ClaudeMessage} from '../adapters/claude/protocol.js';
+import {HttpConnectorClient} from '../../../backend/src/integrations/connector/HttpConnectorClient.js';
+import {ConnectorRunAdapter} from '../../../backend/src/integrations/connector/ConnectorRunAdapter.js';
+
+class FixtureProcess implements ClaudeProcessPort{
+  sent:Record<string,unknown>[]=[];listeners=new Set<(message:ClaudeMessage)=>void>();interrupts=0;
+  initialize(){return Promise.resolve({models:[{value:'fixture-model',displayName:'Fixture Model',supportedEffortLevels:['high']}],account:{authMethod:'api_key'}});}
+  send(value:Record<string,unknown>){this.sent.push(value);}onMessage(listener:(message:ClaudeMessage)=>void){this.listeners.add(listener);}onExit(){}close(){return Promise.resolve();}interrupt(){this.interrupts++;return Promise.resolve();}
+  emit(message:ClaudeMessage){for(const listener of this.listeners)listener(message);}
+}
+const cleanups:Array<()=>Promise<unknown>>=[];afterEach(async()=>{for(const cleanup of cleanups.splice(0).reverse())await cleanup();});
+
+describe('Claude Connector/Core fixture',()=>{
+  it('covers catalog, streaming, approval, clarification, replay, cancel and concurrency',async()=>{
+    const root=await mkdtemp(join(tmpdir(),'agenvyl-claude-fixture-'));cleanups.push(()=>rm(root,{recursive:true,force:true}));await mkdir(join(root,'room'));const processes:FixtureProcess[]=[];
+    const adapter=new ClaudeConnectorAdapter({processFactory:()=>{const process=new FixtureProcess();processes.push(process);return process;}}),token='fixture-token-that-is-at-least-32-characters';
+    const app=buildConnectorApp({version:1,listen:{host:'127.0.0.1',port:0},workspaces:{roots:[root]},instances:[{id:'local-claude',type:'claude',enabled:true}],token},{logger:false,adapters:new Map([['local-claude',adapter]])});await app.listen({host:'127.0.0.1',port:0});cleanups.push(()=>app.close());const address=app.server.address();if(!address||typeof address==='string')throw new Error('Fixture address unavailable');
+    const client=new HttpConnectorClient(`http://127.0.0.1:${address.port}`,token),core=new ConnectorRunAdapter(client);expect((await client.catalog('local-claude')).models[0]).toMatchObject({id:'fixture-model',supportedModeIds:expect.arrayContaining(['default/high'])});
+    const handle=await core.createRun({executionId:'run-main',harnessInstanceId:'local-claude',modelId:'fixture-model',modeId:'default/high',workspace:{roomId:'room',relativePath:'.'},input:'Do it',sessionId:'session',instructions:'Be useful',conversationHistory:[],model:'fixture-model'}),iterator=core.stream(handle.id,'local-main',new AbortController().signal)[Symbol.asyncIterator]();const process=await waitForProcess(processes);
+    process.emit({type:'stream_event',event:{type:'content_block_delta',delta:{type:'text_delta',text:'done'}}});process.emit({type:'assistant',message:{content:[{type:'tool_use',id:'tool-1',name:'Bash',input:{command:'echo ok'}}]}});process.emit({type:'control_request',request_id:'approval',request:{subtype:'can_use_tool',tool_name:'Bash',input:{command:'echo ok'}}});await until(iterator,value=>value.events.some(event=>event.type==='request.created'),'approval');await core.approve(handle.id,'once');expect(process.sent.at(-1)).toMatchObject({response:{response:{behavior:'allow'}}});
+    process.emit({type:'control_request',request_id:'question',request:{subtype:'can_use_tool',tool_name:'AskUserQuestion',input:{questions:[{header:'Choice',question:'Choose?',multiSelect:true,options:[{label:'A'},{label:'B'}]}]}}});const clarification=await until(iterator,value=>value.events.some(event=>event.type==='request.created'),'clarification');expect(clarification.events[0]?.payload).toMatchObject({questions:[{id:'question-1',multiSelect:true}]});await core.clarify(handle.id,{answers:{'question-1':['A','B']}});expect(process.sent.at(-1)).toMatchObject({response:{response:{updatedInput:{answers:{'Choose?':'A, B'}}}}});process.emit({type:'result',subtype:'success',usage:{input_tokens:2,output_tokens:1}});expect((await until(iterator,value=>Boolean(value.terminal),'terminal')).terminal).toEqual({status:'completed'});
+    const replay=[];for await(const event of client.events(handle.id,{after:0,connectorEpoch:handle.checkpoint!.connectorEpoch,signal:new AbortController().signal}))replay.push(event.type);expect(replay).toEqual(expect.arrayContaining(['output.text.delta','tool.started','request.opened','usage.updated','execution.completed']));
+    const first=await core.createRun({executionId:'parallel-1',harnessInstanceId:'local-claude',modelId:'fixture-model',modeId:'default/high',workspace:{roomId:'room',relativePath:'.'},input:'one',sessionId:'one',instructions:'',model:'fixture-model'}),second=await core.createRun({executionId:'parallel-2',harnessInstanceId:'local-claude',modelId:'fixture-model',modeId:'default/high',workspace:{roomId:'room',relativePath:'.'},input:'two',sessionId:'two',instructions:'',model:'fixture-model'});expect(first.id).not.toBe(second.id);await core.stop(second.id);expect((await client.inspect(second.id)).status).toBe('cancelled');
+  },30_000);
+});
+async function until(iterator:AsyncIterator<import('../../../backend/src/modules/harness/harness.ports.js').RunEventMapping>,predicate:(value:import('../../../backend/src/modules/harness/harness.ports.js').RunEventMapping)=>boolean,label:string){for(let index=0;index<30;index++){const next=await Promise.race([iterator.next(),new Promise<never>((_,reject)=>setTimeout(()=>reject(new Error(`Timed out waiting for ${label}`)),2_000))]);if(next.done)throw new Error(`Stream ended before ${label}`);if(predicate(next.value))return next.value;}throw new Error(`Expected ${label} was not observed`);}
+async function waitForProcess(processes:FixtureProcess[]){for(let index=0;index<100;index++){const process=[...processes].reverse().find(candidate=>candidate.sent.some(frame=>frame.type==='user'));if(process)return process;await new Promise(resolve=>setTimeout(resolve,10));}throw new Error('Execution process was not started');}

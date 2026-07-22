@@ -89,6 +89,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Claude transport fixtures
+        shell: bash
+        run: npm run test:claude && npm run test:e2e:claude
       - id: postgres-cache
         if: ${{ !inputs.rebuild_postgres }}
         uses: actions/cache@v4

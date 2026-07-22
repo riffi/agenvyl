@@ -55,7 +55,8 @@ export const HarnessSettingsPage=()=>{
   };
   const connect=async(candidate:SetupHarnessCandidate)=>{
     if(dirty||!candidate.safeToSelect)return;
-    const draft=addHarnessDraft(candidate.type,drafts,state?.candidates??[]),next=[...drafts,draft];
+    if(candidate.requiresConfirmation==='claude_oauth'&&prompt('Claude subscription OAuth is experimental and may conflict with Anthropic terms for third-party products. Type CLAUDE OAUTH to continue.')!=='CLAUDE OAUTH')return;
+    const draft={...addHarnessDraft(candidate.type,drafts,state?.candidates??[]),...(candidate.requiresConfirmation==='claude_oauth'?{allowSubscriptionOAuth:true}:{})},next=[...drafts,draft];
     setConnecting(candidate.type);
     try{await persist(next,`${candidate.label} connected.`,[draft.id]);}finally{setConnecting(undefined);}
   };

@@ -33,6 +33,10 @@ try {
   const entries = await readdir(extractionRoot);
   if (entries.length !== 1) throw new Error(`Portable archive must contain one root directory: ${entries.join(', ')}`);
   bundleRoot = join(extractionRoot, entries[0]);
+  const bundledEntries = await readdir(bundleRoot, { recursive: true, withFileTypes: true });
+  if (bundledEntries.some(entry => entry.isFile() && /^claude(?:\.exe|\.cmd|\.bat)?$/i.test(entry.name))) {
+    throw new Error('Portable bundle must not contain a Claude executable');
+  }
   const manifest = JSON.parse(await readFile(join(bundleRoot, 'manifest.json'), 'utf8'));
   if (manifest.platform !== process.platform || manifest.architecture !== process.arch) {
     throw new Error(`Portable manifest target mismatch: ${manifest.platform}-${manifest.architecture}`);

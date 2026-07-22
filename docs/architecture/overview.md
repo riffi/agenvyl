@@ -122,6 +122,7 @@ payloads are not part of the Core API.
 | Hermes | HTTP and event stream | catalog, text, tools, approvals, usage, cancel |
 | OpenCode | pinned native SDK over HTTP/SSE | catalog and modes, text/reasoning, tools, approvals, one-question clarifications, usage, cancel |
 | Codex | user-installed `codex app-server` over JSONL/JSON-RPC stdio | model-specific modes, text/reasoning, tools, approvals, structured clarifications, usage, interrupt |
+| Claude (experimental) | fresh user-installed `claude` process over bounded bidirectional NDJSON | dynamic model/effort modes, text/thinking, tools, approvals, 1–4 structured questions, usage, interrupt |
 | Antigravity | fresh `agy --print` subprocess | exact model/mode catalog, final text, POSIX process-group or Windows process-tree cancel |
 
 OpenCode uses its native server and SDK because that path exposes the lifecycle
@@ -132,6 +133,12 @@ catalog, event, approval, clarification, cancellation, and recovery semantics.
 Antigravity has no documented structured streaming or approval protocol.
 Connector therefore does not fabricate tool, usage, or partial-output events.
 Its autonomous `accept-edits` mode requires an explicit operator opt-in.
+
+Claude executions are ephemeral and receive bounded room history through an
+owner-only temporary append-system-prompt file. Connector intentionally does not
+use `--bare`, so ordinary user/project/local Claude settings, `CLAUDE.md`, skills,
+plugins, hooks, and MCP remain active. Unknown or incompatible protocol responses
+fail closed; no Claude executable or proprietary Agent SDK is bundled.
 
 ## Frontend structure and state
 

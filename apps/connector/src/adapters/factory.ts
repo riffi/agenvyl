@@ -4,6 +4,7 @@ import { HermesConnectorAdapter } from './hermes/adapter.js';
 import { OpenCodeConnectorAdapter } from './opencode/adapter.js';
 import { AntigravityConnectorAdapter } from './antigravity/adapter.js';
 import { CodexConnectorAdapter } from './codex/adapter.js';
+import { ClaudeConnectorAdapter } from './claude/adapter.js';
 
 export function buildConfiguredAdapters(config: ConnectorConfig, env: NodeJS.ProcessEnv = process.env, request: typeof fetch = fetch) {
   const adapters = new Map<string, ConnectorAdapter>();
@@ -38,6 +39,11 @@ export function buildConfiguredAdapters(config: ConnectorConfig, env: NodeJS.Pro
     command:env.AGENVYL_CONNECTOR_CODEX_COMMAND,
     env,
     allowDangerFullAccess:instance.allowDangerFullAccess,
+  }));
+  for(const instance of config.instances.filter(candidate=>candidate.enabled&&candidate.type==='claude'))adapters.set(instance.id,new ClaudeConnectorAdapter({
+    command:env.AGENVYL_CONNECTOR_CLAUDE_COMMAND,
+    env,
+    allowSubscriptionOAuth:instance.allowSubscriptionOAuth,
   }));
   return adapters;
 }

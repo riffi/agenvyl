@@ -103,7 +103,7 @@ export function HarnessRouteFields({form,catalog,error,onChange}:{form:Persona;c
   const visibleModels=selectedInstance?.models??(form.model_id?[{id:form.model_id,label:`${form.model_id} (saved)`}]:[]);
   const selectedModel=visibleModels.find(model=>model.id===form.model_id);
   const visibleModes=selectedInstance?.modes.filter(mode=>!selectedModel?.supportedModeIds||selectedModel.supportedModeIds.includes(mode.id))??[];
-  const requiresExplicitMode=selectedInstance?.type==='antigravity';
+  const requiresExplicitMode=selectedInstance?.type==='antigravity'||selectedInstance?.type==='claude';
   return <>
     {error&&<Alert tone="error">Harness catalog unavailable: {error}. The saved selection was not changed.</Alert>}
     <div className={styles['harness-grid']}>

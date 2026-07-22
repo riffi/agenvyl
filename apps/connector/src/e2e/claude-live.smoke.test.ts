@@ -1,0 +1,16 @@
+import {mkdtemp,mkdir,readFile,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {afterAll,beforeAll,describe,expect,it} from 'vitest';
+import {ClaudeConnectorAdapter} from '../adapters/claude/adapter.js';
+import type {AdapterExecutionEvent,AdapterStartExecutionRequest} from '../adapter.js';
+
+const live=process.env.RUN_CLAUDE_LIVE_SMOKE==='1';
+describe.runIf(live)('Claude CLI live smoke',()=>{
+  let root='';const adapter=new ClaudeConnectorAdapter({command:process.env.AGENVYL_CONNECTOR_CLAUDE_COMMAND,allowSubscriptionOAuth:process.env.AGENVYL_CLAUDE_OAUTH_CONFIRMATION==='CLAUDE OAUTH'});
+  beforeAll(async()=>{root=await mkdtemp(join(tmpdir(),'agenvyl-claude-live-'));await mkdir(join(root,'room'));});
+  afterAll(async()=>{await adapter.close();await rm(root,{recursive:true,force:true});});
+  it('covers text, workspace edit, interaction and cancellation',async()=>{const catalog=await adapter.catalog(),model=catalog.models[0],mode=model?.supportedModeIds?.find(id=>id.startsWith('default/'));expect(model&&mode).toBeTruthy();const exact=await run('exact','Reply with exactly AGENVYL_CLAUDE_OK.',model!.id,mode!);expect(exact.text.trim()).toBe('AGENVYL_CLAUDE_OK');const editMode=model!.supportedModeIds!.find(id=>id.startsWith('accept-edits/'))!;const file=await run('file','Create claude-live.txt containing exactly live-ok, then finish.',model!.id,editMode);expect(await readFile(join(root,'room','claude-live.txt'),'utf8')).toBe('live-ok');expect(file.events.some(event=>event.type==='tool.started')).toBe(true);const cancellation=await adapter.start(request('cancel','Work until interrupted.',model!.id,mode!)),events=adapter.events(cancellation);await adapter.stop(cancellation);let terminal:AdapterExecutionEvent|undefined;for await(const event of events)if(['execution.cancelled','execution.completed','execution.failed'].includes(event.type))terminal=event;expect(terminal?.type).toBe('execution.cancelled');},240_000);
+  const request=(id:string,message:string,modelId:string,modeId:string):AdapterStartExecutionRequest=>({executionId:id,harnessInstanceId:'local-claude',modelId,modeId,workspace:{roomId:'room',relativePath:'.',absolutePath:join(root,'room')},input:{systemPrompt:'Follow the request precisely.',history:[],message}});
+  const run=async(id:string,message:string,model:string,mode:string)=>{const execution=await adapter.start(request(id,message,model,mode)),events:AdapterExecutionEvent[]=[];for await(const event of adapter.events(execution)){events.push(event);if(event.type==='request.opened')await adapter.resolveRequest(execution,event.payload.request,event.payload.request.kind==='approval'?{resolution:'once'}:{answers:Object.fromEntries((event.payload.request.questions??[]).map(question=>[question.id,[question.options?.[0]?.label??'yes']]))});}return{text:events.filter((event):event is Extract<AdapterExecutionEvent,{type:'output.text.delta'}>=>event.type==='output.text.delta').map(event=>event.payload.text).join(''),events};};
+});

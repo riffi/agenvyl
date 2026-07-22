@@ -42,10 +42,11 @@ export type Message = {
 export type HumanAuthorSnapshot = { profileId: string; displayName: string; handle: string };
 export type LocalUserProfile = { id: string; displayName: string; handle: string; createdAt: string; updatedAt: string };
 export type UpdateLocalUserProfileRequest = { display_name: string; handle: string };
-export type HarnessType='hermes'|'opencode'|'antigravity'|'codex';
-export type SetupHarnessCandidate={type:HarnessType;label:string;cli:{found:boolean;command:string;version?:string;compatible?:boolean};endpoint?:{url:string;reachable:boolean};safeToSelect:boolean;supportsManagedServer:boolean;warning?:string};
-export type SetupState={completed:boolean;locale:'en'|'ru';workspaceRoot:string;firstRoomId?:string;instances:Array<{id:string;type:string;status:string;managed?:boolean;allowDangerFullAccess?:boolean}>;candidates:SetupHarnessCandidate[]};
-export type SetupHarnessInstance={id:string;type:HarnessType;enabled:boolean;endpoint?:string;managed?:boolean;permissionMode?:'plan'|'accept-edits';allowDangerFullAccess?:boolean};
+export type HarnessType='hermes'|'opencode'|'antigravity'|'codex'|'claude';
+export type HarnessAuthentication={authenticated:boolean;kind:'api'|'cloud'|'subscription_oauth'|'none'|'unknown'};
+export type SetupHarnessCandidate={type:HarnessType;label:string;cli:{found:boolean;command:string;version?:string;compatible?:boolean};endpoint?:{url:string;reachable:boolean};safeToSelect:boolean;supportsManagedServer:boolean;auth?:HarnessAuthentication;requiresConfirmation?:'claude_oauth';warning?:string};
+export type SetupState={completed:boolean;locale:'en'|'ru';workspaceRoot:string;firstRoomId?:string;instances:Array<{id:string;type:string;status:string;managed?:boolean;allowDangerFullAccess?:boolean;allowSubscriptionOAuth?:boolean}>;candidates:SetupHarnessCandidate[]};
+export type SetupHarnessInstance={id:string;type:HarnessType;enabled:boolean;endpoint?:string;managed?:boolean;permissionMode?:'plan'|'accept-edits';allowDangerFullAccess?:boolean;allowSubscriptionOAuth?:boolean};
 export type ConfigureSetupHarnessesRequest={instances:SetupHarnessInstance[]};
 export type HarnessSettingsPersona={id:string;name:string;handle:string;archived:boolean};
 export type HarnessSettingsInstance=SetupHarnessInstance&{status:'healthy'|'degraded'|'unavailable'|'disabled';capabilities:string[];error?:{code:string;message:string};personas:HarnessSettingsPersona[]};
@@ -152,7 +153,7 @@ export type ErrorEnvelope = {
 export type CreateRoomRequest = { title?: string; persona_ids?: string[] };
 export type RenameRoomRequest = { title?: string };
 export type CreateMessageRequest = { text?: string; targets?: AgentHandle[]; message_id?: string; attachment_version_ids?:string[] };
-export type StructuredQuestion={id:string;header:string;question:string;options?:Array<{label:string;description?:string}>;isOther:boolean;isSecret:boolean};
+export type StructuredQuestion={id:string;header:string;question:string;options?:Array<{label:string;description?:string}>;isOther:boolean;isSecret:boolean;multiSelect?:boolean};
 export type RunRequestResolution={resolution:string}|{answers:Record<string,string[]>};
 export type ResolveRunRequest = RunRequestResolution;
 export type ApprovalRequest = ResolveRunRequest;
@@ -236,7 +237,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 function isTokenUsage(value:unknown):value is TokenUsage{if(!isRecord(value)||!tokenCount(value.inputTokens)||!tokenCount(value.outputTokens))return false;return['totalTokens','reasoningTokens','cacheReadTokens','cacheWriteTokens'].every(key=>value[key]===undefined||tokenCount(value[key]));}
 function tokenCount(value:unknown){return Number.isSafeInteger(value)&&Number(value)>=0;}
-function isStructuredQuestions(value:unknown):value is StructuredQuestion[]{return Array.isArray(value)&&value.length>0&&value.length<=3&&value.every(question=>isRecord(question)&&strings(question,'id','header','question')&&typeof question.isOther==='boolean'&&typeof question.isSecret==='boolean'&&(question.options===undefined||(Array.isArray(question.options)&&question.options.every(option=>isRecord(option)&&typeof option.label==='string'&&(option.description===undefined||typeof option.description==='string')))));}
+function isStructuredQuestions(value:unknown):value is StructuredQuestion[]{return Array.isArray(value)&&value.length>0&&value.length<=4&&value.every(question=>isRecord(question)&&strings(question,'id','header','question')&&typeof question.isOther==='boolean'&&typeof question.isSecret==='boolean'&&(question.multiSelect===undefined||typeof question.multiSelect==='boolean')&&(question.options===undefined||(Array.isArray(question.options)&&question.options.every(option=>isRecord(option)&&typeof option.label==='string'&&(option.description===undefined||typeof option.description==='string')))));}
 
 function strings(value: Record<string, unknown>, ...keys: string[]) {
   return keys.every(key => typeof value[key] === 'string');
