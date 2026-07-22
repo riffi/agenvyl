@@ -309,7 +309,7 @@ export class ExecutionRegistry {
       harnessInstanceId: record.request.harnessInstanceId,
       harnessType: this.instanceTypes.get(record.request.harnessInstanceId) ?? record.adapter.type,
       modelId: record.request.modelId,
-      modeId: record.request.modeId,
+      executionProfile: structuredClone(record.request.executionProfile),
       status: record.status,
       cursor: record.cursor,
       earliestReplayableCursor: this.earliestReplayableCursor(record),
@@ -408,7 +408,7 @@ function stableRequestKey(request: StartExecutionRequest) {
     executionId: request.executionId,
     harnessInstanceId: request.harnessInstanceId,
     modelId: request.modelId,
-    modeId: request.modeId,
+    executionProfile: request.executionProfile,
     workspace: { roomId: request.workspace.roomId, relativePath: request.workspace.relativePath },
     input: {
       systemPrompt: request.input.systemPrompt,

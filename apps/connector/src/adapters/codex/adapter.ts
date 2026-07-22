@@ -3,7 +3,7 @@ import type {ConnectorRequestAnswer,ConnectorRequestSnapshot,ExecutionStatus,Tok
 import type {AdapterExecution,AdapterExecutionEvent,AdapterStartExecutionRequest,ConnectorAdapter} from '../../adapter.js';
 import {redactConnectorText} from '../../safety.js';
 import {CodexAppServerClient,type AppServerMessage,type CodexAppServerPort} from './app-server-client.js';
-import {buildCodexCatalog,parseCodexMode} from './mode-catalog.js';
+import {buildCodexCatalog,parseCodexPermission} from './mode-catalog.js';
 
 type RpcId=string|number;
 type PendingRequest={rpcId:RpcId;method:string};
@@ -15,12 +15,12 @@ export type CodexAdapterOptions={command?:string;env?:NodeJS.ProcessEnv;allowDan
 
 export class CodexConnectorAdapter implements ConnectorAdapter{
   readonly type='codex';
-  readonly capabilities:ConnectorAdapter['capabilities']=['model_catalog','mode_catalog','text_streaming','reasoning','tools','approvals','clarifications','usage'];
+  readonly capabilities:ConnectorAdapter['capabilities']=['model_catalog','execution_profiles','text_streaming','reasoning','tools','approvals','clarifications','usage'];
   private readonly client:CodexAppServerPort;
   private readonly allowDangerFullAccess:boolean;
   private readonly executions=new Map<string,ExecutionState>();
   private readonly byThread=new Map<string,ExecutionState>();
-  private supportedModes=new Map<string,Set<string>>();
+  private supportedModels=new Map<string,Set<string>>();
 
   constructor(options:CodexAdapterOptions={}){
     this.client=options.client??new CodexAppServerClient(options.command?.trim()||'codex',options.env);
@@ -32,17 +32,18 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
   async catalog(){
     const values:unknown[]=[];let cursor:string|undefined;
     for(let page=0;page<20;page++){const response=record(await this.client.request('model/list',{includeHidden:false,...(cursor?{cursor}:{})}));if(!response||!Array.isArray(response.data))throw new Error('Codex model catalog response is invalid');values.push(...response.data);if(values.length>1_000)throw new Error('Codex model catalog is too large');if(response.nextCursor===null||response.nextCursor===undefined)break;if(typeof response.nextCursor!=='string'||!response.nextCursor||response.nextCursor===cursor)throw new Error('Codex model catalog cursor is invalid');cursor=response.nextCursor;if(page===19)throw new Error('Codex model catalog pagination limit exceeded');}
-    const catalog=buildCodexCatalog(values,this.allowDangerFullAccess);this.supportedModes=new Map(catalog.models.map(model=>[model.id,new Set(model.supportedModeIds)]));return catalog;
+    const catalog=buildCodexCatalog(values,this.allowDangerFullAccess);this.supportedModels=new Map(catalog.models.map(model=>[model.id,new Set(model.reasoningEfforts)]));return catalog;
   }
 
   async start(request:AdapterStartExecutionRequest):Promise<AdapterExecution>{
     if(this.executions.has(request.executionId))throw new Error('Codex execution already exists');
-    if(!this.supportedModes.size)await this.catalog();
-    if(!this.supportedModes.get(request.modelId)?.has(request.modeId??''))throw new Error('Codex model and mode combination is not supported');
-    const mode=parseCodexMode(request.modeId,this.allowDangerFullAccess);
+    if(!this.supportedModels.size)await this.catalog();
+    const efforts=this.supportedModels.get(request.modelId);if(!efforts)throw new Error('Codex model is not supported');
+    const profile=request.executionProfile;if(profile.reasoningEffort&&!efforts.has(profile.reasoningEffort))throw new Error('Codex reasoning effort is not supported');
+    const configuredSandbox=parseCodexPermission(profile.permissionProfileId,this.allowDangerFullAccess),sandbox=profile.workflowMode==='plan'?'read-only':configuredSandbox;
     const threadResponse=record(await this.client.request('thread/start',{
       model:request.modelId,cwd:request.workspace.absolutePath,
-      sandbox:mode.sandbox,approvalPolicy:mode.sandbox==='danger-full-access'?'never':'on-request',ephemeral:true,
+      sandbox,approvalPolicy:sandbox==='danger-full-access'?'never':'on-request',ephemeral:true,
       developerInstructions:codexContext(request),
     }));
     const thread=record(threadResponse?.thread),threadId=typeof thread?.id==='string'?thread.id:undefined;
@@ -50,7 +51,8 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
     const state:ExecutionState={id:request.executionId,threadId,status:'running',queue:new EventQueue(),pending:new Map(),itemText:new Map(),reasoningIndexes:new Map()};
     this.executions.set(request.executionId,state);this.byThread.set(threadId,state);
     try{
-      const turnResponse=record(await this.client.request('turn/start',{threadId,input:[{type:'text',text:request.input.message,text_elements:[]}],summary:'auto',...(mode.effort?{effort:mode.effort}:{})}));
+      const collaborationMode={mode:profile.workflowMode==='plan'?'plan':'default',settings:{model:request.modelId,reasoning_effort:profile.reasoningEffort,developer_instructions:null}};
+      const turnResponse=record(await this.client.request('turn/start',{threadId,input:[{type:'text',text:request.input.message,text_elements:[]}],summary:'auto',collaborationMode}));
       const turn=record(turnResponse?.turn),turnId=typeof turn?.id==='string'?turn.id:undefined;
       if(!turnId)throw new Error('Codex turn/start response is invalid');
       state.turnId=turnId;
@@ -138,7 +140,7 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
   }
   private completeItem(state:ExecutionState,value:unknown){
     const item=record(value);if(!item)return;
-    if(item.type==='agentMessage'&&typeof item.id==='string'&&typeof item.text==='string'){
+    if((item.type==='agentMessage'||item.type==='plan')&&typeof item.id==='string'&&typeof item.text==='string'){
       const sent=state.itemText.get(item.id)??0;if(item.text.length>sent)state.queue.push({type:'output.text.delta',payload:{text:item.text.slice(sent)}});return;
     }
     const tool=toolEvent(item,'completed');if(tool)state.queue.push(tool);

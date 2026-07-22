@@ -20,10 +20,10 @@ describe('OpenCodeConnectorAdapter', () => {
     ]);
     const adapter = new OpenCodeConnectorAdapter({ baseUrl: 'http://127.0.0.1:4096', client, catalogDirectory: '/workspace/catalog' });
 
-    expect(adapter.capabilities).toEqual(['model_catalog', 'mode_catalog', 'text_streaming', 'reasoning', 'tools', 'approvals', 'clarifications', 'usage']);
+    expect(adapter.capabilities).toEqual(['model_catalog', 'execution_profiles', 'text_streaming', 'reasoning', 'tools', 'approvals', 'clarifications', 'usage']);
     await expect(adapter.catalog()).resolves.toEqual({
       models: [{ id: 'anthropic/claude-sonnet', label: 'Anthropic/Claude Sonnet' }],
-      modes: [{ id: 'build', label: 'build' }, { id: 'plan', label: 'plan' }],
+      controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[],agentVariants:[{id:'build',label:'build'}]},
     });
     expect(client.providers).toHaveBeenCalledWith('/workspace/catalog');
     expect(client.agents).toHaveBeenCalledWith('/workspace/catalog');
@@ -53,6 +53,21 @@ describe('OpenCodeConnectorAdapter', () => {
     expect(system).toContain('Do not use sudo');
     expect(system).toContain(JSON.stringify(startRequest().input.history));
     expect(system).not.toContain('Continue');
+    expect(system).not.toContain('tool named `question`');
+  });
+
+  it('names the structured question tool and its interaction shape in native Plan',async()=>{
+    const client=fixtureClient();client.agents=vi.fn().mockResolvedValue([{name:'build',mode:'primary'},{name:'plan',mode:'primary'}]);
+    const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client});
+
+    await adapter.start({...startRequest(),executionProfile:{...startRequest().executionProfile,workflowMode:'plan',agentVariantId:null,planEnforcement:'native'}});
+
+    expect(client.createSession).toHaveBeenCalledWith(expect.objectContaining({agent:'plan'}));
+    const system=vi.mocked(client.prompt).mock.calls[0]?.[0].system??'';
+    expect(system).toContain('tool named `question`');
+    expect(system).toContain('MUST call `question` instead of printing unanswered questions');
+    expect(system).toContain('all currently required questions in one tool call');
+    expect(system).toContain('no more than four focused questions');
   });
 
   it('normalizes only matching text deltas and the terminal idle event', async () => {
@@ -277,16 +292,29 @@ describe('OpenCodeConnectorAdapter', () => {
     await expect(iterator.next()).resolves.toMatchObject({ value: { type: 'execution.completed' } });
   });
 
-  it('fails closed and aborts malformed, batched, or multi-select questions', async () => {
+  it('round-trips batched and multi-select questions as structured answers',async()=>{
+    const client=fixtureClient();client.subscribe=vi.fn().mockResolvedValue(events([
+      {type:'question.asked',properties:{id:'native-question-1',sessionID:'session-1',questions:[{question:'Pick several',header:'Formats',options:[{label:'PNG'},{label:'SVG'}],multiple:true},{question:'Theme?',header:'Theme',options:[{label:'Nature',description:'Outdoors'}],custom:true}]}},
+      {type:'session.idle',properties:{sessionID:'session-1'}},
+    ]));
+    const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client}),execution=await adapter.start(startRequest()),iterator=adapter.events(execution)[Symbol.asyncIterator](),opened=await iterator.next();
+    expect(opened.value).toMatchObject({type:'request.opened',payload:{request:{kind:'clarification',prompt:'OpenCode needs additional input',questions:[{id:'question-1',header:'Formats',multiSelect:true,options:[{label:'PNG'},{label:'SVG'}]},{id:'question-2',header:'Theme',isOther:true,options:[{label:'Nature',description:'Outdoors'}]}]}}});
+    if(!opened.value||opened.value.type!=='request.opened')throw new Error('Expected clarification request');
+    await expect(adapter.resolveRequest(execution,opened.value.payload.request,{answers:{'question-1':['PNG','SVG'],'question-2':['Nature']}})).resolves.toEqual({outcome:'answered'});
+    expect(client.replyQuestion).toHaveBeenCalledWith({sessionID:'session-1',requestID:'native-question-1',directory:'/srv/workspaces/room-1/subdir',answers:[['PNG','SVG'],['Nature']],version:'legacy'});
+    await expect(iterator.next()).resolves.toMatchObject({value:{type:'execution.completed'}});
+  });
+
+  it('fails closed and aborts malformed questions', async () => {
     const client = fixtureClient();
     client.subscribe = vi.fn().mockResolvedValue(events([
-      { type: 'question.asked', properties: { id: 'native-question-1', sessionID: 'session-1', questions: [{ question: 'Pick several', options: [], multiple: true }] } },
+      { type: 'question.asked', properties: { id: 'native-question-1', sessionID: 'session-1', questions: [{ question: '', options: [] }] } },
     ]));
     const adapter = new OpenCodeConnectorAdapter({ baseUrl: 'http://localhost:4096', client });
     const execution = await adapter.start(startRequest());
 
     await expect(collect(adapter.events(execution))).resolves.toEqual([
-      { type: 'execution.failed', payload: { error: { code: 'unsupported_interaction', message: 'OpenCode requested a malformed, batched, or multi-select clarification' } } },
+      { type: 'execution.failed', payload: { error: { code: 'unsupported_interaction', message: 'OpenCode requested a malformed clarification' } } },
     ]);
     expect(client.abortSession).toHaveBeenCalledWith('session-1', '/srv/workspaces/room-1/subdir');
   });
@@ -300,7 +328,7 @@ describe('OpenCodeConnectorAdapter', () => {
 
 function startRequest(): AdapterStartExecutionRequest {
   return {
-    executionId: 'execution-1', harnessInstanceId: 'local-opencode', modelId: 'anthropic/claude-sonnet', modeId: 'build',
+    executionId: 'execution-1', harnessInstanceId: 'local-opencode', modelId: 'anthropic/claude-sonnet', executionProfile:{workflowMode:'work',reasoningEffort:null,permissionProfileId:null,agentVariantId:'build',planEnforcement:null},
     workspace: { roomId: 'room-1', relativePath: 'subdir', absolutePath: '/srv/workspaces/room-1/subdir' },
     input: { systemPrompt: 'Be useful.', history: [{ role: 'user', content: 'Earlier' }, { role: 'assistant', content: 'Previous answer' }], message: 'Continue' },
   };
@@ -309,7 +337,7 @@ function startRequest(): AdapterStartExecutionRequest {
 function fixtureClient(calls: string[] = []): OpenCodeClientPort {
   return {
     providers: vi.fn().mockResolvedValue({ all: [], connected: [] }),
-    agents: vi.fn().mockResolvedValue([]),
+    agents: vi.fn().mockResolvedValue([{name:'build',mode:'primary'}]),
     createSession: vi.fn(async () => { calls.push('create'); return { id: 'session-1' }; }),
     sessionStatuses: vi.fn().mockResolvedValue({ 'session-1': { type: 'idle' } }),
     subscribe: vi.fn(async () => { calls.push('subscribe'); return events([]); }),

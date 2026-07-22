@@ -27,7 +27,8 @@ export const personaDraftValue = (persona?: Persona) => persona ? JSON.stringify
   harness_instance_id: persona.harness_instance_id,
   harness_type: persona.harness_type,
   model_id: persona.model_id,
-  mode_id: persona.mode_id ?? null,
+  permission_profile_id: persona.permission_profile_id ?? null,
+  agent_variant_id: persona.agent_variant_id ?? null,
   system_prompt: persona.system_prompt ?? '',
   group_id: persona.group_id ?? null,
 }) : '';
@@ -41,25 +42,17 @@ export const personaSaveAvailable = (state:{creating:boolean;dirty:boolean;real:
 export const firstRunnableHarness = (catalog?: HarnessCatalog) =>
   catalog?.instances.find(instance => instance.status !== 'unavailable' && instance.models.length > 0);
 
-export const defaultPersonaMode=(instance?:HarnessInstance)=>
-  instance?.type==='antigravity'&&instance.modes.some(mode=>mode.id==='plan')?'plan':instance?.type==='codex'&&instance.modes.some(mode=>mode.id==='workspace-write/default')?'workspace-write/default':instance?.type==='claude'?(instance.models[0]?.supportedModeIds?.find(id=>id.startsWith('default/'))??null):null;
-
 export const newPersonaDraft = (catalog?: HarnessCatalog): Persona => {
   const instance=firstRunnableHarness(catalog),model=instance?.models[0];
-  return {id:'',handle:'',name:'',role:'',color:'#64748b',requested_model:model?.id??null,harness_instance_id:instance?.id??'',harness_type:instance?.type??'',model_id:model?.id??'',mode_id:defaultPersonaMode(instance),system_prompt:'',group_id:null,archived_at:null};
+  return {id:'',handle:'',name:'',role:'',color:'#64748b',requested_model:model?.id??null,harness_instance_id:instance?.id??'',harness_type:instance?.type??'',model_id:model?.id??'',permission_profile_id:instance?.controls.permissionProfiles[0]?.id??null,agent_variant_id:instance?.controls.agentVariants[0]?.id??null,system_prompt:'',group_id:null,archived_at:null};
 };
 
 export const selectHarnessInstance = (draft: Persona, instance: HarnessInstance): Persona => {
   const model=instance.models[0];
-  return {...draft,harness_instance_id:instance.id,harness_type:instance.type,model_id:model?.id??'',requested_model:model?.id??null,mode_id:defaultPersonaMode(instance)};
+  return {...draft,harness_instance_id:instance.id,harness_type:instance.type,model_id:model?.id??'',requested_model:model?.id??null,permission_profile_id:instance.controls.permissionProfiles[0]?.id??null,agent_variant_id:instance.controls.agentVariants[0]?.id??null};
 };
 
-export const selectHarnessModel = (draft: Persona, modelId: string, instance?:HarnessInstance): Persona =>{
-  const model=instance?.models.find(candidate=>candidate.id===modelId),supported=model?.supportedModeIds;
-  const current=draft.mode_id;
-  const mode=current&&(!supported||supported.includes(current))?current:supported?.includes('workspace-write/default')?'workspace-write/default':instance?.type==='claude'?supported?.find(id=>id.startsWith('default/'))??supported?.[0]??current:supported?.find(id=>!id.startsWith('danger-full-access/'))??supported?.[0]??current;
-  return{...draft,model_id:modelId,requested_model:modelId,mode_id:mode??null};
-};
+export const selectHarnessModel = (draft: Persona, modelId: string, _instance?:HarnessInstance): Persona =>({...draft,model_id:modelId,requested_model:modelId});
 
 export const personaInputFromDraft = (draft: Persona): PersonaInput => ({
   handle: draft.handle.trim().replace(/^@/,'').toLowerCase(),
@@ -69,7 +62,8 @@ export const personaInputFromDraft = (draft: Persona): PersonaInput => ({
   requested_model: draft.model_id,
   harness_instance_id: draft.harness_instance_id,
   model_id: draft.model_id,
-  mode_id: draft.mode_id,
+  permission_profile_id: draft.permission_profile_id,
+  agent_variant_id: draft.agent_variant_id,
   system_prompt: draft.system_prompt??'',
   group_id: draft.group_id||null,
 });

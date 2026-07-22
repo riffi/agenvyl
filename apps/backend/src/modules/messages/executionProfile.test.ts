@@ -1,0 +1,9 @@
+import {describe,expect,it} from 'vitest';
+import {resolveExecutionProfile} from './executionProfile';
+
+const controls={nativeWorkflowModes:['plan','work'] as Array<'plan'|'work'>,permissionProfiles:[{id:'workspace-write'}],agentVariants:[]};
+describe('resolveExecutionProfile',()=>{
+  it('keeps requested effort when supported and snapshots native Plan',()=>expect(resolveExecutionProfile({state:{profile:{workflow_mode:'plan',reasoning_effort:'high'},approved_plan:null},model:{id:'gpt',reasoningEfforts:['low','high'],defaultReasoningEffort:'low'},controls,permissionProfileId:null,agentVariantId:null})).toEqual({workflowMode:'plan',requestedReasoningEffort:'high',reasoningEffort:'high',reasoningEffortFallback:false,planEnforcement:'native',permissionProfileId:'workspace-write',agentVariantId:null,approvedPlanRunId:null}));
+  it('falls back visibly and carries the authoritative plan only into Work',()=>expect(resolveExecutionProfile({state:{profile:{workflow_mode:'work',reasoning_effort:'max'},approved_plan:{run_id:'plan-1',agent:'planner',created_at:'2026-01-01',excerpt:'Plan'}},model:{id:'small',reasoningEfforts:['low'],defaultReasoningEffort:'low'},controls:{...controls,nativeWorkflowModes:[]},permissionProfileId:'read-only',agentVariantId:'build'})).toMatchObject({workflowMode:'work',requestedReasoningEffort:'max',reasoningEffort:'low',reasoningEffortFallback:true,planEnforcement:null,permissionProfileId:'read-only',agentVariantId:'build',approvedPlanRunId:'plan-1'}));
+  it('marks unsupported Plan as instruction-only',()=>expect(resolveExecutionProfile({state:{profile:{workflow_mode:'plan',reasoning_effort:null},approved_plan:null},model:{id:'hermes'},controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]},permissionProfileId:null,agentVariantId:null}).planEnforcement).toBe('instruction_only'));
+});

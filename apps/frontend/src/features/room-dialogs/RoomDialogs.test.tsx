@@ -5,7 +5,7 @@ import {afterEach,describe,expect,it,vi} from 'vitest';
 import type {Persona} from '../../entities/persona';
 import {CreateRoomDialog,RoomAgentManager} from './RoomDialogs';
 
-const hermes:Persona={id:'hermes',handle:'hermes',name:'Hermes agent',role:'Code',color:'#64748b',requested_model:'sol',harness_instance_id:'local-hermes',harness_type:'hermes',model_id:'sol',mode_id:null,group_id:null,archived_at:null};
+const hermes:Persona={id:'hermes',handle:'hermes',name:'Hermes agent',role:'Code',color:'#64748b',requested_model:'sol',harness_instance_id:'local-hermes',harness_type:'hermes',model_id:'sol',permission_profile_id:null,agent_variant_id:null,group_id:null,archived_at:null};
 const openCode:Persona={...hermes,id:'opencode',handle:'opencode',name:'OpenCode agent',harness_instance_id:'local-opencode',harness_type:'opencode'};
 
 afterEach(cleanup);

@@ -99,19 +99,18 @@ function HarnessInstancePicker({instances,value,onChange}:{instances:HarnessInst
 export function HarnessRouteFields({form,catalog,error,onChange}:{form:Persona;catalog?:HarnessCatalog;error?:string;onChange:(next:Persona)=>void}) {
   const discovered=catalog?.instances??[];
   const selectedInstance=discovered.find(instance=>instance.id===form.harness_instance_id);
-  const visibleInstances=form.harness_instance_id&&!selectedInstance?[...discovered,{id:form.harness_instance_id,type:form.harness_type,status:'unavailable' as const,capabilities:[],models:[],modes:[]}]:discovered;
+  const visibleInstances=form.harness_instance_id&&!selectedInstance?[...discovered,{id:form.harness_instance_id,type:form.harness_type,status:'unavailable' as const,capabilities:[],models:[],controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]}}]:discovered;
   const visibleModels=selectedInstance?.models??(form.model_id?[{id:form.model_id,label:`${form.model_id} (saved)`}]:[]);
   const selectedModel=visibleModels.find(model=>model.id===form.model_id);
-  const visibleModes=selectedInstance?.modes.filter(mode=>!selectedModel?.supportedModeIds||selectedModel.supportedModeIds.includes(mode.id))??[];
-  const requiresExplicitMode=selectedInstance?.type==='antigravity'||selectedInstance?.type==='claude';
   return <>
     {error&&<Alert tone="error">Harness catalog unavailable: {error}. The saved selection was not changed.</Alert>}
     <div className={styles['harness-grid']}>
       <HarnessInstancePicker instances={visibleInstances} value={form.harness_instance_id} onChange={instance=>onChange(selectHarnessInstance(form,instance))}/>
       <ModelPicker models={visibleModels} value={form.model_id} onChange={modelId=>onChange(selectHarnessModel(form,modelId,selectedInstance))}/>
-      {selectedInstance&&visibleModes.length>0&&<label>Mode<Select aria-label="Harness mode" value={form.mode_id??''} onChange={event=>onChange({...form,mode_id:event.target.value||null})}>{requiresExplicitMode?(form.mode_id===null&&<option value="" disabled>Select a mode</option>):selectedInstance.type!=='codex'&&<option value="">Default</option>}{visibleModes.map(mode=><option key={mode.id} value={mode.id}>{mode.label??mode.id}</option>)}</Select></label>}
+      {selectedInstance&&selectedInstance.controls.permissionProfiles.length>0&&<label>Permissions<Select aria-label="Permission profile" value={form.permission_profile_id??''} onChange={event=>onChange({...form,permission_profile_id:event.target.value||null})}>{selectedInstance.controls.permissionProfiles.map(item=><option key={item.id} value={item.id}>{item.label??item.id}</option>)}</Select></label>}
+      {selectedInstance&&selectedInstance.controls.agentVariants.length>0&&<label>Agent variant<Select aria-label="Agent variant" value={form.agent_variant_id??''} onChange={event=>onChange({...form,agent_variant_id:event.target.value||null})}>{selectedInstance.controls.agentVariants.map(item=><option key={item.id} value={item.id}>{item.label??item.id}</option>)}</Select></label>}
     </div>
-    {form.harness_instance_id&&<details className={styles['model-technical']}><summary>Technical parameters</summary><p><b>Instance:</b> {form.harness_instance_id} · <b>Type:</b> {form.harness_type}</p><p><b>Model:</b> {(selectedModel?.label??form.model_id)||'unavailable'}{form.mode_id&&<> · <b>Mode:</b> {form.mode_id}</>}</p></details>}
+    {form.harness_instance_id&&<details className={styles['model-technical']}><summary>Technical parameters</summary><p><b>Instance:</b> {form.harness_instance_id} · <b>Type:</b> {form.harness_type}</p><p><b>Model:</b> {(selectedModel?.label??form.model_id)||'unavailable'}{form.permission_profile_id&&<> · <b>Permissions:</b> {form.permission_profile_id}</>}{form.agent_variant_id&&<> · <b>Variant:</b> {form.agent_variant_id}</>}</p></details>}
   </>;
 }
 
@@ -198,9 +197,12 @@ export function PersonasScreen({
       setSaveError('Select an available model for the chosen harness.');
       return false;
     }
-    const model=instance.models.find(model=>model.id===form.model_id);
-    if (form.mode_id && (!instance.modes.some(mode=>mode.id===form.mode_id)||(model?.supportedModeIds&&!model.supportedModeIds.includes(form.mode_id)))) {
-      setSaveError('The selected mode is no longer supported by this harness.');
+    if (form.permission_profile_id && !instance.controls.permissionProfiles.some(item=>item.id===form.permission_profile_id)) {
+      setSaveError('The selected permission profile is no longer supported by this harness.');
+      return false;
+    }
+    if (form.agent_variant_id && !instance.controls.agentVariants.some(item=>item.id===form.agent_variant_id)) {
+      setSaveError('The selected agent variant is no longer supported by this harness.');
       return false;
     }
     setSaving(true);

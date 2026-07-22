@@ -16,7 +16,13 @@ export class ConnectorRunAdapter implements RunGateway,RunEventStream,RunRecover
       executionId:input.executionId,
       harnessInstanceId:input.harnessInstanceId,
       modelId:input.modelId,
-      modeId:input.modeId,
+      executionProfile:{
+        workflowMode:input.executionProfile.workflowMode,
+        reasoningEffort:input.executionProfile.reasoningEffort,
+        permissionProfileId:input.executionProfile.permissionProfileId,
+        agentVariantId:input.executionProfile.agentVariantId,
+        planEnforcement:input.executionProfile.planEnforcement,
+      },
       workspace:{roomId:input.workspace.roomId,relativePath:input.workspace.relativePath},
       input:{systemPrompt:input.instructions,history:input.conversationHistory??[],message:input.input},
     });

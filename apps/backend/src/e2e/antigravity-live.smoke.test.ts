@@ -41,18 +41,18 @@ describe.sequential('Core -> Connector -> installed Antigravity live smoke', () 
 
     const catalog = await getJson(`${coreUrl}/api/v1/harnesses`) as HarnessCatalog;
     const instance = catalog.instances.find(item => item.id === 'local-antigravity');
-    expect(instance).toMatchObject({ type: 'antigravity', status: 'healthy', capabilities: ['model_catalog', 'mode_catalog'] });
+    expect(instance).toMatchObject({ type: 'antigravity', status: 'healthy', capabilities: ['model_catalog', 'execution_profiles'] });
     const modelId = process.env.AGENVYL_LIVE_AGY_MODEL?.trim() || instance?.models[0]?.id;
     if (!modelId) throw new Error('Antigravity live catalog returned no selectable model');
 
-    await selectPersona(coreUrl, modelId, 'plan');
+    await selectPersona(coreUrl, modelId, 'plan');await selectWorkflow(coreUrl,'plan');
     const textRunId = await createRun(coreUrl, 'Do not use tools. Reply with exactly AGENVYL_AGY_OK and nothing else.');
     const textRun = await waitForRun(coreUrl, textRunId, run => terminalStatuses.has(run.status));
     expect(textRun.status, safeFailure(textRun)).toBe('completed');
     expect(textRun.text).toContain('AGENVYL_AGY_OK');
-    expect(textRun).toMatchObject({ harnessInstanceId: 'local-antigravity', harnessType: 'antigravity', modelId, modeId: 'plan' });
+    expect(textRun).toMatchObject({ harnessInstanceId: 'local-antigravity', harnessType: 'antigravity', modelId, executionProfile:{workflowMode:'plan'} });
 
-    await selectPersona(coreUrl, modelId, 'accept-edits');
+    await selectPersona(coreUrl, modelId, 'accept-edits');await selectWorkflow(coreUrl,'work');
     const artifactName = '.agenvyl-agy-live-smoke';
     const editRunId = await createRun(coreUrl, `Create ${artifactName} in the current working directory containing exactly one line: agy-workspace-ok. Then reply with exactly AGENVYL_AGY_EDIT_OK.`);
     const editRun = await waitForRun(coreUrl, editRunId, run => terminalStatuses.has(run.status));
@@ -73,13 +73,14 @@ describe.sequential('Core -> Connector -> installed Antigravity live smoke', () 
 });
 
 type HarnessCatalog = { instances: Array<{ id: string; type: string; status: string; capabilities: string[]; models: Array<{ id: string }> }> };
-type TimelineRun = { id: string; status: string; text: string; harnessInstanceId?: string; harnessType?: string; modelId?: string; modeId?: string | null; error?: { code?: string; message?: string }; errorCode?: string };
+type TimelineRun = { id: string; status: string; text: string; harnessInstanceId?: string; harnessType?: string; modelId?: string; executionProfile?:{workflowMode:string}; error?: { code?: string; message?: string }; errorCode?: string };
 const terminalStatuses = new Set(['completed', 'failed', 'cancelled']);
 
-async function selectPersona(coreUrl: string, modelId: string, modeId: string) {
-  const response = await fetch(`${coreUrl}/api/v1/personas/persona-architect`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ harness_instance_id: 'local-antigravity', model_id: modelId, mode_id: modeId }) });
+async function selectPersona(coreUrl: string, modelId: string, permissionProfileId: string) {
+  const response = await fetch(`${coreUrl}/api/v1/personas/persona-architect`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ harness_instance_id: 'local-antigravity', model_id: modelId, permission_profile_id: permissionProfileId }) });
   expect(response.status, await safeResponse(response)).toBe(200);
 }
+async function selectWorkflow(coreUrl:string,workflow_mode:'plan'|'work'){const response=await fetch(`${coreUrl}/api/v1/rooms/${roomId}/execution-profile`,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({workflow_mode})});expect(response.status,await safeResponse(response)).toBe(200);}
 
 async function createRun(coreUrl: string, text: string) {
   const response = await fetch(`${coreUrl}/api/v1/rooms/${roomId}/messages`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, targets: ['architect'] }) });

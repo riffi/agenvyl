@@ -30,7 +30,7 @@ export type AdapterExecutionEvent =
 export interface ConnectorAdapter {
   readonly type: string;
   readonly capabilities: ConnectorCapability[];
-  catalog?():Promise<{models:Array<{id:string;label?:string;supportedModeIds?:string[]}>;modes:Array<{id:string;label?:string;supportedModeIds?:string[]}>}>;
+  catalog?():Promise<import('@agenvyl/connector-contract').PickCatalog>;
   start(request: AdapterStartExecutionRequest): Promise<AdapterExecution>;
   inspect(execution: AdapterExecution): Promise<{ status: ExecutionStatus }>;
   events(execution: AdapterExecution): AsyncIterable<AdapterExecutionEvent>;

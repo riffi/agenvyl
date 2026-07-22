@@ -8,7 +8,7 @@ export type HermesAdapterOptions = { baseUrl: string; token?: string; request?: 
 
 export class HermesConnectorAdapter implements ConnectorAdapter {
   readonly type = 'hermes';
-  readonly capabilities: ConnectorAdapter['capabilities'] = ['model_catalog', 'text_streaming', 'tools', 'approvals', 'usage'];
+  readonly capabilities: ConnectorAdapter['capabilities'] = ['model_catalog','execution_profiles', 'text_streaming', 'tools', 'approvals', 'usage'];
   private readonly baseUrl: string;
   private readonly token: string | undefined;
   private readonly request: typeof fetch;
@@ -27,7 +27,7 @@ export class HermesConnectorAdapter implements ConnectorAdapter {
     if(!response.ok)throw httpError('model catalog',response.status);
     if(!isRecord(body)||!Array.isArray(body.data))throw new Error('Hermes model catalog returned an invalid response');
     const models=body.data.map(item=>{if(!isRecord(item)||typeof item.id!=='string'||!item.id)throw new Error('Hermes model catalog returned an invalid response');return{id:item.id,...(typeof item.root==='string'&&item.root?{label:item.root}: {})};});
-    return{models,modes:[]};
+    return{models,controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]}};
   }
 
   async start(request: AdapterStartExecutionRequest): Promise<AdapterExecution> {

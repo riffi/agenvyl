@@ -25,4 +25,22 @@ describe('route validation contracts', () => {
     });
     await app.close();
   });
+
+  it('accepts the four answers allowed by a structured clarification request', async () => {
+    const app = await buildApp({
+      databaseUrl: testDatabaseUrl('validation_structured_answers'),
+      distPath: 'missing-dist',
+      fetch: vi.fn<typeof fetch>(),
+    });
+
+    const fourAnswers = Object.fromEntries(Array.from({ length: 4 }, (_, index) => [`question-${index + 1}`, ['answer']]));
+    const accepted = await app.inject({ method:'POST',url:'/api/v1/runs/missing/request',payload:{answers:fourAnswers} });
+    const rejected = await app.inject({ method:'POST',url:'/api/v1/runs/missing/request',payload:{answers:{...fourAnswers,'question-5':['answer']}} });
+
+    expect(accepted.statusCode).toBe(404);
+    expect(accepted.json()).toMatchObject({ error:'not_found' });
+    expect(rejected.statusCode).toBe(400);
+    expect(rejected.json()).toMatchObject({ error:'validation_error' });
+    await app.close();
+  });
 });

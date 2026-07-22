@@ -6,6 +6,7 @@ import { FakeRoomGateway, type DemoKind, type RoomGateway } from '../../features
 import { activeMentionQuery, insertMentionAt, parseMentions, removeMentionTarget, type ComposerAttachment } from '../../features/send-message';
 import { ApiError } from '../../shared/api';
 import { Alert, Button, TextArea } from '../../shared/ui';
+import type {RoomExecutionState,UpdateRoomExecutionProfileRequest} from '@agenvyl/contracts';
 import styles from './Composer.module.css';
 
 function highlightMentions(text:string,personas:readonly Persona[]):ReactNode[] {
@@ -41,6 +42,9 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   removeAttachment,
   retryAttachment,
   clearAttachments,
+  executionState={profile:{workflow_mode:'work',reasoning_effort:null},approved_plan:null},
+  updateExecutionProfile=async()=>{},
+  clearApprovedPlan=async()=>{},
 }: ComposerProps,ref) {
   const [text, setText] = useState("");
   const editorRef=useRef<HTMLTextAreaElement>(null);
@@ -50,6 +54,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   const [mentionIndex,setMentionIndex]=useState(0);
   const [sending,setSending]=useState(false);
   const [sendError,setSendError]=useState<{message:string;messageId:string;text:string;targets:string[];attachmentVersionIds:string[]} | undefined>();
+  const [profileError,setProfileError]=useState<string>();
   useImperativeHandle(ref,()=>({insertMention:(handle:string)=>{const editor=editorRef.current,{text:next,caret}=insertMentionAt(text,handle,editor?.selectionStart??text.length,editor?.selectionEnd??text.length);if(next.length>4000)return;setText(next);setMention(undefined);requestAnimationFrame(()=>{editorRef.current?.focus();editorRef.current?.setSelectionRange(caret,caret)});}}),[text]);
   const targets = useMemo(
     () => parseMentions(text, personas),
@@ -57,18 +62,23 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   );
   const highlightedText=useMemo(()=>highlightMentions(text,personas),[text,personas]);
   const byHandle = new Map(personas.map((p) => [p.handle, p]));
+  const effortOptions=useMemo(()=>[...new Set(harnessCatalog?.instances.flatMap(instance=>instance.models.flatMap(model=>model.reasoningEfforts??[]))??[])],[harnessCatalog]);
+  const updateProfile=async(patch:UpdateRoomExecutionProfileRequest)=>{try{setProfileError(undefined);await updateExecutionProfile(patch);return true;}catch(error){setProfileError(error instanceof Error?error.message:String(error));return false;}};
+  const startImplementation=async()=>{if(!await updateProfile({workflow_mode:'work'}))return;const prompt='Implement the approved plan.';setText(prompt);requestAnimationFrame(()=>{editorRef.current?.focus();editorRef.current?.setSelectionRange(prompt.length,prompt.length)});};
+  const targetExecutionPreview=useMemo(()=>targets.map(handle=>{const persona=byHandle.get(handle),instance=harnessCatalog?.instances.find(item=>item.id===persona?.harness_instance_id),model=instance?.models.find(item=>item.id===persona?.model_id),requested=executionState.profile.reasoning_effort,effective=requested===null?model?.defaultReasoningEffort??null:model?.reasoningEfforts?.includes(requested)?requested:model?.defaultReasoningEffort??null,fallback=requested!==null&&effective!==requested,native=executionState.profile.workflow_mode==='work'||instance?.controls.nativeWorkflowModes.includes('plan'),ceiling=executionState.profile.workflow_mode==='work'&&instance?.type==='antigravity'&&instance.controls.permissionProfiles[0]?.id==='plan';return{handle,mode:executionState.profile.workflow_mode==='plan'?(native?'Native Plan':'Instruction-only Plan'):ceiling?'Work · plan-only ceiling':'Work',effort:effective??'Auto',fallback};}),[targets,byHandle,harnessCatalog,executionState.profile]);
   const mentionCandidates=useMemo(()=>[
     {handle:'all',name:'All agents',detail:'Notify every participant',color:'#4f6ef7'},
     ...personas.map(persona=>({handle:persona.handle,name:persona.name,detail:personaModelName(persona,harnessCatalog),color:persona.color})),
   ].filter(candidate=>!mention||!mention.query||candidate.handle.toLowerCase().includes(mention.query)||candidate.name.toLowerCase().includes(mention.query)||candidate.detail.toLowerCase().includes(mention.query)).slice(0,8),[harnessCatalog,mention,personas]);
   useEffect(()=>setMentionIndex(0),[mention?.query]);
-  useEffect(()=>{setText('');setMention(undefined);setSendError(undefined)},[roomId]);
+  useEffect(()=>{setText('');setMention(undefined);setSendError(undefined);setProfileError(undefined)},[roomId]);
   useEffect(()=>{const editor=editorRef.current;if(!editor)return;editor.style.height='auto';editor.style.height=`${Math.min(Math.max(editor.scrollHeight,72),220)}px`;if(mirrorRef.current){mirrorRef.current.scrollTop=editor.scrollTop;mirrorRef.current.scrollLeft=editor.scrollLeft}},[text]);
   useLayoutEffect(()=>{if(!mention||!matchMedia('(max-width: 767px)').matches)return;const position=()=>{const popover=mentionPopoverRef.current,editor=editorRef.current;if(!popover||!editor)return;popover.style.setProperty('--mention-bottom',`${Math.max(0,window.innerHeight-editor.getBoundingClientRect().top)}px`)};position();window.visualViewport?.addEventListener('resize',position);addEventListener('resize',position);return()=>{window.visualViewport?.removeEventListener('resize',position);removeEventListener('resize',position)}},[mention,text,targets.length]);
   const updateMention=(value:string,caret:number)=>setMention(activeMentionQuery(value,caret));
   const chooseMention=(handle:string)=>{if(!mention)return;const next=`${text.slice(0,mention.start)}@${handle} ${text.slice(mention.end)}`,caret=mention.start+handle.length+2;setText(next);setMention(undefined);requestAnimationFrame(()=>{editorRef.current?.focus();editorRef.current?.setSelectionRange(caret,caret)});};
   const send = async (retry=sendError) => {
-    const outgoing=retry?.text??text.trim(), outgoingTargets=retry?.targets??targets, messageId=retry?.messageId??crypto.randomUUID(),attachmentVersionIds=retry?.attachmentVersionIds??attachments.flatMap(item=>item.attachment?[item.attachment.version_id]:[]);
+    let outgoing=retry?.text??text.trim();const command=!retry?outgoing.match(/^\/(plan|work)(?:\s+([\s\S]*))?$/i):null;if(command){if(!await updateProfile({workflow_mode:command[1].toLowerCase() as 'plan'|'work'}))return;outgoing=(command[2]??'').trim();if(!outgoing){setText('');return;}}
+    const outgoingTargets=retry?.targets??parseMentions(outgoing,personas), messageId=retry?.messageId??crypto.randomUUID(),attachmentVersionIds=retry?.attachmentVersionIds??attachments.flatMap(item=>item.attachment?[item.attachment.version_id]:[]);
     if ((!outgoing&&!attachmentVersionIds.length) || !catalogReady || sending || (!retry&&attachmentsBusy))return;
     setSending(true);setSendError(undefined);
     try{await gateway.send(outgoing,outgoingTargets,messageId,attachmentVersionIds);setText("");setMention(undefined);clearAttachments();await onSent();}
@@ -111,6 +121,8 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
         </div>
       )}
       {active > 0 && <div className={styles['active-runs']}><span><i />{active} {active===1?'agent is responding':'agents are responding'}</span><Button size="sm" variant="danger" onClick={() => void gateway.cancel()}><Square /> Stop all</Button></div>}
+      {executionState.approved_plan&&<div className={styles['approved-plan']}><span><strong>Approved plan</strong><small>@{executionState.approved_plan.agent} · {executionState.approved_plan.excerpt||'Completed plan'}</small></span><div><button type="button" onClick={()=>document.querySelector('[data-plan-approvable="true"]')?.scrollIntoView({behavior:'smooth',block:'center'})}>Replace</button><button type="button" onClick={()=>void clearApprovedPlan()}>Clear</button><button type="button" className={styles['start-implementation']} onClick={()=>void startImplementation()}>Start implementation</button></div></div>}
+      {profileError&&<Alert className={styles['send-error']} tone="error">Could not update the room execution profile: {profileError}</Alert>}
       {sendError&&<Alert className={styles['send-error']} tone="error">Failed to send: {sendError.message} <Button size="sm" variant="danger" onClick={()=>void send(sendError)} disabled={sending}>Retry</Button></Alert>}
       <div className={styles['compose-card']}>
         {attachments.length>0&&<div className={styles.attachments}>{attachments.map(item=><span key={item.id} className={[item.status==='error'?styles['attachment-error']:'',item.mimeType.startsWith('image/')&&item.attachment?styles['image-attachment']:''].filter(Boolean).join(' ')}>{item.status==='uploading'?<LoaderCircle className={styles.spinning}/>:item.mimeType.startsWith('image/')&&item.attachment?<img src={item.attachment.preview_url} alt=""/>:<FileText/>}<button type="button" disabled={!item.attachment} onClick={()=>item.attachment&&window.open(item.attachment.preview_url,'_blank')}>{item.name}</button><small>{item.status==='uploading'?`${item.progress}%`:item.status==='error'?item.error:formatBytes(item.size)}</small>{item.status==='uploading'&&<i style={{width:`${item.progress}%`}}/>}{item.status==='error'&&<button type="button" aria-label={`Retry upload ${item.name}`} onClick={()=>retryAttachment(item.id)}><RefreshCw/></button>}<button type="button" aria-label={`Remove ${item.name}`} onClick={()=>removeAttachment(item.id)}><X/></button></span>)}</div>}
@@ -122,6 +134,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
               return <button key={h} title={`Remove @${h}`} onClick={() => setText(value=>removeMentionTarget(value,h,personas))}><i style={{ background: p.color }}>{p.name[0]}</i><span>{p.name}</span><X /></button>;
             })}
           </div>
+          <div className={styles['target-preview']}>{targetExecutionPreview.map(item=><small key={item.handle}>@{item.handle}: {item.mode} · {item.effort}{item.fallback?' → fallback':''}</small>)}</div>
         </div>}
         <div className={styles['editor-wrap']}>
           {mention&&mentionCandidates.length>0&&<div ref={mentionPopoverRef} className={styles['mention-popover']} role="listbox" aria-label="Select an agent to mention">
@@ -142,7 +155,8 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
             onScroll={event=>{if(mirrorRef.current){mirrorRef.current.scrollTop=event.currentTarget.scrollTop;mirrorRef.current.scrollLeft=event.currentTarget.scrollLeft}}}
             onPaste={event=>{const files=[...event.clipboardData.items].filter(item=>item.kind==='file').flatMap(item=>{const file=item.getAsFile();return file?[file]:[]});if(files.length){event.preventDefault();uploadFiles(files)}}}
             onKeyDown={(e) => {
-              if(mention&&mentionCandidates.length&&(e.key==='ArrowDown'||e.key==='ArrowUp')){
+              if(e.key==='Tab'&&e.shiftKey&&!mention){e.preventDefault();void updateProfile({workflow_mode:executionState.profile.workflow_mode==='plan'?'work':'plan'});
+              } else if(mention&&mentionCandidates.length&&(e.key==='ArrowDown'||e.key==='ArrowUp')){
                 e.preventDefault();setMentionIndex(index=>(index+(e.key==='ArrowDown'?1:-1)+mentionCandidates.length)%mentionCandidates.length);
               } else if(mention&&mentionCandidates.length&&(e.key==='Enter'||e.key==='Tab')){
                 e.preventDefault();chooseMention(mentionCandidates[mentionIndex]?.handle??mentionCandidates[0].handle);
@@ -170,6 +184,11 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
         </Button>
         </footer>
       </div>
+      <div className={styles['execution-bar']} aria-label="Room execution profile">
+        <div className={styles['mode-switcher']}><button type="button" aria-pressed={executionState.profile.workflow_mode==='plan'} onClick={()=>void updateProfile({workflow_mode:'plan'})}>Plan</button><button type="button" aria-pressed={executionState.profile.workflow_mode==='work'} onClick={()=>void updateProfile({workflow_mode:'work'})}>Work</button></div>
+        <label>Reasoning<select aria-label="Reasoning effort" value={executionState.profile.reasoning_effort??''} onChange={event=>void updateProfile({reasoning_effort:event.target.value||null})}><option value="">Auto</option>{effortOptions.map(effort=><option key={effort} value={effort}>{effort}</option>)}</select></label>
+        <small>Shift+Tab · /plan · /work</small>
+      </div>
     </div>
   );
 });
@@ -190,6 +209,9 @@ type ComposerProps={
   removeAttachment:(id:string)=>void;
   retryAttachment:(id:string)=>void;
   clearAttachments:()=>void;
+  executionState?:RoomExecutionState;
+  updateExecutionProfile?:(profile:UpdateRoomExecutionProfileRequest)=>Promise<unknown>;
+  clearApprovedPlan?:()=>Promise<unknown>;
 };
 
 function formatBytes(value:number){if(value<1024)return`${value} B`;if(value<1024*1024)return`${(value/1024).toFixed(1)} KB`;return`${(value/1024/1024).toFixed(1)} MB`;}

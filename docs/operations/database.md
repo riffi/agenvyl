@@ -11,6 +11,25 @@ Never edit a migration that has reached a shared environment. Correct mistakes
 with a new forward-fix migration. Rollback SQL is optional because destructive
 rollback can lose data and cannot reliably reverse application traffic.
 
+### Execution-profile clean break
+
+Migration 014 removes persona/run `mode_id` values and introduces room-scoped
+Plan/Work, reasoning effort, and approved-plan snapshots. Legacy mode values are
+intentionally not translated: rooms start in `Work` with `Auto` effort, while
+persona permissions and provider agent variants must be selected again.
+
+For local development data, reset PostgreSQL before testing this protocol break:
+
+```bash
+docker compose down -v
+docker compose up -d postgres
+```
+
+This deletes the local Compose database volume. Back up any room or workspace
+data that must be retained first. Portable installations should use their normal
+uninstall/reset flow with the explicit purge option rather than deleting runtime
+directories manually.
+
 ## Backup before upgrade
 
 Create and verify a logical backup before applying migrations in a persistent

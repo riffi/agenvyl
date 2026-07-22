@@ -21,8 +21,8 @@ describe('HarnessCatalogService',()=>{
     await expect(new HarnessCatalogService(connector).catalog()).resolves.toEqual({
       connectorEpoch:'epoch-1',
       instances:[
-        {...instances.instances[0],status:'unavailable',error:{code:'catalog_unavailable',message:'Connector instance catalog is unavailable'},models:[],modes:[]},
-        {...instances.instances[1],models:connectorContractFixtures.catalog.models,modes:[]},
+        {...instances.instances[0],status:'unavailable',error:{code:'catalog_unavailable',message:'Connector instance catalog is unavailable'},models:[],controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]}},
+        {...instances.instances[1],models:connectorContractFixtures.catalog.models,controls:connectorContractFixtures.catalog.controls},
       ],
     });
   });

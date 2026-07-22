@@ -1,5 +1,5 @@
 import type { Room,TimelinePage } from '../model';
-import type {RoomWorkspace,WorkspaceEntry,WorkspaceVersion} from '@agenvyl/contracts';
+import type {RoomExecutionState,RoomWorkspace,UpdateRoomExecutionProfileRequest,WorkspaceEntry,WorkspaceVersion} from '@agenvyl/contracts';
 import { apiRequest } from '../../../shared/api';
 
 export const roomKeys = { all: ['rooms'] as const };
@@ -15,6 +15,10 @@ export const roomsApi = {
   purge:(roomId:string)=>apiRequest(`/api/v1/rooms/${encodeURIComponent(roomId)}?permanent=true`,{method:'DELETE'}),
   addParticipant: (roomId: string, personaId: string) => apiRequest(`/api/v1/rooms/${encodeURIComponent(roomId)}/participants/${encodeURIComponent(personaId)}`, { method: 'PUT' }),
   removeParticipant: (roomId: string, personaId: string) => apiRequest(`/api/v1/rooms/${encodeURIComponent(roomId)}/participants/${encodeURIComponent(personaId)}`, { method: 'DELETE' }),
+  executionState:(roomId:string,signal?:AbortSignal)=>apiRequest<RoomExecutionState>(`/api/v1/rooms/${encodeURIComponent(roomId)}/execution-state`,{signal}),
+  updateExecutionProfile:(roomId:string,profile:UpdateRoomExecutionProfileRequest)=>apiRequest<RoomExecutionState>(`/api/v1/rooms/${encodeURIComponent(roomId)}/execution-profile`,{method:'PATCH',body:profile}),
+  approvePlan:(roomId:string,runId:string)=>apiRequest<RoomExecutionState>(`/api/v1/rooms/${encodeURIComponent(roomId)}/approved-plan`,{method:'PUT',body:{run_id:runId}}),
+  clearApprovedPlan:(roomId:string)=>apiRequest<RoomExecutionState>(`/api/v1/rooms/${encodeURIComponent(roomId)}/approved-plan`,{method:'DELETE'}),
   workspace:(roomId:string,signal?:AbortSignal)=>apiRequest<RoomWorkspace>(`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace`,{signal}),
   uploadFile:(roomId:string,file:File,filePath=file.name,conflict:'fail'|'replace'|'rename'='fail',options:{signal?:AbortSignal;onProgress?:(progress:number)=>void}={})=>new Promise<{entry:WorkspaceEntry;version?:WorkspaceVersion}>((resolve,reject)=>{
     const request=new XMLHttpRequest();

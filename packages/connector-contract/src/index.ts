@@ -1,11 +1,11 @@
-export const CONNECTOR_API_VERSION = 'v1' as const;
+export const CONNECTOR_API_VERSION = 'v2' as const;
 
 export type ConnectorApiVersion = typeof CONNECTOR_API_VERSION;
 export type ConnectorStatus = 'ready' | 'degraded';
 export type ConnectorInstanceStatus = 'healthy' | 'degraded' | 'unavailable';
 export type ConnectorCapability =
   | 'model_catalog'
-  | 'mode_catalog'
+  | 'execution_profiles'
   | 'text_streaming'
   | 'reasoning'
   | 'tools'
@@ -57,15 +57,21 @@ export type ConnectorInstanceList = {
   instances: ConnectorInstance[];
 };
 
+export type ConnectorCatalogModel = { id: string; label?: string; reasoningEfforts?: string[]; defaultReasoningEffort?: string | null };
+export type ConnectorCatalogOption = { id: string; label?: string };
+export type ConnectorExecutionControls = {
+  nativeWorkflowModes: Array<'plan' | 'work'>;
+  permissionProfiles: ConnectorCatalogOption[];
+  agentVariants: ConnectorCatalogOption[];
+};
+export type PickCatalog = Pick<ConnectorCatalog, 'models' | 'controls'>;
 export type ConnectorCatalog = {
   apiVersion: ConnectorApiVersion;
   connectorEpoch: string;
   instanceId: string;
-  models: ConnectorCatalogItem[];
-  modes: ConnectorCatalogItem[];
+  models: ConnectorCatalogModel[];
+  controls: ConnectorExecutionControls;
 };
-
-export type ConnectorCatalogItem = { id: string; label?: string; supportedModeIds?: string[] };
 export type HarnessType = 'hermes' | 'opencode' | 'antigravity' | 'codex' | 'claude';
 export type ConnectorInstanceConfiguration = {
   id: string;
@@ -107,7 +113,13 @@ export type StartExecutionRequest = {
   executionId: string;
   harnessInstanceId: string;
   modelId: string;
-  modeId: string | null;
+  executionProfile: {
+    workflowMode: 'plan' | 'work';
+    reasoningEffort: string | null;
+    permissionProfileId: string | null;
+    agentVariantId: string | null;
+    planEnforcement: 'native' | 'instruction_only' | null;
+  };
   workspace: { roomId: string; relativePath: string };
   input: { systemPrompt: string; history: CanonicalConversationItem[]; message: string };
 };
@@ -158,7 +170,7 @@ export type ExecutionSnapshot = {
   harnessInstanceId: string;
   harnessType: string;
   modelId: string;
-  modeId: string | null;
+  executionProfile: StartExecutionRequest['executionProfile'];
   status: ExecutionStatus;
   cursor: number;
   earliestReplayableCursor: number;
@@ -199,28 +211,28 @@ export type ConnectorRequestCommandResult = ConnectorCommandResult & { request: 
 
 export const connectorContractFixtures = {
   health: {
-    apiVersion: 'v1', connectorEpoch: 'epoch-1', status: 'ready', startedAt: '2026-07-17T00:00:00.000Z',
+    apiVersion: 'v2', connectorEpoch: 'epoch-1', status: 'ready', startedAt: '2026-07-17T00:00:00.000Z',
     instances: { total: 1, healthy: 1, degraded: 0 },
   },
   instances: {
-    apiVersion: 'v1', connectorEpoch: 'epoch-1',
+    apiVersion: 'v2', connectorEpoch: 'epoch-1',
     instances: [{ id: 'local-hermes', type: 'hermes', status: 'healthy', capabilities: ['model_catalog', 'text_streaming', 'tools', 'approvals'] }],
   },
   catalog: {
-    apiVersion: 'v1', connectorEpoch: 'epoch-1', instanceId: 'local-hermes',
-    models: [{ id: 'sol', label: 'Sonnet' }], modes: [],
+    apiVersion: 'v2', connectorEpoch: 'epoch-1', instanceId: 'local-hermes',
+    models: [{ id: 'sol', label: 'Sonnet' }], controls: { nativeWorkflowModes: [], permissionProfiles: [], agentVariants: [] },
   },
   startExecution: {
-    executionId: 'run-1', harnessInstanceId: 'local-hermes', modelId: 'sol', modeId: null,
+    executionId: 'run-1', harnessInstanceId: 'local-hermes', modelId: 'sol', executionProfile: {workflowMode:'work',reasoningEffort:null,permissionProfileId:null,agentVariantId:null,planEnforcement:null},
     workspace: { roomId: 'room-1', relativePath: '.' },
     input: { systemPrompt: 'Be useful.', history: [{ role: 'user', content: 'Earlier' }], message: 'Continue' },
   },
   execution: {
-    apiVersion: 'v1', executionId: 'run-1', connectorEpoch: 'epoch-1', harnessInstanceId: 'local-hermes', harnessType: 'hermes',
-    modelId: 'sol', modeId: null, status: 'running', cursor: 3, earliestReplayableCursor: 1, pendingRequests: [],
+    apiVersion: 'v2', executionId: 'run-1', connectorEpoch: 'epoch-1', harnessInstanceId: 'local-hermes', harnessType: 'hermes',
+    modelId: 'sol', executionProfile: {workflowMode:'work',reasoningEffort:null,permissionProfileId:null,agentVariantId:null,planEnforcement:null}, status: 'running', cursor: 3, earliestReplayableCursor: 1, pendingRequests: [],
   },
   textEvent: {
-    apiVersion: 'v1', connectorEpoch: 'epoch-1', executionId: 'run-1', cursor: 3, occurredAt: '2026-07-17T00:00:01.000Z',
+    apiVersion: 'v2', connectorEpoch: 'epoch-1', executionId: 'run-1', cursor: 3, occurredAt: '2026-07-17T00:00:01.000Z',
     type: 'output.text.delta', payload: { text: 'Hello' },
   },
 } as const satisfies {
@@ -249,8 +261,8 @@ export function isConnectorInstanceList(value: unknown): value is ConnectorInsta
 
 export function isConnectorCatalog(value: unknown): value is ConnectorCatalog {
   return isRecord(value) && value.apiVersion === CONNECTOR_API_VERSION && strings(value, 'connectorEpoch', 'instanceId')
-    && Array.isArray(value.models) && value.models.every(isCatalogItem)
-    && Array.isArray(value.modes) && value.modes.every(isCatalogItem);
+    && Array.isArray(value.models) && value.models.every(isCatalogModel)
+    && isExecutionControls(value.controls);
 }
 
 export function isConnectorDiscovery(value: unknown): value is ConnectorDiscovery {
@@ -302,7 +314,7 @@ export function isConnectorRequestCommandResult(value:unknown):value is Connecto
 
 export function isExecutionSnapshot(value: unknown): value is ExecutionSnapshot {
   if (!isRecord(value) || value.apiVersion !== CONNECTOR_API_VERSION || !strings(value, 'executionId', 'connectorEpoch', 'harnessInstanceId', 'harnessType', 'modelId', 'status')) return false;
-  return executionStatuses.has(String(value.status)) && (value.modeId === null || typeof value.modeId === 'string') && integers(value, 'cursor', 'earliestReplayableCursor')
+  return executionStatuses.has(String(value.status)) && isExecutionProfile(value.executionProfile) && integers(value, 'cursor', 'earliestReplayableCursor')
     && Number(value.earliestReplayableCursor) <= Number(value.cursor) + 1 && Array.isArray(value.pendingRequests) && value.pendingRequests.every(isRequest)
     && (value.usage === undefined || isTokenUsage(value.usage))
     && (value.upstreamStatus === undefined || isUpstreamStatus(value.upstreamStatus))
@@ -310,7 +322,7 @@ export function isExecutionSnapshot(value: unknown): value is ExecutionSnapshot 
 }
 
 export function isStartExecutionRequest(value: unknown): value is StartExecutionRequest {
-  if (!isRecord(value) || !strings(value, 'executionId', 'harnessInstanceId', 'modelId') || (value.modeId !== null && typeof value.modeId !== 'string')) return false;
+  if (!isRecord(value) || !strings(value, 'executionId', 'harnessInstanceId', 'modelId') || !isExecutionProfile(value.executionProfile)) return false;
   if (!isRecord(value.workspace) || !strings(value.workspace, 'roomId', 'relativePath')) return false;
   if (!isRecord(value.input) || !strings(value.input, 'systemPrompt', 'message') || !Array.isArray(value.input.history)) return false;
   return value.input.history.every(item => isRecord(item) && (item.role === 'user' || item.role === 'assistant') && typeof item.content === 'string');
@@ -342,7 +354,7 @@ export function isConnectorExecutionEvent(value: unknown): value is ConnectorExe
   }
 }
 
-const capabilities = new Set<string>(['model_catalog', 'mode_catalog', 'text_streaming', 'reasoning', 'tools', 'approvals', 'clarifications', 'usage']);
+const capabilities = new Set<string>(['model_catalog', 'execution_profiles', 'text_streaming', 'reasoning', 'tools', 'approvals', 'clarifications', 'usage']);
 const harnessTypes = new Set<string>(['hermes', 'opencode', 'antigravity', 'codex', 'claude']);
 const executionStatuses = new Set<string>(['queued', 'running', 'waiting_for_user', 'stopping', 'completed', 'failed', 'cancelled']);
 const requestResolutions = new Set<string>(['answered', 'declined', 'cancelled', 'expired', 'superseded']);
@@ -356,7 +368,15 @@ function isUpstreamStatus(value: unknown): value is UpstreamStatus {
     && (value.retryAt === undefined || isIsoDate(value.retryAt))
     && (value.message === undefined || typeof value.message === 'string');
 }
-function isCatalogItem(value:unknown){return isRecord(value)&&typeof value.id==='string'&&value.id.length>0&&(value.label===undefined||typeof value.label==='string')&&(value.supportedModeIds===undefined||(Array.isArray(value.supportedModeIds)&&value.supportedModeIds.every(id=>typeof id==='string'&&id.length>0)));}
+function isCatalogOption(value:unknown):value is ConnectorCatalogOption{return isRecord(value)&&typeof value.id==='string'&&value.id.length>0&&(value.label===undefined||typeof value.label==='string');}
+function isCatalogModel(value:unknown):value is ConnectorCatalogModel{
+  if(!isRecord(value))return false;
+  return typeof value.id==='string'&&value.id.length>0&&(value.label===undefined||typeof value.label==='string')
+    &&(value.reasoningEfforts===undefined||(Array.isArray(value.reasoningEfforts)&&value.reasoningEfforts.every((item:unknown)=>typeof item==='string'&&item.length>0)))
+    &&(value.defaultReasoningEffort===undefined||value.defaultReasoningEffort===null||typeof value.defaultReasoningEffort==='string');
+}
+function isExecutionControls(value:unknown){return isRecord(value)&&Array.isArray(value.nativeWorkflowModes)&&value.nativeWorkflowModes.every(mode=>mode==='plan'||mode==='work')&&Array.isArray(value.permissionProfiles)&&value.permissionProfiles.every(isCatalogOption)&&Array.isArray(value.agentVariants)&&value.agentVariants.every(isCatalogOption);}
+function isExecutionProfile(value:unknown){return isRecord(value)&&(value.workflowMode==='plan'||value.workflowMode==='work')&&(value.reasoningEffort===null||typeof value.reasoningEffort==='string')&&(value.permissionProfileId===null||typeof value.permissionProfileId==='string')&&(value.agentVariantId===null||typeof value.agentVariantId==='string')&&(value.planEnforcement===null||value.planEnforcement==='native'||value.planEnforcement==='instruction_only');}
 function isTokenUsage(value:unknown):value is TokenUsage{
   if(!isRecord(value)||!nonNegativeInteger(value.inputTokens)||!nonNegativeInteger(value.outputTokens))return false;
   return ['totalTokens','reasoningTokens','cacheReadTokens','cacheWriteTokens'].every(key=>value[key]===undefined||nonNegativeInteger(value[key]));

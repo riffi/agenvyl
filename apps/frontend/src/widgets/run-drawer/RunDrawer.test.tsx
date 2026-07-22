@@ -4,8 +4,8 @@ import type {Persona} from '../../entities/persona';
 import type {Run} from '../../entities/run';
 import {RunDrawer} from './RunDrawer';
 
-const persona:Persona={id:'persona-1',handle:'coder',name:'Coder',role:'Code',color:'#64748b',requested_model:'current/model',effective_model:null,harness_instance_id:'current-instance',harness_type:'other',model_id:'current/model',mode_id:null,group_id:null,archived_at:null};
-const run:Run={id:'run-2',messageId:'message-1',agent:'coder',requestedModel:'provider/model-v1',harnessInstanceId:'local-opencode',harnessType:'opencode',modelId:'provider/model-v1',modeId:'build',status:'streaming',connector:{state:'active',checkpointed:true},text:'answer',tools:[],attemptNumber:2};
+const persona:Persona={id:'persona-1',handle:'coder',name:'Coder',role:'Code',color:'#64748b',requested_model:'current/model',effective_model:null,harness_instance_id:'current-instance',harness_type:'other',model_id:'current/model',permission_profile_id:null,agent_variant_id:null,group_id:null,archived_at:null};
+const run:Run={id:'run-2',messageId:'message-1',agent:'coder',requestedModel:'provider/model-v1',harnessInstanceId:'local-opencode',harnessType:'opencode',modelId:'provider/model-v1',executionProfile:{workflowMode:'work',requestedReasoningEffort:null,reasoningEffort:null,reasoningEffortFallback:false,planEnforcement:null,permissionProfileId:null,agentVariantId:'build',approvedPlanRunId:null},status:'streaming',connector:{state:'active',checkpointed:true},text:'answer',tools:[],attemptNumber:2};
 
 describe('RunDrawer lifecycle snapshot',()=>{
   it('renders the persisted route and checkpoint when the current catalog has changed',()=>{

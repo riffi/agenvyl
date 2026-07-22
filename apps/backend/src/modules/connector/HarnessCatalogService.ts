@@ -12,11 +12,11 @@ export class HarnessCatalogService{
     try{
       const discovered=await this.connector.instances();
       const instances=await Promise.all(discovered.instances.map(async instance=>{
-        if(instance.status==='unavailable'||!instance.capabilities.some(capability=>capability==='model_catalog'||capability==='mode_catalog'))return{...instance,models:[],modes:[]};
+        if(instance.status==='unavailable'||!instance.capabilities.includes('model_catalog'))return{...instance,models:[],controls:emptyControls()};
         try{
           const catalog=await this.connector!.catalog(instance.id);
           if(catalog.connectorEpoch!==discovered.connectorEpoch||catalog.instanceId!==instance.id)throw new ConnectorCatalogIdentityError('Connector catalog identity changed during discovery');
-          return{...instance,models:catalog.models,modes:catalog.modes};
+          return{...instance,models:catalog.models,controls:catalog.controls};
         }catch(error){
           if(error instanceof ConnectorCatalogIdentityError)throw error;
           return unavailableCatalog(instance);
@@ -32,5 +32,7 @@ const unavailableCatalog=(instance:ConnectorInstance)=>({
   status:'unavailable' as const,
   error:{code:'catalog_unavailable',message:'Connector instance catalog is unavailable'},
   models:[],
-  modes:[],
+  controls:emptyControls(),
 });
+
+const emptyControls=()=>({nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]});

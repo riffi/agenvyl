@@ -179,6 +179,9 @@
     padding-block: 9px;
   }
 }
+.target-preview{display:flex;flex:1;min-width:0;gap:5px;justify-content:flex-end;flex-wrap:wrap}.target-preview small{padding:2px 5px;border-radius:5px;background:#f1f5f9;color:#64748b;font-size:9px;white-space:nowrap}
+.approved-plan{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:7px;padding:8px 10px;border:1px solid #bbf7d0;border-radius:9px;background:linear-gradient(110deg,#f0fdf4,#f8fafc);color:#166534}.approved-plan>span{display:flex;min-width:0;flex-direction:column}.approved-plan strong{font-size:11px}.approved-plan small{overflow:hidden;color:#4b5563;font-size:10px;text-overflow:ellipsis;white-space:nowrap}.approved-plan>div{display:flex;flex:none;gap:5px}.approved-plan button{padding:4px 7px;border:1px solid #bbf7d0;border-radius:6px;background:white;color:#166534;font-size:10px}.approved-plan .start-implementation{border-color:#15803d;background:#15803d;color:white}
+.execution-bar{display:flex;align-items:center;gap:9px;padding:7px 2px 0}.execution-bar>small{margin-left:auto;color:#94a3b8;font-size:9px}.execution-bar label{display:flex;align-items:center;gap:5px;color:#64748b;font-size:10px}.execution-bar select{height:28px;padding:0 22px 0 7px;border:1px solid #dbe1ea;border-radius:7px;background:white;color:#334155;font-size:10px}.mode-switcher{display:inline-flex;padding:2px;border:1px solid #dbe1ea;border-radius:8px;background:#f8fafc}.mode-switcher button{min-width:48px;padding:4px 8px;border:0;border-radius:6px;background:transparent;color:#64748b;font-size:10px;font-weight:700}.mode-switcher button[aria-pressed="true"]{background:#172554;color:white;box-shadow:0 1px 3px #0f172a26}.mode-switcher button:first-child[aria-pressed="true"]{background:#4f46e5}
 @media (max-width: 767px) {
 .composer {
     position: static;
@@ -216,6 +219,7 @@
 .targets button i { width:22px;height:22px; }
 .targets button svg { width:14px;height:14px; }
 .targets em { min-width:0; }
+.target-preview{display:none}.approved-plan{margin:6px 8px;align-items:flex-start}.approved-plan small{max-width:42vw}.approved-plan>div{flex-wrap:wrap;justify-content:flex-end}.approved-plan .start-implementation{width:100%}.execution-bar{padding:6px 8px;border-top:1px solid #eef2f7}.execution-bar>small{display:none}.execution-bar label{margin-left:auto}.execution-bar select{max-width:108px}
 .editor-wrap { min-width:0; }
 .editor,.editor-mirror { min-height:72px;padding:8px 10px; }
 .compose-card footer { min-height:0;display:flex;flex-direction:column;justify-content:flex-end;gap:6px;padding:6px 6px 10px;border-top:0;border-left:1px solid #eef2f7; }

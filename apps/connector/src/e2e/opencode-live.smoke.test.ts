@@ -16,9 +16,9 @@ describe('live OpenCode adapter', () => {
     const adapter = liveAdapter();
     const catalog = await adapter.catalog();
     expect(catalog.models.map(model => model.id)).toContain(modelId);
-    const modeId = catalog.modes.some(mode => mode.id === 'build') ? 'build' : null;
+    const agentVariantId = catalog.controls.agentVariants.some(variant => variant.id === 'build') ? 'build' : null;
     const execution = await adapter.start({
-      executionId: crypto.randomUUID(), harnessInstanceId: 'local-opencode', modelId, modeId,
+      executionId: crypto.randomUUID(), harnessInstanceId: 'local-opencode', modelId, executionProfile:{workflowMode:'work',reasoningEffort:null,permissionProfileId:null,agentVariantId,planEnforcement:null},
       workspace: { roomId: 'live-room', relativePath: '.', absolutePath: workspace },
       input: {
         systemPrompt: 'Follow the user instruction precisely. Do not call tools.',
@@ -121,7 +121,7 @@ function liveAdapter() {
 
 function startRequest(message: string) {
   return {
-    executionId: crypto.randomUUID(), harnessInstanceId: 'local-opencode', modelId, modeId: 'build',
+    executionId: crypto.randomUUID(), harnessInstanceId: 'local-opencode', modelId, executionProfile:{workflowMode:'work' as const,reasoningEffort:null,permissionProfileId:null,agentVariantId:'build',planEnforcement:null},
     workspace: { roomId: 'live-room', relativePath: '.', absolutePath: workspace },
     input: { systemPrompt: 'Follow the user instruction precisely.', history: [], message },
   };

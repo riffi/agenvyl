@@ -7,11 +7,11 @@ import type {HarnessCatalog} from '../../entities/harness';
 import type {Persona} from '../../entities/persona';
 import {PersonasScreen} from './PersonasScreen';
 
-const active:Persona={id:'active',handle:'active',name:'Active agent',role:'Code',color:'#64748b',requested_model:'sol',harness_instance_id:'local-hermes',harness_type:'hermes',model_id:'sol',mode_id:null,group_id:null,archived_at:null};
+const active:Persona={id:'active',handle:'active',name:'Active agent',role:'Code',color:'#64748b',requested_model:'sol',harness_instance_id:'local-hermes',harness_type:'hermes',model_id:'sol',permission_profile_id:null,agent_variant_id:null,group_id:null,archived_at:null};
 const archived:Persona={...active,id:'archived',handle:'archived',name:'Archived agent',harness_instance_id:'local-opencode',harness_type:'opencode',archived_at:'2026-07-20T00:00:00.000Z'};
 const catalog:HarnessCatalog={connectorEpoch:'epoch',instances:[
-  {id:'local-hermes',type:'hermes',status:'healthy',capabilities:[],models:[{id:'sol'}],modes:[]},
-  {id:'local-opencode',type:'opencode',status:'healthy',capabilities:[],models:[{id:'sol'}],modes:[]},
+  {id:'local-hermes',type:'hermes',status:'healthy',capabilities:[],models:[{id:'sol'}],controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]}},
+  {id:'local-opencode',type:'opencode',status:'healthy',capabilities:[],models:[{id:'sol'}],controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[],agentVariants:[]}},
 ]};
 
 describe('persona harness display',()=>{

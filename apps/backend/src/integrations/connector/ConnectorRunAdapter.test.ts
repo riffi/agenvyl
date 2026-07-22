@@ -10,7 +10,7 @@ describe('ConnectorRunAdapter',()=>{
     const client=clientFixture(execution,streamed),adapter=new ConnectorRunAdapter(client);
     const handle=await adapter.createRun(input());
     expect(handle).toEqual({id:'run-1',checkpoint:{executionId:'run-1',connectorEpoch:'epoch-1',cursor:2}});
-    expect(client.start).toHaveBeenCalledWith({executionId:'run-1',harnessInstanceId:'local-hermes',modelId:'sol',modeId:null,workspace:{roomId:'room-1',relativePath:'.'},input:{systemPrompt:'Be useful.',history:[{role:'user',content:'Earlier'}],message:'Continue'}});
+    expect(client.start).toHaveBeenCalledWith({executionId:'run-1',harnessInstanceId:'local-hermes',modelId:'sol',executionProfile:{workflowMode:'work',reasoningEffort:null,permissionProfileId:null,agentVariantId:null,planEnforcement:null},workspace:{roomId:'room-1',relativePath:'.'},input:{systemPrompt:'Be useful.',history:[{role:'user',content:'Earlier'}],message:'Continue'}});
 
     const mappings=[];for await(const mapping of adapter.stream('run-1','local-run',new AbortController().signal))mappings.push(mapping);
     expect(client.events).toHaveBeenCalledWith('run-1',expect.objectContaining({after:2,connectorEpoch:'epoch-1'}));
@@ -64,6 +64,6 @@ describe('ConnectorRunAdapter',()=>{
   });
 });
 
-function input(){return{executionId:'run-1',harnessInstanceId:'local-hermes',modelId:'sol',modeId:null,workspace:{roomId:'room-1',relativePath:'.',absolutePath:'/host/private/room-1'},input:'Continue',sessionId:'session-1',instructions:'Be useful.',conversationHistory:[{role:'user' as const,content:'Earlier'}],model:'sol'};}
-function event<T extends ConnectorExecutionEvent['type']>(cursor:number,type:T,payload:Extract<ConnectorExecutionEvent,{type:T}>['payload']){return{apiVersion:'v1',connectorEpoch:'epoch-1',executionId:'run-1',cursor,occurredAt:'2026-07-17T00:00:00.000Z',type,payload} as Extract<ConnectorExecutionEvent,{type:T}>;}
+function input(){return{executionId:'run-1',harnessInstanceId:'local-hermes',modelId:'sol',executionProfile:{workflowMode:'work' as const,requestedReasoningEffort:null,reasoningEffort:null,reasoningEffortFallback:false,planEnforcement:null,permissionProfileId:null,agentVariantId:null,approvedPlanRunId:null},workspace:{roomId:'room-1',relativePath:'.',absolutePath:'/host/private/room-1'},input:'Continue',sessionId:'session-1',instructions:'Be useful.',conversationHistory:[{role:'user' as const,content:'Earlier'}],model:'sol'};}
+function event<T extends ConnectorExecutionEvent['type']>(cursor:number,type:T,payload:Extract<ConnectorExecutionEvent,{type:T}>['payload']){return{apiVersion:'v2',connectorEpoch:'epoch-1',executionId:'run-1',cursor,occurredAt:'2026-07-17T00:00:00.000Z',type,payload} as Extract<ConnectorExecutionEvent,{type:T}>;}
 function clientFixture(execution:ExecutionSnapshot,streamed:ConnectorExecutionEvent[]):ConnectorExecutionClient{return{health:vi.fn().mockResolvedValue(connectorContractFixtures.health),inspect:vi.fn().mockResolvedValue(execution),instances:vi.fn().mockResolvedValue(connectorContractFixtures.instances),catalog:vi.fn().mockResolvedValue(connectorContractFixtures.catalog),start:vi.fn().mockResolvedValue(execution),stop:vi.fn().mockResolvedValue(execution),resolve:vi.fn(),events:vi.fn(async function*(){yield*streamed;})};}

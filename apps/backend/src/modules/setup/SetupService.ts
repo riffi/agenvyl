@@ -15,7 +15,7 @@ export class SetupService{
   constructor(private readonly database:Database,private readonly connector:HttpConnectorClient,private readonly workspaceRoot:string){}
   async state():Promise<SetupState>{
     const[row]=await this.database.sql`SELECT completed_at,locale,first_room_id FROM installation_state WHERE id=true`;
-    const [discovery,instances,configuration]=await Promise.all([this.connector.discover().catch(()=>({apiVersion:'v1' as const,candidates:[]})),this.connector.instances().catch(()=>({apiVersion:'v1' as const,connectorEpoch:'',instances:[]})),this.connector.configuration().catch(()=>({apiVersion:'v1' as const,instances:[]}))]);
+    const [discovery,instances,configuration]=await Promise.all([this.connector.discover().catch(()=>({apiVersion:'v2' as const,candidates:[]})),this.connector.instances().catch(()=>({apiVersion:'v2' as const,connectorEpoch:'',instances:[]})),this.connector.configuration().catch(()=>({apiVersion:'v2' as const,instances:[]}))]);
     const configured=new Map(configuration.instances.map(instance=>[instance.id,instance]));
     return{completed:Boolean(row.completed_at),locale:row.locale==='ru'?'ru':'en',workspaceRoot:this.workspaceRoot,...(row.first_room_id?{firstRoomId:String(row.first_room_id)}:{}),instances:instances.instances.map(instance=>({id:instance.id,type:instance.type,status:instance.status,...(instance.managed!==undefined?{managed:instance.managed}:{}),...(configured.get(instance.id)?.allowDangerFullAccess!==undefined?{allowDangerFullAccess:configured.get(instance.id)?.allowDangerFullAccess}:{}),...(configured.get(instance.id)?.allowSubscriptionOAuth!==undefined?{allowSubscriptionOAuth:configured.get(instance.id)?.allowSubscriptionOAuth}:{})})),candidates:discovery.candidates};
   }
@@ -45,7 +45,7 @@ export class SetupService{
       if(personas.length)throw new AppError('harness_instance_in_use',409,'A harness used by agents cannot be removed or change type',{instances:ids,personas:personas.map(row=>({id:String(row.id),name:String(row.name),handle:String(row.handle),harness_instance_id:String(row.harness_instance_id),archived:Boolean(row.archived_at)}))});
     }
     const restricted=current.instances.filter(instance=>instance.type==='codex'&&instance.allowDangerFullAccess&&!nextById.get(instance.id)?.allowDangerFullAccess).map(instance=>instance.id);
-    if(restricted.length){const personas=await this.database.sql`SELECT id,name,handle,harness_instance_id,mode_id,archived_at FROM personas WHERE harness_instance_id=ANY(${restricted}) AND mode_id LIKE 'danger-full-access/%' ORDER BY archived_at NULLS FIRST,name`;if(personas.length)throw new AppError('codex_danger_mode_in_use',409,'Reassign agents using danger-full-access modes before disabling full access',{instances:restricted,personas:personas.map(row=>({id:String(row.id),name:String(row.name),handle:String(row.handle),mode_id:String(row.mode_id),archived:Boolean(row.archived_at)}))});}
+    if(restricted.length){const personas=await this.database.sql`SELECT id,name,handle,harness_instance_id,permission_profile_id,archived_at FROM personas WHERE harness_instance_id=ANY(${restricted}) AND permission_profile_id='danger-full-access' ORDER BY archived_at NULLS FIRST,name`;if(personas.length)throw new AppError('codex_danger_mode_in_use',409,'Reassign agents using danger-full-access before disabling full access',{instances:restricted,personas:personas.map(row=>({id:String(row.id),name:String(row.name),handle:String(row.handle),permission_profile_id:String(row.permission_profile_id),archived:Boolean(row.archived_at)}))});}
     return this.connector.configureInstances(input);
   }
   async complete(input:CompleteSetupRequest){
@@ -60,8 +60,8 @@ export class SetupService{
       await tx`INSERT INTO rooms(id,title,created_at) VALUES(${roomId},${input.room_title.trim()},${now})`;
       const existing=await tx`SELECT id FROM personas WHERE archived_at IS NULL ORDER BY created_at`;
       if(starterRoutes.length&&!existing.length)for(const[templateIndex,template]of templates.entries()){const id=crypto.randomUUID(),versionId=crypto.randomUUID(),route=starterRoutes[templateIndex]!;
-        await tx`INSERT INTO personas(id,handle,name,role,color,requested_model,effective_model,harness_instance_id,harness_type,model_id,mode_id,current_version_id,created_at,updated_at) VALUES(${id},${template.handle},${template.name},${template.role},${template.color},${route.model_id},NULL,${route.harness_instance_id},${route.harness_type},${route.model_id},${route.mode_id},${versionId},${now},${now})`;
-        await tx`INSERT INTO persona_versions(id,persona_id,version,requested_model,system_prompt,created_at,harness_instance_id,harness_type,model_id,mode_id) VALUES(${versionId},${id},1,${route.model_id},${template.prompt},${now},${route.harness_instance_id},${route.harness_type},${route.model_id},${route.mode_id})`;
+        await tx`INSERT INTO personas(id,handle,name,role,color,requested_model,effective_model,harness_instance_id,harness_type,model_id,permission_profile_id,agent_variant_id,current_version_id,created_at,updated_at) VALUES(${id},${template.handle},${template.name},${template.role},${template.color},${route.model_id},NULL,${route.harness_instance_id},${route.harness_type},${route.model_id},${route.permission_profile_id},${route.agent_variant_id},${versionId},${now},${now})`;
+        await tx`INSERT INTO persona_versions(id,persona_id,version,requested_model,system_prompt,created_at,harness_instance_id,harness_type,model_id,permission_profile_id,agent_variant_id) VALUES(${versionId},${id},1,${route.model_id},${template.prompt},${now},${route.harness_instance_id},${route.harness_type},${route.model_id},${route.permission_profile_id},${route.agent_variant_id})`;
         await tx`INSERT INTO room_participants(room_id,persona_id) VALUES(${roomId},${id})`;
       }
       else for(const persona of existing)await tx`INSERT INTO room_participants(room_id,persona_id) VALUES(${roomId},${String(persona.id)})`;
@@ -85,5 +85,4 @@ export class SetupService{
 
 function validate(input:CompleteSetupRequest){
   if(!input||!['en','ru'].includes(input.locale)||!input.workspace_root||!input.profile?.display_name?.trim()||!/^[a-z0-9][a-z0-9_-]*$/.test(input.profile?.handle?.trim().toLowerCase()??'')||!input.room_title?.trim()||(input.route&&(!input.route.harness_instance_id||!input.route.harness_type||!input.route.model_id)))throw new AppError('invalid_setup',400,'Setup details are invalid');
-  if(input.route?.harness_type==='antigravity'&&input.route.mode_id!=='plan'&&input.route.mode_id!=='accept-edits')throw new AppError('invalid_setup',400,'AGY requires plan or accept-edits mode');
 }

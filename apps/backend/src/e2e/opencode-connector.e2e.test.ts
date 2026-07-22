@@ -151,8 +151,8 @@ describe.sequential('Core -> Connector -> OpenCode-compatible black-box gate', (
 
     const sql = connectTestDatabase(runtime.databaseUrl);
     try {
-      const [retried] = await sql`SELECT retry_of_run_id,harness_instance_id,harness_type,model_id,mode_id FROM agent_runs WHERE id=${retryId}`;
-      expect(retried).toEqual({ retry_of_run_id: sourceId, harness_instance_id: 'local-opencode', harness_type: 'opencode', model_id: 'fixture/model', mode_id: 'build' });
+      const [retried] = await sql`SELECT retry_of_run_id,harness_instance_id,harness_type,model_id,execution_profile FROM agent_runs WHERE id=${retryId}`;
+      expect(retried).toMatchObject({ retry_of_run_id: sourceId, harness_instance_id: 'local-opencode', harness_type: 'opencode', model_id: 'fixture/model', execution_profile:{workflowMode:'work',agentVariantId:'build'} });
     } finally {
       await sql.end();
     }
@@ -218,8 +218,8 @@ async function startRuntime(cleanups: Array<() => Promise<void>>, runTimeoutMs?:
 async function configureArchitect(databaseUrl: string) {
   const sql = connectTestDatabase(databaseUrl);
   try {
-    await sql`UPDATE personas SET requested_model='fixture/model',harness_instance_id='local-opencode',harness_type='opencode',model_id='fixture/model',mode_id='build' WHERE id='persona-architect'`;
-    await sql`UPDATE persona_versions SET requested_model='fixture/model',harness_instance_id='local-opencode',harness_type='opencode',model_id='fixture/model',mode_id='build' WHERE persona_id='persona-architect'`;
+    await sql`UPDATE personas SET requested_model='fixture/model',harness_instance_id='local-opencode',harness_type='opencode',model_id='fixture/model',agent_variant_id='build' WHERE id='persona-architect'`;
+    await sql`UPDATE persona_versions SET requested_model='fixture/model',harness_instance_id='local-opencode',harness_type='opencode',model_id='fixture/model',agent_variant_id='build' WHERE persona_id='persona-architect'`;
   } finally {
     await sql.end();
   }
