@@ -10,13 +10,13 @@ import { t, type MessageKey } from './messages.js';
 import { defaultLocale, loadSettings, saveSettings, type Locale } from './preferences.js';
 import { backupDatabase, doctor, getSupervisorStatus, readLogs, restoreDatabase, startSupervisor, stopSupervisor } from './runtime.js';
 import { configureConnectors, getSetupState, mergeConnectorSelection, type HarnessType, type SetupState } from './setup.js';
-import { uninstallPortable } from './uninstall.js';
+import { uninstallPortable, type UninstallStage } from './uninstall.js';
 import { availableDashboardActions, DashboardView, type DashboardAction } from './tui-dashboard.js';
 import { LanguageScreen } from './tui-language.js';
 import { BusyView, TuiFrame } from './tui-chrome.js';
-import { UninstalledScreen, UninstallingScreen, UninstallScreen, type UninstallRequest } from './tui-uninstall.js';
+import { UninstallErrorScreen, UninstalledScreen, UninstallingScreen, UninstallScreen, type UninstallRequest } from './tui-uninstall.js';
 
-type Screen = 'dashboard' | 'connectors' | 'language' | 'uninstall' | 'uninstalling' | 'uninstalled';
+type Screen = 'dashboard' | 'connectors' | 'language' | 'uninstall' | 'uninstalling' | 'uninstall-error' | 'uninstalled';
 export { availableDashboardActions, DashboardView, type DashboardAction } from './tui-dashboard.js';
 
 export async function runTui(config: SupervisorConfig, cliPath: string) {
@@ -39,6 +39,9 @@ function ControlCenter({ config, cliPath }: { config: SupervisorConfig; cliPath:
   const [technical, setTechnical] = useState('');
   const [showTechnical, setShowTechnical] = useState(false);
   const [uninstallResult, setUninstallResult] = useState<{ purge: boolean; scheduled: boolean }>();
+  const [uninstallRequest, setUninstallRequest] = useState<UninstallRequest>();
+  const [uninstallStage, setUninstallStage] = useState<UninstallStage>('stopping');
+  const [uninstallFailedStage, setUninstallFailedStage] = useState<UninstallStage>();
 
   const refresh = useCallback(async () => {
     const [settings, installation, runtime] = await Promise.all([loadSettings(config), isPortableInitialized(config), getSupervisorStatus(config)]);
@@ -87,13 +90,16 @@ function ControlCenter({ config, cliPath }: { config: SupervisorConfig; cliPath:
 
   const performUninstall = useCallback(async (request: UninstallRequest) => {
     if (!locale) return;
+    setUninstallRequest(request);
+    let currentStage: UninstallStage | undefined;
+    setUninstallStage('stopping'); setUninstallFailedStage(undefined);
     setScreen('uninstalling');
     try {
-      const result = await uninstallPortable(config, request);
+      const result = await uninstallPortable(config, request, stage => { currentStage = stage; setUninstallStage(stage); });
       setUninstallResult({ purge: result.purge, scheduled: result.scheduled });
       setScreen('uninstalled');
     } catch (error) {
-      setMessage(t(locale, 'attention')); setTechnical(errorMessage(error)); setShowTechnical(true); setScreen('dashboard');
+      setTechnical(errorMessage(error)); setShowTechnical(false); setUninstallFailedStage(currentStage); setScreen('uninstall-error');
     }
   }, [config, locale]);
 
@@ -117,8 +123,9 @@ function ControlCenter({ config, cliPath }: { config: SupervisorConfig; cliPath:
     await saveSettings(config, settings ? { ...settings, locale: selected } : { schemaVersion: 2, locale: selected, initializedAt: new Date().toISOString(), shortcuts: [] });
     setLocale(selected); setNeedsLocale(false); setScreen('dashboard'); setMessage(t(selected, 'ready'));
   }} />;
-  if (screen === 'uninstall') return <UninstallScreen locale={locale} onBack={() => setScreen('dashboard')} onConfirm={request => { void performUninstall(request); }} />;
-  if (screen === 'uninstalling') return <UninstallingScreen locale={locale} />;
+  if (screen === 'uninstall') return <UninstallScreen locale={locale} running={status.running} onBack={() => setScreen('dashboard')} onConfirm={request => { void performUninstall(request); }} />;
+  if (screen === 'uninstalling') return <UninstallingScreen locale={locale} stage={uninstallStage} />;
+  if (screen === 'uninstall-error' && uninstallRequest) return <UninstallErrorScreen locale={locale} failedStage={uninstallFailedStage} technical={technical} showTechnical={showTechnical} onRetry={() => { void performUninstall(uninstallRequest); }} onBack={() => setScreen('dashboard')} onDetails={() => setShowTechnical(value => !value)} />;
   if (screen === 'uninstalled' && uninstallResult) return <UninstalledScreen locale={locale} {...uninstallResult} onExit={exit} />;
 
   const unhealthy = Object.values(status.health).some(value => value === 'not_ready');

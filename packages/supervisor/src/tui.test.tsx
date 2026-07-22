@@ -2,7 +2,7 @@ import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
 import { availableDashboardActions, DashboardView, type DashboardAction } from './tui.js';
 import { LanguageScreen } from './tui-language.js';
-import { UninstalledScreen } from './tui-uninstall.js';
+import { UninstallErrorScreen, UninstalledScreen, UninstallingScreen, UninstallScreen } from './tui-uninstall.js';
 
 const actions: DashboardAction[] = [{ id: 'start', label: 'start', enabled: true }, { id: 'exit', label: 'exit', enabled: true }];
 
@@ -29,6 +29,7 @@ describe('dashboard presentation', () => {
     const running = availableDashboardActions(true, { running: true, stale: false });
     expect(running.find(action => action.id === 'start')?.enabled).toBe(false);
     expect(running.find(action => action.id === 'stop')?.enabled).toBe(true);
+    expect(running.find(action => action.id === 'uninstall')?.enabled).toBe(true);
     const fresh = availableDashboardActions(false, { running: false, stale: false });
     expect(fresh[0]).toMatchObject({ id: 'install', label: 'setupAndLaunch', enabled: true });
     const failed = availableDashboardActions(true, { running: false, stale: false, failed: true });
@@ -38,6 +39,22 @@ describe('dashboard presentation', () => {
 });
 
 describe('uninstall completion', () => {
+  it('explains automatic stop and reports uninstall progress', () => {
+    const view = render(<UninstallScreen locale="ru" running onBack={() => undefined} onConfirm={() => undefined} />);
+    expect(view.lastFrame()).toContain('автоматически остановлен');
+    view.unmount();
+    const progress = render(<UninstallingScreen locale="ru" stage="stopping" />);
+    expect(progress.lastFrame()).toContain('Останавливаем Agenvyl');
+  });
+
+  it('offers retry, details and back after a stop failure', () => {
+    const onRetry = vi.fn(), onDetails = vi.fn(), onBack = vi.fn();
+    const view = render(<UninstallErrorScreen locale="en" failedStage="stopping" technical="stop timeout" showTechnical={false} onRetry={onRetry} onBack={onBack} onDetails={onDetails} />);
+    expect(view.lastFrame()).toContain('removal did not begin');
+    view.stdin.write('r'); view.stdin.write('d'); view.stdin.write('q');
+    expect(onRetry).toHaveBeenCalled(); expect(onDetails).toHaveBeenCalled(); expect(onBack).toHaveBeenCalled();
+  });
+
   it('confirms uninstall and explains preserved data', () => {
     const onExit = vi.fn();
     const view = render(<UninstalledScreen locale="ru" purge={false} scheduled onExit={onExit} />);

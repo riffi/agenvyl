@@ -45,6 +45,7 @@
     "smoke:opencode:live": "npm run build:contracts && vitest run apps/connector/src/e2e/opencode-live.smoke.test.ts",
     "smoke:antigravity:live": "npm run build:contracts && vitest run apps/backend/src/e2e/antigravity-live.smoke.test.ts",
     "bundle": "node scripts/build-runtime-bundle.mjs",
+    "install:local:windows": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install-local-windows.ps1",
     "verify:bundle": "node scripts/verify-portable-bundle.mjs",
     "release:manifest": "node scripts/release-manifest.mjs",
     "postgres:runtime:build": "node scripts/build-postgres-runtime.mjs",

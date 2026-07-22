@@ -19,6 +19,20 @@ describe.skipIf(process.platform !== 'win32')('PowerShell installer integration'
     expect(invocations).toContain('setup --all');
     await expect(stat(join(root.installRoot, '0.1.0', 'manifest.json'))).resolves.toBeTruthy();
   }, 15_000);
+
+  it('installs a locally built archive through the production installer', async () => {
+    const root = await fixture(); roots.push(root.path);
+    const result = spawnSync('powershell.exe', [
+      '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+      '-File', resolve('scripts/install-local-windows.ps1'),
+      '-ArchivePath', root.archive, '-InstallRoot', root.installRoot, '-NoPath', '-NoLaunch',
+    ], { encoding: 'utf8', env: { ...process.env, LOCALAPPDATA: root.localAppData, AGENVYL_INIT_LOG: root.initLog } });
+    expect(result.status, result.stderr).toBe(0);
+    const invocations = await readFile(root.initLog, 'utf8');
+    expect(invocations).toContain('init --locale en --shortcuts recommended --path none');
+    expect(invocations).not.toContain('setup --all');
+    await expect(stat(join(root.installRoot, '0.1.0', 'manifest.json'))).resolves.toBeTruthy();
+  }, 15_000);
 });
 
 async function fixture() {
@@ -33,5 +47,5 @@ async function fixture() {
   if (zip.status !== 0) throw new Error(zip.stderr);
   const bytes = await readFile(archive), sha = createHash('sha256').update(bytes).digest('hex');
   await writeFile(join(downloads, 'agenvyl-release.txt'), `agenvyl-release-index-v1\nversion\t0.1.0\nchannel\tpreview\ntarget\twindows-x64\t${filename}\tzip\t${bytes.length}\t${sha}\thttps://fixture.test/${filename}\n`);
-  return { path, downloads, installRoot, localAppData, initLog };
+  return { path, downloads, installRoot, localAppData, initLog, archive };
 }

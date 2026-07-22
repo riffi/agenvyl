@@ -216,6 +216,7 @@ The README covers the normal product journey. Technical and operator details
 live in focused guides:
 
 - [Portable runtime, backups, restore, and uninstall](docs/operations/portable-runtime.md)
+- [Build and test the Windows installer locally](docs/operations/windows-local-installer.md)
 - [Connecting Hermes, OpenCode, and AGY](docs/operations/connector.md)
 - [Architecture](docs/architecture/overview.md)
 - [Runtime operations](docs/operations/runtime.md)

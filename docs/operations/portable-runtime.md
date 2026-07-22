@@ -120,6 +120,27 @@ npm run bundle
 npm run verify:bundle -- artifacts/portable/<archive>
 ```
 
+On Windows, install the freshly built archive through the production
+`install.ps1` flow without publishing it to GitHub:
+
+```powershell
+npm run bundle
+npm run install:local:windows
+```
+
+The local adapter generates a temporary equivalent release index for the ZIP
+and invokes the production installer unchanged. Its defaults therefore update
+the normal user PATH and shortcuts and run `setup --all`, just like a published
+installation. For an isolated or unattended probe, pass installer controls
+after `--`:
+
+```powershell
+npm run install:local:windows -- -NoPath -NoLaunch -InstallRoot C:\temp\agenvyl-versions
+```
+
+See [Build and test the Windows installer locally](windows-local-installer.md)
+for the complete local workflow and troubleshooting notes.
+
 The builder accepts `--platform`, `--arch`, and `--postgres-artifact` for CI but
 rejects cross-assembly: the requested target must match the native runner. Node
 downloads are checked against pinned official SHA-256 values. PostgreSQL payload

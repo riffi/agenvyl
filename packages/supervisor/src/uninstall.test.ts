@@ -19,13 +19,22 @@ describe('portable uninstall cleanup', () => {
     const script = windowsCleanupScript(2);
     expect(script).toContain('AGENVYL_UNINSTALL_DATA_0');
     expect(script).toContain('AGENVYL_UNINSTALL_DATA_1');
-    expect(script).toContain('rmdir /s /q');
+    expect(script).toContain('Remove-Item -LiteralPath');
+  });
+
+  it('waits inside one hidden cleanup process without spawning ping windows', () => {
+    const script = windowsCleanupScript(0);
+    expect(script).toContain('Start-Sleep -Milliseconds 500');
+    expect(script).toContain('$PSScriptRoot');
+    expect(script).not.toContain('ping');
   });
 
   it('removes only the portable bundle by default', async () => {
     const fixture = await portableFixture();
     await writeFile(join(fixture.config.paths.data, 'keep.txt'), 'user data');
-    await uninstallPortable(fixture.config);
+    const stages: string[] = [];
+    await uninstallPortable(fixture.config, {}, stage => stages.push(stage));
+    expect(stages).toEqual(process.platform === 'win32' ? ['stopping', 'removing', 'scheduling'] : ['stopping', 'removing']);
     await waitForMissing(fixture.bundleRoot);
     await expect(readFile(join(fixture.config.paths.data, 'keep.txt'), 'utf8')).resolves.toBe('user data');
   });
@@ -33,7 +42,7 @@ describe('portable uninstall cleanup', () => {
   it('defers removal of the running Windows command shim', () => {
     const script = windowsCleanupScript(0, 1);
     expect(script).toContain('AGENVYL_UNINSTALL_FILE_0');
-    expect(script).toContain('del /q');
+    expect(script).toContain('Remove-Item -LiteralPath');
   });
 
   it('removes the recorded owned command while preserving user data', async () => {

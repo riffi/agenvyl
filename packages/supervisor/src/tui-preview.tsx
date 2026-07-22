@@ -6,6 +6,7 @@ import type { Locale } from './preferences.js';
 import { availableDashboardActions, DashboardView } from './tui-dashboard.js';
 import { LanguageScreen } from './tui-language.js';
 import { UninstalledScreen, UninstallingScreen, UninstallScreen } from './tui-uninstall.js';
+import type { UninstallStage } from './uninstall.js';
 
 type PreviewState = 'not-installed' | 'stopped' | 'running';
 
@@ -20,6 +21,7 @@ const PreviewDashboard = () => {
   const [screen, setScreen] = useState<'dashboard' | 'language' | 'uninstall' | 'uninstalling' | 'uninstalled'>('dashboard');
   const [busy, setBusy] = useState(false);
   const [purge, setPurge] = useState(false);
+  const [uninstallStage, setUninstallStage] = useState<UninstallStage>('stopping');
   const installed = previewState !== 'not-installed';
   const running = previewState === 'running';
   const actions = useMemo(() => availableDashboardActions(installed, { running, stale: false }), [installed, running]);
@@ -42,8 +44,8 @@ const PreviewDashboard = () => {
   };
 
   if (screen === 'language') return <LanguageScreen locale={locale} onBack={() => setScreen('dashboard')} onSelect={selected => { setLocale(selected); setScreen('dashboard'); setMessage(`PREVIEW: ${t(selected, 'language')} — ${selected.toUpperCase()}.`); }} />;
-  if (screen === 'uninstall') return <UninstallScreen locale={locale} onBack={() => setScreen('dashboard')} onConfirm={request => { setPurge(request.purge); setScreen('uninstalling'); setTimeout(() => setScreen('uninstalled'), 900); }} />;
-  if (screen === 'uninstalling') return <UninstallingScreen locale={locale} />;
+  if (screen === 'uninstall') return <UninstallScreen locale={locale} running={running} onBack={() => setScreen('dashboard')} onConfirm={request => { setPurge(request.purge); setUninstallStage('stopping'); setScreen('uninstalling'); setTimeout(() => setUninstallStage('removing'), 300); if (process.platform === 'win32') setTimeout(() => setUninstallStage('scheduling'), 600); setTimeout(() => setScreen('uninstalled'), 900); }} />;
+  if (screen === 'uninstalling') return <UninstallingScreen locale={locale} stage={uninstallStage} />;
   if (screen === 'uninstalled') return <UninstalledScreen locale={locale} purge={purge} scheduled={process.platform === 'win32'} onExit={exit} />;
 
   return <DashboardView

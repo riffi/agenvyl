@@ -40,6 +40,6 @@ export const availableDashboardActions = (installed: boolean, status: { running:
   { id: 'backup', label: 'backup', enabled: status.running },
   { id: 'restore', label: 'restore', enabled: installed && !status.running },
   { id: 'language', label: 'language', enabled: true },
-  { id: 'uninstall', label: 'uninstall', enabled: installed && !status.running },
+  { id: 'uninstall', label: 'uninstall', enabled: installed },
   { id: 'exit', label: 'exit', enabled: true },
 ];
