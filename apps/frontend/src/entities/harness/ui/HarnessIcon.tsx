@@ -3,12 +3,14 @@ import {Cable} from 'lucide-react';
 import antigravityMark from './assets/antigravity.svg';
 import hermesMark from './assets/hermes.svg';
 import opencodeMark from './assets/opencode.svg';
+import codexMark from './assets/codex.svg';
 import styles from './HarnessIcon.module.css';
 
 const harnesses:Record<string,{label:string;mark:string}>={
   antigravity:{label:'Antigravity',mark:antigravityMark},
   hermes:{label:'Hermes',mark:hermesMark},
   opencode:{label:'OpenCode',mark:opencodeMark},
+  codex:{label:'Codex',mark:codexMark},
 };
 
 export type HarnessIconProps={

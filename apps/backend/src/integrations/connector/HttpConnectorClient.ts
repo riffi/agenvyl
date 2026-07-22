@@ -1,4 +1,4 @@
-import { isConnectorCatalog, isConnectorCommandResult, isConnectorConfigurationResult, isConnectorDiscovery, isConnectorExecutionEvent, isConnectorHealth, isConnectorInstanceList, isConnectorRequestCommandResult, isExecutionSnapshot, type ConfigureConnectorInstancesRequest, type ConnectorCatalog, type ConnectorConfigurationResult, type ConnectorDiscovery, type ConnectorExecutionEvent, type ConnectorHealth, type ConnectorInstanceList, type ConnectorRequestCommandResult, type ExecutionSnapshot, type StartExecutionRequest } from '@agenvyl/connector-contract';
+import { isConnectorCatalog, isConnectorCommandResult, isConnectorConfigurationResult, isConnectorDiscovery, isConnectorExecutionEvent, isConnectorHealth, isConnectorInstanceList, isConnectorRequestCommandResult, isExecutionSnapshot, type ConfigureConnectorInstancesRequest, type ConnectorCatalog, type ConnectorConfigurationResult, type ConnectorDiscovery, type ConnectorExecutionEvent, type ConnectorHealth, type ConnectorInstanceList, type ConnectorRequestAnswer, type ConnectorRequestCommandResult, type ExecutionSnapshot, type StartExecutionRequest } from '@agenvyl/connector-contract';
 import type { ConnectorExecutionClient, ConnectorLifecycleErrorCode } from '../../modules/connector/connector.ports.js';
 import {parseSse} from '../../infrastructure/http/parseSse.js';
 
@@ -62,8 +62,8 @@ export class HttpConnectorClient implements ConnectorExecutionClient {
     return value.execution;
   }
 
-  async resolve(executionId:string,requestId:string,resolution:string):Promise<ConnectorRequestCommandResult>{
-    const value=await this.json(`/v1/executions/${encodeURIComponent(executionId)}/requests/${encodeURIComponent(requestId)}/resolve`,'POST',{resolution},'execution');
+  async resolve(executionId:string,requestId:string,answer:ConnectorRequestAnswer|string):Promise<ConnectorRequestCommandResult>{
+    const value=await this.json(`/v1/executions/${encodeURIComponent(executionId)}/requests/${encodeURIComponent(requestId)}/resolve`,'POST',typeof answer==='string'?{resolution:answer}:answer,'execution');
     if(!isConnectorRequestCommandResult(value)||value.execution.executionId!==executionId||value.request.id!==requestId)throw invalidResponse('Connector returned an invalid request resolution response');
     return value;
   }

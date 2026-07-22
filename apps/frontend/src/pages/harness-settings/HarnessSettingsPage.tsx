@@ -8,7 +8,7 @@ import {HarnessInstanceCard} from './HarnessInstanceCard';
 import {addHarnessDraft,configurationOf,sameConfiguration,validDraft,type HarnessDraft} from './harnessSettingsModel';
 import styles from './HarnessSettingsPage.module.css';
 
-const harnessTypes:Array<{type:SetupHarnessInstance['type'];label:string}>=[{type:'hermes',label:'Hermes'},{type:'opencode',label:'OpenCode'},{type:'antigravity',label:'Antigravity'}];
+const harnessTypes:Array<{type:SetupHarnessInstance['type'];label:string}>=[{type:'hermes',label:'Hermes'},{type:'opencode',label:'OpenCode'},{type:'codex',label:'Codex'},{type:'antigravity',label:'Antigravity'}];
 const message=(value:unknown)=>value instanceof Error?value.message:String(value);
 
 export const HarnessSettingsPage=()=>{

@@ -71,8 +71,8 @@ an agent.
 
 ## Bring the agents you already use
 
-Agenvyl currently connects to **Hermes**, **OpenCode**, and **Antigravity
-(AGY)**. It does not replace or reconfigure them: the harness remains the
+Agenvyl currently connects to **Hermes**, **OpenCode**, **Codex CLI**, and
+**Antigravity (AGY)**. It does not replace or reconfigure them: the harness remains the
 execution environment and keeps its own accounts, models, skills, tools, and MCP
 servers where supported. Agenvyl adds the coordination layer—rooms, mentions,
 parallel runs, a shared timeline, and a shared workspace.
@@ -80,7 +80,7 @@ parallel runs, a shared timeline, and a shared workspace.
 Agenvyl does not provide model access by itself. It discovers the models and
 modes exposed by the harnesses already authenticated on your computer.
 
-One Hermes or OpenCode installation can power several Agenvyl agents with
+One Hermes, OpenCode, or Codex installation can power several Agenvyl agents with
 different names, roles, models, and instructions.
 
 ## Quick start
@@ -185,6 +185,8 @@ manage the agent catalog, or **Workspace** to inspect the room's files.
 - Do not connect an agent you would not trust to work on the selected files.
 - AGY is never enabled automatically because it starts a separate process with
   a dangerous permission flag; enabling it requires explicit confirmation.
+- Codex defaults to workspace-write with per-action approvals. Unsandboxed
+  `danger-full-access` modes require the exact `CODEX FULL ACCESS` confirmation.
 
 <details>
 <summary><strong>Starting, stopping, and backing up Agenvyl</strong></summary>
@@ -217,7 +219,7 @@ live in focused guides:
 
 - [Portable runtime, backups, restore, and uninstall](docs/operations/portable-runtime.md)
 - [Build and test the Windows installer locally](docs/operations/windows-local-installer.md)
-- [Connecting Hermes, OpenCode, and AGY](docs/operations/connector.md)
+- [Connecting Hermes, OpenCode, Codex, and AGY](docs/operations/connector.md)
 - [Architecture](docs/architecture/overview.md)
 - [Runtime operations](docs/operations/runtime.md)
 - [Database operations](docs/operations/database.md)

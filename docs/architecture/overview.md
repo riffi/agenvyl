@@ -19,6 +19,7 @@ flowchart LR
   Connector --> Workspace
   Connector --> Hermes[Hermes HTTP]
   Connector --> OpenCode[OpenCode server]
+  Connector --> Codex[Codex app-server]
   Connector --> AGY[agy subprocess]
 ```
 
@@ -120,6 +121,7 @@ payloads are not part of the Core API.
 | --- | --- | --- |
 | Hermes | HTTP and event stream | catalog, text, tools, approvals, usage, cancel |
 | OpenCode | pinned native SDK over HTTP/SSE | catalog and modes, text/reasoning, tools, approvals, one-question clarifications, usage, cancel |
+| Codex | user-installed `codex app-server` over JSONL/JSON-RPC stdio | model-specific modes, text/reasoning, tools, approvals, structured clarifications, usage, interrupt |
 | Antigravity | fresh `agy --print` subprocess | exact model/mode catalog, final text, POSIX process-group or Windows process-tree cancel |
 
 OpenCode uses its native server and SDK because that path exposes the lifecycle

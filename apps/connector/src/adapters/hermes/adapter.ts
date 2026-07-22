@@ -99,9 +99,10 @@ export class HermesConnectorAdapter implements ConnectorAdapter {
     this.clearPending(execution.upstreamId);
   }
 
-  async resolveRequest(execution: AdapterExecution, request: import('@agenvyl/connector-contract').ConnectorRequestSnapshot, resolution: string) {
+  async resolveRequest(execution: AdapterExecution, request: import('@agenvyl/connector-contract').ConnectorRequestSnapshot, answer: import('@agenvyl/connector-contract').ConnectorRequestAnswer|string) {
     const pending = this.pendingRequests.get(request.id);
     if (!pending || pending.upstreamId !== execution.upstreamId || request.kind !== 'approval') throw new Error('Hermes approval request is not pending');
+    const resolution=typeof answer==='string'?answer:'resolution' in answer?answer.resolution:undefined;if(!resolution)throw new Error('Hermes approval requires a legacy resolution');
     const choice = normalizeApprovalChoice(resolution);
     if (request.choices?.length && !request.choices.includes(choice)) throw new Error('Hermes approval resolution is not an offered choice');
     const response = await this.request(`${this.runUrl(execution.upstreamId)}/approval`, {

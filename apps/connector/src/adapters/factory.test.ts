@@ -10,13 +10,14 @@ describe('buildConfiguredAdapters', () => {
     expect(adapters.get('local-hermes')).toMatchObject({ type: 'hermes', capabilities: ['model_catalog','text_streaming', 'tools', 'approvals', 'usage'] });
   });
 
-  it('does not load disabled or unsupported instance types', () => {
+  it('loads Codex while keeping disabled instances unloaded', () => {
     const value = config();
     value.instances = [
       { id: 'disabled-hermes', type: 'hermes', enabled: false },
       { id: 'local-codex', type: 'codex', enabled: true },
     ];
-    expect(buildConfiguredAdapters(value, { AGENVYL_CONNECTOR_HERMES_URL: 'http://localhost:8642' })).toHaveLength(0);
+    const adapters=buildConfiguredAdapters(value, { AGENVYL_CONNECTOR_HERMES_URL: 'http://localhost:8642',AGENVYL_CONNECTOR_CODEX_COMMAND:'codex-custom' });
+    expect([...adapters.keys()]).toEqual(['local-codex']);expect(adapters.get('local-codex')).toMatchObject({type:'codex'});
   });
 
   it('loads enabled OpenCode instances only when the server endpoint is configured', () => {

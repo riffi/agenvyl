@@ -18,7 +18,7 @@ export function SetupPage(){
     if(configure&&state?.firstRoomId){navigate(`/rooms/${state.firstRoomId}`,{replace:true});return;}
     const catalog=instances.length?await apiRequest<Catalog>('/api/v1/harnesses'):undefined;
     const first=catalog?.instances.find(instance=>instance.status!=='unavailable'&&instance.models.length);
-    const route:CompleteSetupRequest['route']=first?{harness_instance_id:first.id,harness_type:first.type,model_id:first.models[0].id,mode_id:first.type==='antigravity'?'plan':first.modes[0]?.id??null}:null;
+    const route:CompleteSetupRequest['route']=first?{harness_instance_id:first.id,harness_type:first.type,model_id:first.models[0].id,mode_id:first.type==='antigravity'?'plan':first.type==='codex'?'workspace-write/default':first.modes[0]?.id??null}:null;
     const result=await apiRequest<{roomId:string}>('/api/v1/setup/complete',{method:'POST',body:{locale:'en',workspace_root:state?.workspaceRoot??'',profile:{display_name:name,handle},room_title:roomTitle,route} satisfies CompleteSetupRequest});navigate(`/rooms/${result.roomId}`,{replace:true});
   }catch(issue){setError(message(issue));}finally{setBusy(false);}};
   if(configure)return null;
@@ -41,5 +41,5 @@ export function initialConnectorSelection(state:SetupState){
     agy:state.completed&&enabled.has('antigravity'),
   };
 }
-export function instanceConfig(candidate:SetupHarnessCandidate,existing?:SetupState['instances'][number]):SetupHarnessInstance{return{id:`local-${candidate.type}`,type:candidate.type,enabled:true,...(candidate.endpoint?{endpoint:candidate.endpoint.url}:{}),...(candidate.type==='opencode'&&(existing?.managed===true||!candidate.endpoint?.reachable)?{managed:true}:{}),...(candidate.type==='antigravity'?{permissionMode:'plan' as const}:{})};}
+export function instanceConfig(candidate:SetupHarnessCandidate,existing?:SetupState['instances'][number]):SetupHarnessInstance{return{id:`local-${candidate.type}`,type:candidate.type,enabled:true,...(candidate.endpoint&&candidate.type!=='codex'?{endpoint:candidate.endpoint.url}:{}),...(candidate.type==='opencode'&&(existing?.managed===true||!candidate.endpoint?.reachable)?{managed:true}:{}),...(candidate.type==='antigravity'?{permissionMode:'plan' as const}:{}),...(candidate.type==='codex'?{allowDangerFullAccess:existing?.allowDangerFullAccess??false}:{})};}
 function message(value:unknown){return value instanceof Error?value.message:'Setup failed';}

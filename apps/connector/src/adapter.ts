@@ -2,6 +2,7 @@ import type {
   ConnectorCapability,
   ConnectorError,
   ConnectorRequestSnapshot,
+  ConnectorRequestAnswer,
   ConnectorRequestResolution,
   ExecutionStatus,
   StartExecutionRequest,
@@ -29,10 +30,11 @@ export type AdapterExecutionEvent =
 export interface ConnectorAdapter {
   readonly type: string;
   readonly capabilities: ConnectorCapability[];
-  catalog?():Promise<{models:Array<{id:string;label?:string}>;modes:Array<{id:string;label?:string}>}>;
+  catalog?():Promise<{models:Array<{id:string;label?:string;supportedModeIds?:string[]}>;modes:Array<{id:string;label?:string;supportedModeIds?:string[]}>}>;
   start(request: AdapterStartExecutionRequest): Promise<AdapterExecution>;
   inspect(execution: AdapterExecution): Promise<{ status: ExecutionStatus }>;
   events(execution: AdapterExecution): AsyncIterable<AdapterExecutionEvent>;
-  resolveRequest?(execution: AdapterExecution, request: ConnectorRequestSnapshot, resolution: string): Promise<{ outcome: ConnectorRequestResolution }>;
+  resolveRequest?(execution: AdapterExecution, request: ConnectorRequestSnapshot, resolution: ConnectorRequestAnswer|string): Promise<{ outcome: ConnectorRequestResolution }>;
   stop(execution: AdapterExecution): Promise<void>;
+  close?(): Promise<void>;
 }

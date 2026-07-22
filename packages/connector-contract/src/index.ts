@@ -61,11 +61,12 @@ export type ConnectorCatalog = {
   apiVersion: ConnectorApiVersion;
   connectorEpoch: string;
   instanceId: string;
-  models: Array<{ id: string; label?: string }>;
-  modes: Array<{ id: string; label?: string }>;
+  models: ConnectorCatalogItem[];
+  modes: ConnectorCatalogItem[];
 };
 
-export type HarnessType = 'hermes' | 'opencode' | 'antigravity';
+export type ConnectorCatalogItem = { id: string; label?: string; supportedModeIds?: string[] };
+export type HarnessType = 'hermes' | 'opencode' | 'antigravity' | 'codex';
 export type ConnectorInstanceConfiguration = {
   id: string;
   type: HarnessType;
@@ -73,6 +74,7 @@ export type ConnectorInstanceConfiguration = {
   endpoint?: string;
   managed?: boolean;
   permissionMode?: 'plan' | 'accept-edits';
+  allowDangerFullAccess?: boolean;
 };
 export type HarnessDiscoveryCandidate = {
   type: HarnessType;
@@ -114,11 +116,21 @@ export type ExecutionStatus =
 
 export type ConnectorRequestKind = 'approval' | 'clarification';
 export type ConnectorRequestResolution = 'answered' | 'declined' | 'cancelled' | 'expired' | 'superseded';
+export type ConnectorQuestion = {
+  id: string;
+  header: string;
+  question: string;
+  options?: Array<{ label: string; description?: string }>;
+  isOther: boolean;
+  isSecret: boolean;
+};
 export type ConnectorRequestSnapshot = {
   id: string;
   kind: ConnectorRequestKind;
   prompt: string;
   choices?: string[];
+  questions?: ConnectorQuestion[];
+  autoResolutionMs?: number;
   resolution?: { outcome: ConnectorRequestResolution; value?: string };
 };
 
@@ -172,7 +184,8 @@ export type ConnectorExecutionEvent =
   | EventEnvelope<'execution.completed' | 'execution.cancelled', Record<string, never>>
   | EventEnvelope<'execution.failed', { error: ConnectorError }>;
 
-export type ResolveConnectorRequest = { resolution: string };
+export type ConnectorRequestAnswer = { resolution: string } | { answers: Record<string, string[]> };
+export type ResolveConnectorRequest = ConnectorRequestAnswer;
 export type ConnectorCommandResult = { execution: ExecutionSnapshot };
 export type ConnectorRequestCommandResult = ConnectorCommandResult & { request: ConnectorRequestSnapshot };
 
@@ -253,8 +266,11 @@ export function isConfigureConnectorInstancesRequest(value: unknown): value is C
       && (instance.endpoint === undefined || safeEndpoint(instance.endpoint))
       && (instance.managed === undefined || typeof instance.managed === 'boolean')
       && (instance.permissionMode === undefined || instance.permissionMode === 'plan' || instance.permissionMode === 'accept-edits')
+      && (instance.allowDangerFullAccess === undefined || typeof instance.allowDangerFullAccess === 'boolean')
       && (instance.type === 'antigravity' || instance.permissionMode === undefined)
-      && (instance.type === 'opencode' || instance.managed === undefined);
+      && (instance.type === 'opencode' || instance.managed === undefined)
+      && (instance.type !== 'codex' || instance.endpoint === undefined)
+      && (instance.type === 'codex' || instance.allowDangerFullAccess === undefined);
   });
 }
 
@@ -288,7 +304,11 @@ export function isStartExecutionRequest(value: unknown): value is StartExecution
 }
 
 export function isResolveConnectorRequest(value: unknown): value is ResolveConnectorRequest {
-  return isRecord(value) && typeof value.resolution === 'string' && value.resolution.trim().length > 0 && value.resolution.length <= 2_000;
+  if (!isRecord(value)) return false;
+  if (typeof value.resolution === 'string') return value.resolution.trim().length > 0 && value.resolution.length <= 2_000;
+  if (!isRecord(value.answers)) return false;
+  const entries=Object.entries(value.answers);
+  return entries.length>0&&entries.length<=3&&entries.every(([id,answers])=>id.length>0&&id.length<=128&&Array.isArray(answers)&&answers.length>0&&answers.length<=10&&answers.every(answer=>typeof answer==='string'&&answer.trim().length>0&&answer.length<=2_000));
 }
 
 export function isConnectorExecutionEvent(value: unknown): value is ConnectorExecutionEvent {
@@ -309,7 +329,7 @@ export function isConnectorExecutionEvent(value: unknown): value is ConnectorExe
 }
 
 const capabilities = new Set<string>(['model_catalog', 'mode_catalog', 'text_streaming', 'reasoning', 'tools', 'approvals', 'clarifications', 'usage']);
-const harnessTypes = new Set<string>(['hermes', 'opencode', 'antigravity']);
+const harnessTypes = new Set<string>(['hermes', 'opencode', 'antigravity', 'codex']);
 const executionStatuses = new Set<string>(['queued', 'running', 'waiting_for_user', 'stopping', 'completed', 'failed', 'cancelled']);
 const requestResolutions = new Set<string>(['answered', 'declined', 'cancelled', 'expired', 'superseded']);
 const upstreamStatusStates = new Set<string>(['waiting_upstream', 'retrying', 'recovered']);
@@ -322,7 +342,7 @@ function isUpstreamStatus(value: unknown): value is UpstreamStatus {
     && (value.retryAt === undefined || isIsoDate(value.retryAt))
     && (value.message === undefined || typeof value.message === 'string');
 }
-function isCatalogItem(value:unknown){return isRecord(value)&&typeof value.id==='string'&&value.id.length>0&&(value.label===undefined||typeof value.label==='string');}
+function isCatalogItem(value:unknown){return isRecord(value)&&typeof value.id==='string'&&value.id.length>0&&(value.label===undefined||typeof value.label==='string')&&(value.supportedModeIds===undefined||(Array.isArray(value.supportedModeIds)&&value.supportedModeIds.every(id=>typeof id==='string'&&id.length>0)));}
 function isTokenUsage(value:unknown):value is TokenUsage{
   if(!isRecord(value)||!nonNegativeInteger(value.inputTokens)||!nonNegativeInteger(value.outputTokens))return false;
   return ['totalTokens','reasoningTokens','cacheReadTokens','cacheWriteTokens'].every(key=>value[key]===undefined||nonNegativeInteger(value[key]));
@@ -330,8 +350,11 @@ function isTokenUsage(value:unknown):value is TokenUsage{
 function isRequest(value: unknown): value is ConnectorRequestSnapshot {
   if (!isRecord(value) || !strings(value, 'id', 'kind', 'prompt') || (value.kind !== 'approval' && value.kind !== 'clarification')) return false;
   if (value.choices !== undefined && (!Array.isArray(value.choices) || value.choices.some(choice => typeof choice !== 'string'))) return false;
+  if(value.questions!==undefined&&(!Array.isArray(value.questions)||value.questions.length<1||value.questions.length>3||!value.questions.every(isQuestion)))return false;
+  if(value.autoResolutionMs!==undefined&&(!Number.isSafeInteger(value.autoResolutionMs)||Number(value.autoResolutionMs)<0))return false;
   return value.resolution === undefined || (isRecord(value.resolution) && typeof value.resolution.outcome === 'string' && requestResolutions.has(value.resolution.outcome) && (value.resolution.value === undefined || typeof value.resolution.value === 'string'));
 }
+function isQuestion(value:unknown){return isRecord(value)&&strings(value,'id','header','question')&&typeof value.isOther==='boolean'&&typeof value.isSecret==='boolean'&&(value.options===undefined||(Array.isArray(value.options)&&value.options.every(option=>isRecord(option)&&typeof option.label==='string'&&(option.description===undefined||typeof option.description==='string'))));}
 function isRecord(value: unknown): value is Record<string, unknown> { return Boolean(value && typeof value === 'object' && !Array.isArray(value)); }
 function strings(value: Record<string, unknown>, ...keys: string[]) { return keys.every(key => typeof value[key] === 'string'); }
 function integers(value: Record<string, unknown>, ...keys: string[]) { return keys.every(key => Number.isSafeInteger(value[key]) && Number(value[key]) >= 0); }

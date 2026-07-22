@@ -1,12 +1,14 @@
 import type {
   ConnectorExecutionEvent,
   ConnectorRequestSnapshot,
+  ConnectorRequestAnswer,
   ExecutionSnapshot,
   ExecutionStatus,
   StartExecutionRequest,
   UpstreamStatus,
   TokenUsage,
 } from '@agenvyl/connector-contract';
+import {createHash} from 'node:crypto';
 import { CONNECTOR_API_VERSION } from '@agenvyl/connector-contract';
 import type { AdapterExecution, AdapterExecutionEvent, ConnectorAdapter } from './adapter.js';
 import { safeAdapterError, sanitizeAdapterEvent } from './safety.js';
@@ -42,7 +44,7 @@ type ExecutionRecord = {
   cursor: number;
   events: ConnectorExecutionEvent[];
   pendingRequests: Map<string, ConnectorRequestSnapshot>;
-  requestResolutions: Map<string, { resolution: string; promise: Promise<ConnectorRequestSnapshot> }>;
+  requestResolutions: Map<string, { answerKey: string; promise: Promise<ConnectorRequestSnapshot> }>;
   error?: { code: string; message: string };
   upstreamStatus?: UpstreamStatus;
   usage?: TokenUsage;
@@ -120,24 +122,30 @@ export class ExecutionRegistry {
     return this.snapshot(record);
   }
 
-  async resolveRequest(executionId: string, requestId: string, resolution: string): Promise<{ execution: ExecutionSnapshot; request: ConnectorRequestSnapshot }> {
+  async resolveRequest(executionId: string, requestId: string, answer: ConnectorRequestAnswer): Promise<{ execution: ExecutionSnapshot; request: ConnectorRequestSnapshot }> {
     const record = this.require(executionId);
-    const normalizedResolution = resolution.trim();
+    const normalized = normalizeRequestAnswer(answer);
+    const answerKey = stableAnswerKey(normalized);
     const existing = record.requestResolutions.get(requestId);
     if (existing) {
-      if (existing.resolution !== normalizedResolution) throw new RegistryError('request_resolution_conflict', 'Request was already resolved differently', 409);
+      if (existing.answerKey !== answerKey) throw new RegistryError('request_resolution_conflict', 'Request was already resolved differently', 409);
       const request = await existing.promise;
       return { execution: this.snapshot(record), request: structuredClone(request) };
     }
     if (terminalStatuses.has(record.status)) throw new RegistryError('execution_terminal', 'Terminal execution requests cannot be resolved', 409);
     const request = record.pendingRequests.get(requestId);
     if (!request) throw new RegistryError('request_not_found', 'Pending Connector request not found', 404);
-    if (request.kind === 'approval' && request.choices?.length && !request.choices.includes(normalizedResolution)) throw new RegistryError('invalid_resolution', 'Resolution is not one of the offered choices', 400);
+    if (request.kind === 'approval' && (!('resolution' in normalized) || (request.choices?.length && !request.choices.includes(normalized.resolution)))) throw new RegistryError('invalid_resolution', 'Resolution is not one of the offered choices', 400);
+    if (request.questions?.length) {
+      if (!('answers' in normalized)) throw new RegistryError('invalid_resolution', 'Structured clarification requires an answer map', 400);
+      const expected=request.questions.map(question=>question.id).sort(),received=Object.keys(normalized.answers).sort();
+      if(JSON.stringify(expected)!==JSON.stringify(received))throw new RegistryError('invalid_resolution','Structured clarification must answer every offered question exactly once',400);
+    }
     if (!record.upstream) throw new RegistryError('adapter_unavailable', 'Adapter execution is not available', 503);
     if (!record.adapter.resolveRequest) throw new RegistryError('request_resolution_unavailable', 'Adapter cannot resolve this request kind', 501);
 
-    const promise = this.resolveAdapterRequest(record, record.upstream, request, normalizedResolution);
-    record.requestResolutions.set(requestId, { resolution: normalizedResolution, promise });
+    const promise = this.resolveAdapterRequest(record, record.upstream, request, normalized);
+    record.requestResolutions.set(requestId, { answerKey, promise });
     try {
       const resolvedRequest = await promise;
       return { execution: this.snapshot(record), request: structuredClone(resolvedRequest) };
@@ -191,9 +199,9 @@ export class ExecutionRegistry {
     }
   }
 
-  private async resolveAdapterRequest(record: ExecutionRecord, upstream: AdapterExecution, request: ConnectorRequestSnapshot, resolution: string) {
-    const result = await record.adapter.resolveRequest!(upstream, structuredClone(request), resolution);
-    const resolvedRequest: ConnectorRequestSnapshot = { ...structuredClone(request), resolution: { outcome: result.outcome, value: resolution } };
+  private async resolveAdapterRequest(record: ExecutionRecord, upstream: AdapterExecution, request: ConnectorRequestSnapshot, answer: ConnectorRequestAnswer) {
+    const result = await record.adapter.resolveRequest!(upstream, structuredClone(request), 'resolution' in answer?answer.resolution:structuredClone(answer));
+    const resolvedRequest: ConnectorRequestSnapshot = { ...structuredClone(request), resolution: { outcome: result.outcome, ...('resolution' in answer ? { value: answer.resolution } : {}) } };
     if (terminalStatuses.has(record.status) || !record.pendingRequests.has(request.id)) return resolvedRequest;
     record.pendingRequests.delete(request.id);
     this.append(record, 'request.resolved', { requestId: request.id, outcome: result.outcome });
@@ -408,6 +416,21 @@ function stableRequestKey(request: StartExecutionRequest) {
       message: request.input.message,
     },
   });
+}
+
+function normalizeRequestAnswer(answer: ConnectorRequestAnswer): ConnectorRequestAnswer {
+  if ('resolution' in answer) {
+    const resolution = answer.resolution.trim();
+    if (!resolution) throw new RegistryError('invalid_resolution', 'Resolution must not be empty', 400);
+    return { resolution };
+  }
+  const entries = Object.entries(answer.answers).sort(([left], [right]) => left.localeCompare(right));
+  if (!entries.length) throw new RegistryError('invalid_resolution', 'Answer map must not be empty', 400);
+  return { answers: Object.fromEntries(entries.map(([id, values]) => [id, values.map(value => value.trim())])) };
+}
+
+function stableAnswerKey(answer: ConnectorRequestAnswer) {
+  return createHash('sha256').update(JSON.stringify(answer)).digest('hex');
 }
 
 function eventStream(record: ExecutionRecord, replay: ConnectorExecutionEvent[], signal?: AbortSignal): AsyncIterable<ConnectorExecutionEvent> {

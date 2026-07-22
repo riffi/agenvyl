@@ -42,7 +42,7 @@ export const firstRunnableHarness = (catalog?: HarnessCatalog) =>
   catalog?.instances.find(instance => instance.status !== 'unavailable' && instance.models.length > 0);
 
 export const defaultPersonaMode=(instance?:HarnessInstance)=>
-  instance?.type==='antigravity'&&instance.modes.some(mode=>mode.id==='plan')?'plan':null;
+  instance?.type==='antigravity'&&instance.modes.some(mode=>mode.id==='plan')?'plan':instance?.type==='codex'&&instance.modes.some(mode=>mode.id==='workspace-write/default')?'workspace-write/default':null;
 
 export const newPersonaDraft = (catalog?: HarnessCatalog): Persona => {
   const instance=firstRunnableHarness(catalog),model=instance?.models[0];
@@ -54,8 +54,12 @@ export const selectHarnessInstance = (draft: Persona, instance: HarnessInstance)
   return {...draft,harness_instance_id:instance.id,harness_type:instance.type,model_id:model?.id??'',requested_model:model?.id??null,mode_id:defaultPersonaMode(instance)};
 };
 
-export const selectHarnessModel = (draft: Persona, modelId: string): Persona =>
-  ({...draft,model_id:modelId,requested_model:modelId});
+export const selectHarnessModel = (draft: Persona, modelId: string, instance?:HarnessInstance): Persona =>{
+  const model=instance?.models.find(candidate=>candidate.id===modelId),supported=model?.supportedModeIds;
+  const current=draft.mode_id;
+  const mode=current&&(!supported||supported.includes(current))?current:supported?.includes('workspace-write/default')?'workspace-write/default':supported?.find(id=>!id.startsWith('danger-full-access/'))??supported?.[0]??current;
+  return{...draft,model_id:modelId,requested_model:modelId,mode_id:mode??null};
+};
 
 export const personaInputFromDraft = (draft: Persona): PersonaInput => ({
   handle: draft.handle.trim().replace(/^@/,'').toLowerCase(),

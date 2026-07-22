@@ -200,10 +200,12 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
     }
   }
 
-  async resolveRequest(execution: AdapterExecution, request: import('@agenvyl/connector-contract').ConnectorRequestSnapshot, resolution: string) {
+  async resolveRequest(execution: AdapterExecution, request: import('@agenvyl/connector-contract').ConnectorRequestSnapshot, response: import('@agenvyl/connector-contract').ConnectorRequestAnswer|string) {
+    const resolution=typeof response==='string'?response:'resolution' in response?response.resolution:undefined;
     if (request.kind === 'clarification') {
       const pending = this.pendingQuestions.get(request.id);
       if (!pending || pending.upstreamId !== execution.upstreamId) throw new Error('OpenCode clarification request is not pending');
+      if (!resolution) throw new Error('OpenCode clarification requires a legacy resolution');
       const answer = resolution.trim();
       if (!answer) throw new Error('OpenCode clarification resolution is empty');
       await this.client.replyQuestion({ sessionID: execution.upstreamId, requestID: pending.nativeRequestId, directory: pending.directory, answers: [[answer]], version: pending.version });
@@ -212,6 +214,7 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
     }
     const pending = this.pendingPermissions.get(request.id);
     if (!pending || pending.upstreamId !== execution.upstreamId) throw new Error('OpenCode approval request is not pending');
+    if (!resolution) throw new Error('OpenCode approval requires a legacy resolution');
     const reply = normalizeApprovalReply(resolution);
     if (request.choices?.length && !request.choices.includes(reply === 'reject' ? 'deny' : reply)) throw new Error('OpenCode approval resolution is not an offered choice');
     await this.client.replyPermission({ sessionID: execution.upstreamId, requestID: pending.nativeRequestId, directory: pending.directory, reply, version: pending.version });

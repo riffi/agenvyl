@@ -1,4 +1,4 @@
-export type HarnessCatalogItem = { id: string; label?: string };
+export type HarnessCatalogItem = { id: string; label?: string; supportedModeIds?:string[] };
 
 export type HarnessInstance = {
   id: string;

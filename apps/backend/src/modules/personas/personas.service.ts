@@ -3,7 +3,7 @@ import type {RoomRepository} from '../rooms/rooms.repository.js';
 import type {PersonaRepository} from './personas.repository.js';
 import {isValidHandle,normalizeHandle} from '../../shared/identity/handles.js';
 
-type HarnessCatalog={catalog():Promise<{instances:Array<{id:string;type:string;status:string;models:Array<{id:string}>;modes:Array<{id:string}>}>}>};
+type HarnessCatalog={catalog():Promise<{instances:Array<{id:string;type:string;status:string;models:Array<{id:string;supportedModeIds?:string[]}>;modes:Array<{id:string}>}>}>};
 type HarnessSelectionInput={requested_model?:string|null;harness_instance_id?:string;model_id?:string;mode_id?:string|null};
 type HarnessSelection={requested_model:string;harness_instance_id:string;harness_type:string;model_id:string;mode_id:string|null};
 export type CreatePersonaInput={handle?:string;name?:string;room_id?:string;role?:string;color?:string;system_prompt?:string;group_id?:string|null}&HarnessSelectionInput;
@@ -25,10 +25,12 @@ export class PersonasService{
     const catalog=await this.harnesses.catalog(),instance=catalog.instances.find(item=>item.id===instanceId);
     if(!instance)throw new AppError('unknown_harness_instance',400,'Unknown harness instance',{harnessInstanceId:instanceId});
     if(instance.status!=='healthy')throw new AppError('harness_unavailable',409,'Harness instance is unavailable',{harnessInstanceId:instanceId,status:instance.status});
-    if(!instance.models.some(model=>model.id===modelId))throw new AppError('unknown_model',400,'Unknown model',{model:modelId,harnessInstanceId:instanceId});
+    const model=instance.models.find(candidate=>candidate.id===modelId);
+    if(!model)throw new AppError('unknown_model',400,'Unknown model',{model:modelId,harnessInstanceId:instanceId});
     const modeId=input.mode_id??null;
     if(instance.type==='antigravity'&&modeId===null)throw new AppError('agy_mode_required',400,'AGY requires plan or accept-edits mode',{harnessInstanceId:instanceId});
     if(modeId!==null&&!instance.modes.some(mode=>mode.id===modeId))throw new AppError('unknown_mode',400,'Unknown harness mode',{mode:modeId,harnessInstanceId:instanceId});
+    if(modeId!==null&&model.supportedModeIds&&!model.supportedModeIds.includes(modeId))throw new AppError('unsupported_model_mode',400,'Harness mode is not supported by the selected model',{mode:modeId,model:modelId,harnessInstanceId:instanceId});
     return{requested_model:modelId,harness_instance_id:instance.id,harness_type:instance.type,model_id:modelId,mode_id:modeId};
   }
 }

@@ -85,8 +85,9 @@ export function UpstreamStatusNotice({status}:{status:UpstreamStatus}) {
   return <div className={styles['upstream-status']} role="status" aria-live="polite"><RotateCcw/><span>{text}{status.attempt!==undefined&&<small>Attempt {status.attempt}</small>}</span></div>;
 }
 
-function Request({ run, resolve }: { run: Run; resolve: (v: string) => void }) {
+function Request({ run, resolve }: { run: Run; resolve: (v: import('@agenvyl/contracts').RunRequestResolution|string) => void }) {
   const [reply, setReply] = useState("");
+  const [answers,setAnswers]=useState<Record<string,string>>({});
   if (!run.request) return null;
   return (
     <div className={`${styles.request} ${styles[run.request.kind] ?? ''}`}>
@@ -103,7 +104,10 @@ function Request({ run, resolve }: { run: Run; resolve: (v: string) => void }) {
           </Button>
           <Button size="sm" onClick={() => resolve("denied")}>Deny</Button>
         </div>
-      ) : (<>
+      ) : run.request.questions?.length ? <form className={styles['request-questions']} onSubmit={event=>{event.preventDefault();const payload=Object.fromEntries(run.request!.questions!.map(question=>[question.id,[answers[question.id]?.trim()??'']]));if(Object.values(payload).every(values=>values[0]))resolve({answers:payload});}}>
+        {run.request.questions.map(question=><fieldset key={question.id} className={styles['request-question']}><legend>{question.header}</legend><p>{question.question}</p>{question.options?.map(option=><label key={option.label}><input type="radio" name={question.id} checked={answers[question.id]===option.label} onChange={()=>setAnswers(current=>({...current,[question.id]:option.label}))}/><span>{option.label}{option.description&&<small>{option.description}</small>}</span></label>)}{(!question.options?.length||question.isOther)&&<Input type={question.isSecret?'password':'text'} autoComplete={question.isSecret?'off':undefined} value={question.options?.some(option=>option.label===answers[question.id])?'':answers[question.id]??''} onChange={event=>setAnswers(current=>({...current,[question.id]:event.target.value}))} placeholder={question.isOther?'Other…':'Your response…'}/>}</fieldset>)}
+        <Button variant="primary" size="sm">Respond</Button>
+      </form> : (<>
         {run.request.choices?.length ? <div className={styles['request-choices']}>{run.request.choices.map(choice=><Button key={choice} type="button" size="sm" onClick={()=>setReply(choice)}>{choice}</Button>)}</div> : null}
         <form
           onSubmit={(e) => {
@@ -150,7 +154,7 @@ function RunCard({
   attemptCount:number;
   previousAttempt:()=>void;
   nextAttempt:()=>void;
-  resolve: (v: string) => void;
+  resolve: (v: import('@agenvyl/contracts').RunRequestResolution|string) => void;
   collapsed:boolean;
   toggleCollapsed:()=>void;
   harnessCatalog?:HarnessCatalog;

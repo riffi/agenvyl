@@ -3,7 +3,7 @@ import { isAbsolute } from 'node:path';
 import { parse, stringify } from 'yaml';
 import { resolveAgenvylPaths } from '@agenvyl/runtime-config';
 
-export type ConnectorInstanceConfig = { id: string; type: 'hermes'|'opencode'|'antigravity'; enabled: boolean; endpoint?:string; managed?:boolean; permissionMode?:'plan'|'accept-edits' };
+export type ConnectorInstanceConfig = { id: string; type: 'hermes'|'opencode'|'antigravity'|'codex'; enabled: boolean; endpoint?:string; managed?:boolean; permissionMode?:'plan'|'accept-edits';allowDangerFullAccess?:boolean };
 export type ConnectorConfig = {
   version: 1;
   listen: { host: string; port: number };
@@ -60,16 +60,18 @@ function parseInstances(value: unknown): ConnectorInstanceConfig[] {
   const seen = new Set<string>();
   return value.map((item, index) => {
     if (!isRecord(item)) throw new Error(`instances[${index}] must be an object`);
-    exactKeys(item, ['id', 'type', 'enabled','endpoint','managed','permissionMode'], `instances[${index}]`);
+    exactKeys(item, ['id', 'type', 'enabled','endpoint','managed','permissionMode','allowDangerFullAccess'], `instances[${index}]`);
     if (typeof item.id !== 'string' || !/^[a-z0-9][a-z0-9_-]*$/.test(item.id)) throw new Error(`instances[${index}].id is invalid`);
     if (seen.has(item.id)) throw new Error(`Duplicate Connector instance id: ${item.id}`);
     seen.add(item.id);
-    if (item.type!=='hermes'&&item.type!=='opencode'&&item.type!=='antigravity') throw new Error(`instances[${index}].type is invalid`);
+    if (item.type!=='hermes'&&item.type!=='opencode'&&item.type!=='antigravity'&&item.type!=='codex') throw new Error(`instances[${index}].type is invalid`);
     if (item.enabled !== undefined && typeof item.enabled !== 'boolean') throw new Error(`instances[${index}].enabled must be boolean`);
     if(item.endpoint!==undefined&&!safeEndpoint(item.endpoint))throw new Error(`instances[${index}].endpoint is invalid`);
     if(item.managed!==undefined&&(item.type!=='opencode'||typeof item.managed!=='boolean'))throw new Error(`instances[${index}].managed is invalid`);
     if(item.permissionMode!==undefined&&(item.type!=='antigravity'||(item.permissionMode!=='plan'&&item.permissionMode!=='accept-edits')))throw new Error(`instances[${index}].permissionMode is invalid`);
-    return { id: item.id, type: item.type, enabled: item.enabled ?? true, ...(item.endpoint?{endpoint:String(item.endpoint)}:{}), ...(item.managed!==undefined?{managed:item.managed}:{}), ...(item.permissionMode?{permissionMode:item.permissionMode}:{}) };
+    if(item.allowDangerFullAccess!==undefined&&(item.type!=='codex'||typeof item.allowDangerFullAccess!=='boolean'))throw new Error(`instances[${index}].allowDangerFullAccess is invalid`);
+    if(item.type==='codex'&&item.endpoint!==undefined)throw new Error(`instances[${index}].endpoint is invalid for Codex`);
+    return { id: item.id, type: item.type, enabled: item.enabled ?? true, ...(item.endpoint?{endpoint:String(item.endpoint)}:{}), ...(item.managed!==undefined?{managed:item.managed}:{}), ...(item.permissionMode?{permissionMode:item.permissionMode}:{}),...(item.allowDangerFullAccess!==undefined?{allowDangerFullAccess:item.allowDangerFullAccess}:{}) };
   });
 }
 

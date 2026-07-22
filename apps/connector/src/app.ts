@@ -45,6 +45,8 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
     options.now,
   );
 
+  app.addHook('onClose',async()=>{await Promise.allSettled([...new Set(adapters.values())].map(adapter=>adapter.close?.()));});
+
   app.addHook('onRequest', async (request, reply) => {
     if (authorized(request, config.token)) return;
     return reply.code(401).header('www-authenticate', 'Bearer').send({ apiVersion: CONNECTOR_API_VERSION, error: 'unauthorized', message: 'Valid Connector Bearer token required' });
@@ -90,7 +92,8 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
       const configured=await options.configureInstances(instances);
       await options.persistInstances(instances);
       config.instances=instances;enabledInstances=instances.filter(instance=>instance.enabled);
-      adapters.clear();for(const [id,adapter] of configured)adapters.set(id,adapter);
+      const previousAdapters=[...new Set(adapters.values())];adapters.clear();for(const [id,adapter] of configured)adapters.set(id,adapter);
+      await Promise.allSettled(previousAdapters.filter(adapter=>![...configured.values()].includes(adapter)).map(adapter=>adapter.close?.()));
       instanceTypes.clear();for(const instance of enabledInstances)instanceTypes.set(instance.id,instance.type);
       return{apiVersion:CONNECTOR_API_VERSION,instances};
     }catch(error){app.log.error({err:error},'Connector configuration failed');await options.configureInstances(previous).catch(()=>undefined);await options.persistInstances(previous).catch(()=>undefined);return reply.code(409).send({apiVersion:CONNECTOR_API_VERSION,error:'configuration_failed',message:'Connector configuration could not be applied'});}
@@ -150,7 +153,7 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
   app.post<{ Params: { id: string; requestId: string } }>('/v1/executions/:id/requests/:requestId/resolve', async (request, reply) => {
     if (!isResolveConnectorRequest(request.body)) return error(reply, new RegistryError('invalid_request', 'Request resolution does not match Connector v1 contract', 400));
     try {
-      return await registry.resolveRequest(request.params.id, request.params.requestId, request.body.resolution);
+      return await registry.resolveRequest(request.params.id, request.params.requestId, request.body);
     } catch (caught) {
       return error(reply, caught);
     }

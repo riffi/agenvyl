@@ -102,13 +102,14 @@ export function HarnessRouteFields({form,catalog,error,onChange}:{form:Persona;c
   const visibleInstances=form.harness_instance_id&&!selectedInstance?[...discovered,{id:form.harness_instance_id,type:form.harness_type,status:'unavailable' as const,capabilities:[],models:[],modes:[]}]:discovered;
   const visibleModels=selectedInstance?.models??(form.model_id?[{id:form.model_id,label:`${form.model_id} (saved)`}]:[]);
   const selectedModel=visibleModels.find(model=>model.id===form.model_id);
+  const visibleModes=selectedInstance?.modes.filter(mode=>!selectedModel?.supportedModeIds||selectedModel.supportedModeIds.includes(mode.id))??[];
   const requiresExplicitMode=selectedInstance?.type==='antigravity';
   return <>
     {error&&<Alert tone="error">Harness catalog unavailable: {error}. The saved selection was not changed.</Alert>}
     <div className={styles['harness-grid']}>
       <HarnessInstancePicker instances={visibleInstances} value={form.harness_instance_id} onChange={instance=>onChange(selectHarnessInstance(form,instance))}/>
-      <ModelPicker models={visibleModels} value={form.model_id} onChange={modelId=>onChange(selectHarnessModel(form,modelId))}/>
-      {selectedInstance&&selectedInstance.modes.length>0&&<label>Mode<Select aria-label="Harness mode" value={form.mode_id??''} onChange={event=>onChange({...form,mode_id:event.target.value||null})}>{requiresExplicitMode?(form.mode_id===null&&<option value="" disabled>Select a mode</option>):<option value="">Default</option>}{selectedInstance.modes.map(mode=><option key={mode.id} value={mode.id}>{mode.label??mode.id}</option>)}</Select></label>}
+      <ModelPicker models={visibleModels} value={form.model_id} onChange={modelId=>onChange(selectHarnessModel(form,modelId,selectedInstance))}/>
+      {selectedInstance&&visibleModes.length>0&&<label>Mode<Select aria-label="Harness mode" value={form.mode_id??''} onChange={event=>onChange({...form,mode_id:event.target.value||null})}>{requiresExplicitMode?(form.mode_id===null&&<option value="" disabled>Select a mode</option>):selectedInstance.type!=='codex'&&<option value="">Default</option>}{visibleModes.map(mode=><option key={mode.id} value={mode.id}>{mode.label??mode.id}</option>)}</Select></label>}
     </div>
     {form.harness_instance_id&&<details className={styles['model-technical']}><summary>Technical parameters</summary><p><b>Instance:</b> {form.harness_instance_id} · <b>Type:</b> {form.harness_type}</p><p><b>Model:</b> {(selectedModel?.label??form.model_id)||'unavailable'}{form.mode_id&&<> · <b>Mode:</b> {form.mode_id}</>}</p></details>}
   </>;
@@ -197,7 +198,8 @@ export function PersonasScreen({
       setSaveError('Select an available model for the chosen harness.');
       return false;
     }
-    if (form.mode_id && !instance.modes.some(mode=>mode.id===form.mode_id)) {
+    const model=instance.models.find(model=>model.id===form.model_id);
+    if (form.mode_id && (!instance.modes.some(mode=>mode.id===form.mode_id)||(model?.supportedModeIds&&!model.supportedModeIds.includes(form.mode_id)))) {
       setSaveError('The selected mode is no longer supported by this harness.');
       return false;
     }

@@ -60,7 +60,10 @@ export const createMessageBodySchema = objectSchema({
 export const userProfileBodySchema=objectSchema({display_name:{type:'string',maxLength:120},handle:{type:'string',maxLength:80}},['display_name','handle']);
 export const userProfileResponseSchema=objectSchema({id:{type:'string'},displayName:{type:'string'},handle:{type:'string'},createdAt:{type:'string'},updatedAt:{type:'string'}},['id','displayName','handle','createdAt','updatedAt']);
 
-export const runRequestResolutionBodySchema = objectSchema({ resolution: { type: 'string' } });
+export const runRequestResolutionBodySchema = {anyOf:[
+  objectSchema({resolution:{type:'string',minLength:1,maxLength:2_000}},['resolution']),
+  objectSchema({answers:{type:'object',minProperties:1,maxProperties:3,additionalProperties:{type:'array',items:{type:'string',maxLength:2_000},maxItems:10}}},['answers']),
+]} as const;
 
 export const roomResponseSchema = objectSchema({
   id:{type:'string'},title:{type:'string'},created_at:{type:'string'},participant_count:{type:'integer'},

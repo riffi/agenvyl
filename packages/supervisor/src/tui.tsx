@@ -135,7 +135,7 @@ function ControlCenter({ config, cliPath }: { config: SupervisorConfig; cliPath:
 
 function ConnectorScreen({ config, locale, onBack }: { config: SupervisorConfig; locale: Locale; onBack: () => void }) {
   const [state, setState] = useState<SetupState>(); const [selected, setSelected] = useState<HarnessType[]>([]); const [index, setIndex] = useState(0); const [confirm, setConfirm] = useState(''); const [agyPending, setAgyPending] = useState(false); const [message, setMessage] = useState(''); const [saving, setSaving] = useState(false);
-  useEffect(() => { void getSetupState(config).then(value => { setState(value); setSelected(value.instances.filter(item => item.status !== 'unavailable').map(item => item.type).filter((item): item is HarnessType => ['hermes', 'opencode', 'antigravity'].includes(item))); }).catch(error => setMessage(errorMessage(error))); }, [config]);
+  useEffect(() => { void getSetupState(config).then(value => { setState(value); setSelected(value.instances.filter(item => item.status !== 'unavailable').map(item => item.type).filter((item): item is HarnessType => ['hermes', 'opencode', 'antigravity','codex'].includes(item))); }).catch(error => setMessage(errorMessage(error))); }, [config]);
   useInput((input, key) => {
     if (!state || saving) { if (key.escape && !saving) onBack(); return; }
     if (agyPending) {

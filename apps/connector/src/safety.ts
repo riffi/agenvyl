@@ -79,6 +79,8 @@ function sanitizeRequest(request: ConnectorRequestSnapshot): ConnectorRequestSna
     kind: request.kind,
     prompt: redactConnectorText(request.prompt) || 'Upstream requests user input',
     ...(request.choices ? { choices: request.choices.slice(0, 32).map(choice => redactConnectorText(choice, 200)).filter(Boolean) } : {}),
+    ...(request.questions ? { questions: request.questions.slice(0,3).map(question=>({id:safeIdentifier(question.id,'question'),header:redactConnectorText(question.header,128)||'Question',question:redactConnectorText(question.question,2_000)||'Codex requests input',isOther:question.isOther,isSecret:question.isSecret,...(question.options?{options:question.options.slice(0,10).map(option=>({label:redactConnectorText(option.label,300)||'Option',...(option.description?{description:redactConnectorText(option.description,500)}:{})}))}:{})})) } : {}),
+    ...(request.autoResolutionMs===undefined?{}:{autoResolutionMs:request.autoResolutionMs}),
     ...(request.resolution ? { resolution: { outcome: request.resolution.outcome, ...(request.resolution.value === undefined ? {} : { value: redactConnectorText(request.resolution.value, 2_000) }) } } : {}),
   };
 }

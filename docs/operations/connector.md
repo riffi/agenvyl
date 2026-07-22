@@ -19,7 +19,7 @@ export AGENVYL_CONNECTOR_TOKEN="$(openssl rand -hex 32)"
 
 `connector.yaml` contains only the listen address, allowed workspace roots, and
 non-secret instance definitions. Loopback endpoints, managed OpenCode state, and
-the explicit AGY permission mode may be persisted. Tokens, passwords, executable
+the explicit AGY permission mode, and the Codex full-access opt-in may be persisted. Tokens, passwords, executable
 paths, and OAuth state remain in the process environment or native harness stores.
 Unknown YAML fields are rejected.
 
@@ -100,6 +100,50 @@ External-directory permission requests are rejected at the adapter boundary.
 Batch and multi-select questions fail closed because Agenvyl cannot represent
 them safely.
 
+## Codex CLI
+
+Install Codex CLI `0.145.0` or newer and sign in using the normal user account
+(see [Codex authentication](https://developers.openai.com/codex/auth)):
+
+```bash
+npm install --global @openai/codex
+codex login
+codex --version
+codex login status
+```
+
+The default browser login uses the user's ChatGPT account and workspace, so
+app-server runs can use the Codex access included with that ChatGPT plan. API-key
+login remains a Codex CLI feature but Agenvyl does not accept or store API keys.
+The connector uses the existing `CODEX_HOME`, preserving the user's Codex config,
+skills, MCP servers, apps, and credentials.
+
+Each Codex instance owns one restartable [`codex app-server`](https://developers.openai.com/codex/app-server)
+process launched as `codex app-server --listen stdio://`
+process and multiplexes ephemeral threads over its JSONL/JSON-RPC transport.
+Agenvyl remains the canonical conversation store and sends bounded room history
+as developer context for each attempt. Override the executable without putting it
+in public YAML:
+
+```bash
+export AGENVYL_CONNECTOR_CODEX_COMMAND="$HOME/.local/bin/codex"
+```
+
+On Windows the override may point to an `.exe`, `.cmd`, or `.bat` shim. The
+connector terminates the full process tree on shutdown and restarts a crashed
+app-server on the next catalog or run request.
+
+Codex modes combine sandbox and reasoning effort. `read-only/*` and
+`workspace-write/*` use approval policy `on-request`; `danger-full-access/*`
+uses approval policy `never` and is hidden unless the instance setting is
+explicitly enabled with `CODEX FULL ACCESS`. Disable that setting only after
+reassigning all active and archived personas that use a full-access mode.
+
+Codex App Server is currently experimental. Agenvyl therefore enforces a version
+floor, validates the narrow protocol at runtime, ignores unknown notifications,
+and fails closed on unknown server requests. Agenvyl does not bundle Codex CLI or
+the Codex SDK and does not enable first-party app-server analytics.
+
 ## Antigravity / AGY
 
 Install and authenticate `agy >= 1.1.3`, trust the configured workspace root,
@@ -151,6 +195,8 @@ Deterministic fixture-based gates do not require model credentials:
 ```bash
 npm run test:e2e:hermes
 npm run test:e2e:opencode
+npm run test:codex
+npm run test:e2e:codex
 ```
 
 Live smoke tests are opt-in and require separately running harnesses, isolated
@@ -160,6 +206,7 @@ workspaces, and the documented environment variables:
 npm run smoke:hermes:live
 npm run smoke:opencode:live
 npm run smoke:antigravity:live
+npm run smoke:codex:live
 ```
 
 Never place live credentials in repository files or shared shell history.

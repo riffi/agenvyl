@@ -14,8 +14,9 @@ export class SetupService{
   constructor(private readonly database:Database,private readonly connector:HttpConnectorClient,private readonly workspaceRoot:string){}
   async state():Promise<SetupState>{
     const[row]=await this.database.sql`SELECT completed_at,locale,first_room_id FROM installation_state WHERE id=true`;
-    const [discovery,instances]=await Promise.all([this.connector.discover().catch(()=>({apiVersion:'v1' as const,candidates:[]})),this.connector.instances().catch(()=>({apiVersion:'v1' as const,connectorEpoch:'',instances:[]}))]);
-    return{completed:Boolean(row.completed_at),locale:row.locale==='ru'?'ru':'en',workspaceRoot:this.workspaceRoot,...(row.first_room_id?{firstRoomId:String(row.first_room_id)}:{}),instances:instances.instances.map(instance=>({id:instance.id,type:instance.type,status:instance.status,...(instance.managed!==undefined?{managed:instance.managed}:{})})),candidates:discovery.candidates};
+    const [discovery,instances,configuration]=await Promise.all([this.connector.discover().catch(()=>({apiVersion:'v1' as const,candidates:[]})),this.connector.instances().catch(()=>({apiVersion:'v1' as const,connectorEpoch:'',instances:[]})),this.connector.configuration().catch(()=>({apiVersion:'v1' as const,instances:[]}))]);
+    const configured=new Map(configuration.instances.map(instance=>[instance.id,instance]));
+    return{completed:Boolean(row.completed_at),locale:row.locale==='ru'?'ru':'en',workspaceRoot:this.workspaceRoot,...(row.first_room_id?{firstRoomId:String(row.first_room_id)}:{}),instances:instances.instances.map(instance=>({id:instance.id,type:instance.type,status:instance.status,...(instance.managed!==undefined?{managed:instance.managed}:{}),...(configured.get(instance.id)?.allowDangerFullAccess!==undefined?{allowDangerFullAccess:configured.get(instance.id)?.allowDangerFullAccess}:{})})),candidates:discovery.candidates};
   }
   async harnessSettings():Promise<HarnessSettingsState>{
     const[configuration,runtime,discovery,personaRows]=await Promise.all([
@@ -42,12 +43,14 @@ export class SetupService{
       const personas=await this.database.sql`SELECT id,name,handle,harness_instance_id,archived_at FROM personas WHERE harness_instance_id=ANY(${ids}) ORDER BY archived_at NULLS FIRST,name`;
       if(personas.length)throw new AppError('harness_instance_in_use',409,'A harness used by agents cannot be removed or change type',{instances:ids,personas:personas.map(row=>({id:String(row.id),name:String(row.name),handle:String(row.handle),harness_instance_id:String(row.harness_instance_id),archived:Boolean(row.archived_at)}))});
     }
+    const restricted=current.instances.filter(instance=>instance.type==='codex'&&instance.allowDangerFullAccess&&!nextById.get(instance.id)?.allowDangerFullAccess).map(instance=>instance.id);
+    if(restricted.length){const personas=await this.database.sql`SELECT id,name,handle,harness_instance_id,mode_id,archived_at FROM personas WHERE harness_instance_id=ANY(${restricted}) AND mode_id LIKE 'danger-full-access/%' ORDER BY archived_at NULLS FIRST,name`;if(personas.length)throw new AppError('codex_danger_mode_in_use',409,'Reassign agents using danger-full-access modes before disabling full access',{instances:restricted,personas:personas.map(row=>({id:String(row.id),name:String(row.name),handle:String(row.handle),mode_id:String(row.mode_id),archived:Boolean(row.archived_at)}))});}
     return this.connector.configureInstances(input);
   }
   async complete(input:CompleteSetupRequest){
     validate(input);
     if(input.workspace_root!==this.workspaceRoot)throw new AppError('invalid_workspace_root',400,'Workspace root does not match this installation');
-    if(input.route){try{const instances=await this.connector.instances(),instance=instances.instances.find(candidate=>candidate.id===input.route!.harness_instance_id&&candidate.type===input.route!.harness_type&&candidate.status!=='unavailable');if(!instance)throw new Error('missing');const catalog=await this.connector.catalog(instance.id);if(!catalog.models.some(model=>model.id===input.route!.model_id)||(input.route.mode_id!==null&&!catalog.modes.some(mode=>mode.id===input.route!.mode_id)))throw new Error('route');}catch{throw new AppError('setup_route_unavailable',400,'Selected harness route is unavailable');}}
+    if(input.route){try{const instances=await this.connector.instances(),instance=instances.instances.find(candidate=>candidate.id===input.route!.harness_instance_id&&candidate.type===input.route!.harness_type&&candidate.status!=='unavailable');if(!instance)throw new Error('missing');const catalog=await this.connector.catalog(instance.id),model=catalog.models.find(candidate=>candidate.id===input.route!.model_id);if(!model||(input.route.mode_id!==null&&(!catalog.modes.some(mode=>mode.id===input.route!.mode_id)||(model.supportedModeIds&&!model.supportedModeIds.includes(input.route.mode_id)))))throw new Error('route');}catch{throw new AppError('setup_route_unavailable',400,'Selected harness route is unavailable');}}
     const now=new Date().toISOString(),roomId=crypto.randomUUID();
     return this.database.transaction(async tx=>{
       const[state]=await tx`SELECT completed_at,first_room_id FROM installation_state WHERE id=true FOR UPDATE`;

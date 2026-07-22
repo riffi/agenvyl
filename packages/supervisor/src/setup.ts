@@ -3,10 +3,10 @@ import type { SupervisorConfig } from './config.js';
 import { openWebUi } from './browser.js';
 import { startSupervisor } from './runtime.js';
 
-export type HarnessType = 'hermes' | 'opencode' | 'antigravity';
+export type HarnessType = 'hermes' | 'opencode' | 'antigravity' | 'codex';
 export type SetupCandidate = { type: HarnessType; label: string; cli: { found: boolean; version?: string }; endpoint?: { url: string; reachable: boolean }; safeToSelect: boolean; supportsManagedServer?: boolean; warning?: string };
-export type SetupInstance = { id: string; type: HarnessType; enabled: boolean; endpoint?: string; managed?: boolean; permissionMode?: 'plan' | 'accept-edits' };
-export type SetupState = { completed: boolean; firstRoomId?: string; candidates: SetupCandidate[]; instances: Array<{ id: string; type: string; status: string; managed?: boolean }> };
+export type SetupInstance = { id: string; type: HarnessType; enabled: boolean; endpoint?: string; managed?: boolean; permissionMode?: 'plan' | 'accept-edits';allowDangerFullAccess?:boolean };
+export type SetupState = { completed: boolean; firstRoomId?: string; candidates: SetupCandidate[]; instances: Array<{ id: string; type: string; status: string; managed?: boolean;allowDangerFullAccess?:boolean }> };
 
 export async function runSetup(config: SupervisorConfig, cliPath: string, options: { all?: boolean; openBrowser?: boolean } = {}) {
   await startSupervisor(config, cliPath);
@@ -46,6 +46,7 @@ export function mergeConnectorSelection(state: SetupState, selected: HarnessType
       ...(candidate.endpoint ? { endpoint: candidate.endpoint.url } : {}),
       ...(candidate.type === 'opencode' && (current?.managed === true || !candidate.endpoint?.reachable) ? { managed: true } : {}),
       ...(candidate.type === 'antigravity' && enabled && agyConfirmed ? { permissionMode: 'plan' as const } : {}),
+      ...(candidate.type === 'codex'?{allowDangerFullAccess:current?.allowDangerFullAccess??false}:{}),
     };
   });
 }

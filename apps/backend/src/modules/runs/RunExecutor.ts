@@ -1,6 +1,7 @@
 import { stableSessionId } from './stableSessionId.js';
 import type { RoomEventService } from '../room-events/RoomEventService.js';
 import type { ApprovalChoice, MappedRunEvent, RunEventMapping, RunEventStream, RunGateway, RunRecovery } from '../harness/harness.ports.js';
+import type {RunRequestResolution} from '@agenvyl/contracts';
 import { AppError } from '../../shared/errors/AppError.js';
 import { mapUpstreamError } from '../../shared/errors/mapUpstreamError.js';
 import type { RunContext, RunStatus } from '../../types.js';
@@ -171,14 +172,15 @@ export class RunExecutor {
     return { status: 'stopping', adapter: 'run_gateway' };
   }
 
-  async approve(runId: string, choice: string | undefined) {
+  async approve(runId: string, input: RunRequestResolution|string|undefined) {
     const { activeRuns } = this.dependencies;
     const run = activeRuns.get(runId);
     if (!run) throw new AppError('not_found', 404, 'Run not found');
     if (run.waitingFor === 'clarification') {
-      const resolution=choice?.trim(),gateway=this.gatewayFor(run);
-      if(!run.upstreamRunId||!resolution)throw new AppError('invalid_clarification_resolution',400,'Clarification answer must not be empty');
-      if(resolution.length>2_000)throw new AppError('invalid_clarification_resolution',400,'Clarification answer is too long');
+      const resolution=typeof input==='string'?{resolution:input.trim()}:input,gateway=this.gatewayFor(run);
+      if(!run.upstreamRunId||!resolution||('resolution' in resolution&&!resolution.resolution))throw new AppError('invalid_clarification_resolution',400,'Clarification answer must not be empty');
+      if('resolution' in resolution&&resolution.resolution.length>2_000)throw new AppError('invalid_clarification_resolution',400,'Clarification answer is too long');
+      if('answers' in resolution&&(!Object.keys(resolution.answers).length||Object.values(resolution.answers).some(values=>!Array.isArray(values)||values.some(value=>typeof value!=='string'||value.length>2_000))))throw new AppError('invalid_clarification_resolution',400,'Structured clarification answers are invalid');
       if(!gateway.clarify)throw new AppError('unsupported',409,'The configured run gateway has no verified clarification resolution endpoint');
       try{const checkpoint=await gateway.clarify(run.upstreamRunId,resolution);if(checkpoint)await this.dependencies.runs.advanceConnectorCheckpoint(run.id,checkpoint);}
       catch(error){throw mapUpstreamError(error);}
@@ -187,6 +189,7 @@ export class RunExecutor {
     if (!run.upstreamRunId || run.waitingFor !== 'approval') {
       throw new AppError('approval_not_active', 409, 'Approval is not active');
     }
+    const choice=typeof input==='string'?input:'resolution' in (input??{})?(input as {resolution:string}).resolution:undefined;
     if (!isApprovalChoice(choice)) {
       throw new AppError('invalid_approval_choice', 400, 'Invalid approval choice');
     }

@@ -15,7 +15,7 @@ export type StartRunInput = {
 
 export type RunCheckpoint = { executionId: string; connectorEpoch: string; cursor: number };
 export type RunHandle = { id: string; checkpoint?: RunCheckpoint };
-export type ReattachRunInput={checkpoint:RunCheckpoint;pendingRequests:Array<{id:string;kind:'approval'|'clarification';prompt:string;choices?:string[]}>};
+export type ReattachRunInput={checkpoint:RunCheckpoint;pendingRequests:Array<{id:string;kind:'approval'|'clarification';prompt:string;choices?:string[];questions?:import('@agenvyl/contracts').StructuredQuestion[];autoResolutionMs?:number}>};
 
 export type MappedRunEvent = {
   type: 'run.status' | 'run.upstream_status' | 'run.delta' | 'run.reasoning.delta' | 'run.usage' | 'tool.updated' | 'request.created' | 'request.resolved';
@@ -33,7 +33,7 @@ export interface RunGateway {
   createRun(input: StartRunInput): Promise<RunHandle>;
   stop(runId: string): Promise<RunCheckpoint | undefined>;
   approve(runId: string, choice: ApprovalChoice): Promise<RunCheckpoint | undefined>;
-  clarify?(runId: string, resolution: string): Promise<RunCheckpoint | undefined>;
+  clarify?(runId: string, resolution: import('@agenvyl/contracts').RunRequestResolution|string): Promise<RunCheckpoint | undefined>;
 }
 
 export interface RunEventStream {
