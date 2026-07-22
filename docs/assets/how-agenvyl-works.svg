@@ -58,8 +58,8 @@
   <g>
     <rect x="78" y="312" width="240" height="58" rx="15" fill="#f8f9fc" stroke="#e2e7ef"/>
     <circle cx="108" cy="341" r="16" fill="#6d5ef7"/>
-    <text x="108" y="346" text-anchor="middle" style="font: 800 12px 'Segoe UI', sans-serif; fill: #ffffff;">H</text>
-    <text x="136" y="339" class="label">Hermes</text>
+    <text x="108" y="346" text-anchor="middle" style="font: 800 12px 'Segoe UI', sans-serif; fill: #ffffff;">C</text>
+    <text x="136" y="339" class="label">Codex</text>
     <text x="136" y="357" class="small">your existing setup</text>
   </g>
   <g>
@@ -115,7 +115,7 @@
     <circle cx="583" cy="364" r="12" fill="#3b82f6"/>
     <text x="583" y="364" text-anchor="middle" dominant-baseline="central" style="font: 800 10px 'Segoe UI', sans-serif; fill: #ffffff;">B</text>
     <text x="602" y="368" style="font: 700 11.5px 'Segoe UI', sans-serif; fill: #172235;">Builder</text>
-    <text x="579" y="396" class="small">Hermes</text>
+    <text x="579" y="396" class="small">Codex</text>
     <text x="579" y="413" class="tiny">PARALLEL</text>
   </g>
   <g>
