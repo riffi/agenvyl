@@ -1,6 +1,24 @@
 import type {HarnessSettingsInstance,SetupHarnessCandidate,SetupHarnessInstance} from '@agenvyl/contracts';
 
-export type HarnessDraft=SetupHarnessInstance&Pick<HarnessSettingsInstance,'status'|'capabilities'|'error'|'personas'>;
+export type HarnessDraft=SetupHarnessInstance&Omit<Pick<HarnessSettingsInstance,'status'|'capabilities'|'error'|'personas'>,'status'>&{
+  status:HarnessSettingsInstance['status']|'draft';
+};
+export type HarnessCandidateState='connected'|'ready'|'setup'|'missing';
+
+export const harnessCandidateState=(candidate:SetupHarnessCandidate,connected:boolean):HarnessCandidateState=>{
+  if(connected)return'connected';
+  if(candidate.safeToSelect)return'ready';
+  if(candidate.cli.found||candidate.endpoint?.reachable)return'setup';
+  return'missing';
+};
+
+export const harnessCandidateDetail=(candidate:SetupHarnessCandidate,state:HarnessCandidateState)=>{
+  if(candidate.warning)return candidate.warning;
+  if(state==='connected')return'Configured on this machine.';
+  if(candidate.endpoint?.reachable)return`Service is responding at ${candidate.endpoint.url}.`;
+  if(candidate.cli.found)return`${candidate.cli.version??'CLI'} detected.`;
+  return`${candidate.cli.command} was not found in the Connector environment.`;
+};
 
 export const configurationOf=(instance:HarnessDraft):SetupHarnessInstance=>({
   id:instance.id,
@@ -17,7 +35,7 @@ export const addHarnessDraft=(type:SetupHarnessInstance['type'],current:HarnessD
   let id=base,index=2;
   while(current.some(instance=>instance.id===id))id=`${base}-${index++}`;
   const candidate=candidates.find(item=>item.type===type);
-  return{id,type,enabled:true,status:'unavailable',capabilities:[],personas:[],
+  return{id,type,enabled:true,status:'draft',capabilities:[],personas:[],
     ...(candidate?.endpoint&&type!=='codex'?{endpoint:candidate.endpoint.url}:{}),
     ...(type==='opencode'?{managed:Boolean(candidate?.cli.found&&!candidate.endpoint?.reachable)}:{}),
     ...(type==='antigravity'?{permissionMode:'plan' as const}:{}),

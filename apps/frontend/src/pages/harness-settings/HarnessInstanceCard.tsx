@@ -5,7 +5,7 @@ import {Alert,Button,Input,Select} from '../../shared/ui';
 import type {HarnessDraft} from './harnessSettingsModel';
 import styles from './HarnessSettingsPage.module.css';
 
-const statusLabel:Record<HarnessDraft['status'],string>={healthy:'Healthy',degraded:'Degraded',unavailable:'Unavailable',disabled:'Disabled'};
+const statusLabel:Record<HarnessDraft['status'],string>={healthy:'Healthy',degraded:'Degraded',unavailable:'Unavailable',disabled:'Disabled',draft:'Not saved'};
 
 export const HarnessInstanceCard=({instance,isNew,checking,checkMessage,onChange,onRemove,onCheck}:{instance:HarnessDraft;isNew:boolean;checking:boolean;checkMessage?:string;onChange:(next:HarnessDraft)=>void;onRemove:()=>void;onCheck:()=>void})=>{
   const update=<K extends keyof SetupHarnessInstance>(key:K,value:SetupHarnessInstance[K])=>onChange({...instance,[key]:value});
@@ -13,7 +13,7 @@ export const HarnessInstanceCard=({instance,isNew,checking,checkMessage,onChange
   return <article className={`${styles.instance} ${styles[instance.status]}`}>
     <header className={styles.instanceHeader}>
       <div className={styles.identity}><HarnessIcon type={instance.type} size="md"/><span><strong>{instance.id}</strong><small>{instance.type}</small></span></div>
-      <span className={styles.status}><i/>{instance.enabled?statusLabel[instance.status]:'Disabled'}</span>
+      <span className={styles.status}><i/>{isNew?'Not saved':instance.enabled?statusLabel[instance.status]:'Disabled'}</span>
     </header>
     <div className={styles.formGrid}>
       <label><span>Instance ID</span><Input value={instance.id} readOnly={!isNew} onChange={event=>update('id',event.target.value.toLowerCase())}/><small>{isNew?'Lowercase letters, numbers, - and _':'Identity is immutable after saving'}</small></label>
@@ -26,6 +26,6 @@ export const HarnessInstanceCard=({instance,isNew,checking,checkMessage,onChange
     {used&&<Alert tone="warning" className={styles.usage}><span><strong>Used by {instance.personas.length} agent{instance.personas.length===1?'':'s'}</strong><small>{instance.personas.map(persona=>`@${persona.handle}${persona.archived?' (archived)':''}`).join(', ')}</small></span></Alert>}
     {instance.error&&<p className={styles.runtimeError}>{instance.error.message}</p>}
     {checkMessage&&<p className={styles.checkMessage}>{checkMessage}</p>}
-    <footer><Button type="button" disabled={checking||isNew||!instance.enabled} icon={<RefreshCw className={checking?styles.spinning:''}/>} onClick={onCheck}>{checking?'Checking…':'Test connection'}</Button><Button type="button" variant="danger" disabled={used} title={used?'Reassign or remove the listed agents before deleting this harness':'Remove harness'} icon={<Trash2/>} onClick={onRemove}>Remove</Button></footer>
+    <footer><Button type="button" disabled={checking||isNew||!instance.enabled} title={isNew?'Save this instance before testing it':undefined} icon={<RefreshCw className={checking?styles.spinning:''}/>} onClick={onCheck}>{checking?'Checking…':isNew?'Save to test':'Test connection'}</Button><Button type="button" variant="danger" disabled={used} title={used?'Reassign or remove the listed agents before deleting this harness':'Remove harness'} icon={<Trash2/>} onClick={onRemove}>Remove</Button></footer>
   </article>;
 };
