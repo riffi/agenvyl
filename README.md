@@ -1,199 +1,197 @@
 # Agenvyl
 
-Agenvyl is a local workspace where you can talk to several coding agents in one
-room.
+**One browser. Multiple coding agents. One shared workspace.**
 
-Instead of opening a separate terminal or chat for every agent, you create a
-room for a task, add the agents you need, and call them by name. They can answer
-in parallel, work with the same files, and keep the whole discussion in one
-place.
+Agenvyl is a local web interface that brings your already-installed coding-agent
+harnesses into shared rooms. Each harness keeps the capabilities already
+available in its own environment—models, skills, tools, and MCP integrations
+where supported—while Agenvyl coordinates the conversation, parallel runs, and
+shared files.
 
-Agenvyl currently works with **Hermes**, **OpenCode**, and **Antigravity (AGY)**.
-It uses the tools and accounts already configured on your computer; Agenvyl does
-not provide model access by itself.
+Completed answers stay in the room context, so later agents can read, critique,
+and synthesize the work produced by earlier agents.
 
-> Agenvyl v0.1.0 is an unsigned Technical Preview for a trusted, single-user
-> computer. It runs locally and does not send telemetry. Windows SmartScreen or
-> macOS Gatekeeper may show a warning. Read the
-> [Technical Preview trust guide](docs/operations/preview-trust.md) before
-> accepting it.
+![Technical Preview](https://img.shields.io/badge/status-technical_preview-f59e0b?style=flat-square)
+![Local-first](https://img.shields.io/badge/local--first-no_telemetry-22c55e?style=flat-square)
+![Platforms](https://img.shields.io/badge/platform-Windows_%7C_macOS_%7C_Linux-3b82f6?style=flat-square)
+[![License](https://img.shields.io/badge/license-Apache_2.0-6d5ef7?style=flat-square)](LICENSE)
 
-## What you can do
+**[Get started](#quick-start)** · [See how it works](#how-agenvyl-works) ·
+[Read the documentation](#documentation)
 
-- Create separate rooms for projects, bugs, reviews, or experiments.
-- Give each agent a name, role, model, and its own instructions.
-- Ask one agent, several specific agents, or everyone in the room.
-- Receive parallel answers without losing the shared conversation.
-- Retry an answer and compare attempts.
-- See tool activity, answer clarification questions, and approve actions when
-  the connected agent supports it.
-- Attach files and let agents read or update the room workspace.
-- Keep room history, generated files, and file versions on your computer.
+![Agenvyl Web UI showing three coding agents answering in parallel](docs/assets/agenvyl-overview.png)
 
-A room is both a conversation and a shared working folder. It is useful for
-workflows such as:
+*Three different models, two agent harnesses, one shared conversation and
+workspace.*
 
-- ask an architect to inspect a task;
-- ask a builder to implement it;
-- ask a reviewer to check the result;
-- let all three discuss the same problem in parallel.
+## Coding agents work better together
 
-## Before you install
+Coding agents usually live in separate terminals and chats. Their context,
+files, and decisions become fragmented, and comparing their work means jumping
+between windows.
+
+Agenvyl gives the team one browser-based room. Call an agent by name, ask
+several agents at once, or use `@all`; every answer remains connected to the
+same conversation and working folder.
+
+## Why Agenvyl?
+
+| | |
+| --- | --- |
+| **Shared context**<br>Later agents can read earlier answers, evaluate competing ideas, and synthesize a stronger result. | **Parallel by default**<br>Mention several agents in one message and let them explore the same task at the same time. |
+| **Shared files**<br>Agents in a room work with the same attachments, generated files, and versions. | **Keep your existing setup**<br>Reuse each harness with its configured models, skills, tools, and MCP integrations. |
+
+## How Agenvyl works
+
+![Diagram showing one message running several agents in an Agenvyl room and collecting their results](docs/assets/how-agenvyl-works.svg)
+
+1. **Create a room** for a project, bug, review, or experiment and add the
+   agents you need.
+2. **Send one message** to `@architect`, a few selected agents, or `@all`.
+   Mentioned agents run in parallel against the same conversation and files.
+3. **Review and synthesize** in the next turn. Once parallel runs finish, ask an
+   agent to read the answers above, evaluate them, and produce a combined result.
+
+Agents launched in the same round start from the same pre-round conversation
+context; they do not wait for one another. Their completed answers then become
+part of the room history available to later turns.
+
+A message without an `@mention` is saved in the conversation but does not start
+an agent.
+
+## Built for real workflows
+
+| Workflow | Example team |
+| --- | --- |
+| **Build a feature** | An architect proposes the design, a builder implements it, and a reviewer checks the result. |
+| **Investigate a bug** | Several agents inspect the same code and propose causes in parallel. |
+| **Review a change** | Security, architecture, and code-quality agents examine the same files from different perspectives. |
+| **Compare models** | Ask the same question once and compare model answers side by side. |
+| **Reach a decision** | Ask a lead agent to evaluate earlier answers, resolve disagreements, and synthesize the final recommendation. |
+
+## Bring the agents you already use
+
+Agenvyl currently connects to **Hermes**, **OpenCode**, and **Antigravity
+(AGY)**. It does not replace or reconfigure them: the harness remains the
+execution environment and keeps its own accounts, models, skills, tools, and MCP
+servers where supported. Agenvyl adds the coordination layer—rooms, mentions,
+parallel runs, a shared timeline, and a shared workspace.
+
+Agenvyl does not provide model access by itself. It discovers the models and
+modes exposed by the harnesses already authenticated on your computer.
+
+One Hermes or OpenCode installation can power several Agenvyl agents with
+different names, roles, models, and instructions.
+
+## Quick start
 
 The downloadable app already includes Node.js and PostgreSQL. You do **not**
 need Docker, npm, or a source checkout.
 
-Supported systems:
+Supported systems are Windows 10/11 x64, Linux x64 or arm64, and macOS on Intel
+or Apple Silicon. To receive agent responses, have at least one supported agent
+tool installed and authenticated on the same computer; you can also finish
+setup without an agent and connect one later.
 
-- Windows 10/11 x64;
-- Linux x64 or arm64;
-- macOS on Intel or Apple Silicon.
+> [!WARNING]
+> **Agenvyl v0.1.0 is an unsigned Technical Preview** for a trusted,
+> single-user computer. Windows SmartScreen or macOS Gatekeeper may show a
+> warning. Read the [Technical Preview trust guide](docs/operations/preview-trust.md)
+> before accepting it.
 
-To receive agent responses, have at least one supported agent tool installed and
-authenticated on the same computer. The setup screen will show what Agenvyl can
-find. You may also finish setup without an agent and connect one later.
+<details open>
+<summary><strong>Windows</strong></summary>
 
-## Quick start
+Open PowerShell and run:
 
-### Windows
+```powershell
+irm https://github.com/riffi/agenvyl/releases/latest/download/install.ps1 | iex
+```
 
-1. Open **PowerShell** and run:
+</details>
 
-   ```powershell
-   irm https://github.com/riffi/agenvyl/releases/latest/download/install.ps1 | iex
-   ```
+<details>
+<summary><strong>Linux</strong></summary>
 
-2. Close PowerShell and open it again so the new `agenvyl` command is available.
+Open a terminal and run:
 
-3. Start the first-time setup:
+```bash
+curl -fsSL https://github.com/riffi/agenvyl/releases/latest/download/install.sh | sh
+```
 
-   ```powershell
-   agenvyl setup
-   ```
+</details>
 
-### Linux
+<details>
+<summary><strong>macOS</strong></summary>
 
-1. Open a terminal and run:
+Open Terminal and run:
 
-   ```bash
-   curl -fsSL https://github.com/riffi/agenvyl/releases/latest/download/install.sh | sh
-   ```
+```bash
+curl -fsSL https://github.com/riffi/agenvyl/releases/latest/download/install.sh | sh
+```
 
-2. Close the terminal and open it again.
+</details>
 
-3. Start the first-time setup:
+After installation:
 
-   ```bash
-   agenvyl setup
-   ```
-
-### macOS
-
-1. Open **Terminal** and run:
-
-   ```bash
-   curl -fsSL https://github.com/riffi/agenvyl/releases/latest/download/install.sh | sh
-   ```
-
-2. Close Terminal and open it again.
-
-3. Start the first-time setup:
+1. Close your terminal and open it again so the `agenvyl` command is available.
+2. Start the guided setup:
 
    ```bash
    agenvyl setup
    ```
 
-## Finish setup in the browser
+3. Choose the detected agent connections, enter your display name, and name
+   your first room. Agenvyl opens the Web UI automatically.
 
-`agenvyl setup` does the following:
+If the browser does not open, go to <http://127.0.0.1:8791>.
 
-1. starts Agenvyl and its local database;
-2. looks for Hermes, OpenCode, and AGY on your computer;
-3. asks whether to use the safely detected connections;
-4. opens the Web UI in your browser.
+When a connection is available, Agenvyl creates three editable starter agents:
+**Architect**, **Builder**, and **Reviewer**.
 
-If the browser does not open, go to:
+## Your first room
 
-<http://127.0.0.1:8791>
+Start all agents connected to the room with one message:
 
-On the setup page:
+```text
+@all Propose the best approach to this task from your perspective.
+```
 
-1. choose the detected agent connections you want to use;
-2. enter your display name and handle;
-3. name your first room;
-4. click **Create workspace**.
+Then ask one agent to turn the parallel answers into a decision:
 
-When an agent connection is available, Agenvyl creates three starter agents:
-**Architect**, **Builder**, and **Reviewer**. You can edit or remove them later.
-AGY is never enabled automatically because it starts a separate process with a
-dangerous permission flag; enabling it requires a separate confirmation.
+```text
+@reviewer Read the answers above, evaluate their trade-offs, and synthesize the best plan.
+```
 
-## Your first conversation
-
-Open the first room and type a message with an agent mention:
+Or guide a workflow agent by agent:
 
 ```text
 @architect Read the project and propose a safe implementation plan.
-```
-
-Call a different agent:
-
-```text
 @builder Implement the agreed plan and run the tests.
+@architect @reviewer Check the change from different perspectives.
 ```
 
-Call several agents at once:
+## What stays in a room
 
-```text
-@architect @reviewer Check this change from different perspectives.
-```
+| Rooms | Agents | Files and runs |
+| --- | --- | --- |
+| Separate workspaces for projects and tasks.<br><br>Completed answers become context that later agents can review and build on. | Give each agent a name, `@handle`, role, model, mode, and its own instructions.<br><br>Only agents added to a room can be mentioned there. | Attach files, inspect tool activity, answer clarifications, approve supported actions, retry responses, and compare attempts.<br><br>Generated files and file versions remain on your computer. |
 
-Call every agent connected to the room:
+Open **New room** in the sidebar to create another workspace, **Agents** to
+manage the agent catalog, or **Workspace** to inspect the room's files.
 
-```text
-@all Review the current state and tell me what should happen next.
-```
+## Local-first by design
 
-Agents mentioned in the same message run in parallel. A message without an
-`@mention` is saved in the room but does not start an agent.
+- The Web UI, product state, room history, and workspaces run on your computer.
+- Agenvyl does not send telemetry or remote analytics.
+- Connected harnesses use your normal user permissions. A room workspace is a
+  shared working directory, **not a security sandbox**.
+- Do not connect an agent you would not trust to work on the selected files.
+- AGY is never enabled automatically because it starts a separate process with
+  a dangerous permission flag; enabling it requires explicit confirmation.
 
-## Rooms and agents
-
-### Rooms
-
-Use **New room** in the sidebar to create a workspace for a new task. Choose
-which agents belong to it. Only agents added to a room can be mentioned there.
-
-Each room keeps:
-
-- the conversation;
-- agent responses and retries;
-- attached and generated files;
-- the agents currently working on the task.
-
-### Agents
-
-Open **Agents** in the sidebar to create or edit an agent. You can choose:
-
-- its name and `@handle`;
-- its role in the team;
-- the connected tool and model it uses;
-- optional instructions that define how it should behave.
-
-For example, one OpenCode or Hermes installation can power several Agenvyl
-agents with different roles and instructions.
-
-### Files
-
-Attach a file from the message composer or open the room workspace. Agents in
-the room work with the same files. Files created or changed during a run appear
-in the Web UI, and workspace images can be shown directly inside an answer.
-
-Agenvyl keeps file versions, but the workspace is **not a security sandbox**.
-Connected agents run with your normal user permissions. Do not connect an agent
-you would not trust to work on the selected files.
-
-## Starting Agenvyl later
+<details>
+<summary><strong>Starting, stopping, and backing up Agenvyl</strong></summary>
 
 Run the control center:
 
@@ -201,11 +199,8 @@ Run the control center:
 agenvyl
 ```
 
-Choose **Start**. When Agenvyl is ready, the Web UI opens in your browser.
-The same control center can open the UI, stop Agenvyl, show diagnostics, create a
-backup, or remove the app.
-
-Useful direct commands:
+It can start Agenvyl, open the Web UI, stop services, show diagnostics, create a
+backup, or remove the app. Useful direct commands are:
 
 ```bash
 agenvyl start
@@ -217,10 +212,12 @@ agenvyl backup
 `agenvyl start` starts the services without opening a browser. Open
 <http://127.0.0.1:8791> yourself when using that command.
 
-## Need more detail?
+</details>
 
-The README intentionally covers the normal user journey. Technical and
-operator documentation lives here:
+## Documentation
+
+The README covers the normal product journey. Technical and operator details
+live in focused guides:
 
 - [Portable runtime, backups, restore, and uninstall](docs/operations/portable-runtime.md)
 - [Connecting Hermes, OpenCode, and AGY](docs/operations/connector.md)
@@ -229,5 +226,14 @@ operator documentation lives here:
 - [Database operations](docs/operations/database.md)
 - [Development and contributions](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
+
+## Ready to try Agenvyl?
+
+Install Agenvyl, connect one of your existing coding-agent tools, and create a
+room where your agents can work together.
+
+**[Start with the quick start](#quick-start)** ·
+[Read the documentation](#documentation) ·
+[Report an issue](https://github.com/riffi/agenvyl/issues)
 
 Agenvyl is licensed under the [Apache License 2.0](LICENSE).

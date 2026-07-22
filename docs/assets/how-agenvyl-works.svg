@@ -1,0 +1,173 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
+  <title id="title">How Agenvyl brings existing coding-agent harnesses into one room</title>
+  <desc id="desc">Existing local harnesses keep their models, skills, tools, and MCP integrations. Agenvyl coordinates their agents in a shared conversation and workspace, where later agents can review and synthesize earlier answers.</desc>
+
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f8f9fd"/>
+      <stop offset="1" stop-color="#edf1f8"/>
+    </linearGradient>
+    <linearGradient id="roomHeader" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#202c40"/>
+      <stop offset="1" stop-color="#2e3b55"/>
+    </linearGradient>
+    <linearGradient id="message" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f1eeff"/>
+      <stop offset="1" stop-color="#e8edff"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#26344d" flood-opacity="0.12"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 10 5 0 10Z" fill="#8390a6"/>
+    </marker>
+    <style>
+      .eyebrow { font: 700 15px 'Segoe UI', sans-serif; letter-spacing: 3px; fill: #6d5ef7; }
+      .heading { font: 700 28px 'Segoe UI', sans-serif; fill: #172235; }
+      .label { font: 700 16px 'Segoe UI', sans-serif; fill: #172235; }
+      .body { font: 400 14px 'Segoe UI', sans-serif; fill: #627087; }
+      .small { font: 400 12px 'Segoe UI', sans-serif; fill: #7a879a; }
+      .tiny { font: 700 10px 'Segoe UI', sans-serif; letter-spacing: 1px; fill: #8a95a8; }
+      .line { fill: none; stroke: #8794a9; stroke-width: 2.5; marker-end: url(#arrow); }
+      .branch { fill: none; stroke: #aeb8c9; stroke-width: 2; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="620" rx="28" fill="url(#background)"/>
+  <circle cx="1110" cy="72" r="125" fill="#6d5ef7" opacity="0.045"/>
+  <circle cx="82" cy="572" r="145" fill="#3b82f6" opacity="0.04"/>
+
+  <text x="56" y="54" class="eyebrow">HOW AGENVYL WORKS</text>
+  <text x="56" y="92" class="heading">Your harnesses. Their capabilities. One shared room.</text>
+
+  <!-- Existing harnesses -->
+  <g filter="url(#shadow)">
+    <rect x="56" y="142" width="284" height="364" rx="24" fill="#ffffff"/>
+    <path d="M80 142h236a24 24 0 0 1 24 24v54H56v-54a24 24 0 0 1 24-24z" fill="#202c40"/>
+    <text x="80" y="173" style="font: 700 18px 'Segoe UI', sans-serif; fill: #ffffff;">Already on your computer</text>
+    <text x="80" y="195" style="font: 400 12px 'Segoe UI', sans-serif; fill: #bdc7d8;">installed and authenticated</text>
+  </g>
+
+  <g>
+    <rect x="78" y="242" width="240" height="58" rx="15" fill="#f8f9fc" stroke="#e2e7ef"/>
+    <circle cx="108" cy="271" r="16" fill="#3b82f6"/>
+    <text x="108" y="276" text-anchor="middle" style="font: 800 12px 'Segoe UI', sans-serif; fill: #ffffff;">O</text>
+    <text x="136" y="269" class="label">OpenCode</text>
+    <text x="136" y="287" class="small">your existing setup</text>
+  </g>
+  <g>
+    <rect x="78" y="312" width="240" height="58" rx="15" fill="#f8f9fc" stroke="#e2e7ef"/>
+    <circle cx="108" cy="341" r="16" fill="#6d5ef7"/>
+    <text x="108" y="346" text-anchor="middle" style="font: 800 12px 'Segoe UI', sans-serif; fill: #ffffff;">H</text>
+    <text x="136" y="339" class="label">Hermes</text>
+    <text x="136" y="357" class="small">your existing setup</text>
+  </g>
+  <g>
+    <rect x="78" y="382" width="240" height="58" rx="15" fill="#f8f9fc" stroke="#e2e7ef"/>
+    <circle cx="108" cy="411" r="16" fill="#66758c"/>
+    <text x="108" y="416" text-anchor="middle" style="font: 800 12px 'Segoe UI', sans-serif; fill: #ffffff;">A</text>
+    <text x="136" y="409" class="label">Antigravity</text>
+    <text x="136" y="427" class="small">your existing setup</text>
+  </g>
+
+  <rect x="78" y="456" width="240" height="32" rx="11" fill="#eeeaff"/>
+  <text x="198" y="477" text-anchor="middle" style="font: 700 12px 'Segoe UI', sans-serif; fill: #5c4ee5;">models · skills · tools · MCP</text>
+  <text x="198" y="501" text-anchor="middle" style="font: 400 10px 'Segoe UI', sans-serif; fill: #7a879a;">as supported by each harness</text>
+
+  <!-- Harnesses to room -->
+  <path d="M340 324H406" class="line"/>
+
+  <!-- Agenvyl room -->
+  <g filter="url(#shadow)">
+    <rect x="420" y="126" width="390" height="396" rx="24" fill="#ffffff"/>
+    <path d="M444 126h342a24 24 0 0 1 24 24v58H420v-58a24 24 0 0 1 24-24z" fill="url(#roomHeader)"/>
+    <rect x="444" y="150" width="34" height="34" rx="10" fill="#ffffff"/>
+    <text x="461" y="173" text-anchor="middle" style="font: 800 17px 'Segoe UI', sans-serif; fill: #202c40;">A</text>
+    <text x="494" y="163" style="font: 700 18px 'Segoe UI', sans-serif; fill: #ffffff;">Agenvyl room</text>
+    <text x="494" y="184" style="font: 400 12px 'Segoe UI', sans-serif; fill: #bec8d8;">coordination layer</text>
+    <circle cx="758" cy="167" r="5" fill="#34d399"/>
+    <text x="771" y="172" style="font: 600 11px 'Segoe UI', sans-serif; fill: #dce4ef;">local</text>
+  </g>
+
+  <rect x="448" y="228" width="334" height="52" rx="14" fill="url(#message)" stroke="#d8dcff"/>
+  <rect x="464" y="243" width="44" height="22" rx="8" fill="#6d5ef7"/>
+  <text x="486" y="258" text-anchor="middle" style="font: 700 11px 'Segoe UI', sans-serif; fill: #ffffff;">@all</text>
+  <text x="520" y="258" class="body">Explore the task in parallel</text>
+
+  <!-- Clean parallel fan-out -->
+  <path d="M615 280v22M489 302h252" class="branch"/>
+  <path d="M489 302v30" class="line"/>
+  <path d="M615 302v30" class="line"/>
+  <path d="M741 302v30" class="line"/>
+
+  <g>
+    <rect x="448" y="338" width="104" height="88" rx="15" fill="#ffffff" stroke="#dfe5ee"/>
+    <rect x="448" y="338" width="5" height="88" rx="3" fill="#6d5ef7"/>
+    <circle cx="468" cy="364" r="12" fill="#6d5ef7"/>
+    <text x="468" y="364" text-anchor="middle" dominant-baseline="central" style="font: 800 10px 'Segoe UI', sans-serif; fill: #ffffff;">A</text>
+    <text x="487" y="368" style="font: 700 11.5px 'Segoe UI', sans-serif; fill: #172235;">Architect</text>
+    <text x="464" y="396" class="small">OpenCode</text>
+    <text x="464" y="413" class="tiny">PARALLEL</text>
+  </g>
+  <g>
+    <rect x="563" y="338" width="104" height="88" rx="15" fill="#ffffff" stroke="#dfe5ee"/>
+    <rect x="563" y="338" width="5" height="88" rx="3" fill="#3b82f6"/>
+    <circle cx="583" cy="364" r="12" fill="#3b82f6"/>
+    <text x="583" y="364" text-anchor="middle" dominant-baseline="central" style="font: 800 10px 'Segoe UI', sans-serif; fill: #ffffff;">B</text>
+    <text x="602" y="368" style="font: 700 11.5px 'Segoe UI', sans-serif; fill: #172235;">Builder</text>
+    <text x="579" y="396" class="small">Hermes</text>
+    <text x="579" y="413" class="tiny">PARALLEL</text>
+  </g>
+  <g>
+    <rect x="678" y="338" width="104" height="88" rx="15" fill="#ffffff" stroke="#dfe5ee"/>
+    <rect x="678" y="338" width="5" height="88" rx="3" fill="#66758c"/>
+    <circle cx="698" cy="364" r="12" fill="#66758c"/>
+    <text x="698" y="364" text-anchor="middle" dominant-baseline="central" style="font: 800 10px 'Segoe UI', sans-serif; fill: #ffffff;">R</text>
+    <text x="717" y="368" style="font: 700 11.5px 'Segoe UI', sans-serif; fill: #172235;">Reviewer</text>
+    <text x="694" y="396" class="small">AGY</text>
+    <text x="694" y="413" class="tiny">PARALLEL</text>
+  </g>
+
+  <path d="M500 426v20M615 426v20M730 426v20" class="branch"/>
+  <rect x="448" y="452" width="334" height="58" rx="14" fill="#f5f7fb" stroke="#dfe5ee"/>
+  <circle cx="474" cy="481" r="7" fill="#34d399"/>
+  <text x="492" y="476" style="font: 700 14px 'Segoe UI', sans-serif; fill: #172235;">Shared conversation</text>
+  <text x="492" y="495" class="small">completed answers become context for later turns</text>
+
+  <!-- Room to coordinated outcomes -->
+  <path d="M810 324H876" class="line"/>
+
+  <g filter="url(#shadow)">
+    <rect x="890" y="164" width="254" height="330" rx="24" fill="#ffffff"/>
+    <text x="918" y="201" class="label">Agenvyl coordinates</text>
+    <text x="918" y="223" class="small">without replacing the harnesses</text>
+  </g>
+
+  <g>
+    <circle cx="924" cy="265" r="17" fill="#eeeaff"/>
+    <path d="M917 265h14M924 258v14" stroke="#6d5ef7" stroke-width="2.2" stroke-linecap="round"/>
+    <text x="954" y="262" class="label">Parallel runs</text>
+    <text x="954" y="281" class="small">one prompt, several agents</text>
+  </g>
+  <line x1="918" y1="302" x2="1116" y2="302" stroke="#e5e9f0"/>
+  <g>
+    <circle cx="924" cy="337" r="17" fill="#e8f2ff"/>
+    <path d="M917 332h14M917 338h11M917 344h13" stroke="#3b82f6" stroke-width="2.2" stroke-linecap="round"/>
+    <text x="954" y="334" class="label">Shared timeline</text>
+    <text x="954" y="353" class="small">answers stay in context</text>
+  </g>
+  <line x1="918" y1="374" x2="1116" y2="374" stroke="#e5e9f0"/>
+  <g>
+    <circle cx="924" cy="409" r="17" fill="#e9f9f3"/>
+    <path d="M916 405h8l3 4h9v9h-20z" fill="none" stroke="#20a779" stroke-width="2" stroke-linejoin="round"/>
+    <text x="954" y="406" class="label">Room workspace</text>
+    <text x="954" y="425" class="small">the same files and versions</text>
+  </g>
+  <rect x="918" y="450" width="198" height="26" rx="9" fill="#f1eeff"/>
+  <text x="1017" y="467" text-anchor="middle" style="font: 700 11px 'Segoe UI', sans-serif; fill: #5c4ee5;">review · evaluate · synthesize</text>
+
+  <!-- Bottom promise -->
+  <rect x="56" y="548" width="1088" height="44" rx="14" fill="#202c40"/>
+  <circle cx="82" cy="570" r="7" fill="#34d399"/>
+  <text x="100" y="575" style="font: 600 14px 'Segoe UI', sans-serif; fill: #ffffff;">Agenvyl orchestrates the harnesses you already use—it does not replace or reconfigure them.</text>
+</svg>
