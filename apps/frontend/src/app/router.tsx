@@ -6,7 +6,9 @@ import { PersonasPage } from '../pages/personas';
 import { RoomPage } from '../pages/room';
 import { withGatewayMode } from '../shared/lib';
 import {SetupPage} from '../pages/setup';
+import {HarnessSettingsPage} from '../pages/harness-settings';
 import {apiRequest} from '../shared/api';
+import {AppShell} from '../widgets/app-shell';
 
 function RootRedirect() {
   const location = useLocation();
@@ -25,6 +27,7 @@ export function AppRouter() {
         <Route path="/rooms/:roomId" element={<RoomPage />} />
         <Route path="/personas" element={<PersonasPage />} />
         <Route path="/personas/:personaId" element={<PersonasPage />} />
+        <Route path="/settings/harnesses" element={<AppShell><HarnessSettingsPage /></AppShell>} />
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </BrowserRouter>

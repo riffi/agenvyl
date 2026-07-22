@@ -19,6 +19,7 @@ export function PersonasPage() {
         roomId={roomId}
         navigateToRoom={(id, options) => navigate(withGatewayMode(`/rooms/${encodeURIComponent(id)}`, location.search), options)}
         navigateToPersonas={() => navigate(personaPath())}
+        navigateToHarnessSettings={()=>navigate(withGatewayMode('/settings/harnesses',location.search))}
         selectedPersonaId={personaId}
         navigateToPersona={(id,options)=>navigate(personaPath(id),options)}
       />

@@ -1,6 +1,7 @@
 import {useEffect,useMemo,useState,type FormEvent} from 'react';
 import {useLocation,useNavigate} from 'react-router-dom';
 import type {CompleteSetupRequest,SetupHarnessCandidate,SetupHarnessInstance,SetupState} from '@agenvyl/contracts';
+import {HarnessIcon} from '../../entities/harness';
 import {apiRequest} from '../../shared/api';
 import styles from './SetupPage.module.css';
 
@@ -8,7 +9,7 @@ type Catalog={instances:Array<{id:string;type:string;status:string;models:Array<
 
 export function SetupPage(){
   const navigate=useNavigate(),location=useLocation(),configure=new URLSearchParams(location.search).get('configure')==='1',[state,setState]=useState<SetupState>(),[selected,setSelected]=useState<string[]>([]),[agy,setAgy]=useState(false),[agyConfirmation,setAgyConfirmation]=useState(''),[name,setName]=useState('User'),[handle,setHandle]=useState('user'),[roomTitle,setRoomTitle]=useState('First room'),[busy,setBusy]=useState(false),[error,setError]=useState('');
-  useEffect(()=>{void apiRequest<SetupState>('/api/v1/setup').then(value=>{const initial=initialConnectorSelection(value);setState(value);setSelected(initial.selected);setAgy(initial.agy);if(value.completed&&!configure&&value.firstRoomId)navigate(`/rooms/${value.firstRoomId}`,{replace:true});}).catch(issue=>setError(message(issue)));},[configure,navigate]);
+  useEffect(()=>{if(configure){navigate('/settings/harnesses',{replace:true});return;}void apiRequest<SetupState>('/api/v1/setup').then(value=>{const initial=initialConnectorSelection(value);setState(value);setSelected(initial.selected);setAgy(initial.agy);if(value.completed&&value.firstRoomId)navigate(`/rooms/${value.firstRoomId}`,{replace:true});}).catch(issue=>setError(message(issue)));},[configure,navigate]);
   const safe=useMemo(()=>state?.candidates.filter(candidate=>candidate.safeToSelect).map(candidate=>candidate.type)??[],[state]);
   const toggle=(type:string)=>setSelected(value=>value.includes(type)?value.filter(item=>item!==type):[...value,type]);
   const submit=async(event:FormEvent)=>{event.preventDefault();if(agy&&agyConfirmation!=='AGY'){setError('Type AGY to confirm');return;}setBusy(true);setError('');try{
@@ -20,17 +21,18 @@ export function SetupPage(){
     const route:CompleteSetupRequest['route']=first?{harness_instance_id:first.id,harness_type:first.type,model_id:first.models[0].id,mode_id:first.type==='antigravity'?'plan':first.modes[0]?.id??null}:null;
     const result=await apiRequest<{roomId:string}>('/api/v1/setup/complete',{method:'POST',body:{locale:'en',workspace_root:state?.workspaceRoot??'',profile:{display_name:name,handle},room_title:roomTitle,route} satisfies CompleteSetupRequest});navigate(`/rooms/${result.roomId}`,{replace:true});
   }catch(issue){setError(message(issue));}finally{setBusy(false);}};
+  if(configure)return null;
   if(!state&&!error)return <main className={styles.shell}><p>Checking installation…</p></main>;
   return <main className={styles.shell}><form className={styles.card} onSubmit={submit}>
     <header><p className={styles.eyebrow}>Agenvyl</p><h1>{configure?'Connector settings':'Workspace setup'}</h1><p>Choose local connectors. They do not start external processes without your decision.</p></header>
     <section><div className={styles.sectionTitle}><h2>Connectors</h2><button type="button" className={styles.link} onClick={()=>setSelected(safe)}>Select safe</button></div><div className={styles.options}>{state?.candidates.filter(candidate=>candidate.type!=='antigravity').map(candidate=><Candidate key={candidate.type} candidate={candidate} checked={selected.includes(candidate.type)} onChange={()=>toggle(candidate.type)}/>)}</div></section>
-    {state?.candidates.some(candidate=>candidate.type==='antigravity')&&<section className={styles.danger}><label><input type="checkbox" checked={agy} onChange={event=>setAgy(event.target.checked)}/> <strong>AGY</strong> — separate subprocess with a dangerous permission flag</label>{agy&&<input value={agyConfirmation} onChange={event=>setAgyConfirmation(event.target.value)} placeholder="Type AGY" />}</section>}
+    {state?.candidates.some(candidate=>candidate.type==='antigravity')&&<section className={styles.danger}><label className={styles.dangerChoice}><input type="checkbox" checked={agy} onChange={event=>setAgy(event.target.checked)}/><HarnessIcon type="antigravity" size="md"/><span><strong>AGY</strong> — separate subprocess with a dangerous permission flag</span></label>{agy&&<input value={agyConfirmation} onChange={event=>setAgyConfirmation(event.target.value)} placeholder="Type AGY" />}</section>}
     {!configure&&<section className={styles.grid}><label>Display name<input value={name} onChange={event=>setName(event.target.value)} required/></label><label>Handle<input value={handle} onChange={event=>setHandle(event.target.value)} pattern="[a-z0-9][a-z0-9_-]*" required/></label><label className={styles.wide}>Workspace root<input value={state?.workspaceRoot??''} readOnly/></label><label className={styles.wide}>First room<input value={roomTitle} onChange={event=>setRoomTitle(event.target.value)} required/></label></section>}
     {error&&<p className={styles.error} role="alert">{error}</p>}<button className={styles.primary} disabled={busy}>{busy?'Setting up…':configure?'Save connectors':'Create workspace'}</button><p className={styles.note}>You can continue without connectors and add them later.</p>
   </form></main>;
 }
 
-function Candidate({candidate,checked,onChange}:{candidate:SetupHarnessCandidate;checked:boolean;onChange:()=>void}){const available=candidate.safeToSelect;return <label className={`${styles.option} ${available?'':styles.unavailable}`}><input type="checkbox" checked={checked} disabled={!available&&!checked} onChange={onChange}/><span><strong>{candidate.label}</strong><small>{candidate.endpoint?.reachable?'Endpoint ready':candidate.cli.found?`${candidate.cli.version??'CLI'} detected`:'Not detected'}</small></span></label>}
+export function Candidate({candidate,checked,onChange}:{candidate:SetupHarnessCandidate;checked:boolean;onChange:()=>void}){const available=candidate.safeToSelect;return <label className={`${styles.option} ${available?'':styles.unavailable}`}><input type="checkbox" checked={checked} disabled={!available&&!checked} onChange={onChange}/><HarnessIcon type={candidate.type} size="md"/><span><strong>{candidate.label}</strong><small>{candidate.endpoint?.reachable?'Endpoint ready':candidate.cli.found?`${candidate.cli.version??'CLI'} detected`:'Not detected'}</small></span></label>}
 export function initialConnectorSelection(state:SetupState){
   const enabled=new Set(state.instances.map(instance=>instance.type));
   const selectable=new Set<string>(state.candidates.filter(candidate=>candidate.safeToSelect).map(candidate=>candidate.type));

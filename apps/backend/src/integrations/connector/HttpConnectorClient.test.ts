@@ -9,18 +9,21 @@ describe('HttpConnectorClient', () => {
       .mockResolvedValueOnce(Response.json(connectorContractFixtures.health))
       .mockResolvedValueOnce(Response.json({ execution: inspectedExecution }))
       .mockResolvedValueOnce(Response.json(connectorContractFixtures.instances))
-      .mockResolvedValueOnce(Response.json(connectorContractFixtures.catalog));
+      .mockResolvedValueOnce(Response.json(connectorContractFixtures.catalog))
+      .mockResolvedValueOnce(Response.json({apiVersion:'v1',instances:[{id:'disabled',type:'hermes',enabled:false}]}));
     const client = new HttpConnectorClient('http://connector.test/', 'x'.repeat(32), request);
 
     await expect(client.health()).resolves.toEqual(connectorContractFixtures.health);
     await expect(client.inspect('run/1')).resolves.toEqual(inspectedExecution);
     await expect(client.instances()).resolves.toEqual(connectorContractFixtures.instances);
     await expect(client.catalog('local/hermes')).resolves.toEqual(connectorContractFixtures.catalog);
+    await expect(client.configuration()).resolves.toEqual({apiVersion:'v1',instances:[{id:'disabled',type:'hermes',enabled:false}]});
     expect(request.mock.calls.map(([url, init]) => [url, (init?.headers as Record<string, string>).authorization])).toEqual([
       ['http://connector.test/v1/health', `Bearer ${'x'.repeat(32)}`],
       ['http://connector.test/v1/executions/run%2F1', `Bearer ${'x'.repeat(32)}`],
       ['http://connector.test/v1/instances', `Bearer ${'x'.repeat(32)}`],
       ['http://connector.test/v1/instances/local%2Fhermes/catalog', `Bearer ${'x'.repeat(32)}`],
+      ['http://connector.test/v1/configuration', `Bearer ${'x'.repeat(32)}`],
     ]);
   });
 

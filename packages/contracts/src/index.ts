@@ -46,6 +46,9 @@ export type SetupHarnessCandidate={type:'hermes'|'opencode'|'antigravity';label:
 export type SetupState={completed:boolean;locale:'en'|'ru';workspaceRoot:string;firstRoomId?:string;instances:Array<{id:string;type:string;status:string;managed?:boolean}>;candidates:SetupHarnessCandidate[]};
 export type SetupHarnessInstance={id:string;type:'hermes'|'opencode'|'antigravity';enabled:boolean;endpoint?:string;managed?:boolean;permissionMode?:'plan'|'accept-edits'};
 export type ConfigureSetupHarnessesRequest={instances:SetupHarnessInstance[]};
+export type HarnessSettingsPersona={id:string;name:string;handle:string;archived:boolean};
+export type HarnessSettingsInstance=SetupHarnessInstance&{status:'healthy'|'degraded'|'unavailable'|'disabled';capabilities:string[];error?:{code:string;message:string};personas:HarnessSettingsPersona[]};
+export type HarnessSettingsState={connectorEpoch:string;instances:HarnessSettingsInstance[];candidates:SetupHarnessCandidate[]};
 export type CompleteSetupRequest={locale:'en'|'ru';workspace_root:string;profile:{display_name:string;handle:string};room_title:string;route:{harness_instance_id:string;harness_type:string;model_id:string;mode_id:string|null}|null};
 export type CompleteSetupResult={roomId:string};
 

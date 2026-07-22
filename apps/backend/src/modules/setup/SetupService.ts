@@ -1,4 +1,4 @@
-import type {CompleteSetupRequest,ConfigureSetupHarnessesRequest,SetupState} from '@agenvyl/contracts';
+import type {CompleteSetupRequest,ConfigureSetupHarnessesRequest,HarnessSettingsState,SetupState} from '@agenvyl/contracts';
 import {isConfigureConnectorInstancesRequest} from '@agenvyl/connector-contract';
 import type {Database} from '../../infrastructure/database/Database.js';
 import type {HttpConnectorClient} from '../../integrations/connector/HttpConnectorClient.js';
@@ -17,10 +17,31 @@ export class SetupService{
     const [discovery,instances]=await Promise.all([this.connector.discover().catch(()=>({apiVersion:'v1' as const,candidates:[]})),this.connector.instances().catch(()=>({apiVersion:'v1' as const,connectorEpoch:'',instances:[]}))]);
     return{completed:Boolean(row.completed_at),locale:row.locale==='ru'?'ru':'en',workspaceRoot:this.workspaceRoot,...(row.first_room_id?{firstRoomId:String(row.first_room_id)}:{}),instances:instances.instances.map(instance=>({id:instance.id,type:instance.type,status:instance.status,...(instance.managed!==undefined?{managed:instance.managed}:{})})),candidates:discovery.candidates};
   }
+  async harnessSettings():Promise<HarnessSettingsState>{
+    const[configuration,runtime,discovery,personaRows]=await Promise.all([
+      this.connector.configuration(),
+      this.connector.instances(),
+      this.connector.discover(),
+      this.database.sql`SELECT id,name,handle,harness_instance_id,archived_at FROM personas ORDER BY archived_at NULLS FIRST,name`,
+    ]);
+    const runtimeById=new Map(runtime.instances.map(instance=>[instance.id,instance]));
+    return{connectorEpoch:runtime.connectorEpoch,candidates:discovery.candidates,instances:configuration.instances.map(instance=>{
+      const current=runtimeById.get(instance.id);
+      const personas=personaRows.filter(row=>String(row.harness_instance_id)===instance.id).map(row=>({id:String(row.id),name:String(row.name),handle:String(row.handle),archived:Boolean(row.archived_at)}));
+      return{...instance,status:instance.enabled?(current?.status??'unavailable'):'disabled',capabilities:current?.capabilities??[],...(current?.error?{error:current.error}:{}),personas};
+    })};
+  }
   async configure(input:ConfigureSetupHarnessesRequest){
     if(!isConfigureConnectorInstancesRequest(input))throw new AppError('invalid_setup_harnesses',400,'Harness selection is invalid');
-    const agy=input.instances.find(instance=>instance.type==='antigravity');
-    if(agy?.enabled&&!agy.permissionMode)throw new AppError('agy_confirmation_required',400,'AGY requires an explicit permission mode');
+    if(input.instances.some(instance=>instance.type==='antigravity'&&instance.enabled&&!instance.permissionMode))throw new AppError('agy_confirmation_required',400,'AGY requires an explicit permission mode');
+    const current=await this.connector.configuration();
+    const nextById=new Map(input.instances.map(instance=>[instance.id,instance]));
+    const changed=current.instances.filter(instance=>!nextById.has(instance.id)||nextById.get(instance.id)?.type!==instance.type);
+    if(changed.length){
+      const ids=changed.map(instance=>instance.id);
+      const personas=await this.database.sql`SELECT id,name,handle,harness_instance_id,archived_at FROM personas WHERE harness_instance_id=ANY(${ids}) ORDER BY archived_at NULLS FIRST,name`;
+      if(personas.length)throw new AppError('harness_instance_in_use',409,'A harness used by agents cannot be removed or change type',{instances:ids,personas:personas.map(row=>({id:String(row.id),name:String(row.name),handle:String(row.handle),harness_instance_id:String(row.harness_instance_id),archived:Boolean(row.archived_at)}))});
+    }
     return this.connector.configureInstances(input);
   }
   async complete(input:CompleteSetupRequest){

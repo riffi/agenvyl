@@ -12,8 +12,8 @@ export async function runSetup(config: SupervisorConfig, cliPath: string, option
   await startSupervisor(config, cliPath);
   const state = await getSetupState(config);
   if (state.completed) {
-    const url = webUrl(config, '/setup?configure=1');
-    if (options.openBrowser !== false) openWebUi(config, '/setup?configure=1');
+    const url = webUrl(config, '/settings/harnesses');
+    if (options.openBrowser !== false) openWebUi(config, '/settings/harnesses');
     return { completed: true, selected: [], url };
   }
   const safe = state.candidates.filter(candidate => candidate.safeToSelect);

@@ -1,10 +1,19 @@
+import {createElement} from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
 import {describe,expect,it} from 'vitest';
 import type {SetupHarnessCandidate,SetupState} from '@agenvyl/contracts';
-import {initialConnectorSelection,instanceConfig} from './SetupPage';
+import {Candidate,initialConnectorSelection,instanceConfig} from './SetupPage';
 
 const candidate:SetupHarnessCandidate={type:'opencode',label:'OpenCode',cli:{found:true,command:'opencode',version:'1.17.20'},endpoint:{url:'http://127.0.0.1:4096',reachable:true},safeToSelect:true,supportsManagedServer:true};
 
 describe('setup harness configuration',()=>{
+  it('shows the harness icon in a connector option',()=>{
+    const html=renderToStaticMarkup(createElement(Candidate,{candidate,checked:false,onChange:()=>undefined}));
+    expect(html).toContain('aria-label="OpenCode"');
+    expect(html).toContain('data-harness-type="opencode"');
+    expect(html).toContain('data-harness-size="md"');
+  });
+
   it('does not preselect unavailable configured connectors during first setup',()=>{
     const state:SetupState={completed:false,locale:'en',workspaceRoot:'C:/workspaces',instances:[
       {id:'local-hermes',type:'hermes',status:'healthy'},

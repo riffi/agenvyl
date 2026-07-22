@@ -45,6 +45,7 @@ export function WorkspaceApp({
   roomId,
   navigateToRoom,
   navigateToPersonas,
+  navigateToHarnessSettings,
   selectedPersonaId,
   navigateToPersona,
 }: {
@@ -52,6 +53,7 @@ export function WorkspaceApp({
   roomId: string;
   navigateToRoom: (roomId: string, options?: { replace?: boolean }) => void;
   navigateToPersonas: () => void;
+  navigateToHarnessSettings?:()=>void;
   selectedPersonaId?:string;
   navigateToPersona:(id?:string,options?:{replace?:boolean})=>void;
 }) {
@@ -138,6 +140,7 @@ export function WorkspaceApp({
         close={() => setMenu(false)}
         view={view}
         openPersonas={openPersonas}
+        openHarnessSettings={navigateToHarnessSettings}
         rooms={rooms}
         selectedRoomId={roomId}
         selectRoom={id=>guardedNavigation(`room “${rooms.find(room=>room.id===id)?.title??id}”`,()=>navigateToRoom(id))}

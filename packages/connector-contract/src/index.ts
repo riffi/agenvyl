@@ -258,6 +258,10 @@ export function isConfigureConnectorInstancesRequest(value: unknown): value is C
   });
 }
 
+export function isConnectorConfigurationResult(value:unknown):value is ConnectorConfigurationResult {
+  return isRecord(value)&&value.apiVersion===CONNECTOR_API_VERSION&&isConfigureConnectorInstancesRequest({instances:value.instances});
+}
+
 export function isConnectorCommandResult(value:unknown):value is ConnectorCommandResult {
   return isRecord(value)&&isExecutionSnapshot(value.execution);
 }

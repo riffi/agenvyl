@@ -17,6 +17,7 @@ export function RoomPage() {
         roomId={roomId}
         navigateToRoom={(id, options) => navigate(withGatewayMode(`/rooms/${encodeURIComponent(id)}`, location.search), options)}
         navigateToPersonas={() => navigate(withGatewayMode(`/personas?room=${encodeURIComponent(roomId)}`, location.search))}
+        navigateToHarnessSettings={()=>navigate(withGatewayMode('/settings/harnesses',location.search))}
         navigateToPersona={()=>undefined}
       />
     </AppShell>

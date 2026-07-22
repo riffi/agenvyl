@@ -4,6 +4,8 @@ import type {SetupService} from './SetupService.js';
 
 export async function registerSetupRoutes(app:FastifyInstance,setup:SetupService){
   app.get('/api/v1/setup',()=>setup.state());
+  app.get('/api/v1/harness-settings',()=>setup.harnessSettings());
+  app.put<{Body:ConfigureSetupHarnessesRequest}>('/api/v1/harness-settings',request=>setup.configure(request.body));
   app.put<{Body:ConfigureSetupHarnessesRequest}>('/api/v1/setup/harnesses',request=>setup.configure(request.body));
   app.post<{Body:CompleteSetupRequest}>('/api/v1/setup/complete',request=>setup.complete(request.body));
 }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { MoreHorizontal, Plus, RotateCcw, Search, Settings, Trash2, Users, X } from 'lucide-react';
+import { Cable, MoreHorizontal, Plus, RotateCcw, Search, Settings, Trash2, Users, X } from 'lucide-react';
 import type { Room } from '../../entities/room';
 import type { LocalUserProfile, UpdateLocalUserProfileRequest } from '../../entities/user-profile';
 import { Alert, Button, Dialog, IconButton, Input } from '../../shared/ui';
@@ -15,6 +15,7 @@ export type SidebarProps = {
   close: () => void;
   view: 'chat' | 'personas';
   openPersonas: () => void;
+  openHarnessSettings?: () => void;
   rooms: Room[];
   selectedRoomId: string;
   selectRoom: (id: string) => void;
@@ -33,7 +34,7 @@ export type SidebarProps = {
 type PositionedRoomMenu = { room: Room; top: number; left: number };
 type ProfileMenuPosition = { left: number; bottom: number; width: number };
 
-export function Sidebar({ open, close, view, openPersonas, rooms, selectedRoomId, selectRoom, createRoom, renameRoom, deleteRoom, deletedRooms = [], restoreRoom, purgeRoom, userProfile, userProfileLoading, userProfileError, saveUserProfile }: SidebarProps) {
+export function Sidebar({ open, close, view, openPersonas, openHarnessSettings, rooms, selectedRoomId, selectRoom, createRoom, renameRoom, deleteRoom, deletedRooms = [], restoreRoom, purgeRoom, userProfile, userProfileLoading, userProfileError, saveUserProfile }: SidebarProps) {
   const [deleting, setDeleting] = useState<string>();
   const [roomError, setRoomError] = useState<string>();
   const [profileOpen, setProfileOpen] = useState(false);
@@ -152,6 +153,7 @@ export function Sidebar({ open, close, view, openPersonas, rooms, selectedRoomId
 
       {profileMenu && <Portal><div className={styles.menuLayer} onMouseDown={() => setProfileMenu(undefined)}><div className={`${styles.contextMenu} ${styles.profileMenu}`} role="menu" style={profileMenu} onMouseDown={event => event.stopPropagation()}>
         <button type="button" role="menuitem" onClick={() => { setProfileMenu(undefined); setProfileOpen(true); }}><Settings /> Profile settings</button>
+        {openHarnessSettings&&<button type="button" role="menuitem" onClick={() => { setProfileMenu(undefined); openHarnessSettings(); }}><Cable /> Harness settings</button>}
         <button type="button" role="menuitem" onClick={() => { setProfileMenu(undefined); setTrashOpen(true); }}><Trash2 /> <span>Trash</span>{deletedRooms.length > 0 && <small>{deletedRooms.length}</small>}</button>
       </div></div></Portal>}
 

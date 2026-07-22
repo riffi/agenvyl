@@ -77,6 +77,8 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
     }),
   }));
 
+  app.get('/v1/configuration',async()=>({apiVersion:CONNECTOR_API_VERSION,instances:structuredClone(config.instances)}));
+
   app.get('/v1/discovery',async(_request,reply)=>options.discover?options.discover():reply.code(503).send({apiVersion:CONNECTOR_API_VERSION,error:'discovery_unavailable',message:'Harness discovery is unavailable'}));
 
   app.put('/v1/instances',async(request,reply)=>{

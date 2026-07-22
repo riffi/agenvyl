@@ -51,6 +51,7 @@ describe('Connector shell', () => {
     const instances = await app.inject({ url: '/v1/instances', headers: auth });
     expect(isConnectorInstanceList(instances.json())).toBe(true);
     expect(instances.json().instances).toEqual([{ id: 'local-hermes', type: 'hermes', status: 'unavailable', capabilities: [], error: { code: 'adapter_not_loaded', message: expect.any(String) } }]);
+    expect((await app.inject({url:'/v1/configuration',headers:auth})).json()).toEqual({apiVersion:'v1',instances:config.instances});
     await app.close();
   });
 

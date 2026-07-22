@@ -1,4 +1,4 @@
-import { isConnectorCatalog, isConnectorCommandResult, isConnectorDiscovery, isConnectorExecutionEvent, isConnectorHealth, isConnectorInstanceList, isConnectorRequestCommandResult, isExecutionSnapshot, type ConfigureConnectorInstancesRequest, type ConnectorCatalog, type ConnectorConfigurationResult, type ConnectorDiscovery, type ConnectorExecutionEvent, type ConnectorHealth, type ConnectorInstanceList, type ConnectorRequestCommandResult, type ExecutionSnapshot, type StartExecutionRequest } from '@agenvyl/connector-contract';
+import { isConnectorCatalog, isConnectorCommandResult, isConnectorConfigurationResult, isConnectorDiscovery, isConnectorExecutionEvent, isConnectorHealth, isConnectorInstanceList, isConnectorRequestCommandResult, isExecutionSnapshot, type ConfigureConnectorInstancesRequest, type ConnectorCatalog, type ConnectorConfigurationResult, type ConnectorDiscovery, type ConnectorExecutionEvent, type ConnectorHealth, type ConnectorInstanceList, type ConnectorRequestCommandResult, type ExecutionSnapshot, type StartExecutionRequest } from '@agenvyl/connector-contract';
 import type { ConnectorExecutionClient, ConnectorLifecycleErrorCode } from '../../modules/connector/connector.ports.js';
 import {parseSse} from '../../infrastructure/http/parseSse.js';
 
@@ -47,6 +47,7 @@ export class HttpConnectorClient implements ConnectorExecutionClient {
   }
 
   async discover():Promise<ConnectorDiscovery>{const value=await this.get('/v1/discovery','discovery');if(!isConnectorDiscovery(value))throw invalidResponse('Connector returned invalid discovery');return value;}
+  async configuration():Promise<ConnectorConfigurationResult>{const value=await this.get('/v1/configuration','discovery');if(!isConnectorConfigurationResult(value))throw invalidResponse('Connector returned invalid configuration');return value;}
   async configureInstances(input:ConfigureConnectorInstancesRequest):Promise<ConnectorConfigurationResult>{const value=await this.json('/v1/instances','PUT',input,'discovery',15_000);if(!isRecord(value)||value.apiVersion!=='v1'||!Array.isArray(value.instances))throw invalidResponse('Connector returned invalid configuration');return value as ConnectorConfigurationResult;}
 
   async start(request:StartExecutionRequest):Promise<ExecutionSnapshot>{
