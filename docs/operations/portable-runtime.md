@@ -25,7 +25,8 @@ The release publishes `install.sh`, `install.ps1`, `agenvyl-release.json`, and a
 shell-readable `agenvyl-release.txt` beside the five archives. Both installers
 select the native target, validate the release index, byte size, and SHA-256,
 stage extraction, run `agenvyl init --path user`, and roll back a same-version
-replacement if initialization fails.
+replacement if initialization fails. After a successful install they run
+`agenvyl setup --all`, start the local stack, and open the browser setup screen.
 
 ```bash
 curl -fsSL https://github.com/riffi/agenvyl/releases/latest/download/install.sh | sh
@@ -36,7 +37,9 @@ irm https://github.com/riffi/agenvyl/releases/latest/download/install.ps1 | iex
 ```
 
 Use `AGENVYL_VERSION=0.1.0` for version pinning and `AGENVYL_NO_PATH=1` to skip
-the stable command shim. Linux/macOS use `${AGENVYL_USER_BIN_DIR:-$HOME/.local/bin}`
+the stable command shim. Use `AGENVYL_NO_LAUNCH=1`, `--no-launch`, or PowerShell
+`-NoLaunch` for unattended installation without starting the application.
+Linux/macOS use `${AGENVYL_USER_BIN_DIR:-$HOME/.local/bin}`
 and add one marked line to `.profile` or `.zprofile` only when needed. Windows
 uses `%LOCALAPPDATA%\Agenvyl\bin` and records the exact User PATH entry it adds.
 `supervisor-settings.json` v2 records this ownership. Repeated installation

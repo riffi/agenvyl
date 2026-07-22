@@ -13,13 +13,15 @@ describe.skipIf(process.platform === 'win32')('POSIX installer integration', () 
     const root = await fixture(); roots.push(root.path);
     const first = runInstaller(root);
     expect(first.status, first.stderr).toBe(0);
-    expect(await readFile(root.initLog, 'utf8')).toContain('init --locale en --shortcuts recommended --path user');
+    const invocations = await readFile(root.initLog, 'utf8');
+    expect(invocations).toContain('init --locale en --shortcuts recommended --path user');
+    expect(invocations).toContain('setup --all');
     await expect(stat(join(root.installRoot, '0.1.0', 'manifest.json'))).resolves.toBeTruthy();
 
     const repeated = runInstaller(root);
     expect(repeated.status, repeated.stderr).toBe(0);
     await expect(stat(join(root.installRoot, '0.1.0', 'manifest.json'))).resolves.toBeTruthy();
-  });
+  }, 15_000);
 
   it('rejects a checksum mismatch before touching an installed version', async () => {
     const root = await fixture(); roots.push(root.path);
@@ -31,7 +33,7 @@ describe.skipIf(process.platform === 'win32')('POSIX installer integration', () 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('Archive checksum mismatch');
     await expect(readFile(join(destination, 'keep.txt'), 'utf8')).resolves.toBe('previous');
-  });
+  }, 15_000);
 });
 
 async function fixture() {
@@ -42,7 +44,7 @@ async function fixture() {
   await mkdir(downloads); await mkdir(fakeBin);
   const bundleRoot = join(bundleParent, 'agenvyl-0.1.0-linux-x64');
   await writeFile(join(bundleRoot, 'manifest.json'), JSON.stringify({ name: 'agenvyl-portable-runtime', version: '0.1.0' }));
-  await writeFile(join(bundleRoot, 'bin', 'agenvyl'), '#!/bin/sh\nprintf "%s\\n" "$*" > "$AGENVYL_INIT_LOG"\n');
+  await writeFile(join(bundleRoot, 'bin', 'agenvyl'), '#!/bin/sh\nprintf "%s\\n" "$*" >> "$AGENVYL_INIT_LOG"\n');
   await chmod(join(bundleRoot, 'bin', 'agenvyl'), 0o755);
   const filename = 'agenvyl-0.1.0-linux-x64.tar.xz';
   const archive = join(downloads, filename);

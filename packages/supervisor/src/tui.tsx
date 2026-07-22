@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Box, Text, render, useApp, useInput, useStdout } from 'ink';
+import { Spinner } from '@inkjs/ui';
 import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { SupervisorConfig } from './config.js';
@@ -10,20 +11,21 @@ import { defaultLocale, loadSettings, saveSettings, type Locale } from './prefer
 import { backupDatabase, doctor, getSupervisorStatus, readLogs, restoreDatabase, startSupervisor, stopSupervisor } from './runtime.js';
 import { configureConnectors, getSetupState, mergeConnectorSelection, type HarnessType, type SetupState } from './setup.js';
 import { uninstallPortable } from './uninstall.js';
+import { availableDashboardActions, DashboardView, type DashboardAction } from './tui-dashboard.js';
+import { LanguageScreen } from './tui-language.js';
+import { BusyView, TuiFrame } from './tui-chrome.js';
+import { UninstalledScreen, UninstallingScreen, UninstallScreen, type UninstallRequest } from './tui-uninstall.js';
 
-type UninstallRequest = { purge: boolean; confirmed: boolean };
-type Screen = 'dashboard' | 'connectors' | 'uninstall';
-export type DashboardAction = { id: string; label: MessageKey; enabled: boolean };
+type Screen = 'dashboard' | 'connectors' | 'language' | 'uninstall' | 'uninstalling' | 'uninstalled';
+export { availableDashboardActions, DashboardView, type DashboardAction } from './tui-dashboard.js';
 
 export async function runTui(config: SupervisorConfig, cliPath: string) {
   if (!process.stdin.isTTY || !process.stdout.isTTY) throw new Error('The TUI requires an interactive terminal. Use agenvyl status for scripts.');
-  let uninstallRequest: UninstallRequest | undefined;
-  const app = render(<ControlCenter config={config} cliPath={cliPath} onUninstall={request => { uninstallRequest = request; }} />, { exitOnCtrlC: true });
+  const app = render(<ControlCenter config={config} cliPath={cliPath} />, { exitOnCtrlC: true });
   await app.waitUntilExit();
-  return uninstallRequest ? uninstallPortable(config, uninstallRequest) : undefined;
 }
 
-function ControlCenter({ config, cliPath, onUninstall }: { config: SupervisorConfig; cliPath: string; onUninstall: (request: UninstallRequest) => void }) {
+function ControlCenter({ config, cliPath }: { config: SupervisorConfig; cliPath: string }) {
   const { exit } = useApp();
   const { stdout } = useStdout();
   const [locale, setLocale] = useState<Locale>();
@@ -36,6 +38,7 @@ function ControlCenter({ config, cliPath, onUninstall }: { config: SupervisorCon
   const [message, setMessage] = useState('');
   const [technical, setTechnical] = useState('');
   const [showTechnical, setShowTechnical] = useState(false);
+  const [uninstallResult, setUninstallResult] = useState<{ purge: boolean; scheduled: boolean }>();
 
   const refresh = useCallback(async () => {
     const [settings, installation, runtime] = await Promise.all([loadSettings(config), isPortableInitialized(config), getSupervisorStatus(config)]);
@@ -47,20 +50,25 @@ function ControlCenter({ config, cliPath, onUninstall }: { config: SupervisorCon
   useEffect(() => { void refresh().catch(error => setTechnical(errorMessage(error))); }, [refresh]);
   useEffect(() => { const timer = setInterval(() => { void refresh().catch(() => undefined); }, 2000); return () => clearInterval(timer); }, [refresh]);
 
-  const actions = useMemo(() => availableDashboardActions(installed, status), [installed, status]);
+  const actions = useMemo(() => availableDashboardActions(installed, { running: status.running, stale: status.stale, failed: status.state?.phase === 'failed' }), [installed, status]);
+  useEffect(() => setIndex(value => Math.min(value, actions.length - 1)), [actions.length]);
 
   const perform = useCallback(async (action: DashboardAction) => {
     if (!action.enabled || busy || !locale) return;
     if (action.id === 'exit') { exit(); return; }
     if (action.id === 'connectors') { setScreen('connectors'); return; }
+    if (action.id === 'language') { setScreen('language'); return; }
     if (action.id === 'uninstall') { setScreen('uninstall'); return; }
-    setBusy(true); setMessage(''); setTechnical('');
+    setBusy(true); setMessage(`${t(locale, action.label)}…`); setTechnical('');
     try {
       if (action.id === 'install') {
-        const result = await initializePortable(config, { locale, shortcuts: 'recommended' });
-        setNeedsLocale(false); setMessage(`${t(locale, 'ready')} ${result.shortcuts.join(', ')}`);
+        if (status.state && !status.stale) await stopSupervisor(config);
+        await initializePortable(config, { locale, shortcuts: 'recommended' });
+        setNeedsLocale(false);
+        await startSupervisor(config, cliPath, process.env, stage => setMessage(startProgress(locale, stage)));
+        openWebUi(config, '/setup'); setMessage(t(locale, 'ready'));
       } else if (action.id === 'start') {
-        await startSupervisor(config, cliPath, process.env, stage => setMessage(locale === 'ru' ? ({ preparing: 'Проверяем установку…', launching: 'Запускаем компоненты…', waiting: 'Ожидаем готовности…', ready: 'Agenvyl готов.' } as const)[stage] : ({ preparing: 'Checking installation…', launching: 'Starting components…', waiting: 'Waiting for readiness…', ready: 'Agenvyl is ready.' } as const)[stage])); openWebUi(config); setMessage(t(locale, 'ready'));
+        await startSupervisor(config, cliPath, process.env, stage => setMessage(startProgress(locale, stage))); openWebUi(config); setMessage(t(locale, 'ready'));
       } else if (action.id === 'open') { openWebUi(config); }
       else if (action.id === 'stop') { await stopSupervisor(config); setMessage(t(locale, 'ready')); }
       else if (action.id === 'doctor') {
@@ -71,15 +79,23 @@ function ControlCenter({ config, cliPath, onUninstall }: { config: SupervisorCon
         const files = (await readdir(config.paths.backups)).filter(file => file.endsWith('.dump')).sort();
         const latest = files.at(-1); if (!latest) throw new Error('No backup is available.');
         await restoreDatabase(config, join(config.paths.backups, latest)); setMessage(`${t(locale, 'ready')} ${latest}`);
-      } else if (action.id === 'language') {
-        const next: Locale = locale === 'ru' ? 'en' : 'ru'; const settings = await loadSettings(config);
-        if (settings) await saveSettings(config, { ...settings, locale: next });
-        setLocale(next); setNeedsLocale(false);
       }
       await refresh();
     } catch (error) { setMessage(t(locale, 'attention')); setTechnical(errorMessage(error)); setShowTechnical(true); }
     finally { setBusy(false); }
-  }, [busy, cliPath, config, exit, locale, refresh]);
+  }, [busy, cliPath, config, exit, locale, refresh, status]);
+
+  const performUninstall = useCallback(async (request: UninstallRequest) => {
+    if (!locale) return;
+    setScreen('uninstalling');
+    try {
+      const result = await uninstallPortable(config, request);
+      setUninstallResult({ purge: result.purge, scheduled: result.scheduled });
+      setScreen('uninstalled');
+    } catch (error) {
+      setMessage(t(locale, 'attention')); setTechnical(errorMessage(error)); setShowTechnical(true); setScreen('dashboard');
+    }
+  }, [config, locale]);
 
   useInput(input => {
     if (!locale || screen !== 'dashboard' || busy || !needsLocale) return;
@@ -93,58 +109,28 @@ function ControlCenter({ config, cliPath, onUninstall }: { config: SupervisorCon
     }
   });
 
-  if (!locale) return <Text>{t(defaultLocale(), 'working')}</Text>;
-  if (needsLocale) return <Box flexDirection="column" padding={1}><Text bold>{t(locale, 'selectLocale')}</Text><Text>1. Русский</Text><Text>2. English</Text></Box>;
+  if (!locale) return <BusyView locale={defaultLocale()} label={t(defaultLocale(), 'working')} />;
+  if (needsLocale) return <TuiFrame locale={locale}><Text bold>{t(locale, 'selectLocale')}</Text><Text>1. Русский</Text><Text>2. English</Text></TuiFrame>;
   if (screen === 'connectors') return <ConnectorScreen config={config} locale={locale} onBack={() => { setScreen('dashboard'); void refresh(); }} />;
-  if (screen === 'uninstall') return <UninstallScreen locale={locale} onBack={() => setScreen('dashboard')} onConfirm={request => { onUninstall(request); exit(); }} />;
+  if (screen === 'language') return <LanguageScreen locale={locale} onBack={() => setScreen('dashboard')} onSelect={async selected => {
+    const settings = await loadSettings(config);
+    await saveSettings(config, settings ? { ...settings, locale: selected } : { schemaVersion: 2, locale: selected, initializedAt: new Date().toISOString(), shortcuts: [] });
+    setLocale(selected); setNeedsLocale(false); setScreen('dashboard'); setMessage(t(selected, 'ready'));
+  }} />;
+  if (screen === 'uninstall') return <UninstallScreen locale={locale} onBack={() => setScreen('dashboard')} onConfirm={request => { void performUninstall(request); }} />;
+  if (screen === 'uninstalling') return <UninstallingScreen locale={locale} />;
+  if (screen === 'uninstalled' && uninstallResult) return <UninstalledScreen locale={locale} {...uninstallResult} onExit={exit} />;
 
   const unhealthy = Object.values(status.health).some(value => value === 'not_ready');
   const stateLabel: MessageKey = status.running ? (unhealthy ? 'attention' : 'running') : status.state?.phase === 'starting' ? 'starting' : status.stale || status.state?.phase === 'failed' ? 'attention' : installed ? 'stopped' : 'notInstalled';
   return <DashboardView locale={locale} installed={installed} stateLabel={stateLabel} actions={actions} index={index} busy={busy} message={message} technical={technical} showTechnical={showTechnical} columns={stdout?.columns ?? 80} rows={stdout?.rows ?? 24} onMove={delta => setIndex(value => (value + delta + actions.length) % actions.length)} onSelect={() => { void perform(actions[index]); }} onDetails={() => setShowTechnical(value => !value)} onExit={exit} />;
 }
 
-export function DashboardView({ locale, installed, stateLabel, actions, index, busy, message, technical, showTechnical, columns = 80, rows = 24, onMove, onSelect, onDetails, onExit }: { locale: Locale; installed: boolean; stateLabel: MessageKey; actions: DashboardAction[]; index: number; busy: boolean; message: string; technical: string; showTechnical: boolean; columns?: number; rows?: number; onMove: (delta: number) => void; onSelect: () => void; onDetails: () => void; onExit: () => void }) {
-  useInput((input, key) => {
-    if (busy) return;
-    if (input.toLowerCase() === 'q' || key.escape) onExit();
-    else if (input.toLowerCase() === 'd') onDetails();
-    else if (key.upArrow) onMove(-1);
-    else if (key.downArrow) onMove(1);
-    else if (key.return) onSelect();
-  });
-  const compact = columns < 60 || rows < 18;
-  return <Box flexDirection="column" paddingX={1}>
-    <Text bold color="cyan">{t(locale, 'title')}</Text>
-    <Text>{t(locale, stateLabel)}{installed ? ` · ${t(locale, 'installed')}` : ''}</Text>
-    <Box marginTop={1} flexDirection="column">{actions.map((action, actionIndex) => <Text key={action.id} dimColor={!action.enabled} color={actionIndex === index ? 'cyan' : undefined}>{actionIndex === index ? '› ' : '  '}{t(locale, action.label)}</Text>)}</Box>
-    <Box marginTop={1}><Text color={busy ? 'yellow' : undefined}>{busy ? t(locale, 'working') : message}</Text></Box>
-    {!compact && <Text dimColor>{t(locale, 'keys')}</Text>}
-    {showTechnical && technical && <Box marginTop={1} borderStyle="round" flexDirection="column"><Text bold>{t(locale, 'details')}</Text><Text wrap="truncate-end">{technical}</Text></Box>}
-  </Box>;
-}
-
-export function availableDashboardActions(installed: boolean, status: { running: boolean; stale: boolean }): DashboardAction[] {
-  return [
-    { id: 'install', label: 'install', enabled: !status.running },
-    { id: 'start', label: 'start', enabled: installed && !status.running },
-    { id: 'open', label: 'open', enabled: status.running },
-    { id: 'stop', label: 'stop', enabled: status.running || status.stale },
-    { id: 'connectors', label: 'connectors', enabled: status.running },
-    { id: 'doctor', label: 'doctor', enabled: true },
-    { id: 'logs', label: 'logs', enabled: installed },
-    { id: 'backup', label: 'backup', enabled: status.running },
-    { id: 'restore', label: 'restore', enabled: installed && !status.running },
-    { id: 'language', label: 'language', enabled: true },
-    { id: 'uninstall', label: 'uninstall', enabled: installed && !status.running },
-    { id: 'exit', label: 'exit', enabled: true },
-  ];
-}
-
 function ConnectorScreen({ config, locale, onBack }: { config: SupervisorConfig; locale: Locale; onBack: () => void }) {
-  const [state, setState] = useState<SetupState>(); const [selected, setSelected] = useState<HarnessType[]>([]); const [index, setIndex] = useState(0); const [confirm, setConfirm] = useState(''); const [agyPending, setAgyPending] = useState(false); const [message, setMessage] = useState('');
+  const [state, setState] = useState<SetupState>(); const [selected, setSelected] = useState<HarnessType[]>([]); const [index, setIndex] = useState(0); const [confirm, setConfirm] = useState(''); const [agyPending, setAgyPending] = useState(false); const [message, setMessage] = useState(''); const [saving, setSaving] = useState(false);
   useEffect(() => { void getSetupState(config).then(value => { setState(value); setSelected(value.instances.filter(item => item.status !== 'unavailable').map(item => item.type).filter((item): item is HarnessType => ['hermes', 'opencode', 'antigravity'].includes(item))); }).catch(error => setMessage(errorMessage(error))); }, [config]);
   useInput((input, key) => {
-    if (!state) { if (key.escape) onBack(); return; }
+    if (!state || saving) { if (key.escape && !saving) onBack(); return; }
     if (agyPending) {
       if (key.escape) { setAgyPending(false); setConfirm(''); return; }
       if (key.backspace || key.delete) setConfirm(value => value.slice(0, -1));
@@ -160,26 +146,18 @@ function ConnectorScreen({ config, locale, onBack }: { config: SupervisorConfig;
       if (candidate.type === 'antigravity' && !selected.includes(candidate.type)) { setAgyPending(true); return; }
       setSelected(value => value.includes(candidate.type) ? value.filter(item => item !== candidate.type) : [...value, candidate.type]);
     }
-    if (key.return) void configureConnectors(config, mergeConnectorSelection(state, selected, selected.includes('antigravity'))).then(() => { setMessage(t(locale, 'ready')); return getSetupState(config); }).then(setState).catch(error => setMessage(errorMessage(error)));
-  });
-  if (!state) return <Text>{message || t(locale, 'working')}</Text>;
-  if (agyPending) return <Box flexDirection="column" padding={1}><Text bold>AGY может изменять файлы. Режим по умолчанию: plan.</Text><Text>Для включения введите точно AGY и нажмите Enter:</Text><Text color="yellow">{confirm}_</Text><Text dimColor>Esc — отмена</Text></Box>;
-  return <Box flexDirection="column" padding={1}><Text bold>{t(locale, 'connectors')}</Text>{state.candidates.map((candidate, candidateIndex) => <Text key={candidate.type} dimColor={!candidate.safeToSelect} color={candidateIndex === index ? 'cyan' : undefined}>{candidateIndex === index ? '› ' : '  '}[{selected.includes(candidate.type) ? 'x' : ' '}] {candidate.type === 'antigravity' ? 'AGY' : candidate.label} — {candidate.safeToSelect ? candidate.cli.version ?? (candidate.endpoint?.reachable ? 'ready' : 'found') : 'not found'}</Text>)}<Text dimColor>↑/↓ · Space toggle · Enter save · Esc back</Text><Text color="yellow">{message}</Text></Box>;
-}
-
-function UninstallScreen({ locale, onBack, onConfirm }: { locale: Locale; onBack: () => void; onConfirm: (request: UninstallRequest) => void }) {
-  const [mode, setMode] = useState<0 | 1>(0); const [confirm, setConfirm] = useState('');
-  useInput((input, key) => {
-    if (key.escape) { onBack(); return; }
-    if (key.upArrow || key.downArrow) { setMode(value => value === 0 ? 1 : 0); setConfirm(''); return; }
-    if (mode === 0 && key.return) onConfirm({ purge: false, confirmed: true });
-    else if (mode === 1) {
-      if (key.backspace || key.delete) setConfirm(value => value.slice(0, -1));
-      else if (key.return && confirm === 'DELETE') onConfirm({ purge: true, confirmed: true });
-      else if (input && !key.ctrl && !key.meta) setConfirm(value => `${value}${input}`.slice(0, 16));
+    if (key.return) {
+      setSaving(true); setMessage('');
+      void configureConnectors(config, mergeConnectorSelection(state, selected, selected.includes('antigravity'))).then(() => { setMessage(t(locale, 'ready')); return getSetupState(config); }).then(setState).catch(error => setMessage(errorMessage(error))).finally(() => setSaving(false));
     }
   });
-  return <Box flexDirection="column" padding={1}><Text bold>{t(locale, 'uninstall')}</Text><Text color={mode === 0 ? 'cyan' : undefined}>{mode === 0 ? '› ' : '  '}Remove application, preserve user data</Text><Text color={mode === 1 ? 'red' : undefined}>{mode === 1 ? '› ' : '  '}Remove application and all user data</Text>{mode === 1 && <Text>Type DELETE to confirm: <Text color="red">{confirm}_</Text></Text>}<Text dimColor>↑/↓ choose · Enter confirm · Esc back</Text></Box>;
+  if (!state) return message ? <TuiFrame locale={locale}><Text color="red">{message}</Text><Text dimColor>Esc — back</Text></TuiFrame> : <BusyView locale={locale} label={t(locale, 'working')} />;
+  if (agyPending) return <TuiFrame locale={locale}><Text bold>AGY может изменять файлы. Режим по умолчанию: plan.</Text><Text>Для включения введите точно AGY и нажмите Enter:</Text><Text color="yellow">{confirm}_</Text><Text dimColor>Esc — отмена</Text></TuiFrame>;
+  return <TuiFrame locale={locale}><Text bold>{t(locale, 'connectors')}</Text><Box marginTop={1} flexDirection="column">{state.candidates.map((candidate, candidateIndex) => <Text key={candidate.type} dimColor={!candidate.safeToSelect} bold={candidateIndex === index} color={candidateIndex === index ? 'cyan' : undefined}>{candidateIndex === index ? '◆ ' : '  '}[{selected.includes(candidate.type) ? 'x' : ' '}] {candidate.type === 'antigravity' ? 'AGY' : candidate.label} — {candidate.safeToSelect ? candidate.cli.version ?? (candidate.endpoint?.reachable ? 'ready' : 'found') : 'not found'}</Text>)}</Box><Box marginTop={1}>{saving ? <Spinner type="dots" label={t(locale, 'working')} /> : <Text color={message ? 'green' : undefined}>{message}</Text>}</Box><Text dimColor>↑/↓ · Space toggle · Enter save · Esc back</Text></TuiFrame>;
 }
 
 function errorMessage(error: unknown) { return error instanceof Error ? error.message : String(error); }
+
+const startProgress = (locale: Locale, stage: 'preparing' | 'launching' | 'waiting' | 'ready') => locale === 'ru'
+  ? ({ preparing: 'Проверяем установку…', launching: 'Запускаем компоненты…', waiting: 'Ожидаем готовности…', ready: 'Agenvyl готов.' } as const)[stage]
+  : ({ preparing: 'Checking installation…', launching: 'Starting components…', waiting: 'Waiting for readiness…', ready: 'Agenvyl is ready.' } as const)[stage];

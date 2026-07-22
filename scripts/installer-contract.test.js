@@ -7,6 +7,7 @@ describe('one-line installer contracts', () => {
     expect(script).toContain("--proto '=https'");
     expect(script).toContain('Archive checksum mismatch.');
     expect(script).toContain('agenvyl" init --locale en --shortcuts recommended --path');
+    expect(script).toContain('agenvyl" setup --all');
     expect(script).toContain('the previous installation was restored');
     expect(script).not.toMatch(/\bsudo\b/u);
   });
@@ -18,6 +19,7 @@ describe('one-line installer contracts', () => {
     expect(script).toContain("Join-Path $env:LOCALAPPDATA 'Agenvyl\\versions'");
     expect(script).toContain("System32\\tar.exe");
     expect(script).toContain('the previous installation was restored');
+    expect(script).toContain("'bin\\agenvyl.cmd') setup --all");
     expect(script).not.toMatch(/Start-Process.+-Verb\s+RunAs/u);
   });
 });

@@ -4,16 +4,18 @@ set -eu
 repository=${AGENVYL_REPOSITORY:-riffi/agenvyl}
 requested_version=${AGENVYL_VERSION:-latest}
 no_path=${AGENVYL_NO_PATH:-0}
+no_launch=${AGENVYL_NO_LAUNCH:-0}
 manifest_url=${AGENVYL_MANIFEST_URL:-}
 
 usage() {
-  echo 'Usage: install.sh [--version <version>] [--no-path] [--manifest-url <url>] [--install-root <directory>]'
+  echo 'Usage: install.sh [--version <version>] [--no-path] [--no-launch] [--manifest-url <url>] [--install-root <directory>]'
 }
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --version) requested_version=${2:?--version requires a value}; shift 2 ;;
     --no-path) no_path=1; shift ;;
+    --no-launch) no_launch=1; shift ;;
     --manifest-url) manifest_url=${2:?--manifest-url requires a value}; shift 2 ;;
     --install-root) AGENVYL_INSTALL_ROOT=${2:?--install-root requires a value}; export AGENVYL_INSTALL_ROOT; shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -133,4 +135,9 @@ if [ "$path_policy" = user ] && [ -n "$old_bundle" ] && [ "$old_bundle" != "$des
 echo "Agenvyl $version installed at $destination"
 if [ "$path_policy" = user ] && ! command -v agenvyl >/dev/null 2>&1; then
   echo "The command shim is at $command_path. Add $(dirname "$command_path") to PATH if your shell does not already include it."
+fi
+if [ "$no_launch" != 1 ]; then
+  if ! "$destination/bin/agenvyl" setup --all; then
+    echo "Agenvyl was installed but could not be launched. Run '$command_path setup --all' to retry." >&2
+  fi
 fi

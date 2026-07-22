@@ -132,17 +132,13 @@ curl -fsSL https://github.com/riffi/agenvyl/releases/latest/download/install.sh 
 
 </details>
 
-After installation:
+After installation, Agenvyl starts and opens the guided setup automatically.
+Choose the detected agent connections, enter your display name, and name your
+first room. Open a new terminal before using the `agenvyl` command directly.
 
-1. Close your terminal and open it again so the `agenvyl` command is available.
-2. Start the guided setup:
-
-   ```bash
-   agenvyl setup
-   ```
-
-3. Choose the detected agent connections, enter your display name, and name
-   your first room. Agenvyl opens the Web UI automatically.
+For unattended installation without starting Agenvyl, set
+`AGENVYL_NO_LAUNCH=1` (or pass `--no-launch` to `install.sh` / `-NoLaunch` to
+`install.ps1`).
 
 If the browser does not open, go to <http://127.0.0.1:8791>.
 

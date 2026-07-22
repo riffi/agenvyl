@@ -14,9 +14,11 @@ describe.skipIf(process.platform !== 'win32')('PowerShell installer integration'
     const command = `$ErrorActionPreference='Stop'; function Invoke-WebRequest { param([switch]$UseBasicParsing,[string]$Uri,[string]$OutFile); Copy-Item -LiteralPath (Join-Path $env:FIXTURE_DOWNLOAD_ROOT ([IO.Path]::GetFileName(([uri]$Uri).AbsolutePath))) -Destination $OutFile }; & '${resolve('packaging/install.ps1').replaceAll("'", "''")}' -NoPath -ManifestUrl 'https://fixture.test/agenvyl-release.txt' -InstallRoot $env:FIXTURE_INSTALL_ROOT`;
     const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', command], { encoding: 'utf8', env: { ...process.env, LOCALAPPDATA: root.localAppData, FIXTURE_DOWNLOAD_ROOT: root.downloads, FIXTURE_INSTALL_ROOT: root.installRoot, AGENVYL_INIT_LOG: root.initLog } });
     expect(result.status, result.stderr).toBe(0);
-    expect(await readFile(root.initLog, 'utf8')).toContain('init --locale en --shortcuts recommended --path none');
+    const invocations = await readFile(root.initLog, 'utf8');
+    expect(invocations).toContain('init --locale en --shortcuts recommended --path none');
+    expect(invocations).toContain('setup --all');
     await expect(stat(join(root.installRoot, '0.1.0', 'manifest.json'))).resolves.toBeTruthy();
-  });
+  }, 15_000);
 });
 
 async function fixture() {
@@ -25,7 +27,7 @@ async function fixture() {
   const installRoot = join(path, 'versions'), localAppData = join(path, 'local'), initLog = join(path, 'init.log');
   await mkdir(join(bundleRoot, 'bin'), { recursive: true }); await mkdir(downloads);
   await writeFile(join(bundleRoot, 'manifest.json'), JSON.stringify({ name: 'agenvyl-portable-runtime', version: '0.1.0' }));
-  await writeFile(join(bundleRoot, 'bin', 'agenvyl.cmd'), '@echo off\r\necho %* > "%AGENVYL_INIT_LOG%"\r\nexit /b 0\r\n');
+  await writeFile(join(bundleRoot, 'bin', 'agenvyl.cmd'), '@echo off\r\necho %* >> "%AGENVYL_INIT_LOG%"\r\nexit /b 0\r\n');
   const filename = 'agenvyl-0.1.0-windows-x64.zip', archive = join(downloads, filename);
   const zip = spawnSync(join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe'), ['-a', '-cf', archive, 'agenvyl-0.1.0-windows-x64'], { cwd: bundleParent, encoding: 'utf8' });
   if (zip.status !== 0) throw new Error(zip.stderr);

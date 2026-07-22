@@ -2,6 +2,7 @@
 param(
   [string]$Version = $(if ($env:AGENVYL_VERSION) { $env:AGENVYL_VERSION } else { 'latest' }),
   [switch]$NoPath,
+  [switch]$NoLaunch,
   [string]$ManifestUrl = $env:AGENVYL_MANIFEST_URL,
   [string]$InstallRoot = $env:AGENVYL_INSTALL_ROOT,
   [string]$Repository = $(if ($env:AGENVYL_REPOSITORY) { $env:AGENVYL_REPOSITORY } else { 'riffi/agenvyl' })
@@ -93,6 +94,10 @@ try {
   if ($pathPolicy -eq 'user' -and $oldBundle -and $oldBundle -ne $destination -and (Test-OwnedVersionDirectory $oldBundle)) { Remove-Item -LiteralPath $oldBundle -Recurse -Force }
   Write-Host "Agenvyl $releaseVersion installed at $destination"
   if ($pathPolicy -eq 'user') { Write-Host 'Open a new terminal to use the agenvyl command.' }
+  if (-not $NoLaunch -and $env:AGENVYL_NO_LAUNCH -ne '1') {
+    & (Join-Path $destination 'bin\agenvyl.cmd') setup --all
+    if ($LASTEXITCODE -ne 0) { Write-Warning "Agenvyl was installed but could not be launched. Run '$commandPath setup --all' to retry." }
+  }
 }
 finally {
   if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Recurse -Force }
