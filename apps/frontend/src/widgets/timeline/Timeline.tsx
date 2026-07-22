@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Ban, ChevronDown, ChevronUp, CircleCheck, CircleHelp, CircleX, Clock3, File, FoldVertical, Info, LoaderCircle, Paperclip, RotateCcw, Square, TriangleAlert, UnfoldVertical, Wrench, BadgeCheck } from 'lucide-react';
-import type {UpstreamStatus} from '@agenvyl/contracts';
+import type {RoomPlanState,UpstreamStatus} from '@agenvyl/contracts';
+import type {WorkspaceFocus} from '../artifacts-drawer';
 import {HarnessIcon,type HarnessCatalog} from '../../entities/harness';
 import type { Persona } from '../../entities/persona';
 import type { RoomState } from '../../entities/room';
@@ -98,8 +99,9 @@ function RunCard({
   harnessCatalog,
   personas,
   onMentionPersona,
-  approvedPlanRunId,
+  plan,
   approvePlan=async()=>{},
+  openWorkspace,
 }: {
   run: Run;
   persona: Persona;
@@ -117,14 +119,16 @@ function RunCard({
   harnessCatalog?:HarnessCatalog;
   personas:Persona[];
   onMentionPersona:(handle:string)=>void;
-  approvedPlanRunId?:string;
-  approvePlan?:(runId:string)=>Promise<void>;
+  plan:RoomPlanState;
+  approvePlan?:(versionId:string)=>Promise<void>;
+  openWorkspace:(target:Omit<WorkspaceFocus,'requestId'>)=>void;
 }) {
   const [retrying,setRetrying]=useState(false);const [retryError,setRetryError]=useState<string>();const [toolsOpen,setToolsOpen]=useState(false);
   const answer = run.text || (run.status === "queued" ? "Waiting for an available slot…" : "Analyzing…");
   const canCancel=['queued','streaming','waiting_approval','waiting_clarification'].includes(run.status);
   const retryLabel=run.status==='completed'?'Create another response':'Run again';
   const retryRun=async()=>{setRetrying(true);setRetryError(undefined);try{await retry()}catch(error){setRetryError(error instanceof Error?error.message:String(error))}finally{setRetrying(false)}};
+  const planArtifact=run.artifacts?.find(item=>item.attribution==='exact'&&item.path==='plan.md'&&item.change!=='deleted');
   return (
     <article
       className={`${styles['run-card']} ${styles[run.status]}`}
@@ -158,12 +162,12 @@ function RunCard({
         {isLongAnswer(run.text)&&run.status==='completed'&&<button className={`${styles['answer-toggle']} ${collapsed?styles.expand:styles.collapse}`} type="button" onClick={toggleCollapsed} aria-expanded={!collapsed}>{collapsed?<><span>Expand response</span><ChevronDown/></>:<><span>Collapse response</span><ChevronUp/></>}</button>}
         {run.error && <Alert tone="error">{run.error}</Alert>}
         {run.request&&<RunRequest key={`${run.id}:${run.request.prompt}:${run.request.questions?.map(question=>question.id).join(',')??''}`} request={run.request} resolve={resolve}/>}
-        {run.artifacts?.some(item=>item.attribution==='exact'&&!run.embeds?.some(embed=>embed.status==='resolved'&&embed.attachment?.version_id===item.version_id))&&<div className={styles.artifacts}>{run.artifacts.filter(item=>item.attribution==='exact'&&!run.embeds?.some(embed=>embed.status==='resolved'&&embed.attachment?.version_id===item.version_id)).map(item=><a key={item.version_id} href={item.preview_url} target="_blank" rel="noreferrer"><File/><span><strong>{item.name}</strong><small>{item.change==='created'?'Created':item.change==='updated'?'Updated':'Deleted'}</small></span></a>)}</div>}
+        {run.artifacts?.some(item=>item.attribution==='exact'&&!run.embeds?.some(embed=>embed.status==='resolved'&&embed.attachment?.version_id===item.version_id))&&<div className={styles.artifacts}>{run.artifacts.filter(item=>item.attribution==='exact'&&!run.embeds?.some(embed=>embed.status==='resolved'&&embed.attachment?.version_id===item.version_id)).map(item=>item.path==='plan.md'?<button type="button" key={item.version_id} onClick={()=>openWorkspace({entryId:item.entry_id,versionId:item.version_id})}><File/><span><strong>{item.name}</strong><small>{item.change==='created'?'Created':'New version'}</small></span></button>:<a key={item.version_id} href={item.preview_url} target="_blank" rel="noreferrer"><File/><span><strong>{item.name}</strong><small>{item.change==='created'?'Created':item.change==='updated'?'Updated':'Deleted'}</small></span></a>)}</div>}
         <div className={styles['run-footer']}>
           <span className={styles['run-footer-actions']}>
             {run.tools.length>0&&<button type="button" className={styles['footer-action']} onClick={()=>setToolsOpen(open=>!open)} aria-expanded={toolsOpen} aria-controls={`run-tools-${run.id}`}><Wrench/><span>Actions</span><em>{run.tools.length}</em>{toolsOpen?<ChevronUp className={styles.disclosure}/>:<ChevronDown className={styles.disclosure}/>}</button>}
             <button type="button" className={styles['footer-action']} onClick={select}><Info/><span>Run details</span></button>
-            {run.status==='completed'&&run.executionProfile.workflowMode==='plan'&&<button type="button" data-plan-approvable="true" className={`${styles['footer-action']} ${approvedPlanRunId===run.id?styles['approved-action']:''}`} onClick={()=>void approvePlan(run.id)}><BadgeCheck/><span>{approvedPlanRunId===run.id?'Approved plan':'Approve plan'}</span></button>}
+            {planArtifact&&plan.current?.version_id===planArtifact.version_id&&<button type="button" data-plan-approvable="true" className={`${styles['footer-action']} ${plan.approved?.version_id===planArtifact.version_id?styles['approved-action']:''}`} onClick={()=>void approvePlan(planArtifact.version_id)}><BadgeCheck/><span>{plan.approved?.version_id===planArtifact.version_id?'Approved plan':'Approve plan'}</span></button>}
           </span>
           {attemptCount>1&&<span className={styles['attempt-carousel']}><IconButton onClick={previousAttempt} disabled={attemptIndex===0} aria-label="Previous attempt">‹</IconButton><small>{attemptIndex+1} of {attemptCount}</small><IconButton onClick={nextAttempt} disabled={attemptIndex===attemptCount-1} aria-label="Next attempt">›</IconButton></span>}
         </div>
@@ -185,8 +189,9 @@ export function Timeline({
   initialLoading,
   harnessCatalog,
   onMentionPersona,
-  approvedPlanRunId,
+  plan=state.executionState.plan,
   approvePlan=async()=>{},
+  openWorkspace=()=>{},
 }: {
   state: RoomState;
   personas: Persona[];
@@ -197,8 +202,9 @@ export function Timeline({
   initialLoading:boolean;
   harnessCatalog?:HarnessCatalog;
   onMentionPersona:(handle:string)=>void;
-  approvedPlanRunId?:string;
-  approvePlan?:(runId:string)=>Promise<void>;
+  plan?:RoomPlanState;
+  approvePlan?:(versionId:string)=>Promise<void>;
+  openWorkspace?:(target:Omit<WorkspaceFocus,'requestId'>)=>void;
 }) {
   const byHandle = new Map(personas.map((p) => [p.handle, p]));
   const [attemptView,setAttemptView]=useState<Record<string,string>>({});
@@ -302,8 +308,9 @@ export function Timeline({
                     harnessCatalog={harnessCatalog}
                     personas={personas}
                     onMentionPersona={onMentionPersona}
-                    approvedPlanRunId={approvedPlanRunId}
+                    plan={plan}
                     approvePlan={approvePlan}
+                    openWorkspace={openWorkspace}
                   />
                   </div>
                 )},

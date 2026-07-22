@@ -26,11 +26,13 @@ export const createRoomBodySchema = objectSchema({
 
 export const renameRoomBodySchema = objectSchema({ title: { type: 'string' } });
 const workflowModeSchema={type:'string',enum:['plan','work']} as const;
-export const roomExecutionProfileBodySchema={type:'object',additionalProperties:false,minProperties:1,properties:{workflow_mode:workflowModeSchema,reasoning_effort:nullableStringSchema}} as const;
-export const approvePlanBodySchema=objectSchema({run_id:{type:'string'}},['run_id']);
-const roomExecutionProfileResponseSchema=objectSchema({workflow_mode:workflowModeSchema,reasoning_effort:nullableStringSchema},['workflow_mode','reasoning_effort']);
-const approvedPlanResponseSchema=objectSchema({run_id:{type:'string'},agent:{type:'string'},created_at:{type:'string'},excerpt:{type:'string'}},['run_id','agent','created_at','excerpt']);
-export const roomExecutionStateResponseSchema=objectSchema({profile:roomExecutionProfileResponseSchema,approved_plan:{anyOf:[{type:'null'},approvedPlanResponseSchema]}},['profile','approved_plan']);
+export const roomExecutionProfileBodySchema={type:'object',additionalProperties:false,minProperties:1,properties:{reasoning_effort:nullableStringSchema,workflow_mode:{not:{}}}} as const;
+export const approvePlanBodySchema=objectSchema({version_id:{type:'string'}},['version_id']);
+export const updatePlanBodySchema=objectSchema({content:{type:'string',minLength:1},expected_version_id:{type:'string'}},['content','expected_version_id']);
+const roomExecutionProfileResponseSchema=objectSchema({reasoning_effort:nullableStringSchema},['reasoning_effort']);
+const planVersionRefSchema=objectSchema({entry_id:{type:'string'},version_id:{type:'string'}},['entry_id','version_id']);
+const roomPlanStateSchema=objectSchema({path:{type:'string',const:'plan.md'},current:{anyOf:[{type:'null'},planVersionRefSchema]},approved:{anyOf:[{type:'null'},planVersionRefSchema]}},['path','current','approved']);
+export const roomExecutionStateResponseSchema=objectSchema({profile:roomExecutionProfileResponseSchema,plan:roomPlanStateSchema},['profile','plan']);
 
 export const createPersonaBodySchema = objectSchema({
   handle: { type: 'string' },
@@ -62,6 +64,7 @@ export const createMessageBodySchema = objectSchema({
   targets: { type: 'array', items: { type: 'string' } },
   message_id: { type: 'string' },
   attachment_version_ids:{type:'array',items:{type:'string'},maxItems:10},
+  execution_intent:{type:'object',additionalProperties:false,required:['kind'],properties:{kind:{type:'string',enum:['plan','implement']},approved_plan_version_id:{type:'string'}},allOf:[{if:{properties:{kind:{const:'implement'}},required:['kind']},then:{required:['approved_plan_version_id']}},{if:{properties:{kind:{const:'plan'}},required:['kind']},then:{not:{required:['approved_plan_version_id']}}}]},
 });
 
 export const userProfileBodySchema=objectSchema({display_name:{type:'string',maxLength:120},handle:{type:'string',maxLength:80}},['display_name','handle']);
@@ -100,7 +103,7 @@ const connectorRunStateResponseSchema=objectSchema({state:{type:'string',enum:['
 const structuredQuestionOptionResponseSchema=objectSchema({label:{type:'string'},description:{type:'string'}},['label']);
 const structuredQuestionResponseSchema=objectSchema({id:{type:'string'},header:{type:'string'},question:{type:'string'},options:{type:'array',items:structuredQuestionOptionResponseSchema},isOther:{type:'boolean'},isSecret:{type:'boolean'},multiSelect:{type:'boolean'}},['id','header','question','isOther','isSecret']);
 const runRequestResponseSchema=objectSchema({kind:{type:'string',enum:['approval','clarification']},prompt:{type:'string'},choices:{type:'array',items:{type:'string'}},questions:{type:'array',items:structuredQuestionResponseSchema,maxItems:4},autoResolutionMs:{type:'integer'},resolved:{type:'string'}},['kind','prompt']);
-const runExecutionProfileResponseSchema=objectSchema({workflowMode:workflowModeSchema,requestedReasoningEffort:nullableStringSchema,reasoningEffort:nullableStringSchema,reasoningEffortFallback:{type:'boolean'},planEnforcement:{anyOf:[{type:'null'},{type:'string',enum:['native','instruction_only']}]},permissionProfileId:nullableStringSchema,agentVariantId:nullableStringSchema,approvedPlanRunId:nullableStringSchema},['workflowMode','requestedReasoningEffort','reasoningEffort','reasoningEffortFallback','planEnforcement','permissionProfileId','agentVariantId','approvedPlanRunId']);
+const runExecutionProfileResponseSchema=objectSchema({workflowMode:workflowModeSchema,requestedReasoningEffort:nullableStringSchema,reasoningEffort:nullableStringSchema,reasoningEffortFallback:{type:'boolean'},planEnforcement:{anyOf:[{type:'null'},{type:'string',enum:['native','instruction_only']}]},permissionProfileId:nullableStringSchema,agentVariantId:nullableStringSchema,implementationPlanVersionId:nullableStringSchema},['workflowMode','requestedReasoningEffort','reasoningEffort','reasoningEffortFallback','planEnforcement','permissionProfileId','agentVariantId','implementationPlanVersionId']);
 const timelineRunResponseSchema=objectSchema({
   id:{type:'string'},messageId:{type:'string'},agent:{type:'string'},requestedModel:{type:'string'},harnessInstanceId:{type:'string'},harnessType:{type:'string'},modelId:{type:'string'},executionProfile:runExecutionProfileResponseSchema,status:{type:'string'},upstreamStatus:upstreamStatusResponseSchema,connector:connectorRunStateResponseSchema,usage:{type:'object',additionalProperties:false,required:['inputTokens','outputTokens'],properties:{inputTokens:{type:'integer',minimum:0},outputTokens:{type:'integer',minimum:0},totalTokens:{type:'integer',minimum:0},reasoningTokens:{type:'integer',minimum:0},cacheReadTokens:{type:'integer',minimum:0},cacheWriteTokens:{type:'integer',minimum:0}}},text:{type:'string'},reasoning:{type:'string'},tools:{type:'array',items:toolActivityResponseSchema},retryOfRunId:{type:'string'},responseSlotId:{type:'string'},attemptNumber:{type:'integer',minimum:1},request:runRequestResponseSchema,error:{type:'string'},errorCode:{type:'string'},artifacts:{type:'array'},embeds:{type:'array'},
 },['id','messageId','agent','harnessInstanceId','harnessType','modelId','executionProfile','status','text','tools']);

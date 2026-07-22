@@ -10,7 +10,7 @@ import { CreateRoomDialog, RoomAgentManager } from "../../features/room-dialogs"
 import {AttachmentPicker,useRoomAttachments} from '../../features/send-message';
 import { FakeRoomGateway, HttpRoomGateway, type RoomGateway } from "../../features/room-session";
 import { Button, EmptyState } from "../../shared/ui";
-import { ArtifactsDrawer } from "../artifacts-drawer";
+import { ArtifactsDrawer, type WorkspaceFocus } from "../artifacts-drawer";
 import { Composer, type ComposerHandle } from "../composer";
 import { PersonasScreen } from "../personas-screen";
 import { RoomHeader } from "../room-header";
@@ -93,6 +93,7 @@ export function WorkspaceApp({
     [selected, setSelected] = useState<string>();
   const attachments=useRoomAttachments(roomId);
   const [attachmentPicker,setAttachmentPicker]=useState(false);
+  const [workspaceFocus,setWorkspaceFocus]=useState<WorkspaceFocus>();
   const composerRef=useRef<ComposerHandle>(null);
   const [draggingFiles,setDraggingFiles]=useState(false);
   const dragDepth=useRef(0);
@@ -132,8 +133,9 @@ export function WorkspaceApp({
   };
   const currentRoom=rooms.find(room=>room.id===roomId);
   const updateExecutionProfile=async(profile:import('@agenvyl/contracts').UpdateRoomExecutionProfileRequest)=>fake?state.executionState:roomsApi.updateExecutionProfile(roomId,profile);
-  const approvePlan=async(runId:string)=>{const current=state.executionState.approved_plan;if(current&&current.run_id!==runId&&!confirm(`Replace the approved plan from @${current.agent}?`))return;if(!fake)await roomsApi.approvePlan(roomId,runId)};
+  const approvePlan=async(versionId:string)=>{const approved=state.executionState.plan.approved;if(approved&&approved.version_id!==versionId&&!confirm('Replace the approved plan version?'))return;if(!fake)await roomsApi.approvePlan(roomId,versionId)};
   const clearApprovedPlan=async()=>fake?state.executionState:roomsApi.clearApprovedPlan(roomId);
+  const openWorkspace=(target?:Omit<WorkspaceFocus,'requestId'>)=>{if(target)setWorkspaceFocus({...target,requestId:Date.now()});setArtifacts(true)};
   useEffect(()=>{if(!selected&&!artifacts)return;const closeDrawers=(event:KeyboardEvent)=>{if(event.key==='Escape'){setSelected(undefined);setArtifacts(false)}};addEventListener('keydown',closeDrawers);return()=>removeEventListener('keydown',closeDrawers)},[selected,artifacts]);
   useEffect(()=>{if(artifacts&&!fake)void queryClient.invalidateQueries({queryKey:['rooms',roomId,'workspace']})},[artifacts,state.lastSequence,roomId,fake,queryClient]);
   return (
@@ -174,11 +176,11 @@ export function WorkspaceApp({
             active={active}
             connection={state.connection}
             openMenu={() => setMenu(true)}
-            openArtifacts={() => setArtifacts(true)}
+            openArtifacts={() => {setWorkspaceFocus(undefined);setArtifacts(true)}}
             manageAgents={() => setManagingAgents(true)}
           />
-          <Timeline state={state} personas={personaCatalog} harnessCatalog={harnessCatalog} select={setSelected} gateway={gateway} loadOlder={loadOlder} loadingOlder={loadingOlder} initialLoading={!fake&&timelineQuery.isPending} onMentionPersona={handle=>composerRef.current?.insertMention(handle)} approvedPlanRunId={state.executionState.approved_plan?.run_id} approvePlan={approvePlan}/>
-          <Composer ref={composerRef} gateway={gateway} active={active} personas={personas} harnessCatalog={harnessCatalog} catalogReady={gateway.mode === "fake" || (!catalogLoading && !catalogError)} onSent={async()=>{await invalidateRooms()}} openWorkspace={()=>setArtifacts(true)} roomId={roomId} attachments={attachments.items} attachmentsBusy={attachments.busy} openAttachmentPicker={()=>setAttachmentPicker(true)} uploadFiles={files=>void attachments.uploadFiles(files)} removeAttachment={attachments.remove} retryAttachment={attachments.retry} clearAttachments={attachments.clear} executionState={state.executionState} updateExecutionProfile={updateExecutionProfile} clearApprovedPlan={clearApprovedPlan}/>
+          <Timeline state={state} personas={personaCatalog} harnessCatalog={harnessCatalog} select={setSelected} gateway={gateway} loadOlder={loadOlder} loadingOlder={loadingOlder} initialLoading={!fake&&timelineQuery.isPending} onMentionPersona={handle=>composerRef.current?.insertMention(handle)} plan={state.executionState.plan} approvePlan={approvePlan} openWorkspace={openWorkspace}/>
+          <Composer ref={composerRef} gateway={gateway} active={active} personas={personas} harnessCatalog={harnessCatalog} catalogReady={gateway.mode === "fake" || (!catalogLoading && !catalogError)} onSent={async()=>{await invalidateRooms()}} openWorkspace={openWorkspace} roomId={roomId} attachments={attachments.items} attachmentsBusy={attachments.busy} openAttachmentPicker={()=>setAttachmentPicker(true)} uploadFiles={files=>void attachments.uploadFiles(files)} removeAttachment={attachments.remove} retryAttachment={attachments.retry} clearAttachments={attachments.clear} executionState={state.executionState} updateExecutionProfile={updateExecutionProfile} approvePlan={approvePlan} clearApprovedPlan={clearApprovedPlan}/>
         </>:<div className={styles['empty-chat']}><div className={styles['empty-mobile-header']}><button type="button" aria-label="Open menu" onClick={()=>setMenu(true)}><Menu /></button><strong>agenvyl</strong></div><EmptyState icon={<MessageCircle />} title="No rooms" description="Create a room to start a conversation with agents." action={<Button variant="primary" icon={<Plus />} onClick={()=>setCreatingRoom(true)}>Create room</Button>} /></div>):<PersonasScreen
           personas={personaCatalog}
           harnessCatalog={harnessCatalog}
@@ -203,7 +205,7 @@ export function WorkspaceApp({
         harnessCatalog={harnessCatalog}
         close={() => setSelected(undefined)}
       />
-      <ArtifactsDrawer open={artifacts} close={() => setArtifacts(false)} roomId={roomId} fake={fake} onAttach={attachment=>attachments.addExisting([attachment])}/>
+      <ArtifactsDrawer open={artifacts} close={() => setArtifacts(false)} roomId={roomId} fake={fake} onAttach={attachment=>attachments.addExisting([attachment])} focus={workspaceFocus} plan={state.executionState.plan}/>
       <AttachmentPicker open={attachmentPicker} roomId={roomId} selected={attachments.ready} onClose={()=>setAttachmentPicker(false)} onConfirm={attachments.replaceReady} onUpload={files=>void attachments.uploadFiles(files)}/>
       {creatingRoom&&<CreateRoomDialog personas={personaCatalog.filter(persona=>!persona.archived_at)} catalog={harnessCatalog} groups={groups} onClose={()=>setCreatingRoom(false)} onCreated={createRoom}/>}
       {managingAgents&&currentRoom&&<RoomAgentManager personas={personaCatalog.filter(persona=>!persona.archived_at)} catalog={harnessCatalog} groups={groups} roomPersonas={personas} onClose={()=>setManagingAgents(false)} onSave={saveRoomAgents}/>}

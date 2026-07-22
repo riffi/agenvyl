@@ -17,7 +17,7 @@ const run = (value: Partial<Run> = {}): Run => ({
   harnessInstanceId: 'local-hermes',
   harnessType: 'hermes',
   modelId: 'sol',
-  executionProfile:{workflowMode:'work',requestedReasoningEffort:null,reasoningEffort:null,reasoningEffortFallback:false,planEnforcement:null,permissionProfileId:null,agentVariantId:null,approvedPlanRunId:null},
+  executionProfile:{workflowMode:'work',requestedReasoningEffort:null,reasoningEffort:null,reasoningEffortFallback:false,planEnforcement:null,permissionProfileId:null,agentVariantId:null,implementationPlanVersionId:null},
   status: 'streaming',
   text: '',
   tools: [],

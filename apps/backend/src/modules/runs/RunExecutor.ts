@@ -308,10 +308,10 @@ export class RunExecutor {
   }
 
   private async workflowInstructions(run:RunContext){
-    if(run.executionProfile.workflowMode==='plan')return`\n\n<workflow_mode mode="plan" enforcement="${run.executionProfile.planEnforcement}">\nInvestigate the request and relevant context, ask focused clarifying questions when needed, and return a concrete implementation plan. When clarification is needed and the harness exposes a structured clarification or user-input tool, you MUST use that tool instead of writing unanswered questions in the response, wait for the human's answers, and only then return the plan. If no such tool is available, list focused questions in the response as the fallback. Do not perform the implementation, edit files, or make state-changing actions in this run.${run.executionProfile.planEnforcement==='instruction_only'?' This harness does not provide a technical Plan sandbox; the restriction is instruction-enforced only.':''}\n</workflow_mode>`;
-    const planId=run.executionProfile.approvedPlanRunId;if(!planId)return'';
-    const plan=await this.dependencies.runs.approvedPlan(planId);if(!plan)throw new Error(`Approved plan ${planId} is unavailable`);
-    return`\n\n<approved_plan run_id="${plan.id}" author="@${plan.agent}">\nThis completed Plan run is the authoritative implementation snapshot. Follow it unless the current human message explicitly changes the requirement.\n\n${plan.text}\n</approved_plan>`;
+    if(run.executionProfile.workflowMode==='plan')return`\n\n<workflow_mode mode="plan" enforcement="${run.executionProfile.planEnforcement}">\nInvestigate the request and relevant context, ask focused clarifying questions when needed, and return the complete desired Markdown contents of plan.md. Read the existing plan.md first when revising a plan. Do not write plan.md yourself: Agenvyl saves your final response as its next version. When clarification is needed and the harness exposes a structured clarification or user-input tool, you MUST use that tool instead of writing unanswered questions in the response, wait for the human's answers, and only then return the plan. If no such tool is available, list focused questions in the response as the fallback. Do not perform the implementation, edit files, or make state-changing actions in this run.${run.executionProfile.planEnforcement==='instruction_only'?' This harness does not provide a technical Plan sandbox; the restriction is instruction-enforced only.':''}\n</workflow_mode>`;
+    const versionId=run.executionProfile.implementationPlanVersionId;if(!versionId)return'';
+    const text=await this.dependencies.roomWorkspace?.planVersionContent(run.roomId,versionId);if(text===undefined)throw new Error(`Approved plan version ${versionId} is unavailable`);
+    return`\n\n<approved_plan version_id="${versionId}" path="plan.md">\nThis immutable approved version is the authoritative implementation snapshot. The live plan.md may contain newer unapproved changes; follow the snapshot below unless the current human message explicitly changes the requirement.\n\n${text}\n</approved_plan>`;
   }
 
   private async applyMapping(run:RunContext,mapping:RunEventMapping){
@@ -340,6 +340,9 @@ export class RunExecutor {
       status='failed';
       error='Response rejected: external images must be saved to the workspace first';
       errorCode='external_image_not_persisted';
+    }
+    if(status==='completed'&&run.executionProfile.workflowMode==='plan'&&this.dependencies.roomWorkspace){
+      try{await this.dependencies.roomWorkspace.savePlanFromRun(run.roomId,run.id,responseText);}catch(planError){status='failed';error=planError instanceof Error?`Could not save plan.md: ${planError.message}`:'Could not save plan.md';errorCode='plan_artifact_failed';}
     }
     run.terminal = true;
     this.clearDeadline(run.id);

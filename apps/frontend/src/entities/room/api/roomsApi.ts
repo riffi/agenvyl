@@ -1,5 +1,5 @@
 import type { Room,TimelinePage } from '../model';
-import type {RoomExecutionState,RoomWorkspace,UpdateRoomExecutionProfileRequest,WorkspaceEntry,WorkspaceVersion} from '@agenvyl/contracts';
+import type {RoomExecutionState,RoomWorkspace,UpdatePlanResponse,UpdateRoomExecutionProfileRequest,WorkspaceEntry,WorkspaceVersion} from '@agenvyl/contracts';
 import { apiRequest } from '../../../shared/api';
 
 export const roomKeys = { all: ['rooms'] as const };
@@ -17,8 +17,9 @@ export const roomsApi = {
   removeParticipant: (roomId: string, personaId: string) => apiRequest(`/api/v1/rooms/${encodeURIComponent(roomId)}/participants/${encodeURIComponent(personaId)}`, { method: 'DELETE' }),
   executionState:(roomId:string,signal?:AbortSignal)=>apiRequest<RoomExecutionState>(`/api/v1/rooms/${encodeURIComponent(roomId)}/execution-state`,{signal}),
   updateExecutionProfile:(roomId:string,profile:UpdateRoomExecutionProfileRequest)=>apiRequest<RoomExecutionState>(`/api/v1/rooms/${encodeURIComponent(roomId)}/execution-profile`,{method:'PATCH',body:profile}),
-  approvePlan:(roomId:string,runId:string)=>apiRequest<RoomExecutionState>(`/api/v1/rooms/${encodeURIComponent(roomId)}/approved-plan`,{method:'PUT',body:{run_id:runId}}),
+  approvePlan:(roomId:string,versionId:string)=>apiRequest<RoomExecutionState>(`/api/v1/rooms/${encodeURIComponent(roomId)}/approved-plan`,{method:'PUT',body:{version_id:versionId}}),
   clearApprovedPlan:(roomId:string)=>apiRequest<RoomExecutionState>(`/api/v1/rooms/${encodeURIComponent(roomId)}/approved-plan`,{method:'DELETE'}),
+  updatePlan:(roomId:string,content:string,expectedVersionId:string)=>apiRequest<UpdatePlanResponse>(`/api/v1/rooms/${encodeURIComponent(roomId)}/plan`,{method:'PUT',body:{content,expected_version_id:expectedVersionId}}),
   workspace:(roomId:string,signal?:AbortSignal)=>apiRequest<RoomWorkspace>(`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace`,{signal}),
   uploadFile:(roomId:string,file:File,filePath=file.name,conflict:'fail'|'replace'|'rename'='fail',options:{signal?:AbortSignal;onProgress?:(progress:number)=>void}={})=>new Promise<{entry:WorkspaceEntry;version?:WorkspaceVersion}>((resolve,reject)=>{
     const request=new XMLHttpRequest();

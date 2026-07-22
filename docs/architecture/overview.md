@@ -84,8 +84,8 @@ of truth for run state and recovery.
 1. Core stores the human message, target persona snapshots, queued runs, and
    initial room events in one PostgreSQL transaction.
 2. Each run receives an immutable harness instance, harness type, model,
-   effective room execution profile, persona version, approved-plan reference,
-   and pre-round conversation snapshot.
+   one-message execution intent, persona version, optional implementation-plan
+   version, and pre-round conversation snapshot.
 3. Core starts a Connector execution with a Core-owned execution ID and a
    canonical room-relative workspace identity.
 4. Connector resolves the workspace, starts the selected adapter, assigns an
@@ -125,7 +125,7 @@ payloads are not part of the Core API.
 | OpenCode | pinned native SDK over HTTP/SSE | native/soft Plan, provider agent variants, text/reasoning, tools, approvals, clarifications, usage, cancel |
 | Codex | user-installed `codex app-server` over JSONL/JSON-RPC stdio | collaboration mode, separate effort and sandbox, completed plan items, text/reasoning, tools, approvals, clarifications, usage, interrupt |
 | Claude (experimental) | fresh user-installed `claude` process over bounded bidirectional NDJSON | permission mode and separate effort, text/thinking, tools, approvals, structured questions, usage, interrupt |
-| Antigravity | fresh `agy --print` subprocess | instance-capped Plan/Work, exact model catalog, final text, process-tree cancel |
+| Antigravity | fresh `agy --print` subprocess | per-run Plan/Work, exact model catalog, final text, process-tree cancel |
 
 OpenCode uses its native server and SDK because that path exposes the lifecycle
 needed by Agenvyl without introducing a second translation layer. ACP is not a

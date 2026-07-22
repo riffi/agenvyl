@@ -13,4 +13,5 @@ export const migrations = [
   { version: 12, name: 'run_usage', file: '012_run_usage.sql' },
   { version: 13, name: 'installation_state', file: '013_installation_state.sql' },
   { version: 14, name: 'room_execution_profiles', file: '014_room_execution_profiles.sql' },
+  { version: 15, name: 'plan_workspace_artifact', file: '015_plan_workspace_artifact.sql' },
 ] as const;

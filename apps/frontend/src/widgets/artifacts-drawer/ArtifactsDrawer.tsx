@@ -13,6 +13,7 @@ import {
   History,
   MoreHorizontal,
   Paperclip,
+  Pencil,
   Plus,
   RefreshCw,
   RotateCcw,
@@ -21,7 +22,7 @@ import {
   Upload,
   X,
 } from 'lucide-react';
-import type { RoomWorkspace, WorkspaceAttachment, WorkspaceEntry, WorkspaceVersion } from '@agenvyl/contracts';
+import type { RoomPlanState, RoomWorkspace, WorkspaceAttachment, WorkspaceEntry, WorkspaceVersion } from '@agenvyl/contracts';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Alert, Button, Dialog, IconButton, Input } from '../../shared/ui';
@@ -35,16 +36,21 @@ type Operation =
   | { kind: 'move'; entry: WorkspaceEntry }
   | { kind: 'delete'; entry: WorkspaceEntry };
 
-export function ArtifactsDrawer({ open, close, roomId, fake = false, onAttach }: {
+export type WorkspaceFocus={entryId:string;versionId?:string;requestId:number};
+
+export function ArtifactsDrawer({ open, close, roomId, fake = false, onAttach,focus,plan }: {
   open: boolean;
   close: () => void;
   roomId: string;
   fake?: boolean;
   onAttach?: (attachment: WorkspaceAttachment) => void;
+  focus?:WorkspaceFocus;
+  plan?:RoomPlanState;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const createMenuRef = useRef<HTMLDivElement>(null);
   const fileMenuRef = useRef<HTMLDivElement>(null);
+  const appliedFocusRef=useRef<number|undefined>(undefined);
   const queryClient = useQueryClient();
   const key = ['rooms', roomId, 'workspace'] as const;
   const compact = useCompactWorkspace();
@@ -54,6 +60,8 @@ export function ArtifactsDrawer({ open, close, roomId, fake = false, onAttach }:
   const [trash, setTrash] = useState(false);
   const [compare, setCompare] = useState<WorkspaceVersion>();
   const [tab, setTab] = useState<'preview' | 'versions'>('preview');
+  const [viewVersionId,setViewVersionId]=useState<string>();
+  const [editingPlan,setEditingPlan]=useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [uploadDirectory, setUploadDirectory] = useState('');
   const [mobileStep, setMobileStep] = useState<'explorer' | 'viewer'>('explorer');
@@ -82,6 +90,7 @@ export function ArtifactsDrawer({ open, close, roomId, fake = false, onAttach }:
     enabled: Boolean(selected?.current_version_id),
   });
   const current = versions.data?.find(version => version.id === selected?.current_version_id) ?? versions.data?.[0];
+  const viewed=versions.data?.find(version=>version.id===viewVersionId)??current;
   const mutate = useMutation({
     mutationFn: async (action: () => Promise<unknown>) => action(),
     onSuccess: async () => {
@@ -98,7 +107,9 @@ export function ArtifactsDrawer({ open, close, roomId, fake = false, onAttach }:
       setMobileStep('explorer');
     }
     setCompare(undefined);
+    setEditingPlan(false);
   }, [visibleEntries, selectedId]);
+  useEffect(()=>{if(!open||!focus||appliedFocusRef.current===focus.requestId)return;const entry=visibleEntries.find(item=>item.id===focus.entryId);if(!entry)return;appliedFocusRef.current=focus.requestId;setTrash(false);selectFile(entry);setViewVersionId(focus.versionId);setMobileStep('viewer');},[open,focus?.requestId,visibleEntries]);
   useEffect(() => {
     if (!open) return;
     setCreateMenu(false);
@@ -145,6 +156,8 @@ export function ArtifactsDrawer({ open, close, roomId, fake = false, onAttach }:
     setSelectedId(entry.id);
     setUploadDirectory(parentPath(entry.path));
     setTab('preview');
+    setViewVersionId(entry.current_version_id);
+    setEditingPlan(false);
     setCompare(undefined);
     if (compact) setMobileStep('viewer');
   };
@@ -239,16 +252,17 @@ export function ArtifactsDrawer({ open, close, roomId, fake = false, onAttach }:
               <div className={styles.fileIdentity}><strong title={selected.name}>{selected.name}</strong><small title={selected.path}>{selected.path} <span>· {formatBytes(selected.size)}</span></small></div>
               <div className={styles.fileActions}>
                 {selected.deleted_at ? <Button size="sm" variant="primary" icon={<RotateCcw />} onClick={() => mutate.mutate(() => roomsApi.restoreEntry(roomId, selected.id))}>Restore</Button> : <>
+                  {selected.path==='plan.md'&&viewed?.id===current?.id&&!editingPlan&&<Button size="sm" variant="secondary" icon={<Pencil/>} onClick={()=>setEditingPlan(true)}>Edit</Button>}
                   {onAttach && current && <Button className={styles.attachButton} size="sm" variant="primary" icon={<Paperclip />} onClick={attach}><span>Attach</span></Button>}
-                  {current && <a className={styles.iconLink} href={current.url} aria-label="Download file" title="Download"><Download /></a>}
-                  <div className={styles.menuAnchor} ref={fileMenuRef}>
+                  {viewed && <a className={styles.iconLink} href={viewed.url} aria-label="Download file" title="Download"><Download /></a>}
+                  {selected.path!=='plan.md'&&<div className={styles.menuAnchor} ref={fileMenuRef}>
                     <IconButton aria-label="File actions" title="Actions" onClick={() => setFileMenu(value => !value)}><MoreHorizontal /></IconButton>
                     {fileMenu && <div className={`${styles.menu} ${styles.fileMenu}`} role="menu">
                       <button role="menuitem" onClick={() => { setFileMenu(false); setOperation({ kind: 'rename', entry: selected }); }}>Rename</button>
                       <button role="menuitem" onClick={() => { setFileMenu(false); setOperation({ kind: 'move', entry: selected }); }}>Move</button>
                       <button role="menuitem" className={styles.dangerItem} onClick={() => { setFileMenu(false); setOperation({ kind: 'delete', entry: selected }); }}><Trash2 />Delete</button>
                     </div>}
-                  </div>
+                  </div>}
                 </>}
               </div>
             </header>
@@ -256,7 +270,7 @@ export function ArtifactsDrawer({ open, close, roomId, fake = false, onAttach }:
               <button role="tab" aria-selected={tab === 'preview'} className={tab === 'preview' ? styles.activeTab : ''} onClick={() => setTab('preview')}>Preview</button>
               <button role="tab" aria-selected={tab === 'versions'} className={tab === 'versions' ? styles.activeTab : ''} onClick={() => setTab('versions')}><History />Versions{versions.data ? <em>{versions.data.length}</em> : null}</button>
             </div>
-            {tab === 'preview' ? <FilePreview selected={selected} current={current} /> : <VersionHistory versions={versions.data ?? []} selected={selected} current={current} compare={compare} setCompare={setCompare} restore={version => mutate.mutate(() => roomsApi.restoreVersion(roomId, version.id))} />}
+            {tab === 'preview' ? editingPlan&&current?<PlanEditor version={current} save={async content=>{await mutate.mutateAsync(()=>roomsApi.updatePlan(roomId,content,current.id));setEditingPlan(false);await versions.refetch();}} cancel={()=>setEditingPlan(false)}/>:<FilePreview selected={selected} current={viewed} /> : <VersionHistory versions={versions.data ?? []} selected={selected} current={current} viewed={viewed} approvedVersionId={plan?.approved?.version_id} compare={compare} setCompare={setCompare} view={version=>{setViewVersionId(version.id);setTab('preview')}} restore={version => mutate.mutate(() => roomsApi.restoreVersion(roomId, version.id))} />}
           </> : <div className={styles.viewerEmpty}><File /><strong>{trash ? 'Select a deleted file' : 'Select a file'}</strong><span>{trash ? 'You can preview and restore it.' : 'Its contents will open here.'}</span></div>}
         </main>}
       </div>
@@ -284,7 +298,7 @@ function TreeRow({ node, depth, expanded, selectedId, activeDirectory, trash, on
       style={{ paddingLeft: 7 + depth * 14 }}
       title={node.path}
       onClick={() => node.kind === 'directory' ? onFolder(node.path) : entry && onFile(entry)}
-      onDoubleClick={() => !trash && entry && onRename(entry)}
+      onDoubleClick={() => !trash && entry?.path!=='plan.md' && entry && onRename(entry)}
     >
       {node.kind === 'directory' ? <ChevronRight className={`${styles.chevron} ${open ? styles.chevronOpen : ''}`} /> : <span className={styles.chevronSpace} />}
       {node.kind === 'directory' ? open ? <FolderOpen /> : <Folder /> : <File />}
@@ -308,25 +322,38 @@ function FilePreview({ selected, current }: { selected: WorkspaceEntry; current?
   return <div className={styles.previewFallback}><File /><strong>Preview unavailable</strong><span>{selected.mime_type}</span></div>;
 }
 
-function VersionHistory({ versions, selected, current, compare, setCompare, restore }: {
+function VersionHistory({ versions, selected, current,viewed,approvedVersionId, compare, setCompare,view, restore }: {
   versions: WorkspaceVersion[];
   selected: WorkspaceEntry;
   current?: WorkspaceVersion;
+  viewed?:WorkspaceVersion;
+  approvedVersionId?:string;
   compare?: WorkspaceVersion;
   setCompare: (version?: WorkspaceVersion) => void;
+  view:(version:WorkspaceVersion)=>void;
   restore: (version: WorkspaceVersion) => void;
 }) {
   return <div className={styles.history}>
     {!versions.length && <div className={styles.viewerEmpty}><History /><strong>No versions yet</strong></div>}
     {versions.map((version, index) => <div className={styles.versionRow} key={version.id}>
-      <span><strong>{version.id === current?.id ? 'Current version' : `Version ${versions.length - index}`}</strong><small>{new Date(version.created_at).toLocaleString('en-US')} · {version.source}{version.run_ids.length ? ` · ${version.run_ids.length} run` : ''}</small></span>
-      {version.id !== current?.id && <div>
+      <span><strong>{version.id === current?.id ? 'Current version' : `Version ${versions.length - index}`}{version.id===approvedVersionId?' · Approved':''}{version.id===viewed?.id?' · Viewing':''}</strong><small>{new Date(version.created_at).toLocaleString('en-US')} · {version.source}{version.run_ids.length ? ` · ${version.run_ids.length} run` : ''}</small></span>
+      <div>
+        <IconButton aria-label="Preview version" title="Preview" onClick={()=>view(version)}><File/></IconButton>
+      {version.id !== current?.id && <>
         {selected.mime_type.startsWith('text/') && <IconButton aria-label="Compare version" title="Compare" onClick={() => setCompare(version)}><GitCompare /></IconButton>}
         <IconButton aria-label="Restore version" title="Restore" onClick={() => restore(version)}><RotateCcw /></IconButton>
-      </div>}
+      </>}
+      </div>
     </div>)}
     {compare && current && <TextDiff before={compare.preview_url} after={current.preview_url} close={() => setCompare(undefined)} />}
   </div>;
+}
+
+function PlanEditor({version,save,cancel}:{version:WorkspaceVersion;save:(content:string)=>Promise<void>;cancel:()=>void}){
+  const[text,setText]=useState(''),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState<string>();
+  useEffect(()=>{const controller=new AbortController();setLoading(true);fetch(version.preview_url,{signal:controller.signal}).then(response=>response.text()).then(value=>{setText(value);setLoading(false)}).catch(value=>{if(value?.name!=='AbortError'){setError(String(value));setLoading(false)}});return()=>controller.abort()},[version.id,version.preview_url]);
+  const submit=async()=>{if(!text.trim()||saving)return;setSaving(true);setError(undefined);try{await save(text)}catch(value){setError(value instanceof Error?value.message:String(value))}finally{setSaving(false)}};
+  return <section className={styles.planEditor}><header><span><strong>Editing plan.md</strong><small>Saving creates a new immutable version.</small></span><div><Button size="sm" variant="secondary" disabled={saving} onClick={cancel}>Cancel</Button><Button size="sm" variant="primary" disabled={loading||saving||!text.trim()} onClick={()=>void submit()}>{saving?'Saving…':'Save version'}</Button></div></header>{error&&<Alert tone="error">{error}</Alert>}<textarea aria-label="Plan Markdown" value={text} disabled={loading||saving} onChange={event=>setText(event.target.value)} spellCheck={false}/></section>;
 }
 
 function OperationDialog({ operation, directory, pending, onClose, onSubmit }: {

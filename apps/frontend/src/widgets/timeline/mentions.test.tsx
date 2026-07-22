@@ -8,7 +8,7 @@ import {MentionText} from './mentions';
 const personas:Persona[]=[
   {id:'foreign-id',handle:'foreign',name:'Мимокрокодил',role:'Наблюдатель',color:'#0f766e',requested_model:'qwen',harness_instance_id:'local-hermes',harness_type:'hermes',model_id:'qwen',permission_profile_id:null,agent_variant_id:null,group_id:null,archived_at:null},
 ];
-const run:Run={id:'run',messageId:'message',agent:'foreign',harnessInstanceId:'local-hermes',harnessType:'hermes',modelId:'qwen',executionProfile:{workflowMode:'work',requestedReasoningEffort:null,reasoningEffort:null,reasoningEffortFallback:false,planEnforcement:null,permissionProfileId:null,agentVariantId:null,approvedPlanRunId:null},status:'completed',text:'',tools:[]};
+const run:Run={id:'run',messageId:'message',agent:'foreign',harnessInstanceId:'local-hermes',harnessType:'hermes',modelId:'qwen',executionProfile:{workflowMode:'work',requestedReasoningEffort:null,reasoningEffort:null,reasoningEffortFallback:false,planEnforcement:null,permissionProfileId:null,agentVariantId:null,implementationPlanVersionId:null},status:'completed',text:'',tools:[]};
 
 describe('timeline persona mentions',()=>{
   it('shows known handles as persona names and keeps unknown and bare handles intact',()=>{

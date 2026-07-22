@@ -99,8 +99,9 @@ reasoning efforts, permission profiles, and provider agent variants exposed by
 the harnesses already authenticated on your computer.
 
 One connected harness can power several Agenvyl agents with different names,
-roles, models, base permissions, provider variants, and instructions. Plan/Work
-and reasoning effort belong to each room and can be changed beside the composer.
+roles, models, base permissions, provider variants, and instructions. Reasoning
+effort belongs to the room; **Create plan** applies only to the next message and
+saves the result as a versioned `plan.md` workspace artifact.
 
 ### Claude authentication warning
 
@@ -216,7 +217,7 @@ Or guide a workflow agent by agent:
 
 | Rooms | Agents | Files and runs |
 | --- | --- | --- |
-| Separate workspaces for projects and tasks.<br><br>Completed answers become context that later agents can review and build on. | Give each agent a name, `@handle`, role, model, permissions, provider variant, and its own instructions.<br><br>Only agents added to a room can be mentioned there. | Switch Plan/Work and effort in the room, approve an authoritative plan, attach files, answer clarifications, retry responses, and compare attempts.<br><br>Generated files and file versions remain on your computer. |
+| Separate workspaces for projects and tasks.<br><br>Completed answers become context that later agents can review and build on. | Give each agent a name, `@handle`, role, model, permissions, provider variant, and its own instructions.<br><br>Only agents added to a room can be mentioned there. | Create or edit a versioned `plan.md`, approve an immutable version, explicitly start **Implement…**, attach files, answer clarifications, retry responses, and compare attempts.<br><br>Generated files and file versions remain on your computer. |
 
 Open **New room** in the sidebar to create another workspace, **Agents** to
 manage the agent catalog, or **Workspace** to inspect the room's files.

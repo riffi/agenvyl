@@ -10,7 +10,7 @@ import {ActiveRunRegistry} from '../runs/ActiveRunRegistry.js';
 import {RoomWorkspaceService} from './RoomWorkspaceService.js';
 import {CreateMessageRound} from '../messages/createMessageRound.js';
 
-const workProfile={workflowMode:'work' as const,requestedReasoningEffort:null,reasoningEffort:null,reasoningEffortFallback:false,planEnforcement:null,permissionProfileId:null,agentVariantId:null,approvedPlanRunId:null};
+const workProfile={workflowMode:'work' as const,requestedReasoningEffort:null,reasoningEffort:null,reasoningEffortFallback:false,planEnforcement:null,permissionProfileId:null,agentVariantId:null,implementationPlanVersionId:null};
 
 describe('persisted workspace embeds',()=>{
   it('pins the resolved image version and keeps snapshot metadata out of natural-language history',async()=>{

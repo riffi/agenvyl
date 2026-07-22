@@ -24,31 +24,32 @@ describe('Composer agent list',()=>{
     expect(screen.queryByText(/Implementation/)).toBeNull();
   });
 
-  it('persists slash-command mode before sending the cleaned message',async()=>{
+  it('uses one-shot Plan for a slash command and sends the cleaned message',async()=>{
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
     const send=vi.fn<RoomGateway['send']>().mockResolvedValue(sentMessage),updateExecutionProfile=vi.fn(async()=>undefined),localGateway={...gateway,send};
     render(<Composer gateway={localGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} updateExecutionProfile={updateExecutionProfile}/>);
     const editor=screen.getByPlaceholderText('Message… Use @handle or @all');
     fireEvent.change(editor,{target:{value:'/plan @coder inspect'}});fireEvent.keyDown(editor,{key:'Enter'});
     await waitFor(()=>expect(send).toHaveBeenCalled());
-    expect(updateExecutionProfile).toHaveBeenCalledWith({workflow_mode:'plan'});
     expect(send.mock.calls[0]?.slice(0,2)).toEqual(['@coder inspect',['coder']]);
-    expect(updateExecutionProfile.mock.invocationCallOrder[0]).toBeLessThan(send.mock.invocationCallOrder[0]);
+    expect(send.mock.calls[0]?.[4]).toEqual({kind:'plan'});
+    expect(updateExecutionProfile).not.toHaveBeenCalled();
   });
 
-  it('switches modes with Shift+Tab without sending',async()=>{
+  it('arms Plan only for the next message',async()=>{
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
     const send=vi.fn<RoomGateway['send']>().mockResolvedValue(sentMessage),updateExecutionProfile=vi.fn(async()=>undefined),localGateway={...gateway,send};
     render(<Composer gateway={localGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} updateExecutionProfile={updateExecutionProfile}/>);
-    fireEvent.keyDown(screen.getByPlaceholderText('Message… Use @handle or @all'),{key:'Tab',shiftKey:true});
-    await waitFor(()=>expect(updateExecutionProfile).toHaveBeenCalledWith({workflow_mode:'plan'}));
+    fireEvent.click(screen.getByRole('button',{name:'Create plan'}));
+    expect(screen.getByRole('button',{name:'Create plan'}).getAttribute('aria-pressed')).toBe('true');
     expect(send).not.toHaveBeenCalled();
+    expect(updateExecutionProfile).not.toHaveBeenCalled();
   });
 
-  it('selects implementers before switching to Work and starting the approved plan',async()=>{
+  it('selects implementers and snapshots the approved plan',async()=>{
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
     const send=vi.fn<RoomGateway['send']>().mockResolvedValue(sentMessage),updateExecutionProfile=vi.fn(async()=>undefined),onSent=vi.fn(async()=>undefined),localGateway={...gateway,send};
-    render(<Composer gateway={localGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={onSent} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} updateExecutionProfile={updateExecutionProfile} executionState={{profile:{workflow_mode:'plan',reasoning_effort:null},approved_plan:{run_id:'plan-1',agent:'coder',created_at:'2026-07-22T00:00:00.000Z',excerpt:'A concrete plan'}}}/>);
+    render(<Composer gateway={localGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={onSent} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} updateExecutionProfile={updateExecutionProfile} executionState={{profile:{reasoning_effort:null},plan:{path:'plan.md',current:{entry_id:'plan-entry',version_id:'plan-version'},approved:{entry_id:'plan-entry',version_id:'plan-version'}}}}/>);
     fireEvent.click(screen.getByRole('button',{name:'Implement…'}));
     expect(screen.getByText('Who should implement?')).toBeTruthy();
     expect((screen.getByRole('checkbox',{name:/Coder/}) as HTMLInputElement).checked).toBe(true);
@@ -56,13 +57,21 @@ describe('Composer agent list',()=>{
     expect(send).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button',{name:'Start with 1 agent'}));
     await waitFor(()=>expect(send).toHaveBeenCalled());
-    expect(updateExecutionProfile).toHaveBeenCalledWith({workflow_mode:'work'});
+    expect(updateExecutionProfile).not.toHaveBeenCalled();
     expect(send.mock.calls[0]?.slice(0,2)).toEqual(['Implement the approved plan.',['coder']]);
     expect(send.mock.calls[0]?.[2]).toEqual(expect.any(String));
     expect(send.mock.calls[0]?.[3]).toEqual([]);
-    expect(updateExecutionProfile.mock.invocationCallOrder[0]).toBeLessThan(send.mock.invocationCallOrder[0]);
+    expect(send.mock.calls[0]?.[4]).toEqual({kind:'implement',approved_plan_version_id:'plan-version'});
     expect(onSent).toHaveBeenCalled();
     expect((screen.getByPlaceholderText('Message… Use @handle or @all') as HTMLTextAreaElement).value).toBe('');
+  });
+
+  it('shows pending plan changes while keeping the approved version executable',()=>{
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));const openWorkspace=vi.fn(),approvePlan=vi.fn(async()=>undefined);
+    render(<Composer gateway={gateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={openWorkspace} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} approvePlan={approvePlan} executionState={{profile:{reasoning_effort:null},plan:{path:'plan.md',current:{entry_id:'plan-entry',version_id:'current-version'},approved:{entry_id:'plan-entry',version_id:'approved-version'}}}}/>);
+    fireEvent.click(screen.getByRole('button',{name:/Changes pending/}));expect(openWorkspace).toHaveBeenLastCalledWith({entryId:'plan-entry',versionId:'approved-version'});
+    fireEvent.click(screen.getByRole('button',{name:'Open changes'}));expect(openWorkspace).toHaveBeenLastCalledWith({entryId:'plan-entry',versionId:'current-version'});
+    fireEvent.click(screen.getByRole('button',{name:'Re-approve'}));expect(approvePlan).toHaveBeenCalledWith('current-version');expect(screen.getByRole('button',{name:'Implement…'})).toBeTruthy();
   });
 
   it('distinguishes room posts from messages addressed to agents',()=>{

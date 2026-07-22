@@ -45,14 +45,14 @@ describe.sequential('Core -> Connector -> installed Antigravity live smoke', () 
     const modelId = process.env.AGENVYL_LIVE_AGY_MODEL?.trim() || instance?.models[0]?.id;
     if (!modelId) throw new Error('Antigravity live catalog returned no selectable model');
 
-    await selectPersona(coreUrl, modelId, 'plan');await selectWorkflow(coreUrl,'plan');
-    const textRunId = await createRun(coreUrl, 'Do not use tools. Reply with exactly AGENVYL_AGY_OK and nothing else.');
+    await selectPersona(coreUrl, modelId, 'plan');
+    const textRunId = await createRun(coreUrl, 'Do not use tools. Reply with exactly AGENVYL_AGY_OK and nothing else.',{kind:'plan'});
     const textRun = await waitForRun(coreUrl, textRunId, run => terminalStatuses.has(run.status));
     expect(textRun.status, safeFailure(textRun)).toBe('completed');
     expect(textRun.text).toContain('AGENVYL_AGY_OK');
     expect(textRun).toMatchObject({ harnessInstanceId: 'local-antigravity', harnessType: 'antigravity', modelId, executionProfile:{workflowMode:'plan'} });
 
-    await selectPersona(coreUrl, modelId, 'accept-edits');await selectWorkflow(coreUrl,'work');
+    await selectPersona(coreUrl, modelId, 'accept-edits');
     const artifactName = '.agenvyl-agy-live-smoke';
     const editRunId = await createRun(coreUrl, `Create ${artifactName} in the current working directory containing exactly one line: agy-workspace-ok. Then reply with exactly AGENVYL_AGY_EDIT_OK.`);
     const editRun = await waitForRun(coreUrl, editRunId, run => terminalStatuses.has(run.status));
@@ -80,10 +80,8 @@ async function selectPersona(coreUrl: string, modelId: string, permissionProfile
   const response = await fetch(`${coreUrl}/api/v1/personas/persona-architect`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ harness_instance_id: 'local-antigravity', model_id: modelId, permission_profile_id: permissionProfileId }) });
   expect(response.status, await safeResponse(response)).toBe(200);
 }
-async function selectWorkflow(coreUrl:string,workflow_mode:'plan'|'work'){const response=await fetch(`${coreUrl}/api/v1/rooms/${roomId}/execution-profile`,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({workflow_mode})});expect(response.status,await safeResponse(response)).toBe(200);}
-
-async function createRun(coreUrl: string, text: string) {
-  const response = await fetch(`${coreUrl}/api/v1/rooms/${roomId}/messages`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, targets: ['architect'] }) });
+async function createRun(coreUrl: string, text: string,executionIntent?:{kind:'plan'}) {
+  const response = await fetch(`${coreUrl}/api/v1/rooms/${roomId}/messages`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, targets: ['architect'],...(executionIntent?{execution_intent:executionIntent}:{}) }) });
   expect(response.status, await safeResponse(response)).toBe(202);
   const body = await response.json() as { runIds: string[] };
   expect(body.runIds).toHaveLength(1);

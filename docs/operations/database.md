@@ -18,6 +18,15 @@ Plan/Work, reasoning effort, and approved-plan snapshots. Legacy mode values are
 intentionally not translated: rooms start in `Work` with `Auto` effort, while
 persona permissions and provider agent variants must be selected again.
 
+### Plan artifact clean break
+
+Migration 015 replaces the persistent room Plan/Work mode and run-based plan
+approval with version references to the room workspace's root `plan.md`.
+Existing approval pointers are intentionally cleared; historical agent answers
+remain in the timeline. Plan creation is a one-message execution intent, while
+normal messages always run as Work. An explicit **Implement…** request snapshots
+the approved workspace version on every created run.
+
 For local development data, reset PostgreSQL before testing this protocol break:
 
 ```bash
