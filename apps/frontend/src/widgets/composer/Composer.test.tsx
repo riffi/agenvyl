@@ -45,13 +45,34 @@ describe('Composer agent list',()=>{
     expect(send).not.toHaveBeenCalled();
   });
 
-  it('prefills implementation from the approved-plan banner without sending',async()=>{
+  it('selects implementers before switching to Work and starting the approved plan',async()=>{
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
-    const send=vi.fn<RoomGateway['send']>().mockResolvedValue(sentMessage),updateExecutionProfile=vi.fn(async()=>undefined),localGateway={...gateway,send};
-    render(<Composer gateway={localGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} updateExecutionProfile={updateExecutionProfile} executionState={{profile:{workflow_mode:'plan',reasoning_effort:null},approved_plan:{run_id:'plan-1',agent:'coder',created_at:'2026-07-22T00:00:00.000Z',excerpt:'A concrete plan'}}}/>);
-    fireEvent.click(screen.getByRole('button',{name:'Start implementation'}));
-    await waitFor(()=>expect(updateExecutionProfile).toHaveBeenCalledWith({workflow_mode:'work'}));
-    expect((screen.getByPlaceholderText('Message… Use @handle or @all') as HTMLTextAreaElement).value).toBe('Implement the approved plan.');
+    const send=vi.fn<RoomGateway['send']>().mockResolvedValue(sentMessage),updateExecutionProfile=vi.fn(async()=>undefined),onSent=vi.fn(async()=>undefined),localGateway={...gateway,send};
+    render(<Composer gateway={localGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={onSent} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} updateExecutionProfile={updateExecutionProfile} executionState={{profile:{workflow_mode:'plan',reasoning_effort:null},approved_plan:{run_id:'plan-1',agent:'coder',created_at:'2026-07-22T00:00:00.000Z',excerpt:'A concrete plan'}}}/>);
+    fireEvent.click(screen.getByRole('button',{name:'Implement…'}));
+    expect(screen.getByText('Who should implement?')).toBeTruthy();
+    expect((screen.getByRole('checkbox',{name:/Coder/}) as HTMLInputElement).checked).toBe(true);
+    expect(updateExecutionProfile).not.toHaveBeenCalled();
     expect(send).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button',{name:'Start with 1 agent'}));
+    await waitFor(()=>expect(send).toHaveBeenCalled());
+    expect(updateExecutionProfile).toHaveBeenCalledWith({workflow_mode:'work'});
+    expect(send.mock.calls[0]?.slice(0,2)).toEqual(['Implement the approved plan.',['coder']]);
+    expect(send.mock.calls[0]?.[2]).toEqual(expect.any(String));
+    expect(send.mock.calls[0]?.[3]).toEqual([]);
+    expect(updateExecutionProfile.mock.invocationCallOrder[0]).toBeLessThan(send.mock.invocationCallOrder[0]);
+    expect(onSent).toHaveBeenCalled();
+    expect((screen.getByPlaceholderText('Message… Use @handle or @all') as HTMLTextAreaElement).value).toBe('');
+  });
+
+  it('distinguishes room posts from messages addressed to agents',()=>{
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
+    render(<Composer gateway={gateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()}/>);
+    const editor=screen.getByPlaceholderText('Message… Use @handle or @all');
+    fireEvent.change(editor,{target:{value:'Status update'}});
+    expect(screen.getByRole('button',{name:'Post to room'})).toBeTruthy();
+    expect(screen.getByText(/No responders · posts to room/)).toBeTruthy();
+    fireEvent.change(editor,{target:{value:'@coder implement'}});
+    expect(screen.getByRole('button',{name:'Send to 1 agent'})).toBeTruthy();
   });
 });
