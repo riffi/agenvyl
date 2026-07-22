@@ -111,6 +111,15 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.run-name {
+  display: flex;
+  min-width: 0;
+  gap: 5px;
+  align-items: center;
+}
+.run-name strong {
+  min-width: 0;
+}
 .model-label {
   min-width: 0;
   overflow: hidden;

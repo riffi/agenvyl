@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { FileText, FolderOpen, LoaderCircle, Paperclip, RefreshCw, Send, Square, X } from 'lucide-react';
+import {personaModelName,type HarnessCatalog} from '../../entities/harness';
 import type { Persona } from '../../entities/persona';
 import { FakeRoomGateway, type DemoKind, type RoomGateway } from '../../features/room-session';
 import { activeMentionQuery, insertMentionAt, parseMentions, removeMentionTarget, type ComposerAttachment } from '../../features/send-message';
@@ -28,6 +29,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   gateway,
   active,
   personas,
+  harnessCatalog,
   catalogReady,
   onSent,
   openWorkspace,
@@ -55,7 +57,10 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   );
   const highlightedText=useMemo(()=>highlightMentions(text,personas),[text,personas]);
   const byHandle = new Map(personas.map((p) => [p.handle, p]));
-  const mentionCandidates=useMemo(()=>[{handle:'all',name:'All agents',role:'Notify every participant',color:'#4f6ef7'},...personas].filter(persona=>!mention||!mention.query||persona.handle.toLowerCase().includes(mention.query)||persona.name.toLowerCase().includes(mention.query)||persona.role.toLowerCase().includes(mention.query)).slice(0,8),[mention,personas]);
+  const mentionCandidates=useMemo(()=>[
+    {handle:'all',name:'All agents',detail:'Notify every participant',color:'#4f6ef7'},
+    ...personas.map(persona=>({handle:persona.handle,name:persona.name,detail:personaModelName(persona,harnessCatalog),color:persona.color})),
+  ].filter(candidate=>!mention||!mention.query||candidate.handle.toLowerCase().includes(mention.query)||candidate.name.toLowerCase().includes(mention.query)||candidate.detail.toLowerCase().includes(mention.query)).slice(0,8),[harnessCatalog,mention,personas]);
   useEffect(()=>setMentionIndex(0),[mention?.query]);
   useEffect(()=>{setText('');setMention(undefined);setSendError(undefined)},[roomId]);
   useEffect(()=>{const editor=editorRef.current;if(!editor)return;editor.style.height='auto';editor.style.height=`${Math.min(Math.max(editor.scrollHeight,72),220)}px`;if(mirrorRef.current){mirrorRef.current.scrollTop=editor.scrollTop;mirrorRef.current.scrollLeft=editor.scrollLeft}},[text]);
@@ -122,7 +127,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
           {mention&&mentionCandidates.length>0&&<div ref={mentionPopoverRef} className={styles['mention-popover']} role="listbox" aria-label="Select an agent to mention">
             <header><span>Mention</span><small>↑↓ select · Enter insert</small></header>
             {mentionCandidates.map((candidate,index)=><button key={candidate.handle} type="button" role="option" aria-selected={index===mentionIndex} className={index===mentionIndex?styles.selected:''} onMouseDown={event=>event.preventDefault()} onClick={()=>chooseMention(candidate.handle)}>
-              <i style={{background:candidate.color}}>{candidate.name[0]}</i><span><strong>{candidate.name}</strong><small><b>@{candidate.handle}</b><span> · {candidate.role}</span></small></span>{candidate.handle==='all'&&<em>all</em>}
+              <i style={{background:candidate.color}}>{candidate.name[0]}</i><span><strong>{candidate.name}</strong><small><b>@{candidate.handle}</b><span> · {candidate.detail}</span></small></span>{candidate.handle==='all'&&<em>all</em>}
             </button>)}
           </div>}
           <div ref={mirrorRef} className={styles['editor-mirror']} aria-hidden="true">{highlightedText}</div>
@@ -173,6 +178,7 @@ type ComposerProps={
   gateway: RoomGateway;
   active: number;
   personas: Persona[];
+  harnessCatalog?:HarnessCatalog;
   catalogReady: boolean;
   onSent:()=>Promise<void>;
   openWorkspace:()=>void;

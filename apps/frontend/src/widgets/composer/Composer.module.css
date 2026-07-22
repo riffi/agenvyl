@@ -310,7 +310,7 @@
 }
 .mention-popover > button small {
   overflow: hidden;
-  color: var(--muted);
+  color: #94a3b8;
   font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;

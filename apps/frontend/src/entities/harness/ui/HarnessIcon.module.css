@@ -1,0 +1,35 @@
+.icon {
+  --harness-icon-size: 16px;
+
+  display: inline-grid;
+  width: var(--harness-icon-size);
+  height: var(--harness-icon-size);
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  place-items: center;
+  overflow: hidden;
+  /* border: 1px solid #dce3eb; */
+  border-radius: 5px;
+  /* background: #f4f6f8; */
+  color: #64748b;
+  vertical-align: -2px;
+}
+
+.md {
+  --harness-icon-size: 20px;
+
+  border-radius: 6px;
+}
+
+.mark {
+  width: 72%;
+  height: 72%;
+  background: currentColor;
+  mask: var(--harness-mark) center / contain no-repeat;
+}
+
+.fallback {
+  width: 72%;
+  height: 72%;
+  stroke-width: 1.8;
+}

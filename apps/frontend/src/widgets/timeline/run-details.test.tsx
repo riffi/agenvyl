@@ -15,9 +15,12 @@ const gateway: RoomGateway = { mode: 'fake', subscribe: vi.fn(() => vi.fn()), se
 
 describe('Timeline run details', () => {
   it('offers run details when the run has usage but no tool calls', () => {
-    const state = { ...initialState, hydrated: true, messages: [{ id: 'message-1', text: '@coder ответь', createdAt: '2026-07-20T12:00:00.000Z', targets: ['coder' as const], runIds: ['run-1'], author: { profileId: 'local-user', displayName: 'User', handle: 'user' }, addressedToAll: false }], runs: { 'run-1': run }, runOrder: ['run-1'] };
+    const historicalRun={...run,harnessInstanceId:'local-opencode',harnessType:'opencode'};
+    const state = { ...initialState, hydrated: true, messages: [{ id: 'message-1', text: '@coder ответь', createdAt: '2026-07-20T12:00:00.000Z', targets: ['coder' as const], runIds: ['run-1'], author: { profileId: 'local-user', displayName: 'User', handle: 'user' }, addressedToAll: false }], runs: { 'run-1': historicalRun }, runOrder: ['run-1'] };
     const html = renderToStaticMarkup(<Timeline state={state} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()} />);
     expect(html).toContain('Run details');
+    expect(html).toContain('aria-label="OpenCode"');
+    expect(html).not.toContain('aria-label="Hermes"');
     expect(html).not.toContain('Actions');
   });
 

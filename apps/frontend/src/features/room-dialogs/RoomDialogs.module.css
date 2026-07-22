@@ -15,8 +15,10 @@
 .agentOptions label.selected,.selected { border-color:#a5b4fc;background:#eef2ff; }
 .agentOptions input { flex:none;accent-color:var(--primary); }
 .agentIdentity { display:flex;min-width:0;flex:1;flex-direction:column; }
+.agentName { display:flex;min-width:0;align-items:center;gap:5px; }
+.agentName strong { flex:0 1 auto; }
 .agentOptions strong { min-width:0;overflow:hidden;font-size:13px;text-overflow:ellipsis;white-space:nowrap; }
-.agentOptions small { overflow:hidden;color:var(--muted);font-size:11px;text-overflow:ellipsis;white-space:nowrap; }
+.agentOptions small { overflow:hidden;color:#94a3b8;font-size:11px;text-overflow:ellipsis;white-space:nowrap; }
 .roomTitle { display:flex;flex-direction:column;gap:6px;padding:16px 20px 5px;font-size:12px;font-weight:600; }
 .roomTitle input { padding:11px;border:1px solid var(--border);border-radius:8px; }
 .sectionTitle { margin:15px 20px 0;color:#94a3b8;font-size:10px;letter-spacing:.08em; }

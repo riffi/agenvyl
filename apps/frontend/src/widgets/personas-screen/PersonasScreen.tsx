@@ -2,7 +2,7 @@ import { type CSSProperties, useEffect, useLayoutEffect, useRef, useState } from
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Bot, Check, ChevronDown, ChevronRight, Menu, Plus, Users } from 'lucide-react';
-import type { HarnessCatalog, HarnessCatalogItem } from '../../entities/harness';
+import {HarnessIcon,personaModelName,type HarnessCatalog,type HarnessCatalogItem,type HarnessInstance} from '../../entities/harness';
 import type {PersonaGroup} from '../../entities/persona-group';
 import { personaKeys, personasApi, type Persona } from '../../entities/persona';
 import { roomsApi } from '../../entities/room';
@@ -13,7 +13,7 @@ import {isPersonaDraftDirty,newPersonaDraft,personaHandleAfterNameChange,persona
 
 const PERSONA_COLORS=['#e0a33e','#62c98f','#5ba3f0','#c78bf0','#ef8fb0','#4fd0c3','#a7c957','#f0805a'];
 
-function ModelPicker({models,value,onChange}:{models:HarnessCatalogItem[];value:string;onChange:(key:string)=>void}) {
+const usePickerPopover=()=>{
   const triggerRef=useRef<HTMLButtonElement>(null);
   const menuRef=useRef<HTMLDivElement>(null);
   const [open,setOpen]=useState(false);
@@ -42,6 +42,11 @@ function ModelPicker({models,value,onChange}:{models:HarnessCatalogItem[];value:
     document.addEventListener('keydown',closeOnEscape);
     return()=>{document.removeEventListener('pointerdown',closeOnPointer);document.removeEventListener('keydown',closeOnEscape)};
   },[]);
+  return{triggerRef,menuRef,open,setOpen,position};
+};
+
+function ModelPicker({models,value,onChange}:{models:HarnessCatalogItem[];value:string;onChange:(key:string)=>void}) {
+  const {triggerRef,menuRef,open,setOpen,position}=usePickerPopover();
   const selected=models.find(model=>model.id===value);
   return <div className={styles['model-field']}>
     <span>Model</span>
@@ -69,6 +74,28 @@ function ModelPicker({models,value,onChange}:{models:HarnessCatalogItem[];value:
   </div>;
 }
 
+function HarnessInstancePicker({instances,value,onChange}:{instances:HarnessInstance[];value:string;onChange:(instance:HarnessInstance)=>void}){
+  const {triggerRef,menuRef,open,setOpen,position}=usePickerPopover();
+  const selected=instances.find(instance=>instance.id===value);
+  return <div className={styles['model-field']}>
+    <span>Harness instance</span>
+    <div className={`${styles['model-picker']} ${open?styles.open:''}`}>
+      <button ref={triggerRef} type="button" className={styles['model-picker-trigger']} aria-label="Harness instance" aria-haspopup="listbox" aria-expanded={open} onClick={()=>setOpen(current=>!current)}>
+        <HarnessIcon type={selected?.type??''} size="md" className={styles['harness-picker-icon']}/>
+        <span className={styles['model-picker-current']}><strong>{selected?.id??'No instances available'}</strong><small>{selected?`${selected.type}${selected.status==='healthy'?'':` · ${selected.status}`}`:'Connect a harness to continue'}</small></span>
+        <ChevronDown className={styles['model-picker-chevron']} aria-hidden="true"/>
+      </button>
+      {open&&createPortal(<div ref={menuRef} className={styles['model-picker-menu']} role="listbox" aria-label="Available harness instances" style={{top:position.top,left:position.left,width:position.width,maxHeight:position.maxHeight}}>
+        <header><strong>Available harnesses</strong><small>{instances.length}</small></header>
+        <section><div>{instances.map(instance=><button key={instance.id} type="button" role="option" disabled={instance.status==='unavailable'} className={instance.id===value?styles.selected:''} aria-selected={instance.id===value} onClick={()=>{onChange(instance);setOpen(false);triggerRef.current?.focus()}}>
+          <HarnessIcon type={instance.type}/><span><strong>{instance.id}</strong><small>{instance.type} · {instance.status}</small></span>
+          {instance.id===value?<Check className={styles['model-picker-check']} aria-hidden="true"/>:<ChevronRight className={styles['model-picker-option-chevron']} aria-hidden="true"/>}
+        </button>)}</div></section>
+      </div>,document.body)}
+    </div>
+  </div>;
+}
+
 export function HarnessRouteFields({form,catalog,error,onChange}:{form:Persona;catalog?:HarnessCatalog;error?:string;onChange:(next:Persona)=>void}) {
   const discovered=catalog?.instances??[];
   const selectedInstance=discovered.find(instance=>instance.id===form.harness_instance_id);
@@ -79,7 +106,7 @@ export function HarnessRouteFields({form,catalog,error,onChange}:{form:Persona;c
   return <>
     {error&&<Alert tone="error">Harness catalog unavailable: {error}. The saved selection was not changed.</Alert>}
     <div className={styles['harness-grid']}>
-      <label>Harness instance<Select aria-label="Harness instance" value={form.harness_instance_id} onChange={event=>{const instance=visibleInstances.find(item=>item.id===event.target.value);if(instance)onChange(selectHarnessInstance(form,instance))}}>{visibleInstances.length===0&&<option value="">No instances available</option>}{visibleInstances.map(instance=><option key={instance.id} value={instance.id} disabled={instance.status==='unavailable'}>{instance.id} · {instance.type}{instance.status==='healthy'?'':` · ${instance.status}`}</option>)}</Select></label>
+      <HarnessInstancePicker instances={visibleInstances} value={form.harness_instance_id} onChange={instance=>onChange(selectHarnessInstance(form,instance))}/>
       <ModelPicker models={visibleModels} value={form.model_id} onChange={modelId=>onChange(selectHarnessModel(form,modelId))}/>
       {selectedInstance&&selectedInstance.modes.length>0&&<label>Mode<Select aria-label="Harness mode" value={form.mode_id??''} onChange={event=>onChange({...form,mode_id:event.target.value||null})}>{requiresExplicitMode?(form.mode_id===null&&<option value="" disabled>Select a mode</option>):<option value="">Default</option>}{selectedInstance.modes.map(mode=><option key={mode.id} value={mode.id}>{mode.label??mode.id}</option>)}</Select></label>}
     </div>
@@ -227,7 +254,7 @@ export function PersonasScreen({
         {!loading && !error && (
           <>
             <div className={`${styles['catalog-column']} ${selectedPersonaId?styles['mobile-hidden']:''}`}>
-              <PersonaCatalog personas={personas} groups={groups} selected={selected} creatingPersona={creating} roomPersonaIds={roomPersonaIds} real={real} onSelect={id=>requestNavigation(`agent “${personas.find(persona=>persona.id===id)?.name??id}”`,()=>onSelectPersona(id))} onChanged={onChanged} onPersonaMoved={(id,group_id)=>{if(form?.id===id){setForm(current=>current?{...current,group_id}:current);setSnapshot(current=>current?{...current,group_id}:current)}}}/>
+              <PersonaCatalog personas={personas} catalog={harnessCatalog} groups={groups} selected={selected} creatingPersona={creating} roomPersonaIds={roomPersonaIds} real={real} onSelect={id=>requestNavigation(`agent “${personas.find(persona=>persona.id===id)?.name??id}”`,()=>onSelectPersona(id))} onChanged={onChanged} onPersonaMoved={(id,group_id)=>{if(form?.id===id){setForm(current=>current?{...current,group_id}:current);setSnapshot(current=>current?{...current,group_id}:current)}}}/>
             </div>
             <div className={`${styles['editor-panel']} ${!selectedPersonaId?styles['mobile-editor-hidden']:''}`} ui-spec-block-id="persona_editor_panel">
             {form ? (
@@ -241,7 +268,7 @@ export function PersonasScreen({
                 <button type="button" className={styles['editor-back']} onClick={()=>requestNavigation('the catalog',()=>onSelectPersona())}>← Back to catalog</button>
                 <header className={styles['persona-editor-header']} ui-spec-block-id="persona_editor_header">
                   <Avatar label={form.name||'New agent'} color={form.color}/>
-                  <span><strong>{form.name||'New agent'}</strong><small>@{form.handle||'handle'} · {form.role||'role not specified'}{form.group_id&&<> · {groups.find(group=>group.id===form.group_id)?.name}</>}</small></span>
+                  <span><span className={styles['editor-name']}><strong>{form.name||'New agent'}</strong><HarnessIcon type={form.harness_type} size="md"/></span><small>@{form.handle||'handle'} · {personaModelName(form,harnessCatalog)}{form.group_id&&<> · {groups.find(group=>group.id===form.group_id)?.name}</>}</small></span>
                   <b className={dirty?styles['draft-dirty']:styles['draft-saved']}>{saving?'Saving…':dirty?'Unsaved changes':'Saved'}</b>
                   <Button type="submit" variant="primary" disabled={!personaSaveAvailable({creating,dirty,real,saving})}>{creating?'Create':'Save'}</Button>
                 </header>

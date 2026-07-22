@@ -1,5 +1,8 @@
+// @vitest-environment jsdom
+
+import {cleanup,fireEvent,render,screen} from '@testing-library/react';
 import {renderToStaticMarkup} from 'react-dom/server';
-import {describe,expect,it,vi} from 'vitest';
+import {afterEach,describe,expect,it,vi} from 'vitest';
 import type {HarnessCatalog} from '../../entities/harness';
 import type {Persona} from '../../entities/persona';
 import {HarnessRouteFields,PersonaInstructionFields} from './PersonasScreen';
@@ -10,6 +13,8 @@ const catalog:HarnessCatalog={connectorEpoch:'epoch-1',instances:[
 ]};
 const persona=(patch:Partial<Persona>={}):Persona=>({id:'persona-1',handle:'coder',name:'Coder',role:'Code',color:'#64748b',requested_model:'sol',harness_instance_id:'local-hermes',harness_type:'hermes',model_id:'sol',mode_id:null,group_id:null,archived_at:null,...patch});
 
+afterEach(cleanup);
+
 describe('persona harness route fields',()=>{
   it('renders persona instructions as a collapsed disclosure by default',()=>{
     const html=renderToStaticMarkup(<PersonaInstructionFields value="Be precise" onChange={vi.fn()}/>);
@@ -19,9 +24,19 @@ describe('persona harness route fields',()=>{
   });
   it('renders the Hermes instance and model without a mode selector',()=>{
     const html=renderToStaticMarkup(<HarnessRouteFields form={persona()} catalog={catalog} onChange={vi.fn()}/>);
-    expect(html).toContain('local-hermes · hermes');
+    expect(html).toContain('<strong>local-hermes</strong>');
+    expect(html).toContain('<small>hermes</small>');
     expect(html).toContain('Sonnet');
     expect(html).not.toContain('Harness mode');
+  });
+
+  it('shows harness icons in the instance trigger and options',()=>{
+    render(<HarnessRouteFields form={persona()} catalog={catalog} onChange={vi.fn()}/>);
+    expect(screen.getByRole('img',{name:'Hermes'})).toBeTruthy();
+    fireEvent.click(screen.getByRole('button',{name:'Harness instance'}));
+    expect(screen.getByRole('listbox',{name:'Available harness instances'})).toBeTruthy();
+    expect(screen.getAllByRole('img',{name:'Hermes'})).toHaveLength(2);
+    expect(screen.getByRole('img',{name:'OpenCode'})).toBeTruthy();
   });
 
   it('renders OpenCode models and optional modes for an OpenCode persona',()=>{
@@ -43,7 +58,8 @@ describe('persona harness route fields',()=>{
   it('keeps a saved route visible when discovery is unavailable',()=>{
     const html=renderToStaticMarkup(<HarnessRouteFields form={persona()} error="Connector offline" onChange={vi.fn()}/>);
     expect(html).toContain('Connector offline');
-    expect(html).toContain('local-hermes · hermes · unavailable');
+    expect(html).toContain('<strong>local-hermes</strong>');
+    expect(html).toContain('<small>hermes · unavailable</small>');
     expect(html).toContain('sol (saved)');
   });
 });

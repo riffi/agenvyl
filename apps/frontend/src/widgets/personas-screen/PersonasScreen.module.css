@@ -366,7 +366,7 @@
   font-size: 15px;
   font-weight: 600;
 }
-.persona-main span {
+.persona-main > span {
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -385,6 +385,16 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   margin-top: 1px;
+}
+.persona-main .persona-name {
+  display: flex;
+  min-width: 0;
+  flex-direction: row;
+  gap: 5px;
+  align-items: center;
+}
+.persona-name strong {
+  min-width: 0;
 }
 
 /* ═══════════════════════════════════════════════════════════ */
@@ -417,6 +427,8 @@
   backdrop-filter: blur(8px);
 }
 .persona-editor-header > span { display: flex; min-width: 0; flex-direction: column; }
+.persona-editor-header .editor-name { display:flex;min-width:0;flex-direction:row;gap:6px;align-items:center; }
+.editor-name strong { min-width:0; }
 .persona-editor-header > span strong { overflow: hidden; color: #1e293b; font-size: 17px; text-overflow: ellipsis; white-space: nowrap; }
 .persona-editor-header > span small { overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .persona-editor-header > span em { margin-top: 2px; color: #168456; font-size: 10px; font-style: normal; }
@@ -748,7 +760,11 @@
   background: #eef2ff;
   color: #3730a3;
 }
-.model-picker-menu button > span {
+.model-picker-menu button:disabled {
+  opacity: .52;
+  cursor: not-allowed;
+}
+.model-picker-menu button > span:not([role="img"]) {
   display: flex;
   flex: 1;
   min-width: 0;
@@ -2100,6 +2116,7 @@
 
 .persona-main small {
   margin-top: 1px;
+  color: #94a3b8;
   font-size: 10.5px;
 }
 
@@ -2457,6 +2474,9 @@
 .persona-form .model-picker-icon svg {
   width: 14px;
   height: 14px;
+}
+.persona-form .harness-picker-icon {
+  flex: 0 0 auto;
 }
 
 .persona-form .model-picker-current strong {

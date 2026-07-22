@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Ban, Brain, ChevronDown, ChevronUp, CircleCheck, CircleHelp, CircleX, Clock3, File, FoldVertical, Info, LoaderCircle, Paperclip, RotateCcw, Square, TriangleAlert, UnfoldVertical, Wrench } from 'lucide-react';
 import type {UpstreamStatus} from '@agenvyl/contracts';
-import type { HarnessCatalog } from '../../entities/harness';
+import {HarnessIcon,type HarnessCatalog} from '../../entities/harness';
 import type { Persona } from '../../entities/persona';
 import type { RoomState } from '../../entities/room';
 import type { Run } from '../../entities/run';
@@ -171,7 +171,10 @@ function RunCard({
       <div className={styles['run-body']}>
         <header className={styles['run-header']}>
           <span className={styles['run-identity']}>
-            <strong style={{ color: persona.color }}>{persona.name}</strong>
+            <span className={styles['run-name']}>
+              <strong style={{ color: persona.color }}>{persona.name}</strong>
+              <HarnessIcon type={run.harnessType}/>
+            </span>
             <small className={styles['model-label']} title={fullModelName(run,persona,harnessCatalog)}>{modelName(run,persona,harnessCatalog)}</small>
           </span>
           <span className={styles['run-header-actions']}>
