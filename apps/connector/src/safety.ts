@@ -12,11 +12,12 @@ export function redactConnectorText(value: string, maxLength = 2_000) {
     .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, `Bearer ${REDACTED}`)
     .replace(/\b(?:sk-|gh[oprsu]_|github_pat_|xox[aboprs]-)[-A-Za-z0-9_]{8,}\b/g, REDACTED)
     .replace(/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g, REDACTED)
+    .replace(/((?:["']?)(?:api[_-]?key|access[_-]?token|auth(?:orization)?|password|passwd|secret|token|cookie)(?:["']?)\s*:\s*)(["'])([^"'\\]*(?:\\.[^"'\\]*)*)\2/gi, `$1$2${REDACTED}$2`)
     .replace(/\b((?:api[_-]?key|access[_-]?token|auth(?:orization)?|password|passwd|secret|token)\s*[:=]\s*)(["']?)([^\s,"';}]+)\2/gi, `$1${REDACTED}`)
     .replace(/\b([A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD)\s*=\s*)(["']?)([^\s"']+)\2/g, `$1${REDACTED}`)
     .replace(/\b(https?:\/\/)[^\s/@:]+:[^\s/@]+@/gi, `$1${REDACTED}@`)
     .replace(/(^|[\s('"=])\/(?:[^\s/'"]+\/)*[^\s'",)]*/g, `$1${PATH_REDACTED}`)
-    .replace(/\b[A-Za-z]:\\(?:[^\s\\'"(),]+\\)*[^\s'"(),]*/g, PATH_REDACTED)
+    .replace(/\b[A-Za-z]:[\\/](?:[^\s\\/'"(),]+[\\/])*[^\s\\/'"(),]*/g, PATH_REDACTED)
     .trim();
   if (!safe) return '';
   if (safe.length > maxLength) safe = `${safe.slice(0, Math.max(0, maxLength - 1))}…`;
@@ -40,6 +41,7 @@ export function sanitizeAdapterEvent(event: AdapterExecutionEvent): AdapterExecu
           toolId: safeIdentifier(event.payload.toolId, 'tool'),
           name: redactConnectorText(event.payload.name, 128) || 'tool',
           safeSummary: redactConnectorText(event.payload.safeSummary),
+          ...(event.payload.safeInput === undefined ? {} : { safeInput: redactConnectorText(event.payload.safeInput, 8_000) }),
         },
       };
     case 'request.opened':

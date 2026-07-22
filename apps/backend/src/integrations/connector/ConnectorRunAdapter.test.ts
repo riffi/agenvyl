@@ -6,7 +6,7 @@ import {ConnectorRunAdapter} from './ConnectorRunAdapter.js';
 describe('ConnectorRunAdapter',()=>{
   it('maps Core start input and replays the typed stream after the accepted checkpoint',async()=>{
     const execution={...connectorContractFixtures.execution,cursor:2,pendingRequests:[]};
-    const streamed=[event(3,'execution.upstream_status',{state:'retrying',reason:'rate_limited',retryable:true,attempt:2}),event(4,'execution.upstream_status',{state:'recovered',reason:'rate_limited',retryable:false,attempt:2}),event(5,'output.reasoning.delta',{text:'Thinking'}),event(6,'output.text.delta',{text:'Hello'}),event(7,'tool.started',{toolId:'tool-1',name:'read_file',safeSummary:'Reading'}),event(8,'usage.updated',{usage:{inputTokens:20,outputTokens:5,totalTokens:25}}),event(9,'execution.completed',{})];
+    const streamed=[event(3,'execution.upstream_status',{state:'retrying',reason:'rate_limited',retryable:true,attempt:2}),event(4,'execution.upstream_status',{state:'recovered',reason:'rate_limited',retryable:false,attempt:2}),event(5,'output.reasoning.delta',{text:'Thinking'}),event(6,'output.text.delta',{text:'Hello'}),event(7,'tool.started',{toolId:'tool-1',name:'read_file',safeSummary:'Reading',safeInput:'{"path":"src/app.ts"}'}),event(8,'usage.updated',{usage:{inputTokens:20,outputTokens:5,totalTokens:25}}),event(9,'execution.completed',{})];
     const client=clientFixture(execution,streamed),adapter=new ConnectorRunAdapter(client);
     const handle=await adapter.createRun(input());
     expect(handle).toEqual({id:'run-1',checkpoint:{executionId:'run-1',connectorEpoch:'epoch-1',cursor:2}});
@@ -19,7 +19,7 @@ describe('ConnectorRunAdapter',()=>{
       {events:[{type:'run.upstream_status',payload:{runId:'local-run',state:'recovered',reason:'rate_limited',retryable:false,attempt:2}}],checkpoint:{executionId:'run-1',connectorEpoch:'epoch-1',cursor:4}},
       {events:[{type:'run.reasoning.delta',payload:{runId:'local-run',text:'Thinking'}}],checkpoint:{executionId:'run-1',connectorEpoch:'epoch-1',cursor:5}},
       {events:[{type:'run.delta',payload:{runId:'local-run',text:'Hello'}}],checkpoint:{executionId:'run-1',connectorEpoch:'epoch-1',cursor:6}},
-      {events:[{type:'tool.updated',payload:{runId:'local-run',tool:{id:'tool-1',name:'read_file',detail:'Reading',status:'started'}}}],checkpoint:{executionId:'run-1',connectorEpoch:'epoch-1',cursor:7}},
+      {events:[{type:'tool.updated',payload:{runId:'local-run',tool:{id:'tool-1',name:'read_file',detail:'Reading',input:'{"path":"src/app.ts"}',status:'started'}}}],checkpoint:{executionId:'run-1',connectorEpoch:'epoch-1',cursor:7}},
       {events:[{type:'run.usage',payload:{runId:'local-run',usage:{inputTokens:20,outputTokens:5,totalTokens:25}}}],checkpoint:{executionId:'run-1',connectorEpoch:'epoch-1',cursor:8}},
       {events:[],terminal:{status:'completed'},checkpoint:{executionId:'run-1',connectorEpoch:'epoch-1',cursor:9}},
     ]);

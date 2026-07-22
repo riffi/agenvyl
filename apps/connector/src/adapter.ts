@@ -20,7 +20,7 @@ export type AdapterExecutionEvent =
   | { type: 'output.text.delta'; payload: { text: string } }
   | { type: 'output.reasoning.delta'; payload: { text: string } }
   | { type: 'usage.updated'; payload: { usage: TokenUsage } }
-  | { type: 'tool.started' | 'tool.updated' | 'tool.completed'; payload: { toolId: string; name: string; safeSummary: string } }
+  | { type: 'tool.started' | 'tool.updated' | 'tool.completed'; payload: { toolId: string; name: string; safeSummary: string; safeInput?: string } }
   | { type: 'request.opened'; payload: { request: ConnectorRequestSnapshot } }
   | { type: 'request.resolved'; payload: { requestId: string; outcome: 'answered' | 'declined' | 'cancelled' | 'expired' | 'superseded' } }
   | { type: 'execution.completed'; payload: Record<string, never> }

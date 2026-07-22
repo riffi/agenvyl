@@ -175,8 +175,27 @@ const normalizeQuestions=(value:unknown)=>{
   if(!Array.isArray(value)||value.length<1||value.length>3)return;
   const result=[];for(const raw of value){const item=record(raw);if(!item||typeof item.id!=='string'||typeof item.header!=='string'||typeof item.question!=='string'||typeof item.isOther!=='boolean'||typeof item.isSecret!=='boolean')return;const options=Array.isArray(item.options)?item.options.map(option=>record(option)).filter((option):option is Record<string,unknown>=>Boolean(option&&typeof option.label==='string')).map(option=>({label:redactConnectorText(String(option.label),300),...(typeof option.description==='string'?{description:redactConnectorText(option.description,500)}:{})})):undefined;result.push({id:item.id,header:redactConnectorText(item.header,128),question:redactConnectorText(item.question,2_000),isOther:item.isOther,isSecret:item.isSecret,...(options?.length?{options}:{})});}return result;
 };
-const toolEvent=(value:unknown,status:'started'|'completed'):AdapterExecutionEvent|undefined=>{const item=record(value);if(!item||typeof item.id!=='string'||typeof item.type!=='string'||['agentMessage','reasoning','userMessage','plan'].includes(item.type))return;const name=redactConnectorText(item.type,128),summary=toolSummary(item,status);return{type:status==='started'?'tool.started':'tool.completed',payload:{toolId:item.id,name,safeSummary:summary}};};
+const toolEvent=(value:unknown,status:'started'|'completed'):AdapterExecutionEvent|undefined=>{const item=record(value);if(!item||typeof item.id!=='string'||typeof item.type!=='string'||['agentMessage','reasoning','userMessage','plan'].includes(item.type))return;const name=redactConnectorText(item.type,128),summary=toolSummary(item,status),safeInput=toolInput(item);return{type:status==='started'?'tool.started':'tool.completed',payload:{toolId:item.id,name,safeSummary:summary,...(safeInput===undefined?{}:{safeInput})}};};
 const toolSummary=(item:Record<string,unknown>,status:string)=>redactConnectorText(typeof item.command==='string'?item.command:typeof item.tool==='string'?`${item.server??'MCP'}: ${item.tool}`:`${item.type} ${status}`,500);
+const toolInput=(item:Record<string,unknown>)=>{
+  let value:unknown;
+  if(item.type==='commandExecution'&&typeof item.command==='string')value={command:item.command,...(typeof item.cwd==='string'?{cwd:item.cwd}:{})};
+  else if((item.type==='mcpToolCall'||item.type==='dynamicToolCall')&&item.arguments!==undefined)value=item.arguments;
+  else if(item.type==='webSearch')value={...(typeof item.query==='string'?{query:item.query}:{}),...(item.action!==undefined?{action:item.action}:{})};
+  else if(item.type==='fileChange'&&Array.isArray(item.changes))value={changes:item.changes};
+  else if(item.type==='imageView'&&typeof item.path==='string')value={path:item.path};
+  if(value===undefined)return;
+  try{return redactConnectorText(JSON.stringify(redactToolInputValue(value)),8_000);}catch{return;}
+};
+const redactToolInputValue=(value:unknown,depth=0):unknown=>{
+  if(depth>8)return'[TRUNCATED]';
+  if(typeof value==='string')return redactConnectorText(value,4_000);
+  if(value===null||typeof value==='number'||typeof value==='boolean')return value;
+  if(Array.isArray(value))return value.slice(0,100).map(item=>redactToolInputValue(item,depth+1));
+  const object=record(value);if(!object)return String(value);
+  return Object.fromEntries(Object.entries(object).slice(0,100).map(([key,item])=>[key,isSensitiveToolInputKey(key)?'[REDACTED]':redactToolInputValue(item,depth+1)]));
+};
+const isSensitiveToolInputKey=(key:string)=>{const normalized=key.replace(/[-_]/g,'').toLowerCase();return['apikey','accesstoken','auth','authorization','password','passwd','secret','token','cookie','setcookie'].some(suffix=>normalized===suffix||normalized.endsWith(suffix));};
 const tokenUsage=(value:unknown):TokenUsage|undefined=>{const usage=record(value),last=record(usage?.last);if(!last||!safeInteger(last.inputTokens)||!safeInteger(last.outputTokens))return;return{inputTokens:Number(last.inputTokens),outputTokens:Number(last.outputTokens),...(safeInteger(last.totalTokens)?{totalTokens:Number(last.totalTokens)}:{}),...(safeInteger(last.reasoningOutputTokens)?{reasoningTokens:Number(last.reasoningOutputTokens)}:{}),...(safeInteger(last.cachedInputTokens)?{cacheReadTokens:Number(last.cachedInputTokens)}:{}),...(safeInteger(last.cacheWriteInputTokens)?{cacheWriteTokens:Number(last.cacheWriteInputTokens)}:{})};};
 const record=(value:unknown):Record<string,unknown>|undefined=>value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:undefined;
 const safeInteger=(value:unknown)=>Number.isSafeInteger(value)&&Number(value)>=0;

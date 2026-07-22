@@ -178,7 +178,7 @@ export type ConnectorExecutionEvent =
   | EventEnvelope<'output.text.delta', { text: string }>
   | EventEnvelope<'output.reasoning.delta', { text: string }>
   | EventEnvelope<'usage.updated', { usage: TokenUsage }>
-  | EventEnvelope<'tool.started' | 'tool.updated' | 'tool.completed', { toolId: string; name: string; safeSummary: string }>
+  | EventEnvelope<'tool.started' | 'tool.updated' | 'tool.completed', { toolId: string; name: string; safeSummary: string; safeInput?: string }>
   | EventEnvelope<'request.opened', { request: ConnectorRequestSnapshot }>
   | EventEnvelope<'request.resolved', { requestId: string; outcome: ConnectorRequestResolution }>
   | EventEnvelope<'execution.completed' | 'execution.cancelled', Record<string, never>>
@@ -320,7 +320,8 @@ export function isConnectorExecutionEvent(value: unknown): value is ConnectorExe
     case 'execution.upstream_status': return isUpstreamStatus(value.payload);
     case 'output.text.delta': case 'output.reasoning.delta': return typeof value.payload.text === 'string';
     case 'usage.updated': return isTokenUsage(value.payload.usage);
-    case 'tool.started': case 'tool.updated': case 'tool.completed': return strings(value.payload, 'toolId', 'name', 'safeSummary');
+    case 'tool.started': case 'tool.updated': case 'tool.completed': return strings(value.payload, 'toolId', 'name', 'safeSummary')
+      && (value.payload.safeInput === undefined || (typeof value.payload.safeInput === 'string' && value.payload.safeInput.length <= 8_000));
     case 'request.opened': return isRequest(value.payload.request);
     case 'request.resolved': return strings(value.payload, 'requestId', 'outcome') && requestResolutions.has(String(value.payload.outcome));
     case 'execution.failed': return isError(value.payload.error);

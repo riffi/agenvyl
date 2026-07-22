@@ -25,11 +25,11 @@ describe('Connector safety boundary', () => {
   it('sanitizes every adapter-controlled summary before registry persistence', () => {
     const tool = sanitizeAdapterEvent({
       type: 'tool.updated',
-      payload: { toolId: 'tool-1', name: 'shell', safeSummary: 'token=secret-value at /srv/private/result.txt' },
+      payload: { toolId: 'tool-1', name: 'shell', safeSummary: 'token=secret-value at /srv/private/result.txt', safeInput: '{"password":"secret-value","path":"/srv/private/input.txt"}' },
     });
     expect(tool).toEqual({
       type: 'tool.updated',
-      payload: { toolId: 'tool-1', name: 'shell', safeSummary: 'token=[REDACTED] at [ABSOLUTE_PATH]' },
+      payload: { toolId: 'tool-1', name: 'shell', safeSummary: 'token=[REDACTED] at [ABSOLUTE_PATH]', safeInput: '{"password":"[REDACTED]","path":"[ABSOLUTE_PATH]"}' },
     });
 
     const request = sanitizeAdapterEvent({
