@@ -17,6 +17,7 @@ and synthesize the work produced by earlier agents.
 [![License](https://img.shields.io/badge/license-Apache_2.0-6d5ef7?style=flat-square)](LICENSE)
 
 **[Get started](#quick-start)** · [See how it works](#how-agenvyl-works) ·
+[Supported harnesses](#supported-coding-agent-harnesses) ·
 [Read the documentation](#documentation)
 
 ![Agenvyl Web UI showing three coding agents answering in parallel](docs/assets/agenvyl-overview.png)
@@ -61,18 +62,34 @@ an agent.
 
 ## Built for real workflows
 
+Rooms are not limited to software projects. Any task that benefits from distinct
+roles, parallel perspectives, and a shared history can use the same pattern.
+
 | Workflow | Example team |
 | --- | --- |
-| **Build a feature** | An architect proposes the design, a builder implements it, and a reviewer checks the result. |
-| **Investigate a bug** | Several agents inspect the same code and propose causes in parallel. |
-| **Review a change** | Security, architecture, and code-quality agents examine the same files from different perspectives. |
+| **Build software** | An architect proposes the design, a builder implements it, and a reviewer checks the result. |
+| **Explore a topic** | Researchers investigate different angles, a skeptic challenges weak claims, and an editor summarizes the findings. |
+| **Write creatively** | A plotter, character specialist, and editor develop and revise a story in the same room. |
+| **Review a document** | A domain expert, fact-checker, and editor critique the same draft from different perspectives. |
+| **Plan and decide** | Independent planners propose options, a critic stress-tests them, and a lead synthesizes the decision. |
 | **Compare models** | Ask the same question once and compare model answers side by side. |
-| **Reach a decision** | Ask a lead agent to evaluate earlier answers, resolve disagreements, and synthesize the final recommendation. |
+| **Talk with your agents** | Keep an ongoing conversation with recurring personas; address one specialist, a few of them, or `@all`. |
 
-## Bring the agents you already use
+## Supported coding-agent harnesses
 
-Agenvyl currently connects to **Hermes**, **OpenCode**, **Codex CLI**, experimental
-**Claude Code CLI**, and **Antigravity (AGY)**. It does not replace or reconfigure them: the harness remains the
+Agenvyl currently supports:
+
+- **Hermes** — connects to an already running local Hermes HTTP service.
+- **OpenCode** — connects to an existing server or starts a managed local server.
+- **Codex CLI** — starts the user-installed `codex app-server` and preserves its
+  account, configuration, skills, apps, and MCP servers.
+- **Claude Code CLI (experimental)** — starts the user-installed `claude` CLI and
+  preserves its settings, provider credentials, skills, plugins, hooks, and MCP
+  servers. Read the authentication warning below before enabling it.
+- **Antigravity (AGY)** — starts the user-installed CLI with an explicit
+  permission-mode confirmation.
+
+Agenvyl does not replace or reconfigure these harnesses: each remains the
 execution environment and keeps its own accounts, models, skills, tools, and MCP
 servers where supported. Agenvyl adds the coordination layer—rooms, mentions,
 parallel runs, a shared timeline, and a shared workspace.
@@ -80,8 +97,34 @@ parallel runs, a shared timeline, and a shared workspace.
 Agenvyl does not provide model access by itself. It discovers the models and
 modes exposed by the harnesses already authenticated on your computer.
 
-One Hermes, OpenCode, Codex, or Claude installation can power several Agenvyl agents with
-different names, roles, models, and instructions.
+One connected harness can power several Agenvyl agents with different names,
+roles, models, and instructions.
+
+### Claude authentication warning
+
+> [!WARNING]
+> **Using the official Claude CLI does not make every authentication method
+> permitted for third-party orchestration.** Agenvyl launches your normal,
+> user-installed `claude` executable, but Anthropic says developers of
+> third-party products should use API keys or supported cloud-provider
+> authentication and must not route Free, Pro, or Max subscription credentials
+> on behalf of users. Anthropic also reserves the right to enforce this
+> restriction without notice. See Anthropic's
+> [legal and compliance guidance](https://code.claude.com/docs/en/legal-and-compliance).
+>
+> Agenvyl therefore treats Claude subscription OAuth as an experimental,
+> explicit opt-in. It is disabled until you enter `CLAUDE OAUTH`. Prefer an
+> Anthropic Console API key or a supported cloud provider if you want to avoid
+> this terms-and-access risk.
+
+Claude Code can also be configured to use a third-party API provider. For
+example, Z.AI documents running the Claude CLI with GLM models through its own
+API endpoint and credentials in its
+[Claude Code guide](https://docs.z.ai/devpack/tool/claude). This avoids the
+specific risk of routing Anthropic subscription OAuth credentials because those
+credentials are not used. Agenvyl inherits the CLI's environment and settings,
+so no Agenvyl-specific provider configuration is needed; the provider's own
+compatibility, data handling, and terms still apply.
 
 ## Quick start
 
@@ -188,8 +231,8 @@ manage the agent catalog, or **Workspace** to inspect the room's files.
 - Codex defaults to workspace-write with per-action approvals. Unsandboxed
   `danger-full-access` modes require the exact `CODEX FULL ACCESS` confirmation.
 - Claude uses the user-installed CLI and is experimental. API or supported cloud
-  authentication is preferred; subscription OAuth requires the exact
-  `CLAUDE OAUTH` opt-in and does not change Anthropic's terms.
+  authentication is preferred; see the
+  [Claude authentication warning](#claude-authentication-warning).
 
 <details>
 <summary><strong>Starting, stopping, and backing up Agenvyl</strong></summary>
