@@ -8,7 +8,7 @@ import {buildCodexCatalog,parseCodexMode} from './mode-catalog.js';
 type RpcId=string|number;
 type PendingRequest={rpcId:RpcId;method:string};
 type ExecutionState={
-  id:string;threadId:string;turnId?:string;status:ExecutionStatus;queue:EventQueue;pending:Map<string,PendingRequest>;itemText:Map<string,number>;
+  id:string;threadId:string;turnId?:string;status:ExecutionStatus;queue:EventQueue;pending:Map<string,PendingRequest>;itemText:Map<string,number>;reasoningIndexes:Map<string,number>;
 };
 
 export type CodexAdapterOptions={command?:string;env?:NodeJS.ProcessEnv;allowDangerFullAccess?:boolean;client?:CodexAppServerPort};
@@ -47,10 +47,10 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
     }));
     const thread=record(threadResponse?.thread),threadId=typeof thread?.id==='string'?thread.id:undefined;
     if(!threadId)throw new Error('Codex thread/start response is invalid');
-    const state:ExecutionState={id:request.executionId,threadId,status:'running',queue:new EventQueue(),pending:new Map(),itemText:new Map()};
+    const state:ExecutionState={id:request.executionId,threadId,status:'running',queue:new EventQueue(),pending:new Map(),itemText:new Map(),reasoningIndexes:new Map()};
     this.executions.set(request.executionId,state);this.byThread.set(threadId,state);
     try{
-      const turnResponse=record(await this.client.request('turn/start',{threadId,input:[{type:'text',text:request.input.message,text_elements:[]}],...(mode.effort?{effort:mode.effort}:{})}));
+      const turnResponse=record(await this.client.request('turn/start',{threadId,input:[{type:'text',text:request.input.message,text_elements:[]}],summary:'auto',...(mode.effort?{effort:mode.effort}:{})}));
       const turn=record(turnResponse?.turn),turnId=typeof turn?.id==='string'?turn.id:undefined;
       if(!turnId)throw new Error('Codex turn/start response is invalid');
       state.turnId=turnId;
@@ -114,7 +114,8 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
   private onNotification(state:ExecutionState,method:string,params:Record<string,unknown>){
     if(state.turnId&&typeof params.turnId==='string'&&params.turnId!==state.turnId)return;
     if(method==='item/agentMessage/delta'&&typeof params.delta==='string'){this.trackText(state,params);state.queue.push({type:'output.text.delta',payload:{text:params.delta}});return;}
-    if((method==='item/reasoning/summaryTextDelta'||method==='item/reasoning/textDelta')&&typeof params.delta==='string'){state.queue.push({type:'output.reasoning.delta',payload:{text:params.delta}});return;}
+    if(method==='item/reasoning/summaryTextDelta'&&typeof params.delta==='string'){this.pushReasoningDelta(state,params,'summaryIndex','summary');return;}
+    if(method==='item/reasoning/textDelta'&&typeof params.delta==='string'){this.pushReasoningDelta(state,params,'contentIndex','content');return;}
     if(method==='item/started'){const tool=toolEvent(params.item,'started');if(tool)state.queue.push(tool);return;}
     if((method==='item/commandExecution/outputDelta'||method==='item/fileChange/outputDelta'||method==='item/fileChange/patchUpdated')&&typeof params.itemId==='string'){state.queue.push({type:'tool.updated',payload:{toolId:params.itemId,name:method.includes('fileChange')?'fileChange':'commandExecution',safeSummary:redactConnectorText(typeof params.delta==='string'?params.delta:'File patch updated',500)}});return;}
     if(method==='item/mcpToolCall/progress'&&typeof params.itemId==='string'){state.queue.push({type:'tool.updated',payload:{toolId:params.itemId,name:'mcpToolCall',safeSummary:redactConnectorText(typeof params.message==='string'?params.message:'MCP tool in progress',500)}});return;}
@@ -126,6 +127,15 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
   }
 
   private trackText(state:ExecutionState,params:Record<string,unknown>){if(typeof params.itemId==='string'&&typeof params.delta==='string')state.itemText.set(params.itemId,(state.itemText.get(params.itemId)??0)+params.delta.length);}
+  private pushReasoningDelta(state:ExecutionState,params:Record<string,unknown>,indexField:'summaryIndex'|'contentIndex',channel:'summary'|'content'){
+    let text=String(params.delta??'');const index=params[indexField],itemId=params.itemId;
+    if(typeof itemId==='string'&&safeInteger(index)){
+      const key=`${channel}:${itemId}`,current=Number(index),previous=state.reasoningIndexes.get(key);
+      if(previous!==undefined&&previous!==current)text=`\n\n${text}`;
+      state.reasoningIndexes.set(key,current);
+    }
+    if(text)state.queue.push({type:'output.reasoning.delta',payload:{text}});
+  }
   private completeItem(state:ExecutionState,value:unknown){
     const item=record(value);if(!item)return;
     if(item.type==='agentMessage'&&typeof item.id==='string'&&typeof item.text==='string'){

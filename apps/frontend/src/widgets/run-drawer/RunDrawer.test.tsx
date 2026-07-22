@@ -31,4 +31,12 @@ describe('RunDrawer lifecycle snapshot',()=>{
     const html=renderToStaticMarkup(<RunDrawer run={{...run,usage:{inputTokens:1234,outputTokens:56,reasoningTokens:7}}} persona={persona} close={vi.fn()}/>);
     expect(html).toContain('Input tokens');expect(html).toContain('1,234');expect(html).toContain('Output tokens');expect(html).toContain('56');expect(html).toContain('Total tokens');expect(html).toContain('not reported');expect(html).not.toContain('cost');
   });
+
+  it('exposes long tool activity as a keyboard-scrollable region before technical information',()=>{
+    const tools=Array.from({length:20},(_,index)=>({id:`tool-${index}`,name:'mcpToolCall',detail:`Call ${index}`,status:'completed' as const}));
+    const html=renderToStaticMarkup(<RunDrawer run={{...run,tools}} persona={persona} close={vi.fn()}/>);
+    expect(html).toContain('aria-label="Tool activity"');
+    expect(html).toContain('tabindex="0"');
+    expect(html.indexOf('Tool activity')).toBeLessThan(html.indexOf('Technical information'));
+  });
 });

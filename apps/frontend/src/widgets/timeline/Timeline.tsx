@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Ban, Brain, ChevronDown, ChevronUp, CircleCheck, CircleHelp, CircleX, Clock3, File, FoldVertical, Info, LoaderCircle, Paperclip, RotateCcw, Square, TriangleAlert, UnfoldVertical, Wrench } from 'lucide-react';
+import { Ban, ChevronDown, ChevronUp, CircleCheck, CircleHelp, CircleX, Clock3, File, FoldVertical, Info, LoaderCircle, Paperclip, RotateCcw, Square, TriangleAlert, UnfoldVertical, Wrench } from 'lucide-react';
 import type {UpstreamStatus} from '@agenvyl/contracts';
 import {HarnessIcon,type HarnessCatalog} from '../../entities/harness';
 import type { Persona } from '../../entities/persona';
@@ -11,8 +11,10 @@ import styles from './Timeline.module.css';
 import { isLongAnswer, shouldUseSingleColumn } from './layout';
 import { MarkdownAnswer } from './MarkdownAnswer';
 import {MentionText} from './mentions';
+import {ReasoningBlock} from './ReasoningBlock';
 
 export { MarkdownAnswer } from './MarkdownAnswer';
+export {ReasoningBlock} from './ReasoningBlock';
 
 const statusLabel: Record<Run['status'], string> = {
   queued: 'queued',
@@ -62,13 +64,6 @@ function fullModelName(run:Run,persona:Persona,catalog:HarnessCatalog|undefined)
 const unknownPersona = (handle: string): Persona => ({
   id: '', handle, name: `@${handle}`, role: 'Agent unavailable', color: '#64748b', requested_model: null, harness_instance_id:'unknown',harness_type:'unknown',model_id:'unknown',mode_id:null,group_id:null, archived_at: null,
 });
-
-export function ReasoningBlock({text}:{text:string}) {
-  return <details className={styles.reasoning}>
-    <summary><Brain/>Reasoning</summary>
-    <pre>{text}</pre>
-  </details>;
-}
 
 export function UpstreamStatusNotice({status}:{status:UpstreamStatus}) {
   const text=status.state==='waiting_upstream'
@@ -189,7 +184,7 @@ function RunCard({
             </span>}
           </span>
         </header>
-        {run.reasoning&&<ReasoningBlock text={run.reasoning}/>}
+        {run.reasoning&&<ReasoningBlock text={run.reasoning} harnessType={run.harnessType}/>}
         {run.upstreamStatus&&<UpstreamStatusNotice status={run.upstreamStatus}/>}
         <div className={`${styles.answer} ${collapsed?styles['answer-collapsed']:''}`}>
           <MarkdownAnswer text={answer} run={run} personas={personas} onMentionPersona={onMentionPersona}/>

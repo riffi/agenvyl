@@ -102,7 +102,7 @@ export function RunDrawer({run,persona,harnessCatalog,close}:{run?:Run;persona?:
 
         <section className={styles.activity}>
           <h3><Wrench/>Activity</h3>
-          {run.tools.length?<ol>{run.tools.map(tool=><ToolItem key={tool.id} tool={tool}/>)}</ol>:<div className={styles.empty}><Wrench/><span><strong>{active?'No additional actions yet':'No additional tools were used'}</strong><small>{active?'Activity will appear here as the agent works.':'The response was prepared without tool calls.'}</small></span></div>}
+          {run.tools.length?<ol className={styles['activity-list']} tabIndex={0} aria-label="Tool activity">{run.tools.map(tool=><ToolItem key={tool.id} tool={tool}/>)}</ol>:<div className={styles.empty}><Wrench/><span><strong>{active?'No additional actions yet':'No additional tools were used'}</strong><small>{active?'Activity will appear here as the agent works.':'The response was prepared without tool calls.'}</small></span></div>}
         </section>
 
         <details className={styles.technical}>

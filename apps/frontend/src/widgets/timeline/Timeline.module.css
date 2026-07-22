@@ -230,7 +230,7 @@
 }
 .reasoning[open] summary::after { transform: rotate(90deg); }
 .reasoning summary svg { width: 14px;height: 14px; }
-.reasoning pre {
+.reasoningBody {
   max-height: 280px;
   overflow: auto;
   padding: 9px;
@@ -238,12 +238,21 @@
   border-top: 1px solid #e2e8f0;
   background: white;
   color: #475569;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.5;
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.reasoningBody > :first-child { margin-top: 0; }
+.reasoningBody > :last-child { margin-bottom: 0; }
+.reasoningBody p { margin: 0 0 7px; }
+.reasoningBody strong { color: #334155; font-weight: 650; }
+.reasoningBody ul,.reasoningBody ol { margin: 5px 0 8px; padding-left: 20px; }
+.reasoningBody li + li { margin-top: 3px; }
+.reasoningBody pre { overflow-x: auto; margin: 7px 0; padding: 7px 8px; border: 1px solid #e2e8f0; border-radius: 6px; background: #f8fafc; }
+.reasoningBody code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 10px; }
+.reasoningBody :not(pre)>code { padding: 1px 4px; border-radius: 4px; background: #f1f5f9; color: #334155; }
+.reasoningBody a { color: #2563eb; text-decoration: underline; text-underline-offset: 2px; }
+.reasoningImage { color: #94a3b8; font-style: italic; }
 .upstream-status {
   display: flex;
   gap: 8px;

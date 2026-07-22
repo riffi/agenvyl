@@ -31,6 +31,10 @@
 .activity h3 { display:flex;gap:7px;align-items:center;margin:0 0 10px;color:#475569;font-size:12px;text-transform:none; }
 .activity h3 svg { width:15px;height:15px; }
 .activity ol { padding:0;margin:0;list-style:none; }
+.activity .activity-list { max-height:min(40vh,360px);overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding-right:7px;scrollbar-width:thin;scrollbar-color:#cbd5e1 transparent; }
+.activity-list::-webkit-scrollbar { width:6px; }
+.activity-list::-webkit-scrollbar-thumb { border-radius:999px;background:#cbd5e1; }
+.activity-list:focus-visible { outline:2px solid #93c5fd;outline-offset:3px;border-radius:6px; }
 .activity li { position:relative;display:grid;grid-template-columns:24px minmax(0,1fr);gap:9px;align-items:start;padding:9px 0; }
 .activity li+li { border-top:1px solid #f1f5f9; }
 .activity li>span:first-child { display:grid;width:24px;height:24px;place-items:center;border-radius:50%;background:#eff6ff;color:#2563eb; }
