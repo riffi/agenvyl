@@ -40,6 +40,7 @@ describe('versioned room workspace',()=>{
     const root=await mkdtemp(path.join(tmpdir(),'workspace-api-'));roots.push(root);
     const app=await buildApp({databaseUrl:testDatabaseUrl('workspace_preview'),workspaceRoot:root,workspaceAgentRoot:root,fetch:vi.fn<typeof fetch>(),distPath:'missing-dist'});
     const invalid=await app.inject({method:'POST',url:'/api/v1/rooms/demo-room/workspace/files',headers:{'content-type':'text/plain','x-file-path':encodeURIComponent('../secret.txt')},payload:Buffer.from('secret')});expect(invalid.statusCode).toBe(400);
+    const reserved=await app.inject({method:'POST',url:'/api/v1/rooms/demo-room/workspace/files',headers:{'content-type':'text/plain','x-file-path':'.agenvyl/secret.txt'},payload:Buffer.from('secret')});expect(reserved.statusCode).toBe(400);expect(reserved.json().error).toBe('workspace_reserved_path');
     const uploaded=await app.inject({method:'POST',url:'/api/v1/rooms/demo-room/workspace/files',headers:{'content-type':'text/html','x-file-path':'demo.html'},payload:Buffer.from('<html><head></head><body><script>fetch("https://example.com")</script></body></html>')});
     const preview=await app.inject(`/api/v1/rooms/demo-room/workspace/versions/${uploaded.json().version.id}/preview`),csp=preview.headers['content-security-policy'];
     expect(csp).toContain("style-src 'self' http: https: 'unsafe-inline'");
@@ -63,6 +64,23 @@ describe('versioned room workspace',()=>{
     await app.inject({method:'POST',url:'/api/v1/rooms/demo-room/workspace/files',headers:{'content-type':'text/css','x-file-path':'site/style.css','x-conflict-strategy':'replace'},payload:Buffer.from('body{color:blue}')});
     const currentStyle=await app.inject(`${base}/style.css`);
     expect(currentStyle.statusCode).toBe(200);expect(currentStyle.body).toBe('body{color:blue}');
+    await app.close();
+  });
+
+  it('keeps snapshot-scoped HTML resources immutable after later publications',async()=>{
+    const root=await mkdtemp(path.join(tmpdir(),'workspace-api-'));roots.push(root);
+    const app=await buildApp({databaseUrl:testDatabaseUrl('workspace_snapshot_preview'),workspaceRoot:root,workspaceAgentRoot:root,fetch:vi.fn<typeof fetch>(),distPath:'missing-dist'});
+    await app.inject({method:'POST',url:'/api/v1/rooms/demo-room/workspace/files',headers:{'content-type':'text/html','x-file-path':'site/index.html'},payload:Buffer.from('<link rel="stylesheet" href="style.css">')});
+    await app.inject({method:'POST',url:'/api/v1/rooms/demo-room/workspace/files',headers:{'content-type':'text/css','x-file-path':'site/style.css'},payload:Buffer.from('body{color:red}')});
+    const firstWorkspace=(await app.inject('/api/v1/rooms/demo-room/workspace')).json(),firstBase=`/api/v1/rooms/demo-room/workspace/snapshots/${firstWorkspace.current_snapshot_id}/preview/site`;
+    expect((await app.inject(`${firstBase}/style.css`)).body).toBe('body{color:red}');
+    const html=await app.inject(`${firstBase}/index.html`);expect(html.body).toContain(`<base href="/api/v1/rooms/demo-room/workspace/snapshots/${firstWorkspace.current_snapshot_id}/preview/site/">`);expect(html.headers['cache-control']).toContain('immutable');
+    await app.inject({method:'POST',url:'/api/v1/rooms/demo-room/workspace/files',headers:{'content-type':'text/css','x-file-path':'site/style.css','x-conflict-strategy':'replace'},payload:Buffer.from('body{color:blue}')});
+    const nextWorkspace=(await app.inject('/api/v1/rooms/demo-room/workspace')).json(),nextBase=`/api/v1/rooms/demo-room/workspace/snapshots/${nextWorkspace.current_snapshot_id}/preview/site`;
+    expect(nextWorkspace.current_snapshot_id).not.toBe(firstWorkspace.current_snapshot_id);
+    expect((await app.inject(`${firstBase}/style.css`)).body).toBe('body{color:red}');
+    expect((await app.inject(`${nextBase}/style.css`)).body).toBe('body{color:blue}');
+    expect((await app.inject(`/api/v1/rooms/demo-room/workspace/snapshots/${firstWorkspace.current_snapshot_id}/preview/missing.css`)).statusCode).toBe(404);
     await app.close();
   });
 

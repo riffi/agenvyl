@@ -43,7 +43,7 @@ export class RoomRepository {
     return Boolean(
       (
         await this.database
-          .sql`SELECT 1 FROM agent_runs WHERE room_id=${id} AND execution_profile->>'workflowMode'='plan' AND status=ANY(${["queued", "streaming", "stopping", "waiting_approval", "waiting_clarification"]}) LIMIT 1`
+          .sql`SELECT 1 FROM agent_runs WHERE room_id=${id} AND execution_profile->>'workflowMode'='plan' AND status=ANY(${["queued", "streaming", "finalizing", "stopping", "waiting_approval", "waiting_clarification"]}) LIMIT 1`
       )[0],
     );
   }
@@ -88,7 +88,7 @@ export class RoomRepository {
             toMessage(row, attachmentMap.get(text(row.id)) ?? []),
           );
         const runRows = messageIds.length
-          ? await tx`SELECT id,message_id,persona_handle,requested_model,harness_instance_id,harness_type,model_id,execution_profile,status,upstream_status,usage,text,reasoning,error,error_code,retry_of_run_id,response_slot_id,connector_execution_id,connector_epoch,connector_cursor,(ROW_NUMBER() OVER(PARTITION BY response_slot_id ORDER BY created_at,id))::int attempt_number,created_at FROM agent_runs WHERE message_id=ANY(${messageIds}) ORDER BY created_at,id`
+          ? await tx`SELECT r.id,r.message_id,r.persona_handle,r.requested_model,r.harness_instance_id,r.harness_type,r.model_id,r.execution_profile,r.status,r.upstream_status,r.usage,r.text,r.reasoning,r.error,r.error_code,r.retry_of_run_id,r.response_slot_id,r.connector_execution_id,r.connector_epoch,r.connector_cursor,(ROW_NUMBER() OVER(PARTITION BY r.response_slot_id ORDER BY r.created_at,r.id))::int attempt_number,r.created_at,w.base_snapshot_id,w.result_snapshot_id,w.published_snapshot_id,w.capture_status workspace_capture_status,w.publish_status workspace_publish_status,w.conflict_count workspace_conflict_count,w.errors workspace_errors FROM agent_runs r LEFT JOIN run_workspace_results w ON w.run_id=r.id WHERE r.message_id=ANY(${messageIds}) ORDER BY r.created_at,r.id`
           : [];
         const runIds = runRows.map((row) => text(row.id));
         const eventRows = runIds.length
@@ -222,7 +222,7 @@ export class RoomRepository {
         return "not_found" as const;
       if (
         (
-          await tx`SELECT 1 FROM agent_runs WHERE room_id=${id} AND status=ANY(${["queued", "streaming", "stopping", "waiting_approval", "waiting_clarification"]}) LIMIT 1`
+          await tx`SELECT 1 FROM agent_runs WHERE room_id=${id} AND status=ANY(${["queued", "streaming", "finalizing", "stopping", "waiting_approval", "waiting_clarification"]}) LIMIT 1`
         ).length
       )
         return "busy" as const;
@@ -253,6 +253,8 @@ export class RoomRepository {
       await tx`DELETE FROM response_slots WHERE message_id IN(SELECT id FROM room_messages WHERE room_id=${id})`;
       await tx`DELETE FROM room_messages WHERE room_id=${id}`;
       await tx`DELETE FROM room_participants WHERE room_id=${id}`;
+      await tx`UPDATE rooms SET current_workspace_snapshot_id=NULL WHERE id=${id}`;
+      await tx`DELETE FROM workspace_snapshots WHERE room_id=${id}`;
       await tx`DELETE FROM rooms WHERE id=${id}`;
       return "purged" as const;
     });
@@ -441,6 +443,7 @@ async function planState(
     approved: approved ? planRef(approved) : null,
   };
 }
-function planRef(version: { id: string; entry_id: string }): PlanVersionRef {
+function planRef(version: { id: string; entry_id?: string }): PlanVersionRef {
+  if(!version.entry_id)throw new Error('Published plan version is not attached to a workspace entry');
   return { entry_id: version.entry_id, version_id: version.id };
 }

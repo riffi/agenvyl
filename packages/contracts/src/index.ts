@@ -23,6 +23,7 @@ export type RunExecutionProfileSnapshot = {
 export type RunStatus =
   | 'queued'
   | 'streaming'
+  | 'finalizing'
   | 'stopping'
   | 'waiting_approval'
   | 'waiting_clarification'
@@ -98,6 +99,7 @@ export type Run = {
   errorCode?: string;
   artifacts?: RunArtifact[];
   embeds?: RunEmbed[];
+  workspaceResult?:RunWorkspaceResult;
 };
 
 export type Room = {
@@ -116,16 +118,31 @@ export type WorkspaceEntry={
   updated_at:string;current_version_id?:string;deleted_at?:string|null;status?:'tracked'|'oversize';
 };
 export type WorkspaceVersion={
-  id:string;entry_id:string;path:string;size:number;mime_type:string;sha256:string;created_at:string;
-  source:WorkspaceSource;run_ids:string[];url:string;preview_url:string;
+  id:string;entry_id?:string;path:string;size:number;mime_type:string;sha256:string;created_at:string;
+  source:WorkspaceSource;run_ids:string[];origin_snapshot_id?:string;url:string;preview_url:string;
 };
 export type WorkspaceAttachment={
-  version_id:string;entry_id:string;name:string;path:string;size:number;mime_type:string;url:string;preview_url:string;
+  version_id:string;entry_id?:string;snapshot_id?:string;name:string;path:string;size:number;mime_type:string;url:string;preview_url:string;
 };
 export type RunArtifact=WorkspaceAttachment&{change:'created'|'updated'|'deleted';attribution:'exact'|'shared'|'external'};
 export type RunEmbedError='invalid_path'|'not_found'|'unsupported_type'|'invalid_content'|'limit_exceeded';
 export type RunEmbed={kind:'image';path:string;status:'resolved'|'error';attachment?:WorkspaceAttachment;error?:RunEmbedError};
-export type RoomWorkspace={path:string;entries:WorkspaceEntry[]};
+export type WorkspaceCaptureError={path:string;code:'oversize'|'symlink'|'reserved'|'unstable'|'read_failed'};
+export type RunWorkspaceResult={
+  base_snapshot_id:string;
+  result_snapshot_id?:string;
+  published_snapshot_id?:string;
+  capture_status:'preparing'|'ready'|'finalizing'|'complete'|'incomplete'|'failed';
+  publish_status:'pending'|'published'|'partially_published'|'not_published'|'failed';
+  conflict_count:number;
+  errors:WorkspaceCaptureError[];
+};
+export type WorkspaceConflictChoice='current'|'candidate'|'delete';
+export type WorkspaceConflictSide={kind:'file'|'directory';version_id?:string;attachment?:WorkspaceAttachment};
+export type WorkspacePublishConflict={path:string;base?:WorkspaceConflictSide;current?:WorkspaceConflictSide;candidate?:WorkspaceConflictSide};
+export type WorkspaceConflictSet={run_id:string;expected_current_snapshot_id:string;conflicts:WorkspacePublishConflict[]};
+export type ResolveWorkspaceConflictsRequest={expected_current_snapshot_id:string;resolutions:Array<{path:string;choice:WorkspaceConflictChoice}>};
+export type RoomWorkspace={path:string;current_snapshot_id:string;materialization_status:'pending'|'ready'|'failed';entries:WorkspaceEntry[]};
 
 export type Persona = {
   id: string;
@@ -226,7 +243,9 @@ export type ServerRoomEvent =
   | Envelope<'room.plan.approval.updated', { approved: PlanVersionRef | null }>
   | Envelope<'workspace.changed', { entry:WorkspaceEntry;change:'created'|'updated'|'deleted'|'restored'|'moved' }>
   | Envelope<'artifact.created', { runId:string;artifact:RunArtifact }>
-  | Envelope<'run.embeds', { runId:string;embeds:RunEmbed[] }>;
+  | Envelope<'run.embeds', { runId:string;embeds:RunEmbed[] }>
+  | Envelope<'run.workspace.finalized', {runId:string;workspaceResult:RunWorkspaceResult}>
+  | Envelope<'run.workspace.publish.updated', {runId:string;workspaceResult:RunWorkspaceResult}>;
 
 const eventTypes = new Set<ServerRoomEvent['type']>([
   'message.created',
@@ -245,8 +264,10 @@ const eventTypes = new Set<ServerRoomEvent['type']>([
   'workspace.changed',
   'artifact.created',
   'run.embeds',
+  'run.workspace.finalized',
+  'run.workspace.publish.updated',
 ]);
-const runStatuses = new Set<RunStatus>(['queued', 'streaming', 'stopping', 'waiting_approval', 'waiting_clarification', 'completed', 'failed', 'cancelled']);
+const runStatuses = new Set<RunStatus>(['queued', 'streaming', 'finalizing', 'stopping', 'waiting_approval', 'waiting_clarification', 'completed', 'failed', 'cancelled']);
 const toolStatuses = new Set<ToolActivity['status']>(['started', 'progress', 'completed']);
 
 export function isServerRoomEvent(value: unknown): value is ServerRoomEvent {
@@ -255,7 +276,7 @@ export function isServerRoomEvent(value: unknown): value is ServerRoomEvent {
   const payload = value.payload;
   switch (value.type) {
     case 'message.created': return typeof payload.id === 'string' && typeof payload.text === 'string' && Array.isArray(payload.targets) && Array.isArray(payload.runIds) && (payload.attachments===undefined||Array.isArray(payload.attachments)) && isRecord(payload.author) && strings(payload.author,'profileId','displayName','handle') && typeof payload.addressedToAll==='boolean';
-    case 'run.created': return typeof payload.id === 'string' && typeof payload.messageId === 'string' && typeof payload.agent === 'string' && (payload.requestedModel === undefined || typeof payload.requestedModel === 'string') && strings(payload,'harnessInstanceId','harnessType','modelId') && isRunExecutionProfile(payload.executionProfile) && typeof payload.status === 'string' && runStatuses.has(payload.status as RunStatus) && (payload.upstreamStatus===undefined||(isRecord(payload.upstreamStatus)&&payload.upstreamStatus.state!=='recovered'&&isUpstreamStatusEvent(payload.upstreamStatus))) && (payload.usage===undefined||isTokenUsage(payload.usage)) && typeof payload.text === 'string' && (payload.reasoning===undefined||typeof payload.reasoning==='string') && Array.isArray(payload.tools) && (payload.artifacts===undefined||Array.isArray(payload.artifacts)) && (payload.embeds===undefined||Array.isArray(payload.embeds));
+    case 'run.created': return typeof payload.id === 'string' && typeof payload.messageId === 'string' && typeof payload.agent === 'string' && (payload.requestedModel === undefined || typeof payload.requestedModel === 'string') && strings(payload,'harnessInstanceId','harnessType','modelId') && isRunExecutionProfile(payload.executionProfile) && typeof payload.status === 'string' && runStatuses.has(payload.status as RunStatus) && (payload.upstreamStatus===undefined||(isRecord(payload.upstreamStatus)&&payload.upstreamStatus.state!=='recovered'&&isUpstreamStatusEvent(payload.upstreamStatus))) && (payload.usage===undefined||isTokenUsage(payload.usage)) && typeof payload.text === 'string' && (payload.reasoning===undefined||typeof payload.reasoning==='string') && Array.isArray(payload.tools) && (payload.artifacts===undefined||Array.isArray(payload.artifacts)) && (payload.embeds===undefined||Array.isArray(payload.embeds)) && (payload.workspaceResult===undefined||isRunWorkspaceResult(payload.workspaceResult));
     case 'run.delta': case 'run.reasoning.delta': return strings(payload, 'runId', 'text');
     case 'run.status': return strings(payload, 'runId', 'status') && runStatuses.has(payload.status as RunStatus) && (payload.error===undefined||typeof payload.error==='string') && (payload.errorCode===undefined||typeof payload.errorCode==='string');
     case 'run.upstream_status': return typeof payload.runId === 'string' && isUpstreamStatusEvent(payload);
@@ -269,6 +290,7 @@ export function isServerRoomEvent(value: unknown): value is ServerRoomEvent {
     case 'workspace.changed': return isRecord(payload.entry) && typeof payload.entry.id==='string' && typeof payload.change==='string';
     case 'artifact.created': return typeof payload.runId==='string' && isRecord(payload.artifact) && typeof payload.artifact.version_id==='string';
     case 'run.embeds': return typeof payload.runId==='string'&&Array.isArray(payload.embeds);
+    case 'run.workspace.finalized': case 'run.workspace.publish.updated': return typeof payload.runId==='string'&&isRunWorkspaceResult(payload.workspaceResult);
     default: return false;
   }
 }
@@ -277,6 +299,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 function isTokenUsage(value:unknown):value is TokenUsage{if(!isRecord(value)||!tokenCount(value.inputTokens)||!tokenCount(value.outputTokens))return false;return['totalTokens','reasoningTokens','cacheReadTokens','cacheWriteTokens'].every(key=>value[key]===undefined||tokenCount(value[key]));}
+function isRunWorkspaceResult(value:unknown):value is RunWorkspaceResult{if(!isRecord(value)||typeof value.base_snapshot_id!=='string'||typeof value.capture_status!=='string'||typeof value.publish_status!=='string'||!Number.isSafeInteger(value.conflict_count)||!Array.isArray(value.errors))return false;return['preparing','ready','finalizing','complete','incomplete','failed'].includes(value.capture_status)&&['pending','published','partially_published','not_published','failed'].includes(value.publish_status);}
 function isPlanVersionRef(value:unknown):value is PlanVersionRef{return isRecord(value)&&strings(value,'entry_id','version_id');}
 function isRunExecutionProfile(value:unknown):value is RunExecutionProfileSnapshot{return isRecord(value)&&(value.workflowMode==='plan'||value.workflowMode==='work')&&(value.requestedReasoningEffort===null||typeof value.requestedReasoningEffort==='string')&&(value.reasoningEffort===null||typeof value.reasoningEffort==='string')&&typeof value.reasoningEffortFallback==='boolean'&&['room_override','persona_default','model_default','auto'].includes(String(value.reasoningEffortSource))&&(value.planEnforcement===null||value.planEnforcement==='native'||value.planEnforcement==='instruction_only')&&(value.permissionProfileId===null||typeof value.permissionProfileId==='string')&&(value.agentVariantId===null||typeof value.agentVariantId==='string')&&(value.implementationPlanVersionId===null||typeof value.implementationPlanVersionId==='string');}
 function isRoomPersona(value:Record<string,unknown>):boolean{return isRecord(value.persona)&&typeof value.persona.id==='string'&&(value.reasoning_effort_override===null||typeof value.reasoning_effort_override==='string');}

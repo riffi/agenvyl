@@ -1,11 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Ban, Brain, ChevronDown, ChevronUp, CircleCheck, CircleHelp, CircleX, Clock3, File, FoldVertical, Info, LoaderCircle, Paperclip, RotateCcw, Square, TriangleAlert, UnfoldVertical, Wrench, BadgeCheck } from 'lucide-react';
-import type {RoomPlanState,UpstreamStatus,WorkspaceAttachment} from '@agenvyl/contracts';
+import type {RoomPlanState,UpstreamStatus,WorkspaceAttachment,WorkspaceConflictChoice,WorkspaceConflictSide} from '@agenvyl/contracts';
 import type {WorkspaceFocus} from '../artifacts-drawer';
 import {ArtifactActionsMenu,type OpenArtifact} from '../artifact-viewer';
 import {HarnessIcon,type HarnessCatalog} from '../../entities/harness';
 import type { Persona } from '../../entities/persona';
 import type { RoomState } from '../../entities/room';
+import {roomsApi} from '../../entities/room';
 import type { Run } from '../../entities/run';
 import type { RoomGateway } from '../../features/room-session';
 import { Alert, Avatar, EmptyState, IconButton } from '../../shared/ui';
@@ -22,6 +23,7 @@ export {ReasoningBlock} from './ReasoningBlock';
 const statusLabel: Record<Run['status'], string> = {
   queued: 'queued',
   streaming: 'responding',
+  finalizing: 'finalizing files',
   stopping: 'stopping',
   waiting_approval: 'waiting for approval',
   waiting_clarification: 'needs clarification',
@@ -30,7 +32,7 @@ const statusLabel: Record<Run['status'], string> = {
   cancelled: 'cancelled',
 };
 
-const activeStatuses = new Set<Run['status']>(['queued', 'streaming', 'stopping']);
+const activeStatuses = new Set<Run['status']>(['queued', 'streaming', 'finalizing', 'stopping']);
 
 function StatusIcon({status}:{status:Run['status']}) {
   const label=statusLabel[status];
@@ -105,6 +107,7 @@ function RunCard({
   openWorkspace,
   openArtifact,
   planModeEnabled=true,
+  roomId,
 }: {
   run: Run;
   persona: Persona;
@@ -127,6 +130,7 @@ function RunCard({
   openWorkspace:(target:Omit<WorkspaceFocus,'requestId'>)=>void;
   openArtifact:OpenArtifact;
   planModeEnabled?:boolean;
+  roomId:string;
 }) {
   const [retrying,setRetrying]=useState(false);const [retryError,setRetryError]=useState<string>();const [toolsOpen,setToolsOpen]=useState(false);
   const answer = run.text || (run.status === "queued" ? "Waiting for an available slot…" : "Analyzing…");
@@ -162,6 +166,10 @@ function RunCard({
         </header>
         {run.reasoning&&<ReasoningBlock text={run.reasoning} harnessType={run.harnessType}/>}
         {run.upstreamStatus&&<UpstreamStatusNotice status={run.upstreamStatus}/>}
+        {run.status==='finalizing'&&<Alert>Finalizing files…</Alert>}
+        {run.workspaceResult?.publish_status==='published'&&<Alert>Published</Alert>}
+        {run.workspaceResult?.publish_status==='partially_published'&&<WorkspaceConflictPanel roomId={roomId} runId={run.id}/>}
+        {run.workspaceResult?.publish_status==='not_published'&&<Alert tone="warning">Snapshot saved, not published</Alert>}
         <div className={`${styles.answer} ${collapsed?styles['answer-collapsed']:''}`}>
           <MarkdownAnswer text={answer} run={run} personas={personas} onMentionPersona={onMentionPersona} openWorkspace={attachment=>openWorkspace({entryId:attachment.entry_id,versionId:attachment.version_id})}/>
           {run.status === "streaming" && <i className={styles.cursor} />}
@@ -201,6 +209,7 @@ export function Timeline({
   openWorkspace=()=>{},
   openArtifact=()=>{},
   planModeEnabled=true,
+  roomId='',
 }: {
   state: RoomState;
   personas: Persona[];
@@ -216,6 +225,7 @@ export function Timeline({
   openWorkspace?:(target:Omit<WorkspaceFocus,'requestId'>)=>void;
   openArtifact?:OpenArtifact;
   planModeEnabled?:boolean;
+  roomId?:string;
 }) {
   const byHandle = new Map(personas.map((p) => [p.handle, p]));
   const [attemptView,setAttemptView]=useState<Record<string,string>>({});
@@ -264,7 +274,7 @@ export function Timeline({
       )}
       {state.messages.map((m,messageIndex) => {
         const groups=Object.entries(m.runIds.reduce<Record<string,string[]>>((result,id)=>{const run=state.runs[id];if(!run)return result;const slot=slotOf(run);(result[slot]??=[]).push(id);return result},{}));
-        const visibleGroups=groups.map(([slot,attemptIds])=>{const activeAttempt=[...attemptIds].reverse().map(id=>state.runs[id]).find((run:Run)=>['queued','streaming','stopping','waiting_approval','waiting_clarification'].includes(run.status));const shownId=activeAttempt?.id??attemptView[slot]??state.selectedRuns[slot]??attemptIds.at(-1)!;const shownIndex=Math.max(0,attemptIds.indexOf(shownId));return{slot,attemptIds,activeAttempt,shownIndex,id:attemptIds[shownIndex]}});
+        const visibleGroups=groups.map(([slot,attemptIds])=>{const activeAttempt=[...attemptIds].reverse().map(id=>state.runs[id]).find((run:Run)=>['queued','streaming','finalizing','stopping','waiting_approval','waiting_clarification'].includes(run.status));const shownId=activeAttempt?.id??attemptView[slot]??state.selectedRuns[slot]??attemptIds.at(-1)!;const shownIndex=Math.max(0,attemptIds.indexOf(shownId));return{slot,attemptIds,activeAttempt,shownIndex,id:attemptIds[shownIndex]}});
         const visibleRuns=visibleGroups.flatMap(group=>state.runs[group.id]?[state.runs[group.id]]:[]);
         visibleRuns.forEach(run=>{if(run.status==='streaming')streamedRunsRef.current.add(run.id)});
         const longRuns=visibleRuns.filter(run=>isLongAnswer(run.text)&&run.status==='completed');
@@ -324,6 +334,7 @@ export function Timeline({
                     openWorkspace={openWorkspace}
                     openArtifact={openArtifact}
                     planModeEnabled={planModeEnabled}
+                    roomId={roomId}
                   />
                   </div>
                 )},
@@ -342,6 +353,32 @@ function ArtifactCard({attachment,detail,gallery,openArtifact,openWorkspace}:{at
     <button type="button" className={styles.artifactPrimary} onClick={event=>openArtifact(attachment,gallery,event.currentTarget)}><File/><span><strong>{attachment.name}</strong><small>{detail}</small></span></button>
     <ArtifactActionsMenu attachment={attachment} openWorkspace={item=>openWorkspace(workspaceTarget(item))}/>
   </span>;
+}
+
+function WorkspaceConflictPanel({roomId,runId}:{roomId:string;runId:string}){
+  const [open,setOpen]=useState(false),[data,setData]=useState<Awaited<ReturnType<typeof roomsApi.workspaceConflicts>>>(),[choices,setChoices]=useState<Record<string,WorkspaceConflictChoice>>({}),[error,setError]=useState<string>(),[saving,setSaving]=useState(false);
+  const load=async()=>{setError(undefined);try{const next=await roomsApi.workspaceConflicts(roomId,runId);setData(next);setChoices(Object.fromEntries(next.conflicts.map(item=>[item.path,'current'])))}catch(value){setError(value instanceof Error?value.message:String(value))}};
+  useEffect(()=>{if(open&&!data)void load()},[open]);
+  const apply=async()=>{if(!data)return;setSaving(true);setError(undefined);try{await roomsApi.resolveWorkspaceConflicts(roomId,runId,{expected_current_snapshot_id:data.expected_current_snapshot_id,resolutions:data.conflicts.map(item=>({path:item.path,choice:choices[item.path]??'current'}))});setOpen(false)}catch(value){const cause=value as Error&{code?:string},message=cause.code==='workspace_conflict_stale'?'The workspace changed. Conflicts were recalculated; review them again.':cause.message;await load();setError(message)}finally{setSaving(false)}};
+  return <div className={styles['conflict-panel']}>
+    <Alert tone="warning">Partially published — resolve file conflicts. <button type="button" onClick={()=>setOpen(value=>!value)}>{open?'Close':'Review conflicts'}</button></Alert>
+    {open&&<section>
+      {error&&<Alert tone="error">{error}</Alert>}
+      {!data&&!error&&<span>Loading conflicts…</span>}
+      {data?.conflicts.map(conflict=><article key={conflict.path}>
+        <header><strong>{conflict.path}</strong><select aria-label={`Resolution for ${conflict.path}`} value={choices[conflict.path]??'current'} onChange={event=>setChoices(current=>({...current,[conflict.path]:event.target.value as WorkspaceConflictChoice}))}><option value="current">Keep current</option><option value="candidate">Accept agent</option><option value="delete">Delete path</option></select></header>
+        <div><ConflictSide label="Current" side={conflict.current}/><ConflictSide label="Agent candidate" side={conflict.candidate}/></div>
+      </article>)}
+      {data&&<button type="button" disabled={saving||!data.conflicts.length} onClick={()=>void apply()}>{saving?'Applying…':'Apply all resolutions'}</button>}
+    </section>}
+  </div>;
+}
+
+function ConflictSide({label,side}:{label:string;side?:WorkspaceConflictSide}){
+  const [text,setText]=useState<string>();
+  const attachment=side?.attachment,isText=Boolean(attachment&&(/^(text\/|application\/(json|javascript|xml))/.test(attachment.mime_type)));
+  useEffect(()=>{if(!isText||!attachment)return;const controller=new AbortController();void fetch(attachment.url,{signal:controller.signal}).then(response=>response.ok?response.text():Promise.reject(new Error(`HTTP ${response.status}`))).then(setText).catch(()=>{});return()=>controller.abort()},[attachment?.url,isText]);
+  return <section><small>{label}</small>{!side?<em>Path does not exist</em>:side.kind==='directory'?<em>Directory</em>:attachment?.mime_type.startsWith('image/')?<img src={attachment.preview_url} alt=""/>:isText?<pre>{text??'Loading…'}</pre>:attachment?<a href={attachment.url}>Open {attachment.mime_type}</a>:<code>{side.version_id}</code>}</section>;
 }
 
 function MessageAttachment({attachment,gallery,openArtifact,openWorkspace}:{attachment:WorkspaceAttachment;gallery?:WorkspaceAttachment[];openArtifact:OpenArtifact;openWorkspace:(target:Omit<WorkspaceFocus,'requestId'>)=>void}){

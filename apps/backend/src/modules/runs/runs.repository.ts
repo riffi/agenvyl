@@ -6,7 +6,7 @@ import type { MappedRunEvent } from '../harness/harness.ports.js';
 import type {RunExecutionProfileSnapshot} from '@agenvyl/contracts';
 import {usesPlanWorkflow} from '../features/planMode.js';
 
-const nonTerminalStatuses=['queued','streaming','stopping','waiting_approval','waiting_clarification'];
+const nonTerminalStatuses=['queued','streaming','finalizing','stopping','waiting_approval','waiting_clarification'];
 export type PersistedNonTerminalRun={id:string;messageId:string;roomId:string;personaVersionId:string;personaHandle:string;requestedModel:string;harnessInstanceId:string;harnessType:string;modelId:string;executionProfile:RunExecutionProfileSnapshot;status:string;text:string;context:ConversationItem[];upstreamRunId:string|null;connectorExecutionId:string|null;connectorEpoch:string|null;connectorCursor:number|null;executionDeadlineAt:string|null};
 
 export class RunRepository{
@@ -32,9 +32,9 @@ export class RunRepository{
     if(!planModeEnabled&&usesPlanWorkflow(s.execution_profile as RunExecutionProfileSnapshot))return{status:'plan_mode_disabled' as const};
     if((await tx`SELECT 1 FROM room_messages WHERE room_id=${s.room_id as string} AND created_at>${s.message_created_at as Date} LIMIT 1`).length)return{status:'conversation_advanced' as const};
     const slotId=(s.response_slot_id??s.id) as string;
-    if((await tx`SELECT 1 FROM agent_runs WHERE response_slot_id=${slotId} AND status=ANY(${['queued','streaming','stopping','waiting_approval','waiting_clarification']}) LIMIT 1`).length)return{status:'retry_active' as const};
+    if((await tx`SELECT 1 FROM agent_runs WHERE response_slot_id=${slotId} AND status=ANY(${nonTerminalStatuses}) LIMIT 1`).length)return{status:'retry_active' as const};
     const route={personaVersionId:s.persona_version_id as string,requestedModel:s.requested_model as string,harnessInstanceId:s.harness_instance_id as string,harnessType:s.harness_type as string,modelId:s.model_id as string,executionProfile:s.execution_profile as RunExecutionProfileSnapshot};
-    if(route.executionProfile.workflowMode==='plan'&&(await tx`SELECT 1 FROM agent_runs WHERE room_id=${s.room_id as string} AND execution_profile->>'workflowMode'='plan' AND status=ANY(${['queued','streaming','stopping','waiting_approval','waiting_clarification']}) LIMIT 1`).length)return{status:'plan_run_active' as const};
+    if(route.executionProfile.workflowMode==='plan'&&(await tx`SELECT 1 FROM agent_runs WHERE room_id=${s.room_id as string} AND execution_profile->>'workflowMode'='plan' AND status=ANY(${nonTerminalStatuses}) LIMIT 1`).length)return{status:'plan_run_active' as const};
     const runId=crypto.randomUUID(),now=new Date().toISOString(),history=(s.context as ConversationItem[])??[];
     const[{count}]=await tx`SELECT COUNT(*)::int+1 count FROM agent_runs WHERE response_slot_id=${slotId}`;
     await tx`INSERT INTO agent_runs(id,message_id,room_id,persona_id,persona_version_id,persona_handle,requested_model,harness_instance_id,harness_type,model_id,execution_profile,implementation_plan_version_id,status,retry_of_run_id,response_slot_id,context,created_at,updated_at) VALUES(${runId},${s.message_id as string},${s.room_id as string},${s.persona_id as string},${route.personaVersionId},${s.persona_handle as string},${route.requestedModel},${route.harnessInstanceId},${route.harnessType},${route.modelId},${this.database.sql.json(route.executionProfile)},${route.executionProfile.implementationPlanVersionId},'queued',${id},${slotId},${this.database.sql.json(history)},${now},${now})`;

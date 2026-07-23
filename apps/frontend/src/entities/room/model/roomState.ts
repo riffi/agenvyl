@@ -30,6 +30,8 @@ export function roomReducer(state: RoomState, event: RoomEvent): RoomState {
     case 'request.resolved': { const run = state.runs[event.payload.runId]; return run ? { ...base, runs: { ...state.runs, [run.id]: { ...run, status: 'streaming', request: run.request ? { ...run.request, resolved: event.payload.resolution } : undefined } } } : base; }
     case 'artifact.created':{const run=state.runs[event.payload.runId];return run?{...base,runs:{...state.runs,[run.id]:{...run,artifacts:[...(run.artifacts??[]).filter(item=>item.version_id!==event.payload.artifact.version_id),event.payload.artifact]}}}:base;}
     case 'run.embeds':{const run=state.runs[event.payload.runId];return run?{...base,runs:{...state.runs,[run.id]:{...run,embeds:event.payload.embeds}}}:base;}
+    case 'run.workspace.finalized':
+    case 'run.workspace.publish.updated':{const run=state.runs[event.payload.runId];return run?{...base,runs:{...state.runs,[run.id]:{...run,workspaceResult:event.payload.workspaceResult}}}:base;}
     case 'workspace.changed':{if(event.payload.entry.path!=='plan.md')return base;const current=event.payload.change==='deleted'||!event.payload.entry.current_version_id?null:{entry_id:event.payload.entry.id,version_id:event.payload.entry.current_version_id};return{...base,executionState:{...state.executionState,plan:{...state.executionState.plan,current}}};}
     case 'room.participant.updated':return{...base,participantUpdates:{...state.participantUpdates,[event.payload.persona.id]:event.payload}};
     case 'room.plan.approval.updated':return{...base,executionState:{...state.executionState,plan:{...state.executionState.plan,approved:event.payload.approved}}};

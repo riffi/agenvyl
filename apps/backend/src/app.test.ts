@@ -545,11 +545,13 @@ describe("execution routing", () => {
       }),
       planRunId = proposed.json().runIds[0] as string;
     expect(proposed.statusCode).toBe(202);
-    await vi.waitFor(async () =>
-      expect(
-        (await sql`SELECT status FROM agent_runs WHERE id=${planRunId}`)[0]
-          ?.status,
-      ).toBe("completed"),
+    await vi.waitFor(
+      async () =>
+        expect(
+          (await sql`SELECT status FROM agent_runs WHERE id=${planRunId}`)[0]
+            ?.status,
+        ).toBe("completed"),
+      { timeout: 5_000 },
     );
     expect(
       (

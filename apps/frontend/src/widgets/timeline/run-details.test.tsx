@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Persona } from '../../entities/persona';
-import { initialState } from '../../entities/room';
+import { initialState, roomsApi } from '../../entities/room';
 import type { Run } from '../../entities/run';
 import type { RoomGateway } from '../../features/room-session';
 import { Timeline } from './Timeline';
@@ -13,6 +13,7 @@ import type { WorkspaceAttachment } from '@agenvyl/contracts';
 const persona: Persona = { id: 'persona-1', handle: 'coder', name: 'Coder', role: 'Code', color: '#64748b', requested_model: 'sol', effective_model: null, harness_instance_id: 'local-hermes', harness_type: 'hermes', model_id: 'sol', permission_profile_id:null,agent_variant_id:null, default_reasoning_effort:null, group_id: null, archived_at: null };
 const run: Run = { id: 'run-1', messageId: 'message-1', agent: 'coder', harnessInstanceId: 'local-hermes', harnessType: 'hermes', modelId: 'sol', executionProfile:{workflowMode:'work',requestedReasoningEffort:null,reasoningEffort:null,reasoningEffortFallback:false,reasoningEffortSource:'auto',planEnforcement:null,permissionProfileId:null,agentVariantId:null,implementationPlanVersionId:null}, status: 'completed', text: 'Готово', tools: [], usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 } };
 const gateway: RoomGateway = { mode: 'fake', subscribe: vi.fn(() => vi.fn()), send: vi.fn(), resolve: vi.fn(), cancel: vi.fn(), retry: vi.fn(), select: vi.fn(), dispose: vi.fn() };
+afterEach(()=>vi.restoreAllMocks());
 
 describe('Timeline run details', () => {
   it('offers run details when the run has usage but no tool calls', () => {
@@ -59,5 +60,25 @@ describe('Timeline run details', () => {
     expect(openArtifact).toHaveBeenCalledTimes(2);
     expect(openArtifact.mock.calls[0]?.[0]).toMatchObject({entry_id:'entry-synopsis',version_id:'version-synopsis'});
     expect(container.querySelector('a[target="_blank"]')).toBeNull();
+  });
+
+  it('resolves every workspace conflict in one request and reloads stale conflicts',async()=>{
+    const conflictRun:Run={...run,workspaceResult:{base_snapshot_id:'base',result_snapshot_id:'result',published_snapshot_id:'published',capture_status:'complete',publish_status:'partially_published',conflict_count:1,errors:[]}};
+    const state={...initialState,hydrated:true,messages:[{id:'message-1',text:'@coder edit',createdAt:'2026-07-23T07:31:58.341Z',targets:['coder' as const],runIds:['run-1'],author:{profileId:'local-user',displayName:'User',handle:'user'},addressedToAll:false}],runs:{'run-1':conflictRun},runOrder:['run-1']};
+    const conflict={path:'site/style.css',current:{kind:'file' as const,version_id:'current-v1'},candidate:{kind:'file' as const,version_id:'candidate-v1'}};
+    const load=vi.spyOn(roomsApi,'workspaceConflicts')
+      .mockResolvedValueOnce({run_id:'run-1',expected_current_snapshot_id:'current-1',conflicts:[conflict]})
+      .mockResolvedValueOnce({run_id:'run-1',expected_current_snapshot_id:'current-2',conflicts:[{...conflict,current:{kind:'file',version_id:'current-v2'}}]});
+    const stale=Object.assign(new Error('stale'),{code:'workspace_conflict_stale'});
+    const resolve=vi.spyOn(roomsApi,'resolveWorkspaceConflicts').mockRejectedValueOnce(stale);
+    render(<Timeline roomId="room-1" state={state} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()}/>);
+    fireEvent.click(screen.getByRole('button',{name:'Review conflicts'}));
+    const choice=await screen.findByLabelText('Resolution for site/style.css');
+    fireEvent.change(choice,{target:{value:'candidate'}});
+    fireEvent.click(screen.getByRole('button',{name:'Apply all resolutions'}));
+    await waitFor(()=>expect(resolve).toHaveBeenCalledWith('room-1','run-1',{expected_current_snapshot_id:'current-1',resolutions:[{path:'site/style.css',choice:'candidate'}]}));
+    await waitFor(()=>expect(load).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText(/The workspace changed\. Conflicts were recalculated/)).toBeTruthy();
+    expect((screen.getByLabelText('Resolution for site/style.css') as HTMLSelectElement).value).toBe('current');
   });
 });

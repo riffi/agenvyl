@@ -16,4 +16,5 @@ export const migrations = [
   { version: 15, name: 'plan_workspace_artifact', file: '015_plan_workspace_artifact.sql' },
   { version: 16, name: 'persona_reasoning_effort', file: '016_persona_reasoning_effort.sql' },
   { version: 17, name: 'remove_room_reasoning_effort', file: '017_remove_room_reasoning_effort.sql' },
+  { version: 18, name: 'workspace_snapshots', file: '018_workspace_snapshots.sql' },
 ] as const;

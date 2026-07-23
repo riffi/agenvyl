@@ -18,6 +18,8 @@ export async function buildPreviewApp(options:PreviewAppOptions){
     relay(request,options.upstreamOrigin,req.raw.url??req.url,reply));
   app.get<{Params:{roomId:string;versionId:string;'*':string}}>('/api/v1/rooms/:roomId/workspace/versions/:versionId/preview/*',async(req,reply)=>
     relay(request,options.upstreamOrigin,req.raw.url??req.url,reply));
+  app.get<{Params:{roomId:string;snapshotId:string;'*':string}}>('/api/v1/rooms/:roomId/workspace/snapshots/:snapshotId/preview/*',async(req,reply)=>
+    relay(request,options.upstreamOrigin,req.raw.url??req.url,reply));
   return app;
 }
 
@@ -25,7 +27,7 @@ async function relay(request:typeof fetch,upstreamOrigin:string,requestUrl:strin
   const upstream=new URL(requestUrl,upstreamOrigin);
   const response=await request(upstream,{redirect:'manual'});
   reply.code(response.status);
-  for(const name of ['content-type','content-length','content-security-policy','content-disposition','x-content-type-options']){
+  for(const name of ['content-type','content-length','content-security-policy','content-disposition','x-content-type-options','cache-control','etag']){
     const value=response.headers.get(name);
     if(value)reply.header(name,value);
   }

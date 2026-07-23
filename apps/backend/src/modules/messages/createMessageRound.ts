@@ -250,7 +250,7 @@ export class CreateMessageRound {
     const attachmentLines = await Promise.all(
       (round.message.attachments ?? []).map(
         async (item) =>
-          `- ${item.path} (${item.mime_type}, version ${item.version_id}): ${this.dependencies.roomWorkspace ? await this.dependencies.roomWorkspace.snapshotAgentPath(command.roomId, item.version_id) : item.version_id}\n  Current path: ${this.dependencies.roomWorkspace?.agentRoomPath(command.roomId)}/${item.path}`,
+          `- ${item.path} (${item.mime_type}, version ${item.version_id}): ${this.dependencies.roomWorkspace ? await this.dependencies.roomWorkspace.snapshotAgentPath(command.roomId, item.version_id) : item.version_id}`,
       ),
     );
     const attachmentPrompt = attachmentLines.length

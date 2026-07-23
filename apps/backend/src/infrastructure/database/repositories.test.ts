@@ -31,7 +31,7 @@ describe("PostgreSQL repositories", () => {
         await p.database
           .sql`SELECT version FROM schema_migrations ORDER BY version`
       ).map((row) => row.version),
-    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]);
+    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]);
     expect(
       await p.database.sql`SELECT to_regclass('hermes_session_mappings') name`,
     ).toEqual([{ name: null }]);
@@ -96,7 +96,8 @@ describe("PostgreSQL repositories", () => {
         await repositories.database
           .sql`SELECT version FROM schema_migrations ORDER BY version`
       ).map((row) => row.version),
-    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]);
+    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]);
+    expect((await repositories.database.sql`SELECT current_workspace_snapshot_id FROM rooms WHERE id='legacy-room'`)[0]?.current_workspace_snapshot_id).toBe('initial-legacy-room');
     expect(
       (
         await repositories.database

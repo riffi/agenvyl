@@ -37,7 +37,7 @@ type Operation =
   | { kind: 'move'; entry: WorkspaceEntry }
   | { kind: 'delete'; entry: WorkspaceEntry };
 
-export type WorkspaceFocus={entryId:string;versionId?:string;requestId:number};
+export type WorkspaceFocus={entryId?:string;versionId?:string;requestId:number};
 
 export function ArtifactsDrawer({ open, close, roomId, fake = false, onAttach,focus,plan,planModeEnabled=true }: {
   open: boolean;
@@ -447,7 +447,7 @@ async function fetchDeletedWorkspace(roomId: string, signal?: AbortSignal): Prom
 }
 
 function toAttachment(version: WorkspaceVersion): WorkspaceAttachment {
-  return { version_id: version.id, entry_id: version.entry_id, path: version.path, name: version.path.split('/').pop() ?? version.path, size: version.size, mime_type: version.mime_type, url: version.url, preview_url: version.preview_url };
+  return { version_id: version.id, ...(version.entry_id?{entry_id:version.entry_id}:{}), path: version.path, name: version.path.split('/').pop() ?? version.path, size: version.size, mime_type: version.mime_type, url: version.url, preview_url: version.preview_url };
 }
 
 function formatBytes(value: number) {

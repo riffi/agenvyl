@@ -9,6 +9,7 @@ import styles from './RunDrawer.module.css';
 const statusCopy:Record<RunStatus,{title:string;description:string;tone:string}>={
   queued:{title:'Waiting to start',description:'The response is queued and will start soon.',tone:'active'},
   streaming:{title:'Preparing response',description:'The agent is working on your request.',tone:'active'},
+  finalizing:{title:'Finalizing files',description:'Saving an immutable workspace snapshot and publishing non-conflicting changes.',tone:'active'},
   stopping:{title:'Stopping',description:'Finishing the agent’s current work.',tone:'warning'},
   waiting_approval:{title:'Approval required',description:'The agent needs permission before it can continue.',tone:'warning'},
   waiting_clarification:{title:'Clarification required',description:'The agent needs more information.',tone:'warning'},
@@ -75,7 +76,7 @@ export function RunDrawer({run,persona,harnessCatalog,close}:{run?:Run;persona?:
   const model=modelInfo(run,persona,harnessCatalog);
   const state=run?statusCopy[run.status]:undefined;
   const copyId=async()=>{if(!run)return;try{await navigator.clipboard.writeText(run.id);setCopied(true)}catch{/* Clipboard may be unavailable outside a secure context. */}};
-  const active=run&&['queued','streaming','stopping','waiting_approval','waiting_clarification'].includes(run.status);
+  const active=run&&['queued','streaming','finalizing','stopping','waiting_approval','waiting_clarification'].includes(run.status);
   return <div className={styles.root}>
     <Drawer
       open={Boolean(run)}

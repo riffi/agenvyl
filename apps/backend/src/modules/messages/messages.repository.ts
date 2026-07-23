@@ -83,7 +83,7 @@ export class MessageRepository {
       if (
         executionIntent?.kind === "plan" &&
         (
-          await tx`SELECT 1 FROM agent_runs WHERE room_id=${roomId} AND execution_profile->>'workflowMode'='plan' AND status=ANY(${["queued", "streaming", "stopping", "waiting_approval", "waiting_clarification"]}) LIMIT 1`
+          await tx`SELECT 1 FROM agent_runs WHERE room_id=${roomId} AND execution_profile->>'workflowMode'='plan' AND status=ANY(${["queued", "streaming", "finalizing", "stopping", "waiting_approval", "waiting_clarification"]}) LIMIT 1`
         ).length
       )
         throw new Error("plan_run_active");

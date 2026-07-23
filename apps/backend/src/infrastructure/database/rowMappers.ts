@@ -44,6 +44,7 @@ export function toTimelineRun(row: DatabaseRow, tools: ToolActivity[], request?:
     ...(row.response_slot_id == null ? {} : { responseSlotId:text(row.response_slot_id) }),
     ...(row.attempt_number == null ? {} : { attemptNumber:number(row.attempt_number) }),
     ...(request ? { request } : {}), ...(row.error == null ? {} : { error:text(row.error) }),...(row.error_code == null ? {} : { errorCode:text(row.error_code) }),artifacts,embeds,
+    ...(row.base_snapshot_id?{workspaceResult:{base_snapshot_id:text(row.base_snapshot_id),...(row.result_snapshot_id?{result_snapshot_id:text(row.result_snapshot_id)}:{}),...(row.published_snapshot_id?{published_snapshot_id:text(row.published_snapshot_id)}:{}),capture_status:text(row.workspace_capture_status) as NonNullable<Run['workspaceResult']>['capture_status'],publish_status:text(row.workspace_publish_status) as NonNullable<Run['workspaceResult']>['publish_status'],conflict_count:number(row.workspace_conflict_count),errors:Array.isArray(row.workspace_errors)?row.workspace_errors as NonNullable<Run['workspaceResult']>['errors']:[]}}:{}),
   };
 }
 
@@ -67,4 +68,4 @@ export function number(value: unknown): number { const result=Number(value);if(!
 export function timestamp(value: unknown): string { if(value instanceof Date)return value.toISOString();return new Date(text(value)).toISOString(); }
 export function nullableTimestamp(value: unknown): string|null { return value == null ? null : timestamp(value); }
 export function stringArray(value: unknown): string[] { if(!Array.isArray(value)||value.some(item=>typeof item!=='string'))throw new TypeError('Expected database string array');return value; }
-export function runStatus(value: unknown): RunStatus { const status=text(value);if(!['queued','streaming','stopping','waiting_approval','waiting_clarification','completed','failed','cancelled'].includes(status))throw new TypeError(`Unknown run status: ${status}`);return status as RunStatus; }
+export function runStatus(value: unknown): RunStatus { const status=text(value);if(!['queued','streaming','finalizing','stopping','waiting_approval','waiting_clarification','completed','failed','cancelled'].includes(status))throw new TypeError(`Unknown run status: ${status}`);return status as RunStatus; }

@@ -130,7 +130,7 @@ export class RunExecutor {
     }catch(error){if(run.terminal)return;if(error instanceof Error&&error.name==='AbortError'&&(run.stopping||(this.closing&&run.connectorExecutionId)))return;const code=connectorLifecycleErrorCode(error);await this.terminal(run,'failed',connectorRecoveryMessage(code,error),code);}
   }
 
-  private async failPersisted(runId:string,error:string,errorCode?:string){const failed=await this.dependencies.runs.failNonTerminal(runId,error,errorCode);if(!failed)return false;this.dependencies.events.publishPersisted(failed.roomId,failed.event);this.logger.warn({runId,roomId:failed.roomId,correlationId:'startup-recovery',transition:'failed',errorCode},'Reconciled persisted run as failed');return true;}
+  private async failPersisted(runId:string,error:string,errorCode?:string){const failed=await this.dependencies.runs.failNonTerminal(runId,error,errorCode);if(!failed)return false;this.dependencies.events.publishPersisted(failed.roomId,failed.event);try{await this.dependencies.roomWorkspace?.finalizeRun(failed.roomId,runId,'failed')}catch{/* durable terminal state is retained with capture diagnostics */}this.logger.warn({runId,roomId:failed.roomId,correlationId:'startup-recovery',transition:'failed',errorCode},'Reconciled persisted run as failed');return true;}
 
   async cancel(runId: string) {
     const { activeRuns, events, runs } = this.dependencies;
@@ -154,6 +154,7 @@ export class RunExecutor {
           // Persisted orphan recovery remains best-effort.
         }
       }
+      try{await this.dependencies.roomWorkspace?.finalizeRun(persisted.room_id,persisted.id,'cancelled')}catch{/* cancellation remains durable even if capture fails */}
       await events.emit(persisted.room_id, 'run.status', { runId: persisted.id, status: 'cancelled' });
       return {
         status: 'cancelled',
@@ -265,8 +266,7 @@ export class RunExecutor {
       const roomPersonas = await personas.list(run.roomId);
       const sessionId = run.sessionId ?? stableSessionId(run.roomId, run.id);
       run.sessionId = sessionId;
-      await this.dependencies.roomWorkspace?.ensure(run.roomId);
-      const workspacePath=this.dependencies.roomWorkspace?.agentRoomPath(run.roomId);
+      const preparedWorkspace=await this.dependencies.roomWorkspace?.prepareRun(run.roomId,run.id);
       const human=currentMessage?.author;
       const identityInstructions=`\n\nPlatform entity identity (mandatory invariant):\n- You are the current agent: ${persona.name} (@${run.personaHandle}), role: ${persona.role || 'not specified'}.\n- The human user is ${human?`${human.displayName} (@${human.handle})`:'the local user'}; this is a separate human entity, not a persona or agent.\n- The remaining personas below are other agents, not the human user.\nThe current message has already been routed to you according to its explicit recipient field. A mention of @${run.personaHandle} addresses you, not a third party.`;
       const participantInstructions=`\n\nOther active agents in the room:\n${roomPersonas.filter(item=>item.handle!==run.personaHandle).map(item=>`- @${item.handle} — ${item.name}${item.role?` — ${item.role}`:''}`).join('\n')||'- none'}\n\nWhen mentioning an agent, always use the exact @handle from this list. Do not use a bare handle as a mention and do not invent new handles. Never identify the human user as an agent merely because of a mention or the message topic.`;
@@ -277,7 +277,7 @@ export class RunExecutor {
         harnessInstanceId:run.harnessInstanceId,
         modelId:run.modelId,
         executionProfile:run.executionProfile,
-        workspace:{roomId:run.roomId,relativePath:'.',...(workspacePath?{absolutePath:workspacePath}:{})},
+        workspace:{roomId:run.roomId,relativePath:preparedWorkspace?.relativePath??'.',...(preparedWorkspace?.absolutePath?{absolutePath:preparedWorkspace.absolutePath}:{})},
         input,
         sessionId,
         instructions,
@@ -303,7 +303,7 @@ export class RunExecutor {
     } catch (error) {
       if (run.terminal) return;
       if (error instanceof Error && error.name === 'AbortError' && (run.stopping||(this.closing&&run.connectorExecutionId))) return;
-      await this.terminal(run, 'failed', error instanceof Error ? error.message : String(error));
+      await this.terminal(run,'failed',error instanceof Error?error.message:String(error),error instanceof AppError?error.code:undefined);
     }
   }
 
@@ -336,8 +336,6 @@ export class RunExecutor {
     errorCode?:string,
   ) {
     if (run.terminal) return;
-    await this.dependencies.roomWorkspace?.settleRun(run.roomId);
-    if(run.terminal)return;
     const { activeRuns, events, runs } = this.dependencies;
     const responseText=run.responseText??await runs.text(run.id);
     if (status === 'completed' && containsForeignRole(responseText, run.personaHandle)) {
@@ -349,12 +347,23 @@ export class RunExecutor {
       errorCode='external_image_not_persisted';
     }
     if(status==='completed'&&run.executionProfile.workflowMode==='plan'&&this.dependencies.roomWorkspace){
-      try{await this.dependencies.roomWorkspace.savePlanFromRun(run.roomId,run.id,responseText);}catch(planError){status='failed';error=planError instanceof Error?`Could not save plan.md: ${planError.message}`:'Could not save plan.md';errorCode='plan_artifact_failed';}
+      try{await this.dependencies.roomWorkspace.writeRunPlan(run.roomId,run.id,responseText);}catch(planError){status='failed';error=planError instanceof Error?`Could not save plan.md: ${planError.message}`:'Could not save plan.md';errorCode='plan_artifact_failed';}
+    }
+    if(this.dependencies.roomWorkspace){
+      const workspaceResult=await this.dependencies.roomWorkspace.runWorkspaceResult(run.id);
+      if(workspaceResult&&workspaceResult.capture_status!=='failed'){await events.emit(run.roomId,'run.status',{runId:run.id,status:'finalizing'});run.status='finalizing';}
+      try{
+        await this.dependencies.roomWorkspace.finalizeRun(run.roomId,run.id,status);
+      }catch(finalizeError){
+        status='failed';
+        error=finalizeError instanceof Error?`Could not finalize workspace: ${finalizeError.message}`:'Could not finalize workspace';
+        errorCode='workspace_capture_failed';
+      }
     }
     run.terminal = true;
     this.clearDeadline(run.id);
     run.waitingFor = undefined;
-    if(status==='completed'&&this.dependencies.roomWorkspace){const embeds=await this.dependencies.roomWorkspace.resolveRunEmbeds(run.roomId,run.id,responseText);await events.emit(run.roomId,'run.embeds',{runId:run.id,embeds});}
+    if(this.dependencies.roomWorkspace){try{const embeds=await this.dependencies.roomWorkspace.resolveRunEmbeds(run.roomId,run.id,responseText);await events.emit(run.roomId,'run.embeds',{runId:run.id,embeds})}catch{/* an embed rendering failure must not strand a durably finalized run */}}
     if(run.connectorExecutionId){const finished=await runs.finishNonTerminal(run.id,status,error,errorCode);if(!finished){activeRuns.remove(run.id);this.stopTasks.delete(run.id);return;}events.publishPersisted(finished.roomId,finished.event);}
     else await events.emit(run.roomId,'run.status',{runId:run.id,status,...(error?{error}:{}),...(errorCode?{errorCode}:{})});
     if (status === 'completed') {
@@ -385,7 +394,7 @@ export class RunExecutor {
     this.dependencies.events.publishPersisted(finished.roomId,finished.event);
     let upstreamStopped=false;
     if(run.upstreamRunId){try{await this.stopUpstream(run);upstreamStopped=true;}catch{/* timeout remains durably terminal even if upstream stop fails */}}
-    await this.dependencies.roomWorkspace?.settleRun(run.roomId);
+    try{await this.dependencies.roomWorkspace?.finalizeRun(run.roomId,run.id,'failed');}catch{/* timeout remains durably terminal even if workspace capture fails */}
     this.dependencies.activeRuns.remove(run.id);this.stopTasks.delete(run.id);
     this.logger.warn({runId:run.id,roomId:run.roomId,correlationId:run.correlationId,upstreamRunId:run.upstreamRunId,transition:'failed',errorCode,upstreamStopped},'Run execution deadline exceeded');
   }

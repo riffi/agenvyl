@@ -24,7 +24,7 @@ afterEach(() => {
 
 describe('ArtifactsDrawer focus', () => {
   it('falls back to the trash when a historical attachment entry was deleted later', async () => {
-    vi.mocked(roomsApi.workspace).mockResolvedValue({ path: '', entries: [] });
+    vi.mocked(roomsApi.workspace).mockResolvedValue({ path: '', current_snapshot_id:'snapshot-1', materialization_status:'ready', entries: [] });
     vi.mocked(roomsApi.versions).mockResolvedValue([{
       id: 'version-deleted',
       entry_id: 'entry-deleted',
