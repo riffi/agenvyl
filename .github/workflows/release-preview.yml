@@ -37,6 +37,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Verify release version and notes
+        run: npm run release:verify
       - uses: actions/download-artifact@v4
         with:
           name: agenvyl-linux-x64
@@ -63,6 +65,7 @@ jobs:
           version=$(node -p "require('./package.json').version")
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "notes=docs/releases/v$version.md" >> "$GITHUB_OUTPUT"
       - name: Build release manifest and shell index
         shell: bash
         run: >-
@@ -82,7 +85,7 @@ jobs:
         run: |
           cp artifacts/portable/agenvyl-* artifacts/release/
           cp packaging/install.sh packaging/install.ps1 artifacts/release/
-          cp docs/operations/preview-trust.md artifacts/release/TRUST.md
+          cp docs/user-guide/trust-and-security.md artifacts/release/TRUST.md
           npm sbom --package-lock-only --omit=dev --sbom-format cyclonedx > artifacts/release/agenvyl-sbom.cdx.json
           node -e "const fs=require('node:fs'); JSON.parse(fs.readFileSync('artifacts/release/agenvyl-sbom.cdx.json','utf8'))"
           (cd artifacts/release && sha256sum agenvyl-* install.sh install.ps1 TRUST.md > SHA256SUMS)
@@ -93,12 +96,35 @@ jobs:
       - name: Create or update draft release assets
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_NOTES: ${{ steps.metadata.outputs.notes }}
+          RELEASE_TAG: ${{ steps.metadata.outputs.tag }}
         shell: bash
         run: |
-          tag='${{ steps.metadata.outputs.tag }}'
-          if ! gh release view "$tag" >/dev/null 2>&1; then
-            gh release create "$tag" --draft --prerelease --target "$GITHUB_SHA" --title "Agenvyl $tag Technical Preview" --notes-file docs/operations/release-notes-v0.1.0.md
+          if ! release_json=$(gh release view "$RELEASE_TAG" --json isDraft,targetCommitish 2>/dev/null); then
+            gh release create "$RELEASE_TAG" \
+              --draft \
+              --prerelease \
+              --target "$GITHUB_SHA" \
+              --title "Agenvyl $RELEASE_TAG Technical Preview" \
+              --notes-file "$RELEASE_NOTES"
           else
-            gh release edit "$tag" --draft --prerelease --title "Agenvyl $tag Technical Preview" --notes-file docs/operations/release-notes-v0.1.0.md
+            is_draft=$(printf '%s\n' "$release_json" | jq -r '.isDraft')
+            if [ "$is_draft" != true ]; then
+              echo "::error::Release $RELEASE_TAG is already published. Published release assets are immutable."
+              exit 1
+            fi
+
+            target=$(printf '%s\n' "$release_json" | jq -r '.targetCommitish')
+            target_sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$target" --jq '.sha')
+            if [ "$target_sha" != "$GITHUB_SHA" ]; then
+              echo "::error::Draft $RELEASE_TAG targets $target_sha, but this workflow is building $GITHUB_SHA."
+              exit 1
+            fi
+
+            gh release edit "$RELEASE_TAG" \
+              --draft \
+              --prerelease \
+              --title "Agenvyl $RELEASE_TAG Technical Preview" \
+              --notes-file "$RELEASE_NOTES"
           fi
-          gh release upload "$tag" --clobber artifacts/release/*
+          gh release upload "$RELEASE_TAG" --clobber artifacts/release/*

@@ -1,4 +1,4 @@
-# OSS operations boundaries
+# Deployment boundaries
 
 This repository is the portable Agenvyl product source. It intentionally does
 not contain any operator's deployment overlay, reverse-proxy configuration,
@@ -8,7 +8,7 @@ host paths.
 ## What the repository supports today
 
 - building Core and the host-side Connector from source;
-- running PostgreSQL and Core with Docker Compose;
+- running PostgreSQL through Docker Compose and Core as a host process;
 - running Connector beside locally installed harnesses;
 - building five native portable archives and a versioned installer release;
 - local development through Vite and `tsx watch`;

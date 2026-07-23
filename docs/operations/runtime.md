@@ -103,11 +103,5 @@ shared change. Do not edit `.versions/` manually. Room deletion is recoverable;
 permanent deletion removes room data, its live tree and blobs no longer referenced
 by another room.
 
-The production-like image runs as the unprivileged `node` user (UID 1000). Before
-the app starts, the one-shot `workspace-init` Compose service fixes ownership of
-the bind-mounted workspace tree to UID/GID 1000. This is required because Docker
-may create a missing host bind directory as `root:root`, which otherwise makes
-lazy room-directory creation fail with `EACCES`.
-
 Room workspaces are shared-file locations, not sandboxes, and do not restrict which
 other VPS paths or repositories an agent may use when the task calls for it.

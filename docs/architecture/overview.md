@@ -1,187 +1,265 @@
-# Agenvyl architecture
+# How Agenvyl works
 
-This document describes the architecture implemented by the current OSS
-repository. It is a product reference, not a migration plan or a record of
-completed milestones.
+Agenvyl gives several coding agents one shared place to work. You use a room in
+the browser; Agenvyl sends each request to the coding-agent tool already
+installed on your computer and brings the results back into the same
+conversation.
 
-## System context
+This page first explains that flow in user-facing terms, then describes the
+technical boundaries for contributors and operators. It reflects the current
+open-source implementation, not a future roadmap.
 
-Agenvyl is a room-first application for coordinating multiple coding-agent
-harnesses. The system has two application processes and two durable storage
-boundaries:
+## The short version
 
 ```mermaid
 flowchart LR
-  Browser[Browser] -->|HTTP + WebSocket| Core[Agenvyl Core]
-  Core --> PostgreSQL[(PostgreSQL)]
-  Core --> Workspace[(Room workspaces)]
-  Core -->|Bearer HTTP + SSE| Connector[Host-side Connector]
-  Connector --> Workspace
-  Connector --> Hermes[Hermes HTTP]
-  Connector --> OpenCode[OpenCode server]
-  Connector --> Codex[Codex app-server]
-  Connector --> AGY[agy subprocess]
+  User[You in the browser] --> Room[Agenvyl room]
+  Room --> Agents[Selected agents]
+  Agents --> Tools[Your installed agent tools]
+  Tools --> Files[Shared room workspace]
+  Agents --> Room
 ```
 
-- **Core** is a Fastify modular monolith. It serves the built React application,
-  REST API, and room WebSocket; owns product state and orchestration; and never
-  reads harness credentials.
-- **Connector** is the only execution boundary. It runs beside harness CLIs and
-  credential stores, normalizes discovery and execution, and exposes a
-  vendor-neutral versioned protocol to Core.
-- **PostgreSQL** stores rooms, personas and immutable persona versions,
-  messages, run snapshots, workspace metadata, and ordered room events.
-- **Room workspaces** contain live files plus application-managed immutable
-  versions. They are shared working directories, not security sandboxes.
+- A **room** is a conversation with its own members and working folder.
+- An **agent** is an Agenvyl persona: a name, instructions, model, permissions,
+  and a connection to an installed coding-agent tool.
+- A **coding-agent tool** (or *harness*) is the program that does the actual
+  model and tool work, such as Codex CLI, Claude Code, OpenCode, Hermes, or AGY.
+- The **workspace** is the folder shared by the agents in that room.
 
-## Portable production deployment
+Agenvyl coordinates these parts. It does not provide model access and does not
+replace the agent tools or their accounts.
 
-The production bundle runs Core, the built Web UI, and Connector on the host
-under user-systemd. Docker runs only PostgreSQL:
+## What happens when you send a message
+
+Suppose a room contains `@architect`, `@builder`, and `@reviewer`.
+
+1. You address one agent, several agents, or `@all`.
+2. Agenvyl saves the message and creates one run for every addressed agent.
+3. Agents addressed in the same message start independently and can run in
+   parallel. They all receive the conversation as it existed before that round.
+4. Each agent works through its configured tool and can see the same room
+   workspace.
+5. Agenvyl streams supported progress back to the room and saves the final
+   result.
+6. Completed results become context for later messages, so another agent can
+   compare or combine them.
+
+The agents in one round do not see one another's unfinished answers. Send a
+follow-up message when you want an agent to review the completed answers from
+that round. A message without an `@mention` is saved but starts no agent.
+
+If you retry an answer, Agenvyl creates a separate attempt with the same saved
+agent configuration and conversation snapshot. You can compare completed
+attempts and select the one that should represent that answer in later context.
+
+## The four main parts
+
+```mermaid
+flowchart LR
+  Browser[Web UI] -->|REST + WebSocket| Core[Agenvyl Core]
+  Core --> Database[(PostgreSQL)]
+  Core --> Workspace[(Room workspaces)]
+  Core -->|Authenticated HTTP + SSE| Connector[Connector]
+  Connector --> Workspace
+  Connector --> Harnesses[Installed agent tools]
+```
+
+### Web UI
+
+The browser shows rooms, messages, runs, agent settings, and workspace files.
+It talks only to Core. Live updates arrive over a room WebSocket; after a
+disconnect, the UI can replay events it missed.
+
+### Core
+
+Core is the product backend. It:
+
+- serves the Web UI and REST API;
+- owns rooms, agents, messages, run state, and orchestration;
+- decides which saved conversation and configuration belong to a run;
+- publishes durable room events; and
+- reads and versions room files.
+
+Core is deliberately unaware of vendor credentials and does not start agent
+tools directly.
+
+### Connector
+
+Connector is the bridge between Agenvyl and the tools installed on the
+computer. It:
+
+- discovers available tools, models, and controls;
+- starts or contacts the selected tool;
+- converts different tool protocols into one Agenvyl protocol;
+- forwards progress, approvals, questions, results, and cancellation where the
+  tool supports them; and
+- keeps tool credentials and executable locations out of Core.
+
+Connector is the only execution path: Core has no direct fallback to a vendor
+tool.
+
+### PostgreSQL and room workspaces
+
+PostgreSQL stores product records: rooms, versioned agent configurations,
+messages, run attempts, workspace metadata, and the ordered event history.
+
+The filesystem stores live room files and application-managed immutable
+versions. Message attachments point to a saved version, so a later edit does
+not silently change an earlier message.
+
+These are the two durable data locations. Backups need to cover both. See the
+[data and backups guide](../user-guide/data-and-backups.md) for the supported
+backup and restore workflow.
+
+## How the installed app runs
+
+The normal downloadable app is a local, single-user runtime for Windows, macOS,
+and Linux. It includes its own Node.js and PostgreSQL, so it does not require
+Docker, a system Node installation, systemd, launchd, or a Windows service.
+
+The `agenvyl` control program initializes and starts the local stack in this
+order:
 
 ```mermaid
 flowchart TB
-  Browser -->|127.0.0.1:8791| Core[host Core + built Web UI<br/>user-systemd]
-  Core -->|127.0.0.1:5432| DB[postgres:17-alpine<br/>only Docker container]
-  Core -->|127.0.0.1:4310 + Bearer| Connector[host Connector<br/>user-systemd]
-  Core --> Workspace[(XDG host workspaces)]
+  Control[agenvyl control program] --> Database[(Bundled PostgreSQL)]
+  Control --> Connector[Connector]
+  Control --> Core[Core + built Web UI]
+  Browser[Browser<br/>127.0.0.1:8791] --> Core
+  Core -->|127.0.0.1:8793| Database
+  Core -->|127.0.0.1:4310 + Bearer token| Connector
+  Core --> Workspace[(Local room workspaces)]
   Connector --> Workspace
-  Connector --> Harnesses[host harness runtimes]
-  DB --> Volume[(postgres-data volume)]
+  Connector --> Harnesses[User-installed agent tools]
 ```
 
-Core and Connector resolve one XDG host workspace path, so no container path
-mapping exists. `compose.yaml` is portable PostgreSQL configuration and binds
-its published port to loopback. Operator-specific domains,
-TLS, authentication proxies, supervisors, secrets, and reset policies belong
-in a separate deployment layer. See
-[OSS operations boundaries](../operations/oss-boundaries.md).
+Application data lives outside the replaceable app directory in the
+platform-appropriate user data location. The source repository also supports a
+development/server workflow in which PostgreSQL may run through Docker Compose,
+while Core and Connector remain host processes so they can reach the same local
+workspaces and agent tools.
 
-## Core structure
+Deployment-specific domains, TLS, authentication proxies, service managers,
+and secrets are outside the product repository. See
+[deployment boundaries](../operations/deployment-boundaries.md).
 
-Core follows ports-and-adapters boundaries inside one process:
+## Supported tool integrations
+
+The tools expose different capabilities, so the experience is not identical
+for every agent:
+
+| Tool | How Connector uses it | Important difference |
+| --- | --- | --- |
+| Hermes | Connects to an existing local HTTP service | Supports streaming, tools, approvals, usage, and cancellation |
+| OpenCode | Connects to, or manages, an OpenCode server | Supports reasoning, tools, approvals, simple questions, usage, and cancellation |
+| Codex CLI | Starts the user-installed `codex app-server` | Supports Plan/Work, reasoning effort, permissions, tools, approvals, questions, usage, and interruption |
+| Claude Code CLI *(experimental)* | Starts a fresh user-installed `claude` process for each attempt | Preserves normal Claude settings and supports permissions, reasoning, tools, questions, usage, and interruption |
+| Antigravity / AGY | Starts a fresh `agy --print` process for each attempt | Exposes only a final answer and cancellation; edit access requires an explicit opt-in |
+
+Connector reports only capabilities a tool actually exposes. For example, it
+does not invent partial output, tool events, or usage data for AGY. Exact setup,
+version, authentication, and safety requirements are documented in the
+[harness guides](../harnesses/README.md).
+
+## Files, history, and retries
+
+Several rules keep a room understandable and reproducible:
+
+- Each room has one canonical workspace directory.
+- Direct agent writes are detected and versioned by Agenvyl.
+- Attachments refer to immutable versions rather than mutable paths.
+- Every run saves the exact agent version, tool instance, model, execution
+  controls, and conversation snapshot it started with.
+- Every attempt ends once as completed, failed, or cancelled.
+- A retry is a new attempt; it does not rewrite the original attempt.
+- Only the selected completed attempt is included in later conversation
+  history.
+
+Experimental Plan Mode adds a versioned `plan.md`, explicit plan approval, and
+an implementation handoff. It is disabled by default and does not change the
+basic room and run model.
+
+## Reliability model
+
+Core stores the human message, run snapshots, and initial room events in one
+database transaction. It then schedules runs through an in-process FIFO queue
+with bounded concurrency.
+
+Connector gives every execution a process-lifetime epoch and ordered event
+cursors. Core saves an accepted cursor and the room events derived from it in
+the same database transaction. This lets the system:
+
+- avoid duplicate room events after reconnecting;
+- resume a run after a same-epoch Core restart when replay is still available;
+- detect that Connector restarted and an old execution can no longer be
+  trusted; and
+- replay durable room events to a reconnecting browser.
+
+The current design intentionally assumes one Core process. PostgreSQL is the
+durable source of truth, but the run queue itself is not distributed.
+
+## Security and trust
+
+Agenvyl is local-first, but local does not mean sandboxed:
+
+- Core does not receive harness credentials. Connector reads them from
+  environment variables or the tool's own credential store.
+- Core, Connector, and bundled PostgreSQL bind to loopback in the personal
+  runtime. Connector also requires a token of at least 32 characters.
+- Connector validates room workspace paths and rejects traversal, absolute
+  request paths, symlink escapes, missing targets, and ambiguous roots.
+- Agent tools still run with the permissions of the operating-system user who
+  started Agenvyl. A workspace is a shared working directory, **not a security
+  boundary**.
+- Agenvyl adds no telemetry or remote analytics. Connected tools may retain
+  their own network, telemetry, hook, and plugin behavior.
+
+Do not enable a tool or permission mode that you would not trust with the
+selected files. Put an authenticated TLS reverse proxy in front of Core before
+any non-loopback or multi-user exposure.
+
+## Code map for contributors
+
+Core is a Fastify modular monolith with ports-and-adapters boundaries:
 
 ```text
 apps/backend/src/
   app/                    composition root and Fastify plugins
-  modules/                product use cases and repositories by capability
+  modules/                use cases and repositories by product capability
   integrations/connector Connector HTTP/SSE client and run adapter
-  infrastructure/        PostgreSQL, migrations, realtime transport
+  infrastructure/        PostgreSQL, migrations, HTTP, and realtime transport
   shared/                 validation, identity, and error mapping
 ```
 
-Routes validate and translate HTTP input. Application services own use cases.
-Repositories own persistence. Infrastructure code implements database,
-WebSocket, static-file, and Connector transports. Backend boundary checks keep
-vendor-specific code out of product modules.
+Routes validate and translate HTTP input. Services own use cases, repositories
+own persistence, and infrastructure code owns database and transport details.
+Boundary checks keep vendor-specific behavior out of product modules.
 
-Core currently assumes one backend process. `RunExecutor` owns an in-process
-FIFO queue with bounded concurrency, while PostgreSQL remains the durable source
-of truth for run state and recovery.
-
-## Message and execution flow
-
-1. Core stores the human message, target persona snapshots, queued runs, and
-   initial room events in one PostgreSQL transaction.
-2. Each run receives an immutable harness instance, harness type, model,
-   one-message execution intent, persona version, optional implementation-plan
-   version, and pre-round conversation snapshot.
-3. Core starts a Connector execution with a Core-owned execution ID and a
-   canonical room-relative workspace identity.
-4. Connector resolves the workspace, starts the selected adapter, assigns an
-   execution epoch and monotonic cursors, and emits normalized SSE events.
-5. Core commits each accepted cursor together with its projected room events.
-6. The room WebSocket publishes only durable events. Reconnecting clients replay
-   from the last applied room sequence.
-
-Every attempt has exactly one terminal state. A retry creates a new attempt and
-new upstream session or process while retaining the original immutable routing
-and conversation snapshot.
-
-## Connector protocol
-
-The internal v2 HTTP surface is intentionally smaller than any harness API.
-Core and Connector reject mixed protocol versions:
-
-- health, instance discovery, and per-instance model/control catalog;
-- idempotent execution start and execution inspection;
-- ordered SSE events with cursor-based bounded replay;
-- stop and approval/clarification resolution commands.
-
-Connector owns ephemeral execution processes and replay buffers. Core owns
-durable product state. A Connector restart changes its epoch; Core never assumes
-that a process from an older epoch is still alive. Same-epoch Core restarts can
-reattach from the last durable Connector cursor without duplicating room events.
-
-Adapter-controlled diagnostics, tool summaries, and request text pass through a
-common redaction and size boundary before persistence or transport. Raw vendor
-payloads are not part of the Core API.
-
-## Harness adapters
-
-| Adapter | Transport | Supported behavior |
-| --- | --- | --- |
-| Hermes | HTTP and event stream | instruction-only Plan, catalog, text, tools, approvals, usage, cancel |
-| OpenCode | pinned native SDK over HTTP/SSE | native/soft Plan, provider agent variants, text/reasoning, tools, approvals, clarifications, usage, cancel |
-| Codex | user-installed `codex app-server` over JSONL/JSON-RPC stdio | collaboration mode, separate effort and sandbox, completed plan items, text/reasoning, tools, approvals, clarifications, usage, interrupt |
-| Claude (experimental) | fresh user-installed `claude` process over bounded bidirectional NDJSON | permission mode and separate effort, text/thinking, tools, approvals, structured questions, usage, interrupt |
-| Antigravity | fresh `agy --print` subprocess | per-run Plan/Work, exact model catalog, final text, process-tree cancel |
-
-OpenCode uses its native server and SDK because that path exposes the lifecycle
-needed by Agenvyl without introducing a second translation layer. ACP is not a
-current runtime dependency and can be reconsidered only if it provides the same
-catalog, event, approval, clarification, cancellation, and recovery semantics.
-
-Antigravity has no documented structured streaming or approval protocol.
-Connector therefore does not fabricate tool, usage, or partial-output events.
-Its autonomous `accept-edits` mode requires an explicit operator opt-in.
-
-Claude executions are ephemeral and receive bounded room history through an
-owner-only temporary append-system-prompt file. Connector intentionally does not
-use `--bare`, so ordinary user/project/local Claude settings, `CLAUDE.md`, skills,
-plugins, hooks, and MCP remain active. Unknown or incompatible protocol responses
-fail closed; no Claude executable or proprietary Agent SDK is bundled.
-
-## Frontend structure and state
-
-The React SPA is organized into directional layers:
+The React frontend uses directional layers:
 
 ```text
 app -> pages -> widgets -> features -> entities -> shared
 ```
 
-- TanStack Query owns server state and invalidation.
-- `RoomEventStream` owns live room updates and replay sequencing.
-- Local component state owns transient dialogs, drafts, drawers, and selection.
-- Entity and feature public APIs prevent higher-level UI modules from becoming
-  transport owners.
+TanStack Query owns server state, `RoomEventStream` owns live updates and replay
+sequencing, and local component state owns temporary UI such as dialogs,
+drawers, drafts, and selections.
 
-The production gateway uses the real REST/WebSocket transports. The fake gateway
-is limited to explicit demo and test activation.
+Connector adapters live under:
 
-## Data and consistency invariants
+```text
+apps/connector/src/adapters/
+  hermes/
+  opencode/
+  codex/
+  claude/
+  antigravity/
+```
 
-- PostgreSQL migrations are forward-only and transactional.
-- User messages are idempotent by client-provided message ID.
-- Persona configuration is versioned; historical runs never consult the current
-  catalog to reconstruct their route.
-- Room event sequence numbers are allocated atomically per room.
-- Connector cursor acceptance and room-event projection share one transaction.
-- Only the selected completed attempt contributes to later conversation history.
-- Workspace attachments reference immutable file versions, not mutable paths.
+Shared Core/Connector request and event shapes are versioned in
+`packages/connector-contract`. Mixed protocol versions are rejected.
 
-## Security boundary
-
-- Connector binds to loopback by default and requires a token of at least 32
-  characters.
-- Harness endpoints, credentials, executable paths, and OAuth stores are
-  host-side environment or native harness state; they do not enter Core.
-- Connector canonicalizes configured workspace roots and rejects traversal,
-  absolute request paths, symlink escape, missing targets, and ambiguous roots.
-- Harnesses still execute with the permissions of the Connector host user.
-  Workspace validation is not process sandboxing.
-- Agenvyl contains no telemetry or remote analytics.
-
-Operational details belong in the [runtime](../operations/runtime.md),
+For operational detail, continue with the [runtime](../operations/runtime.md),
 [Connector](../operations/connector.md), and
 [database](../operations/database.md) guides.

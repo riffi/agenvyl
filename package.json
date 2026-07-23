@@ -54,6 +54,7 @@
     "install:local:windows": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/install-local-windows.ps1",
     "verify:bundle": "node scripts/verify-portable-bundle.mjs",
     "release:manifest": "node scripts/release-manifest.mjs",
+    "release:verify": "node scripts/verify-release-readiness.mjs",
     "postgres:runtime:build": "node scripts/build-postgres-runtime.mjs",
     "postgres:runtime:verify": "node scripts/verify-postgres-runtime.mjs",
     "supervisor:verify": "node scripts/verify-supervisor-lifecycle.mjs",

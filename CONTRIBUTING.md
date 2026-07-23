@@ -2,23 +2,23 @@
 
 Thank you for helping improve Agenvyl.
 
-## Development setup
+## Before you start
 
-Use Node.js 22, npm, Docker, and Docker Compose v2. Then run:
+Follow the [development setup](docs/development/README.md) for prerequisites,
+the full local stack, repository structure, and harness configuration.
+
+Normal verification is documented in [Testing](docs/development/testing.md).
+Run at least:
 
 ```bash
 npm ci
-docker compose up -d postgres
-npm test
-npm run typecheck
-npm run lint:boundaries
+npm run check:local
 npm run build
-npm run audit:oss
 ```
 
-The integration suite creates isolated PostgreSQL test databases. The database
-role must be allowed to create and drop databases. Live harness smoke tests are
-separate and must never use shared production credentials or workspaces.
+Use [Building](docs/development/building.md) for native portable packages and
+the Windows installer. Release publication is a maintainer workflow documented
+in the [Technical Preview runbook](docs/releases/README.md).
 
 ## Pull requests
 
@@ -26,22 +26,12 @@ separate and must never use shared production credentials or workspaces.
 - Add or update tests for behavior changes.
 - Preserve the Core/Connector boundary: Core must not read harness credentials
   or call harnesses directly.
-- Keep private deployment overlays, internal URLs, absolute personal paths, and
-  secrets out of the repository.
-- Update operations or architecture documentation when a contract changes.
-- Run all verification commands above before requesting review.
+- Keep private deployment overlays, internal URLs, absolute personal paths,
+  credentials, and workspace data out of the repository.
+- Update user, operator, or architecture documentation when a contract changes.
+- Run the relevant local and platform-specific gates before requesting review.
 
 Contributions are submitted under the repository's Apache-2.0 license. No
 Contributor License Agreement is currently required.
 
-## Project structure
-
-- `apps/backend`: Core HTTP, persistence, and realtime services
-- `apps/frontend`: React user interface
-- `apps/connector`: host-side harness gateway
-- `packages/contracts`: Core API contracts
-- `packages/connector-contract`: Connector protocol contracts
-- `docs/operations`: operator-facing runtime guidance
-- `docs/architecture`: design records and migration notes
-
-See [SECURITY.md](SECURITY.md) for private vulnerability reporting.
+Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).

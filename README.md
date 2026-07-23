@@ -2,211 +2,122 @@
 
 **One browser. Multiple coding agents. One shared workspace.**
 
-Agenvyl is a local web interface that brings your already-installed coding-agent
-harnesses into shared rooms. Each harness keeps the capabilities already
-available in its own environment—models, skills, tools, and MCP integrations
-where supported—while Agenvyl coordinates the conversation, parallel runs, and
-shared files.
-
-Completed answers stay in the room context, so later agents can read, critique,
-and synthesize the work produced by earlier agents.
+Agenvyl is a local web interface that brings your already-installed coding
+agents into shared rooms. Each tool keeps its own models, accounts, skills,
+tools, and MCP integrations while Agenvyl coordinates the conversation,
+parallel runs, and shared files.
 
 ![Technical Preview](https://img.shields.io/badge/status-technical_preview-f59e0b?style=flat-square)
 ![Local-first](https://img.shields.io/badge/local--first-no_telemetry-22c55e?style=flat-square)
 ![Platforms](https://img.shields.io/badge/platform-Windows_%7C_macOS_%7C_Linux-3b82f6?style=flat-square)
 [![License](https://img.shields.io/badge/license-Apache_2.0-6d5ef7?style=flat-square)](LICENSE)
 
-**[Get started](#quick-start)** · [See how it works](#how-agenvyl-works) ·
-[Supported harnesses](#supported-coding-agent-harnesses) ·
-[Read the documentation](#documentation)
+**[Install](#quick-start)** · [See how it works](#how-it-works) ·
+[Connect an agent](docs/harnesses/README.md) ·
+[Read the documentation](docs/README.md)
 
 ![Agenvyl Web UI showing three coding agents answering in parallel](docs/assets/agenvyl-overview.png)
 
-*Three different models, two agent harnesses, one shared conversation and
-workspace.*
-
-## Coding agents work better together
-
-Coding agents usually live in separate terminals and chats. Their context,
-files, and decisions become fragmented, and comparing their work means jumping
-between windows.
-
-Agenvyl gives the team one browser-based room. Call an agent by name, ask
-several agents at once, or use `@all`; every answer remains connected to the
-same conversation and working folder.
-
 ## Why Agenvyl?
 
-| | |
-| --- | --- |
-| **Shared context**<br>Later agents can read earlier answers, evaluate competing ideas, and synthesize a stronger result. | **Parallel by default**<br>Mention several agents in one message and let them explore the same task at the same time. |
-| **Shared files**<br>Agents in a room work with the same attachments, generated files, and versions. | **Keep your existing setup**<br>Reuse each harness with its configured models, skills, tools, and MCP integrations. |
+Coding agents usually live in separate terminals and chats. Their context,
+files, and decisions become fragmented.
 
-## How Agenvyl works
+Agenvyl gives them one browser-based room:
+
+- **Shared context** — later agents can read, critique, and combine completed
+  answers from earlier turns.
+- **Parallel runs** — mention several agents once and let them explore the same
+  task independently.
+- **Shared files** — agents in a room work with the same local workspace and
+  immutable attachment versions.
+- **Your existing setup** — reuse each harness with its configured models,
+  permissions, skills, tools, hooks, and MCP servers.
+
+## How it works
 
 ![Diagram showing one message running several agents in an Agenvyl room and collecting their results](docs/assets/how-agenvyl-works.svg)
 
-1. **Create a room** for a project, bug, review, or experiment and add the
-   agents you need.
-2. **Send one message** to `@architect`, a few selected agents, or `@all`.
-   Mentioned agents run in parallel against the same conversation and files.
-3. **Review and synthesize** in the next turn. Once parallel runs finish, ask an
-   agent to read the answers above, evaluate them, and produce a combined result.
+1. Create a room for a project, review, experiment, or other task.
+2. Add agents with different names, roles, models, and instructions.
+3. Send one message to an agent, several agents, or `@all`.
+4. Review their completed answers and ask another agent to synthesize the
+   result.
 
-Agents launched in the same round start from the same pre-round conversation
-context; they do not wait for one another. Their completed answers then become
-part of the room history available to later turns.
+Agents launched by the same message receive the same pre-round conversation and
+can run in parallel. They do not see one another's unfinished output. Completed
+selected answers become context for later turns.
 
-A message without an `@mention` is saved in the conversation but does not start
-an agent.
+A message without an `@mention` is saved in the room but starts no agent.
 
-## Built for real workflows
-
-Rooms are not limited to software projects. Any task that benefits from distinct
-roles, parallel perspectives, and a shared history can use the same pattern.
-
-| Workflow | Example team |
-| --- | --- |
-| **Build software** | An architect proposes the design, a builder implements it, and a reviewer checks the result. |
-| **Explore a topic** | Researchers investigate different angles, a skeptic challenges weak claims, and an editor summarizes the findings. |
-| **Write creatively** | A plotter, character specialist, and editor develop and revise a story in the same room. |
-| **Review a document** | A domain expert, fact-checker, and editor critique the same draft from different perspectives. |
-| **Plan and decide** | Independent planners propose options, a critic stress-tests them, and a lead synthesizes the decision. |
-| **Compare models** | Ask the same question once and compare model answers side by side. |
-| **Talk with your agents** | Keep an ongoing conversation with recurring personas; address one specialist, a few of them, or `@all`. |
+For components, persistence, retries, and security boundaries, read
+[How Agenvyl works](docs/architecture/overview.md).
 
 ## Supported coding-agent harnesses
 
-Agenvyl currently supports:
+| Harness | Connection |
+| --- | --- |
+| [Codex CLI](docs/harnesses/codex.md) | Agenvyl starts the user-installed `codex app-server` |
+| [Claude Code](docs/harnesses/claude.md) *(experimental)* | Agenvyl starts a fresh user-installed CLI process per attempt |
+| [OpenCode](docs/harnesses/opencode.md) | Agenvyl connects to or manages an OpenCode server |
+| [Antigravity / AGY](docs/harnesses/antigravity.md) | Agenvyl starts a fresh `agy --print` process per attempt |
+| [Hermes](docs/harnesses/hermes.md) | Agenvyl connects to an authenticated local Hermes API Server |
 
-- **Hermes** — connects to an already running local Hermes HTTP service.
-- **OpenCode** — connects to an existing server or starts a managed local server.
-- **Codex CLI** — starts the user-installed `codex app-server` and preserves its
-  account, configuration, skills, apps, and MCP servers.
-- **Claude Code CLI (experimental)** — starts the user-installed `claude` CLI and
-  preserves its settings, provider credentials, skills, plugins, hooks, and MCP
-  servers. Read the authentication warning below before enabling it.
-- **Antigravity (AGY)** — starts the user-installed CLI with an explicit
-  permission-mode confirmation.
-
-Agenvyl does not replace or reconfigure these harnesses: each remains the
-execution environment and keeps its own accounts, models, skills, tools, and MCP
-servers where supported. Agenvyl adds the coordination layer—rooms, mentions,
-parallel runs, a shared timeline, and a shared workspace.
-
-Agenvyl does not provide model access by itself. It discovers the models,
-reasoning efforts, permission profiles, and provider agent variants exposed by
-the harnesses already authenticated on your computer.
-
-One connected harness can power several Agenvyl agents with different names,
-roles, models, base permissions, provider variants, and instructions. Reasoning
-effort belongs to the room. The experimental Plan Mode is disabled by default;
-set `AGENVYL_FEATURE_PLAN_MODE=true` before starting Core to expose **Create
-plan**, immutable approvals, and the implementation handoff.
-
-### Claude authentication warning
-
-> [!WARNING]
-> **Using the official Claude CLI does not make every authentication method
-> permitted for third-party orchestration.** Agenvyl launches your normal,
-> user-installed `claude` executable, but Anthropic says developers of
-> third-party products should use API keys or supported cloud-provider
-> authentication and must not route Free, Pro, or Max subscription credentials
-> on behalf of users. Anthropic also reserves the right to enforce this
-> restriction without notice. See Anthropic's
-> [legal and compliance guidance](https://code.claude.com/docs/en/legal-and-compliance).
->
-> Agenvyl therefore treats Claude subscription OAuth as an experimental,
-> explicit opt-in. It is disabled until you enter `CLAUDE OAUTH`. Prefer an
-> Anthropic Console API key or a supported cloud provider if you want to avoid
-> this terms-and-access risk.
-
-Claude Code can also be configured to use a third-party API provider. For
-example, Z.AI documents running the Claude CLI with GLM models through its own
-API endpoint and credentials in its
-[Claude Code guide](https://docs.z.ai/devpack/tool/claude). This avoids the
-specific risk of routing Anthropic subscription OAuth credentials because those
-credentials are not used. Agenvyl inherits the CLI's environment and settings,
-so no Agenvyl-specific provider configuration is needed; the provider's own
-compatibility, data handling, and terms still apply.
+Agenvyl does not provide model access. The harness must already be installed or
+running and authenticated on the same computer. One harness can power several
+Agenvyl agents with different names, models, permissions, and instructions.
 
 ## Quick start
 
-The downloadable app already includes Node.js and PostgreSQL. You do **not**
-need Docker, npm, or a source checkout.
+The downloadable app includes Node.js and PostgreSQL. You do **not** need
+Docker, npm, or a source checkout.
 
-Supported systems are Windows 10/11 x64, Linux x64 or arm64, and macOS on Intel
-or Apple Silicon. To receive agent responses, have at least one supported agent
-tool installed and authenticated on the same computer; you can also finish
-setup without an agent and connect one later.
+Supported packages are Windows 10/11 x64, Linux x64/arm64, and macOS on Intel or
+Apple silicon.
 
 > [!WARNING]
-> **Agenvyl v0.1.0 is an unsigned Technical Preview** for a trusted,
-> single-user computer. Windows SmartScreen or macOS Gatekeeper may show a
-> warning. Read the [Technical Preview trust guide](docs/operations/preview-trust.md)
-> before accepting it.
+> Agenvyl is an unsigned Technical Preview for a trusted, single-user computer.
+> Read [Trust and security](docs/user-guide/trust-and-security.md) before
+> accepting a SmartScreen or Gatekeeper warning.
 
-<details open>
-<summary><strong>Windows</strong></summary>
+### Windows
 
-Open PowerShell and run:
+Open PowerShell:
 
 ```powershell
 irm https://github.com/riffi/agenvyl/releases/latest/download/install.ps1 | iex
 ```
 
-</details>
+### Linux and macOS
 
-<details>
-<summary><strong>Linux</strong></summary>
-
-Open a terminal and run:
+Open a terminal:
 
 ```bash
 curl -fsSL https://github.com/riffi/agenvyl/releases/latest/download/install.sh | sh
 ```
 
-</details>
+The installer verifies the selected archive, initializes the local stack,
+detects supported harnesses, and opens the guided setup. If the browser does not
+open, visit <http://127.0.0.1:8791>.
 
-<details>
-<summary><strong>macOS</strong></summary>
-
-Open Terminal and run:
-
-```bash
-curl -fsSL https://github.com/riffi/agenvyl/releases/latest/download/install.sh | sh
-```
-
-</details>
-
-After installation, Agenvyl starts and opens the guided setup automatically.
-Choose the detected agent connections, enter your display name, and name your
-first room. Open a new terminal before using the `agenvyl` command directly.
-
-For unattended installation without starting Agenvyl, set
-`AGENVYL_NO_LAUNCH=1` (or pass `--no-launch` to `install.sh` / `-NoLaunch` to
-`install.ps1`).
-
-If the browser does not open, go to <http://127.0.0.1:8791>.
-
-When a connection is available, Agenvyl creates three editable starter agents:
-**Architect**, **Builder**, and **Reviewer**.
+For archive installation, data locations, backups, updates, and uninstall, use
+the [User Guide](docs/user-guide/installation.md).
 
 ## Your first room
 
-Start all agents connected to the room with one message:
+Ask every agent in the room for an independent proposal:
 
 ```text
 @all Propose the best approach to this task from your perspective.
 ```
 
-Then ask one agent to turn the parallel answers into a decision:
+Then ask one agent to compare the completed results:
 
 ```text
 @reviewer Read the answers above, evaluate their trade-offs, and synthesize the best plan.
 ```
 
-Or guide a workflow agent by agent:
+Or guide a software workflow:
 
 ```text
 @architect Read the project and propose a safe implementation plan.
@@ -214,75 +125,31 @@ Or guide a workflow agent by agent:
 @architect @reviewer Check the change from different perspectives.
 ```
 
-## What stays in a room
+Rooms are useful beyond software: research, writing, document review, planning,
+and model comparison all use the same shared-history pattern.
 
-| Rooms | Agents | Files and runs |
-| --- | --- | --- |
-| Separate workspaces for projects and tasks.<br><br>Completed answers become context that later agents can review and build on. | Give each agent a name, `@handle`, role, model, permissions, provider variant, and its own instructions.<br><br>Only agents added to a room can be mentioned there. | Attach files, inspect generated artifacts, retry responses, and compare attempts. Experimental Plan Mode can additionally version and approve `plan.md` before an explicit implementation handoff.<br><br>Generated files and file versions remain on your computer. |
-
-Open **New room** in the sidebar to create another workspace, **Agents** to
-manage the agent catalog, or **Workspace** to inspect the room's files.
-
-## Local-first by design
+## Local-first boundary
 
 - The Web UI, product state, room history, and workspaces run on your computer.
-- Agenvyl does not send telemetry or remote analytics.
-- Connected harnesses use your normal user permissions. A room workspace is a
-  shared working directory, **not a security sandbox**.
-- Do not connect an agent you would not trust to work on the selected files.
-- AGY is never enabled automatically because it starts a separate process with
-  a dangerous permission flag; enabling it requires explicit confirmation.
-- Codex defaults to workspace-write with per-action approvals. Unsandboxed
-  `danger-full-access` modes require the exact `CODEX FULL ACCESS` confirmation.
-- Claude uses the user-installed CLI and is experimental. API or supported cloud
-  authentication is preferred; see the
-  [Claude authentication warning](#claude-authentication-warning).
-
-<details>
-<summary><strong>Starting, stopping, and backing up Agenvyl</strong></summary>
-
-Run the control center:
-
-```bash
-agenvyl
-```
-
-It can start Agenvyl, open the Web UI, stop services, show diagnostics, create a
-backup, or remove the app. Useful direct commands are:
-
-```bash
-agenvyl start
-agenvyl status
-agenvyl stop
-agenvyl backup
-```
-
-`agenvyl start` starts the services without opening a browser. Open
-<http://127.0.0.1:8791> yourself when using that command.
-
-</details>
+- Agenvyl adds no telemetry or remote analytics.
+- Connected harnesses use your normal operating-system permissions.
+- A room workspace is a shared working directory, **not a security sandbox**.
+- Do not enable a harness or permission profile you would not trust with the
+  selected files.
+- Agenvyl has no public multi-user authorization layer.
 
 ## Documentation
 
-The README covers the normal product journey. Technical and operator details
-live in focused guides:
+Use the [documentation map](docs/README.md) to choose a route:
 
-- [Portable runtime, backups, restore, and uninstall](docs/operations/portable-runtime.md)
-- [Build and test the Windows installer locally](docs/operations/windows-local-installer.md)
-- [Connecting Hermes, OpenCode, Codex, Claude, and AGY](docs/operations/connector.md)
-- [Architecture](docs/architecture/overview.md)
-- [Runtime operations](docs/operations/runtime.md)
-- [Database operations](docs/operations/database.md)
-- [Development and contributions](CONTRIBUTING.md)
-- [Security policy](SECURITY.md)
+- [Install and use Agenvyl](docs/user-guide/installation.md)
+- [Connect an agent tool](docs/harnesses/README.md)
+- [Understand the architecture](docs/architecture/overview.md)
+- [Operate a custom deployment](docs/operations/deployment-boundaries.md)
+- [Develop Agenvyl](docs/development/README.md)
+- [Prepare a Technical Preview release](docs/releases/README.md)
 
-## Ready to try Agenvyl?
-
-Install Agenvyl, connect one of your existing coding-agent tools, and create a
-room where your agents can work together.
-
-**[Start with the quick start](#quick-start)** ·
-[Read the documentation](#documentation) ·
-[Report an issue](https://github.com/riffi/agenvyl/issues)
+Contribution policy is in [CONTRIBUTING.md](CONTRIBUTING.md), and private
+vulnerability reporting is in [SECURITY.md](SECURITY.md).
 
 Agenvyl is licensed under the [Apache License 2.0](LICENSE).

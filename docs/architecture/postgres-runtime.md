@@ -1,8 +1,9 @@
-# PostgreSQL runtime supply-chain spike
+# Bundled PostgreSQL supply chain
 
-This spike established the storage prerequisite for the cross-platform portable
-runtime. Its payloads are now consumed by the native portable bundle builder;
-it still does not replace the existing Compose deployment.
+This document records the implemented PostgreSQL supply-chain boundary for the
+cross-platform portable runtime. Its payloads are consumed by the native
+portable bundle builder; the bundled runtime remains separate from the
+Compose-based development and server workflow.
 
 ## Source of truth
 

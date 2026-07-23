@@ -15,7 +15,7 @@ const allowedRuntimeCyrillic = new Map([
   ['apps/frontend/src/widgets/personas-screen/personaDraft.ts', () => true],
   [
     'apps/backend/src/modules/messages/messages.repository.ts',
-    (line) => line.includes('stripLegacyWorkspaceManifest'),
+    (line) => line.includes('Зафиксированные inline-изображения ответа'),
   ],
   [
     'apps/backend/src/modules/runs/RunExecutor.ts',
