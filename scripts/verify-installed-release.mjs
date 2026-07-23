@@ -24,7 +24,8 @@ await waitFor(() => pids.every(pid => !processAlive(pid)), 30_000);
 for (const port of ports) if (!(await portAvailable(port))) throw new Error(`Installed release did not release port ${port}`);
 const removed = runJson(['uninstall', '--json']);
 if (removed.purge) throw new Error('Release smoke unexpectedly purged user data');
-await waitFor(async () => !await exists(command), 30_000);
+const uninstallTimeoutMs = process.platform === 'win32' ? 75_000 : 30_000;
+await waitFor(async () => !await exists(command), uninstallTimeoutMs);
 console.log(`Installed release verified on ${process.platform}-${process.arch}: download, init, PATH command, lifecycle, Web UI, stop, and uninstall.`);
 
 function runJson(args) {

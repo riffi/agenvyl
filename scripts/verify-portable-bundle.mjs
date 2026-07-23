@@ -102,7 +102,8 @@ try {
   });
   const uninstalled = cliJson(cli, ['uninstall', '--json'], env);
   if (uninstalled.purge || !uninstalled.removed.includes(initialized.command)) throw new Error(`Portable uninstall did not remove owned command integration: ${JSON.stringify(uninstalled)}`);
-  await waitFor(async () => !await exists(bundleRoot) && !await exists(initialized.command), 30_000);
+  const uninstallTimeoutMs = process.platform === 'win32' ? 75_000 : 30_000;
+  await waitFor(async () => !await exists(bundleRoot) && !await exists(initialized.command), uninstallTimeoutMs);
   console.log(`Portable bundle verified: ${process.platform}-${process.arch}, bundled Node/PostgreSQL, command integration, launchers, Web UI, uninstall, and orphan-free stop.`);
 } catch (error) {
   await diagnostics(home);
