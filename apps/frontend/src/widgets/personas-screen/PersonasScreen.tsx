@@ -102,11 +102,14 @@ export function HarnessRouteFields({form,catalog,error,onChange}:{form:Persona;c
   const visibleInstances=form.harness_instance_id&&!selectedInstance?[...discovered,{id:form.harness_instance_id,type:form.harness_type,status:'unavailable' as const,capabilities:[],models:[],controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]}}]:discovered;
   const visibleModels=selectedInstance?.models??(form.model_id?[{id:form.model_id,label:`${form.model_id} (saved)`}]:[]);
   const selectedModel=visibleModels.find(model=>model.id===form.model_id);
+  const reasoningEfforts=selectedModel?.reasoningEfforts??[];
+  const invalidReasoning=Boolean(form.default_reasoning_effort&&!reasoningEfforts.includes(form.default_reasoning_effort));
   return <>
     {error&&<Alert tone="error">Harness catalog unavailable: {error}. The saved selection was not changed.</Alert>}
     <div className={styles['harness-grid']}>
       <HarnessInstancePicker instances={visibleInstances} value={form.harness_instance_id} onChange={instance=>onChange(selectHarnessInstance(form,instance))}/>
       <ModelPicker models={visibleModels} value={form.model_id} onChange={modelId=>onChange(selectHarnessModel(form,modelId,selectedInstance))}/>
+      <label>Default reasoning<Select aria-label="Default reasoning" value={form.default_reasoning_effort??''} onChange={event=>onChange({...form,default_reasoning_effort:event.target.value||null})}>{invalidReasoning&&<option value={form.default_reasoning_effort!}>Unsupported: {form.default_reasoning_effort}</option>}<option value="">Auto / model default</option>{reasoningEfforts.map(effort=><option key={effort} value={effort}>{effort}</option>)}</Select>{invalidReasoning&&<small className={styles['field-error']}>Choose Auto or a supported value before saving.</small>}</label>
       {selectedInstance&&selectedInstance.controls.permissionProfiles.length>0&&<label>Permissions<Select aria-label="Permission profile" value={form.permission_profile_id??''} onChange={event=>onChange({...form,permission_profile_id:event.target.value||null})}>{selectedInstance.controls.permissionProfiles.map(item=><option key={item.id} value={item.id}>{item.label??item.id}</option>)}</Select></label>}
       {selectedInstance&&selectedInstance.controls.agentVariants.length>0&&<label>Agent variant<Select aria-label="Agent variant" value={form.agent_variant_id??''} onChange={event=>onChange({...form,agent_variant_id:event.target.value||null})}>{selectedInstance.controls.agentVariants.map(item=><option key={item.id} value={item.id}>{item.label??item.id}</option>)}</Select></label>}
     </div>
@@ -195,6 +198,11 @@ export function PersonasScreen({
     }
     if (!form.model_id || !instance.models.some(model=>model.id===form.model_id)) {
       setSaveError('Select an available model for the chosen harness.');
+      return false;
+    }
+    const selectedModel=instance.models.find(model=>model.id===form.model_id);
+    if(form.default_reasoning_effort&&!selectedModel?.reasoningEfforts?.includes(form.default_reasoning_effort)){
+      setSaveError('Choose Auto or a supported default reasoning effort for the selected model.');
       return false;
     }
     if (form.permission_profile_id && !instance.controls.permissionProfiles.some(item=>item.id===form.permission_profile_id)) {

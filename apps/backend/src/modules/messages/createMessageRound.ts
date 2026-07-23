@@ -1,6 +1,6 @@
 import { parseMentions } from "../../routing.js";
 import { AppError } from "../../shared/errors/AppError.js";
-import type { Persona } from "../../types.js";
+import type { Persona, PersonaVersion } from "../../types.js";
 import type { RoomEventService } from "../room-events/RoomEventService.js";
 import type { ActiveRunRegistry } from "../runs/ActiveRunRegistry.js";
 import type { RunExecutor } from "../runs/RunExecutor.js";
@@ -112,28 +112,13 @@ export class CreateMessageRound {
         400,
         "Implementation requires at least one agent",
       );
-    const executionProfiles = new Map<string, RunExecutionProfileSnapshot>();
-    if (targets.length) {
-      const state = await this.dependencies.rooms.executionState(
-        command.roomId,
-      );
-      if (!state) throw new AppError("room_not_found", 404, "Room not found");
-      if (
-        command.executionIntent?.kind === "implement" &&
-        state.plan.approved?.version_id !==
-          command.executionIntent.approved_plan_version_id
-      )
-        throw new AppError(
-          "approved_plan_changed",
-          409,
-          "The approved plan changed; review it before starting implementation",
-        );
-      const catalog = await harnesses.catalog();
-      for (const persona of targets) {
+    const catalog = targets.length ? await harnesses.catalog() : { instances: [] };
+    const effectiveModels = new Map<string,string>();
+    const profileFor = ({persona,version,roomOverride}:{persona:Persona;version:PersonaVersion;roomOverride:string|null}):RunExecutionProfileSnapshot => {
         const instance = catalog.instances.find(
           (item) =>
-            item.id === persona.harness_instance_id &&
-            item.type === persona.harness_type,
+            item.id === version.harness_instance_id &&
+            item.type === version.harness_type,
         );
         if (!instance || instance.status === "unavailable")
           throw new AppError(
@@ -141,23 +126,23 @@ export class CreateMessageRound {
             503,
             "Harness instance is unavailable",
             {
-              harnessInstanceId: persona.harness_instance_id,
+              harnessInstanceId: version.harness_instance_id,
               persona: persona.handle,
             },
           );
         const model = instance.models.find(
-          (item) => item.id === persona.model_id,
+          (item) => item.id === version.model_id,
         );
         if (!model)
           throw new AppError("unknown_model", 400, "Unknown model", {
-            model: persona.model_id,
-            harnessInstanceId: persona.harness_instance_id,
+            model: version.model_id,
+            harnessInstanceId: version.harness_instance_id,
             persona: persona.handle,
           });
         if (
-          persona.permission_profile_id &&
+          version.permission_profile_id &&
           !instance.controls.permissionProfiles.some(
-            (item) => item.id === persona.permission_profile_id,
+            (item) => item.id === version.permission_profile_id,
           )
         )
           throw new AppError(
@@ -165,15 +150,15 @@ export class CreateMessageRound {
             400,
             "Unknown permission profile",
             {
-              permissionProfileId: persona.permission_profile_id,
-              harnessInstanceId: persona.harness_instance_id,
+              permissionProfileId: version.permission_profile_id,
+              harnessInstanceId: version.harness_instance_id,
               persona: persona.handle,
             },
           );
         if (
-          persona.agent_variant_id &&
+          version.agent_variant_id &&
           !instance.controls.agentVariants.some(
-            (item) => item.id === persona.agent_variant_id,
+            (item) => item.id === version.agent_variant_id,
           )
         )
           throw new AppError(
@@ -181,25 +166,22 @@ export class CreateMessageRound {
             400,
             "Unknown agent variant",
             {
-              agentVariantId: persona.agent_variant_id,
-              harnessInstanceId: persona.harness_instance_id,
+              agentVariantId: version.agent_variant_id,
+              harnessInstanceId: version.harness_instance_id,
               persona: persona.handle,
             },
           );
-        executionProfiles.set(
-          persona.id,
-          resolveExecutionProfile({
-            state,
+        effectiveModels.set(persona.id,model.label??model.id);
+        return resolveExecutionProfile({
+            roomOverride,
+            personaDefault:version.default_reasoning_effort,
             model,
             controls: instance.controls,
-            permissionProfileId: persona.permission_profile_id,
-            agentVariantId: persona.agent_variant_id,
+            permissionProfileId: version.permission_profile_id,
+            agentVariantId: version.agent_variant_id,
             intent: command.executionIntent,
-          }),
-        );
-        await personas.setEffectiveModel(persona.id, model.label ?? model.id);
-      }
-    }
+          });
+    };
     if ((command.attachmentVersionIds?.length ?? 0) > 10)
       throw new AppError(
         "too_many_attachments",
@@ -215,7 +197,7 @@ export class CreateMessageRound {
         command.roomId,
         text,
         targets,
-        executionProfiles,
+        profileFor,
         command.messageId,
         command.attachmentVersionIds ?? [],
         addressedToAll,
@@ -244,6 +226,7 @@ export class CreateMessageRound {
     }
     if (round.duplicate)
       return { status: "duplicate" as const, message: round.message };
+    await Promise.all(round.runs.map(item=>personas.setEffectiveModel(item.persona.id,effectiveModels.get(item.persona.id)??null)));
     for (const event of round.events)
       events.publishPersisted(command.roomId, event);
     for (const item of round.runs)

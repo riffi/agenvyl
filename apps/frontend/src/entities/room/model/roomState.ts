@@ -1,13 +1,13 @@
 import type { Message } from '../../message';
 import type { Run } from '../../run';
-import type { RoomExecutionState, ServerRoomEvent, TimelinePage, UpstreamStatus } from '@agenvyl/contracts';
+import type { RoomExecutionState, RoomPersona, ServerRoomEvent, TimelinePage, UpstreamStatus } from '@agenvyl/contracts';
 export type Connection = 'connecting' | 'connected' | 'reconnecting' | 'replaying';
 export type { TimelinePage } from '@agenvyl/contracts';
-export type RoomState = { messages: Message[]; runs: Record<string, Run>; runOrder: string[]; selectedRuns:Record<string,string>; executionState:RoomExecutionState; connection: Connection; lastSequence: number; selectedRunId?: string; appliedPatch: boolean; hydrated:boolean; hasMore:boolean; nextCursor?:string };
+export type RoomState = { messages: Message[]; runs: Record<string, Run>; runOrder: string[]; selectedRuns:Record<string,string>; participantUpdates:Record<string,RoomPersona>; executionState:RoomExecutionState; connection: Connection; lastSequence: number; selectedRunId?: string; appliedPatch: boolean; hydrated:boolean; hasMore:boolean; nextCursor?:string };
 
 export type RoomEvent = ServerRoomEvent | { id: string; sequence: number; type: 'connection.changed'; payload: { status: Connection } };
 
-export const initialState: RoomState = { messages: [], runs: {}, runOrder: [], selectedRuns:{}, executionState:{profile:{reasoning_effort:null},plan:{path:'plan.md',current:null,approved:null}}, connection: 'connecting', lastSequence: 0, appliedPatch: false, hydrated:false, hasMore:false };
+export const initialState: RoomState = { messages: [], runs: {}, runOrder: [], selectedRuns:{}, participantUpdates:{}, executionState:{plan:{path:'plan.md',current:null,approved:null}}, connection: 'connecting', lastSequence: 0, appliedPatch: false, hydrated:false, hasMore:false };
 
 export function stateFromTimeline(page:TimelinePage):RoomState{return{...initialState,messages:page.messages,runs:Object.fromEntries(page.runs.map(run=>[run.id,run])),runOrder:page.runs.map(run=>run.id),selectedRuns:page.selectedRuns,executionState:page.executionState,lastSequence:page.lastSequence,hydrated:true,hasMore:page.hasMore,nextCursor:page.nextCursor};}
 export function prependTimeline(state:RoomState,page:TimelinePage):RoomState{const known=new Set(state.messages.map(message=>message.id));const runs={...state.runs};for(const run of page.runs)runs[run.id]??=run;return{...state,messages:[...page.messages.filter(message=>!known.has(message.id)),...state.messages],runs,runOrder:[...page.runs.map(run=>run.id).filter(id=>!state.runs[id]),...state.runOrder],selectedRuns:{...page.selectedRuns,...state.selectedRuns},hasMore:page.hasMore,nextCursor:page.nextCursor};}
@@ -31,7 +31,8 @@ export function roomReducer(state: RoomState, event: RoomEvent): RoomState {
     case 'artifact.created':{const run=state.runs[event.payload.runId];return run?{...base,runs:{...state.runs,[run.id]:{...run,artifacts:[...(run.artifacts??[]).filter(item=>item.version_id!==event.payload.artifact.version_id),event.payload.artifact]}}}:base;}
     case 'run.embeds':{const run=state.runs[event.payload.runId];return run?{...base,runs:{...state.runs,[run.id]:{...run,embeds:event.payload.embeds}}}:base;}
     case 'workspace.changed':{if(event.payload.entry.path!=='plan.md')return base;const current=event.payload.change==='deleted'||!event.payload.entry.current_version_id?null:{entry_id:event.payload.entry.id,version_id:event.payload.entry.current_version_id};return{...base,executionState:{...state.executionState,plan:{...state.executionState.plan,current}}};}
-    case 'room.execution_profile.updated':return{...base,executionState:{...state.executionState,profile:event.payload}};
+    case 'room.participant.updated':return{...base,participantUpdates:{...state.participantUpdates,[event.payload.persona.id]:event.payload}};
     case 'room.plan.approval.updated':return{...base,executionState:{...state.executionState,plan:{...state.executionState.plan,approved:event.payload.approved}}};
   }
+  return base;
 }

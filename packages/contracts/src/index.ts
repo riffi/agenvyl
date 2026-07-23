@@ -3,16 +3,17 @@ export type AgentHandle = string;
 export type WorkflowMode = 'plan' | 'work';
 export type PlanEnforcement = 'native' | 'instruction_only';
 export type RuntimeFeatures = { plan_mode: boolean };
-export type RoomExecutionProfile = { reasoning_effort: string | null };
 export type PlanVersionRef = { entry_id: string; version_id: string };
 export type RoomPlanState = { path: 'plan.md'; current: PlanVersionRef | null; approved: PlanVersionRef | null };
-export type RoomExecutionState = { profile: RoomExecutionProfile; plan: RoomPlanState };
+export type RoomExecutionState = { plan: RoomPlanState };
 export type ExecutionIntent = { kind: 'plan' } | { kind: 'implement'; approved_plan_version_id: string };
+export type ReasoningEffortSource = 'room_override' | 'persona_default' | 'model_default' | 'auto';
 export type RunExecutionProfileSnapshot = {
   workflowMode: WorkflowMode;
   requestedReasoningEffort: string | null;
   reasoningEffort: string | null;
   reasoningEffortFallback: boolean;
+  reasoningEffortSource: ReasoningEffortSource;
   planEnforcement: PlanEnforcement | null;
   permissionProfileId: string | null;
   agentVariantId: string | null;
@@ -139,12 +140,18 @@ export type Persona = {
   model_id: string;
   permission_profile_id: string | null;
   agent_variant_id: string | null;
+  default_reasoning_effort: string | null;
   current_version_id?: string;
   system_prompt?: string;
   group_id: string | null;
   created_at?: string;
   updated_at?: string;
   archived_at: string | null;
+};
+
+export type RoomPersona = {
+  persona: Persona;
+  reasoning_effort_override: string | null;
 };
 
 export type PersonaGroup = {
@@ -165,7 +172,7 @@ export type TimelinePage = {
   nextCursor?: string;
 };
 
-export type UpdateRoomExecutionProfileRequest = Partial<RoomExecutionProfile>;
+export type UpdateRoomPersonaRequest = { reasoning_effort_override: string | null };
 export type ApprovePlanRequest = { version_id: string };
 export type UpdatePlanRequest = { content: string; expected_version_id: string };
 export type UpdatePlanResponse = { entry: WorkspaceEntry; version: WorkspaceVersion };
@@ -189,6 +196,7 @@ export type PersonaInput = Pick<Persona, 'handle' | 'name' | 'role' | 'color' | 
   model_id?: string;
   permission_profile_id?: string | null;
   agent_variant_id?: string | null;
+  default_reasoning_effort?: string | null;
   system_prompt: string;
   room_id?: string;
 };
@@ -214,7 +222,7 @@ export type ServerRoomEvent =
   | Envelope<'request.created', { runId: string; kind: 'approval' | 'clarification'; prompt: string; choices?: string[];questions?:StructuredQuestion[];autoResolutionMs?:number }>
   | Envelope<'request.resolved', { runId: string; resolution: string }>
   | Envelope<'run.selected', { responseSlotId: string; runId: string }>
-  | Envelope<'room.execution_profile.updated', RoomExecutionProfile>
+  | Envelope<'room.participant.updated', RoomPersona>
   | Envelope<'room.plan.approval.updated', { approved: PlanVersionRef | null }>
   | Envelope<'workspace.changed', { entry:WorkspaceEntry;change:'created'|'updated'|'deleted'|'restored'|'moved' }>
   | Envelope<'artifact.created', { runId:string;artifact:RunArtifact }>
@@ -232,7 +240,7 @@ const eventTypes = new Set<ServerRoomEvent['type']>([
   'request.created',
   'request.resolved',
   'run.selected',
-  'room.execution_profile.updated',
+  'room.participant.updated',
   'room.plan.approval.updated',
   'workspace.changed',
   'artifact.created',
@@ -256,7 +264,7 @@ export function isServerRoomEvent(value: unknown): value is ServerRoomEvent {
     case 'request.created': return strings(payload, 'runId', 'kind', 'prompt') && (payload.kind === 'approval' || payload.kind === 'clarification') && (payload.choices===undefined||(Array.isArray(payload.choices)&&payload.choices.every(choice=>typeof choice==='string'))) && (payload.questions===undefined||isStructuredQuestions(payload.questions)) && (payload.autoResolutionMs===undefined||Number.isSafeInteger(payload.autoResolutionMs));
     case 'request.resolved': return strings(payload, 'runId', 'resolution');
     case 'run.selected': return strings(payload, 'responseSlotId', 'runId');
-    case 'room.execution_profile.updated': return payload.reasoning_effort===null||typeof payload.reasoning_effort==='string';
+    case 'room.participant.updated': return isRoomPersona(payload);
     case 'room.plan.approval.updated': return payload.approved===null||isPlanVersionRef(payload.approved);
     case 'workspace.changed': return isRecord(payload.entry) && typeof payload.entry.id==='string' && typeof payload.change==='string';
     case 'artifact.created': return typeof payload.runId==='string' && isRecord(payload.artifact) && typeof payload.artifact.version_id==='string';
@@ -270,7 +278,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 function isTokenUsage(value:unknown):value is TokenUsage{if(!isRecord(value)||!tokenCount(value.inputTokens)||!tokenCount(value.outputTokens))return false;return['totalTokens','reasoningTokens','cacheReadTokens','cacheWriteTokens'].every(key=>value[key]===undefined||tokenCount(value[key]));}
 function isPlanVersionRef(value:unknown):value is PlanVersionRef{return isRecord(value)&&strings(value,'entry_id','version_id');}
-function isRunExecutionProfile(value:unknown):value is RunExecutionProfileSnapshot{return isRecord(value)&&(value.workflowMode==='plan'||value.workflowMode==='work')&&(value.requestedReasoningEffort===null||typeof value.requestedReasoningEffort==='string')&&(value.reasoningEffort===null||typeof value.reasoningEffort==='string')&&typeof value.reasoningEffortFallback==='boolean'&&(value.planEnforcement===null||value.planEnforcement==='native'||value.planEnforcement==='instruction_only')&&(value.permissionProfileId===null||typeof value.permissionProfileId==='string')&&(value.agentVariantId===null||typeof value.agentVariantId==='string')&&(value.implementationPlanVersionId===null||typeof value.implementationPlanVersionId==='string');}
+function isRunExecutionProfile(value:unknown):value is RunExecutionProfileSnapshot{return isRecord(value)&&(value.workflowMode==='plan'||value.workflowMode==='work')&&(value.requestedReasoningEffort===null||typeof value.requestedReasoningEffort==='string')&&(value.reasoningEffort===null||typeof value.reasoningEffort==='string')&&typeof value.reasoningEffortFallback==='boolean'&&['room_override','persona_default','model_default','auto'].includes(String(value.reasoningEffortSource))&&(value.planEnforcement===null||value.planEnforcement==='native'||value.planEnforcement==='instruction_only')&&(value.permissionProfileId===null||typeof value.permissionProfileId==='string')&&(value.agentVariantId===null||typeof value.agentVariantId==='string')&&(value.implementationPlanVersionId===null||typeof value.implementationPlanVersionId==='string');}
+function isRoomPersona(value:Record<string,unknown>):boolean{return isRecord(value.persona)&&typeof value.persona.id==='string'&&(value.reasoning_effort_override===null||typeof value.reasoning_effort_override==='string');}
 function tokenCount(value:unknown){return Number.isSafeInteger(value)&&Number(value)>=0;}
 function isStructuredQuestions(value:unknown):value is StructuredQuestion[]{return Array.isArray(value)&&value.length>0&&value.length<=4&&value.every(question=>isRecord(question)&&strings(question,'id','header','question')&&typeof question.isOther==='boolean'&&typeof question.isSecret==='boolean'&&(question.multiSelect===undefined||typeof question.multiSelect==='boolean')&&(question.options===undefined||(Array.isArray(question.options)&&question.options.every(option=>isRecord(option)&&typeof option.label==='string'&&(option.description===undefined||typeof option.description==='string')))));}
 

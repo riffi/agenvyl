@@ -7,14 +7,14 @@ export function toPersona(row: DatabaseRow): Persona {
   return {
     id: text(row.id), handle: text(row.handle), name: text(row.name), role: text(row.role), color: text(row.color),
     requested_model: nullableText(row.requested_model), effective_model: nullableText(row.effective_model),
-    harness_instance_id:text(row.harness_instance_id),harness_type:text(row.harness_type),model_id:text(row.model_id),permission_profile_id:nullableText(row.permission_profile_id),agent_variant_id:nullableText(row.agent_variant_id),
+    harness_instance_id:text(row.harness_instance_id),harness_type:text(row.harness_type),model_id:text(row.model_id),permission_profile_id:nullableText(row.permission_profile_id),agent_variant_id:nullableText(row.agent_variant_id),default_reasoning_effort:nullableText(row.default_reasoning_effort),
     current_version_id: text(row.current_version_id), group_id: nullableText(row.group_id),
     created_at: timestamp(row.created_at), updated_at: timestamp(row.updated_at), archived_at: nullableTimestamp(row.archived_at),
   };
 }
 
 export function toPersonaVersion(row: DatabaseRow): PersonaVersion {
-  return { id:text(row.id),persona_id:text(row.persona_id),version:number(row.version),requested_model:nullableText(row.requested_model),harness_instance_id:text(row.harness_instance_id),harness_type:text(row.harness_type),model_id:text(row.model_id),permission_profile_id:nullableText(row.permission_profile_id),agent_variant_id:nullableText(row.agent_variant_id),system_prompt:text(row.system_prompt),created_at:timestamp(row.created_at) };
+  return { id:text(row.id),persona_id:text(row.persona_id),version:number(row.version),requested_model:nullableText(row.requested_model),harness_instance_id:text(row.harness_instance_id),harness_type:text(row.harness_type),model_id:text(row.model_id),permission_profile_id:nullableText(row.permission_profile_id),agent_variant_id:nullableText(row.agent_variant_id),default_reasoning_effort:nullableText(row.default_reasoning_effort),system_prompt:text(row.system_prompt),created_at:timestamp(row.created_at) };
 }
 
 export function toPersonaGroup(row: DatabaseRow): PersonaGroup {

@@ -112,6 +112,7 @@ export function RunDrawer({run,persona,harnessCatalog,close}:{run?:Run;persona?:
             <div><dt>Model snapshot</dt><dd><code>{run.modelId}</code></dd></div>
             <div><dt>Workflow snapshot</dt><dd><code>{run.executionProfile.workflowMode} · {run.executionProfile.planEnforcement??'standard'}</code></dd></div>
             <div><dt>Reasoning effort</dt><dd><code>{run.executionProfile.reasoningEffort??'Auto'}{run.executionProfile.reasoningEffortFallback?' (fallback)':''}</code></dd></div>
+            <div><dt>Reasoning source</dt><dd><code>{run.executionProfile.reasoningEffortSource.replaceAll('_',' ')}</code></dd></div>
             {run.executionProfile.reasoningEffortFallback&&<div><dt>Requested effort</dt><dd><code>{run.executionProfile.requestedReasoningEffort}</code></dd></div>}
             <div><dt>Permissions</dt><dd><code>{run.executionProfile.permissionProfileId??'harness default'}</code></dd></div>
             <div><dt>Agent variant</dt><dd><code>{run.executionProfile.agentVariantId??'harness default'}</code></dd></div>

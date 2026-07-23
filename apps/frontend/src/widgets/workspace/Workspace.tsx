@@ -18,6 +18,7 @@ import { RoomHeader } from "../room-header";
 import { RunDrawer } from "../run-drawer";
 import { Sidebar } from "../sidebar";
 import { Timeline } from "../timeline";
+import type {RoomPersona} from '@agenvyl/contracts';
 import styles from "./Workspace.module.css";
 const unknownPersona = (handle: string): Persona => ({
   id: "",
@@ -27,6 +28,7 @@ const unknownPersona = (handle: string): Persona => ({
   color: "#64748b",
   requested_model: null,
   harness_instance_id:'unknown',harness_type:'unknown',model_id:'unknown',permission_profile_id:null,agent_variant_id:null,
+  default_reasoning_effort:null,
   group_id:null,
   archived_at: null,
 });
@@ -74,13 +76,15 @@ export function WorkspaceApp({
   const loadOlder=async()=>{if(fake||loadingOlder||!state.hasMore||!state.nextCursor)return;setLoadingOlder(true);try{prepend(await roomsApi.timeline(roomId,{before:state.nextCursor,limit:30}));}finally{setLoadingOlder(false)}};
   const roomsQuery=useQuery({queryKey:roomKeys.all,queryFn:({signal})=>roomsApi.list(signal),enabled:!fake});
   const trashQuery=useQuery({queryKey:[...roomKeys.all,'trash'],queryFn:({signal})=>roomsApi.trash(signal),enabled:!fake});
-  const roomPersonasQuery=useQuery({queryKey:personaKeys.byRoom(roomId),queryFn:({signal})=>personasApi.list({roomId,signal}),enabled:!fake&&Boolean(roomId)});
+  const roomPersonasQuery=useQuery({queryKey:personaKeys.byRoom(roomId),queryFn:({signal})=>roomsApi.participants(roomId,signal),enabled:!fake&&Boolean(roomId)});
   const personaCatalogQuery=useQuery({queryKey:personaKeys.catalog(),queryFn:({signal})=>personasApi.list({includeArchived:true,signal}),enabled:!fake});
   const personaGroupsQuery=useQuery({queryKey:personaGroupKeys.all,queryFn:({signal})=>personaGroupsApi.list(signal),enabled:!fake});
   const harnessCatalogQuery=useQuery({queryKey:harnessKeys.catalog,queryFn:({signal})=>harnessesApi.catalog(signal),enabled:!fake});
   const userProfileQuery=useQuery({queryKey:userProfileKey,queryFn:({signal})=>userProfileApi.get(signal),enabled:!fake});
   const rooms=fake?demoRooms:roomsQuery.data??[];
-  const personas=fake?demoPersonas:roomPersonasQuery.data??[];
+  const queriedRoomPersonas:RoomPersona[]=fake?demoPersonas.map(persona=>({persona,reasoning_effort_override:null})):roomPersonasQuery.data??[];
+  const roomPersonas=queriedRoomPersonas.map(participant=>state.participantUpdates[participant.persona.id]??participant);
+  const personas=roomPersonas.map(participant=>participant.persona);
   const personaCatalog=fake?[...fakePersonas]:personaCatalogQuery.data??[];
   const groups=fake?fakeGroups:personaGroupsQuery.data??[];
   const harnessCatalog=fake?fakeHarnessCatalog:harnessCatalogQuery.data;
@@ -114,6 +118,7 @@ export function WorkspaceApp({
   const createRoom=async(title:string,personaIds:string[])=>{if(fake){const id=crypto.randomUUID();setDemoRooms(current=>[{id,title,created_at:new Date().toISOString(),participant_count:personaIds.length,last_message_at:null,last_message_text:null},...current]);setDemoPersonas([...fakePersonas].filter(persona=>personaIds.includes(persona.id)));navigateToRoom(id);return}const room=await createRoomMutation.mutateAsync({title,personaIds});navigateToRoom(room.id);};
   const renameRoom=async(room:Room,title:string)=>{if(fake){setDemoRooms(current=>current.map(item=>item.id===room.id?{...item,title}:item));return}await renameRoomMutation.mutateAsync({id:room.id,title});};
   const saveRoomAgents=async(next:Set<string>)=>{if(fake){setDemoPersonas([...fakePersonas].filter(persona=>next.has(persona.id)));setDemoRooms(current=>current.map(room=>room.id===roomId?{...room,participant_count:next.size}:room));return}const current=new Set(personas.map(persona=>persona.id));await Promise.all([...next].filter(id=>!current.has(id)).map(id=>roomsApi.addParticipant(roomId,id)).concat([...current].filter(id=>!next.has(id)).map(id=>roomsApi.removeParticipant(roomId,id))));await Promise.all([invalidatePersonas(),invalidateRooms()]);};
+  const updateParticipantReasoning=async(personaId:string,value:string|null)=>{if(fake)return;const updated=await roomsApi.updateParticipant(roomId,personaId,{reasoning_effort_override:value});queryClient.setQueryData<RoomPersona[]>(personaKeys.byRoom(roomId),current=>current?.map(item=>item.persona.id===personaId?updated:item)??[updated]);};
   const deleteRoom=async(room:Room)=>{if(fake)return;await deleteRoomMutation.mutateAsync(room.id);const next=rooms.filter(item=>item.id!==room.id);if(room.id===roomId&&next[0])navigateToRoom(next[0].id,{replace:true});};
   const active = Object.values(state.runs).filter((r) =>
     [
@@ -134,7 +139,6 @@ export function WorkspaceApp({
     guardedNavigation('the agent catalog',navigateToPersonas);
   };
   const currentRoom=rooms.find(room=>room.id===roomId);
-  const updateExecutionProfile=async(profile:import('@agenvyl/contracts').UpdateRoomExecutionProfileRequest)=>fake?state.executionState:roomsApi.updateExecutionProfile(roomId,profile);
   const approvePlan=async(versionId:string)=>{const approved=state.executionState.plan.approved;if(approved&&approved.version_id!==versionId&&!confirm('Replace the approved plan version?'))return;if(!fake)await roomsApi.approvePlan(roomId,versionId)};
   const clearApprovedPlan=async()=>fake?state.executionState:roomsApi.clearApprovedPlan(roomId);
   const openWorkspace=(target?:Omit<WorkspaceFocus,'requestId'>)=>{if(target)setWorkspaceFocus({...target,requestId:Date.now()});setArtifacts(true)};
@@ -182,7 +186,7 @@ export function WorkspaceApp({
             manageAgents={() => setManagingAgents(true)}
           />
           <Timeline state={state} personas={personaCatalog} harnessCatalog={harnessCatalog} select={setSelected} gateway={gateway} loadOlder={loadOlder} loadingOlder={loadingOlder} initialLoading={!fake&&timelineQuery.isPending} onMentionPersona={handle=>composerRef.current?.insertMention(handle)} plan={state.executionState.plan} approvePlan={approvePlan} openWorkspace={openWorkspace} planModeEnabled={planModeEnabled}/>
-          <Composer ref={composerRef} gateway={gateway} active={active} personas={personas} harnessCatalog={harnessCatalog} catalogReady={gateway.mode === "fake" || (!catalogLoading && !catalogError)} onSent={async()=>{await invalidateRooms()}} openWorkspace={openWorkspace} roomId={roomId} attachments={attachments.items} attachmentsBusy={attachments.busy} openAttachmentPicker={()=>setAttachmentPicker(true)} uploadFiles={files=>void attachments.uploadFiles(files)} removeAttachment={attachments.remove} retryAttachment={attachments.retry} clearAttachments={attachments.clear} executionState={state.executionState} updateExecutionProfile={updateExecutionProfile} approvePlan={approvePlan} clearApprovedPlan={clearApprovedPlan} planModeEnabled={planModeEnabled}/>
+          <Composer ref={composerRef} gateway={gateway} active={active} personas={personas} roomPersonas={roomPersonas} updateParticipantReasoning={updateParticipantReasoning} harnessCatalog={harnessCatalog} catalogReady={gateway.mode === "fake" || (!catalogLoading && !catalogError)} onSent={async()=>{await invalidateRooms()}} openWorkspace={openWorkspace} roomId={roomId} attachments={attachments.items} attachmentsBusy={attachments.busy} openAttachmentPicker={()=>setAttachmentPicker(true)} uploadFiles={files=>void attachments.uploadFiles(files)} removeAttachment={attachments.remove} retryAttachment={attachments.retry} clearAttachments={attachments.clear} executionState={state.executionState} approvePlan={approvePlan} clearApprovedPlan={clearApprovedPlan} planModeEnabled={planModeEnabled}/>
         </>:<div className={styles['empty-chat']}><div className={styles['empty-mobile-header']}><button type="button" aria-label="Open menu" onClick={()=>setMenu(true)}><Menu /></button><strong>agenvyl</strong></div><EmptyState icon={<MessageCircle />} title="No rooms" description="Create a room to start a conversation with agents." action={<Button variant="primary" icon={<Plus />} onClick={()=>setCreatingRoom(true)}>Create room</Button>} /></div>):<PersonasScreen
           personas={personaCatalog}
           harnessCatalog={harnessCatalog}
@@ -210,7 +214,7 @@ export function WorkspaceApp({
       <ArtifactsDrawer open={artifacts} close={() => setArtifacts(false)} roomId={roomId} fake={fake} onAttach={attachment=>attachments.addExisting([attachment])} focus={workspaceFocus} plan={state.executionState.plan} planModeEnabled={planModeEnabled}/>
       <AttachmentPicker open={attachmentPicker} roomId={roomId} selected={attachments.ready} onClose={()=>setAttachmentPicker(false)} onConfirm={attachments.replaceReady} onUpload={files=>void attachments.uploadFiles(files)}/>
       {creatingRoom&&<CreateRoomDialog personas={personaCatalog.filter(persona=>!persona.archived_at)} catalog={harnessCatalog} groups={groups} onClose={()=>setCreatingRoom(false)} onCreated={createRoom}/>}
-      {managingAgents&&currentRoom&&<RoomAgentManager personas={personaCatalog.filter(persona=>!persona.archived_at)} catalog={harnessCatalog} groups={groups} roomPersonas={personas} onClose={()=>setManagingAgents(false)} onSave={saveRoomAgents}/>}
+      {managingAgents&&currentRoom&&<RoomAgentManager personas={personaCatalog.filter(persona=>!persona.archived_at)} catalog={harnessCatalog} groups={groups} roomPersonas={roomPersonas} onUpdateReasoning={updateParticipantReasoning} onClose={()=>setManagingAgents(false)} onSave={saveRoomAgents}/>}
     </>
   );
 }

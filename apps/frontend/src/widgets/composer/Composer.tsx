@@ -6,10 +6,11 @@ import { FakeRoomGateway, type DemoKind, type RoomGateway } from '../../features
 import { activeMentionQuery, insertMentionAt, parseMentions, removeMentionTarget, type ComposerAttachment } from '../../features/send-message';
 import { ApiError } from '../../shared/api';
 import { Alert, Button, TextArea } from '../../shared/ui';
-import type {ExecutionIntent,RoomExecutionState,UpdateRoomExecutionProfileRequest} from '@agenvyl/contracts';
+import type {ExecutionIntent,RoomExecutionState,RoomPersona} from '@agenvyl/contracts';
 import type {WorkspaceFocus} from '../artifacts-drawer';
 import styles from './Composer.module.css';
 import {ImplementationHandoff,type ImplementationDraft} from './ImplementationHandoff';
+import {ReasoningEffortChip,roomPersonaModel,roomPersonaReasoning} from '../../features/reasoning-effort';
 
 function highlightMentions(text:string,personas:readonly Persona[]):ReactNode[] {
   const known=new Map(personas.map(persona=>[persona.handle.toLowerCase(),persona]));
@@ -32,6 +33,8 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   gateway,
   active,
   personas,
+  roomPersonas=personas.map(persona=>({persona,reasoning_effort_override:null})),
+  updateParticipantReasoning=async()=>{},
   harnessCatalog,
   catalogReady,
   onSent,
@@ -44,8 +47,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   removeAttachment,
   retryAttachment,
   clearAttachments,
-  executionState={profile:{reasoning_effort:null},plan:{path:'plan.md',current:null,approved:null}},
-  updateExecutionProfile=async()=>{},
+  executionState={plan:{path:'plan.md',current:null,approved:null}},
   approvePlan=async()=>{},
   clearApprovedPlan=async()=>{},
   planModeEnabled=true,
@@ -68,11 +70,10 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   );
   const highlightedText=useMemo(()=>highlightMentions(text,personas),[text,personas]);
   const byHandle = new Map(personas.map((p) => [p.handle, p]));
-  const effortOptions=useMemo(()=>[...new Set(harnessCatalog?.instances.flatMap(instance=>instance.models.flatMap(model=>model.reasoningEfforts??[]))??[])],[harnessCatalog]);
-  const updateProfile=async(patch:UpdateRoomExecutionProfileRequest)=>{try{setProfileError(undefined);await updateExecutionProfile(patch);return true;}catch(error){setProfileError(error instanceof Error?error.message:String(error));return false;}};
+  const participantsByHandle=new Map(roomPersonas.map(item=>[item.persona.handle,item]));
   const implementationTargets=useMemo(()=>personas.map(persona=>({handle:persona.handle,name:persona.name,detail:personaModelName(persona,harnessCatalog),color:persona.color})),[personas,harnessCatalog]);
   const startImplementation=async(draft:ImplementationDraft)=>{const approved=executionState.plan.approved;if(!catalogReady)throw new Error('Agent catalog is unavailable');if(!approved)throw new Error('The plan is no longer approved');await gateway.send(draft.text,draft.targets,draft.messageId,[],{kind:'implement',approved_plan_version_id:approved.version_id});await onSent();};
-  const targetExecutionPreview=useMemo(()=>targets.map(handle=>{const persona=byHandle.get(handle),instance=harnessCatalog?.instances.find(item=>item.id===persona?.harness_instance_id),model=instance?.models.find(item=>item.id===persona?.model_id),requested=executionState.profile.reasoning_effort,effective=requested===null?model?.defaultReasoningEffort??null:model?.reasoningEfforts?.includes(requested)?requested:model?.defaultReasoningEffort??null,fallback=requested!==null&&effective!==requested,native=instance?.controls.nativeWorkflowModes.includes('plan'),ceiling=!planning&&instance?.type==='antigravity'&&instance.controls.permissionProfiles[0]?.id==='plan';return{handle,mode:planning?(native?'Native Plan':'Instruction-only Plan'):ceiling?'Work · plan-only ceiling':'Work',effort:effective??'Auto',fallback};}),[targets,byHandle,harnessCatalog,executionState.profile,planning]);
+  const targetExecutionPreview=targets.map(handle=>{const participant=participantsByHandle.get(handle),persona=participant?.persona??byHandle.get(handle),instance=harnessCatalog?.instances.find(item=>item.id===persona?.harness_instance_id),model=participant?roomPersonaModel(participant,harnessCatalog):instance?.models.find(item=>item.id===persona?.model_id),reasoning=participant?roomPersonaReasoning(participant,model):{effective:model?.defaultReasoningEffort??null,fallback:false},native=instance?.controls.nativeWorkflowModes.includes('plan'),ceiling=!planning&&instance?.type==='antigravity'&&instance.controls.permissionProfiles[0]?.id==='plan';return{handle,mode:planning?(native?'Native Plan':'Instruction-only Plan'):ceiling?'Work · plan-only ceiling':'Work',effort:reasoning.effective??'Auto',fallback:reasoning.fallback};});
   const mentionCandidates=useMemo(()=>[
     {handle:'all',name:'All agents',detail:'Notify every participant',color:'#4f6ef7'},
     ...personas.map(persona=>({handle:persona.handle,name:persona.name,detail:personaModelName(persona,harnessCatalog),color:persona.color})),
@@ -143,7 +144,8 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
           <div className={styles.targets}>
             {targets.map((h) => {
               const p = byHandle.get(h)!;
-              return <button key={h} title={`Remove @${h}`} onClick={() => setText(value=>removeMentionTarget(value,h,personas))}><i style={{ background: p.color }}>{p.name[0]}</i><span>{p.name}</span><X /></button>;
+              const participant=participantsByHandle.get(h);
+              return <span className={styles['target-chip']} key={h}><button title={`Remove @${h}`} onClick={() => setText(value=>removeMentionTarget(value,h,personas))}><i style={{ background: p.color }}>{p.name[0]}</i><span>{p.name}</span><X /></button>{participant&&<ReasoningEffortChip participant={participant} catalog={harnessCatalog} onChange={value=>updateParticipantReasoning(participant.persona.id,value)}/>}</span>;
             })}
           </div>
           <div className={styles['target-preview']}>{targetExecutionPreview.map(item=><small key={item.handle}>@{item.handle}: {item.mode} · {item.effort}{item.fallback?' → fallback':''}</small>)}</div>
@@ -181,7 +183,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
           />
         </div>
         <footer>
-        <div className={styles['compose-tools']}>{planModeEnabled&&<Button className={`${styles['plan-button']} ${planning?styles['plan-button-active']:''}`} size="sm" variant="ghost" title="Use Plan for the next message" aria-pressed={planning} onClick={()=>setPlanning(value=>!value)} icon={<FileText/>}><span className={styles['action-label']}>{executionState.plan.current?'Update plan':'Create plan'}</span></Button>}<Button className={styles['attachment-button']} size="sm" variant="ghost" title="Attach files" aria-label="Attach files" disabled={attachments.length>=10} onClick={openAttachmentPicker} icon={attachmentsBusy?<LoaderCircle className={styles.spinning}/>:<Paperclip/>}><span className={styles['action-label']}>Attach</span></Button><Button className={styles['workspace-button']} size="sm" variant="ghost" title="Open room workspace" aria-label="Open room workspace" onClick={()=>openWorkspace()} icon={<FolderOpen />}><span className={styles['action-label']}>Workspace</span></Button><label className={styles['reasoning-control']}>Reasoning<select aria-label="Reasoning effort" value={executionState.profile.reasoning_effort??''} onChange={event=>void updateProfile({reasoning_effort:event.target.value||null})}><option value="">Auto</option>{effortOptions.map(effort=><option key={effort} value={effort}>{effort}</option>)}</select></label></div>
+        <div className={styles['compose-tools']}>{planModeEnabled&&<Button className={`${styles['plan-button']} ${planning?styles['plan-button-active']:''}`} size="sm" variant="ghost" title="Use Plan for the next message" aria-pressed={planning} onClick={()=>setPlanning(value=>!value)} icon={<FileText/>}><span className={styles['action-label']}>{executionState.plan.current?'Update plan':'Create plan'}</span></Button>}<Button className={styles['attachment-button']} size="sm" variant="ghost" title="Attach files" aria-label="Attach files" disabled={attachments.length>=10} onClick={openAttachmentPicker} icon={attachmentsBusy?<LoaderCircle className={styles.spinning}/>:<Paperclip/>}><span className={styles['action-label']}>Attach</span></Button><Button className={styles['workspace-button']} size="sm" variant="ghost" title="Open room workspace" aria-label="Open room workspace" onClick={()=>openWorkspace()} icon={<FolderOpen />}><span className={styles['action-label']}>Workspace</span></Button></div>
         <small>{!catalogReady?'Agent catalog unavailable':planning&&targets.length!==1?'Plan needs exactly one responder':targets.length?`${targets.length} ${targets.length===1?'responder':'responders'} · ${text.length} / 4000`:`No responders · posts to room · ${text.length} / 4000`}</small>
         <Button
           className={styles.send}
@@ -203,6 +205,8 @@ type ComposerProps={
   gateway: RoomGateway;
   active: number;
   personas: Persona[];
+  roomPersonas?:RoomPersona[];
+  updateParticipantReasoning?:(personaId:string,value:string|null)=>Promise<unknown>;
   harnessCatalog?:HarnessCatalog;
   catalogReady: boolean;
   onSent:()=>Promise<void>;
@@ -216,7 +220,6 @@ type ComposerProps={
   retryAttachment:(id:string)=>void;
   clearAttachments:()=>void;
   executionState?:RoomExecutionState;
-  updateExecutionProfile?:(profile:UpdateRoomExecutionProfileRequest)=>Promise<unknown>;
   approvePlan?:(versionId:string)=>Promise<unknown>;
   clearApprovedPlan?:()=>Promise<unknown>;
   planModeEnabled?:boolean;

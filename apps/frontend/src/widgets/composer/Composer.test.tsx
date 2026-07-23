@@ -7,7 +7,7 @@ import type {Persona} from '../../entities/persona';
 import type {RoomGateway} from '../../features/room-session';
 import {Composer} from './Composer';
 
-const persona:Persona={id:'coder',handle:'coder',name:'Coder',role:'Implementation',color:'#64748b',requested_model:'anthropic/claude-sonnet',harness_instance_id:'local-opencode',harness_type:'opencode',model_id:'anthropic/claude-sonnet',permission_profile_id:null,agent_variant_id:null,group_id:null,archived_at:null};
+const persona:Persona={id:'coder',handle:'coder',name:'Coder',role:'Implementation',color:'#64748b',requested_model:'anthropic/claude-sonnet',harness_instance_id:'local-opencode',harness_type:'opencode',model_id:'anthropic/claude-sonnet',permission_profile_id:null,agent_variant_id:null,default_reasoning_effort:null,group_id:null,archived_at:null};
 const catalog:HarnessCatalog={connectorEpoch:'epoch',instances:[{id:'local-opencode',type:'opencode',status:'healthy',capabilities:[],models:[{id:'anthropic/claude-sonnet',label:'Claude Sonnet'}],controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[],agentVariants:[]}}]};
 const gateway:RoomGateway={mode:'fake',subscribe:vi.fn(()=>vi.fn()),send:vi.fn(),resolve:vi.fn(),cancel:vi.fn(),retry:vi.fn(),select:vi.fn(),dispose:vi.fn()};
 const sentMessage={id:'message-1',text:'',createdAt:'2026-07-22T00:00:00.000Z',targets:[],runIds:[],author:{profileId:'local-user',displayName:'User',handle:'user'},addressedToAll:false};
@@ -27,7 +27,7 @@ describe('Composer agent list',()=>{
   it('uses one-shot Plan for a slash command and sends the cleaned message',async()=>{
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
     const send=vi.fn<RoomGateway['send']>().mockResolvedValue(sentMessage),updateExecutionProfile=vi.fn(async()=>undefined),localGateway={...gateway,send};
-    render(<Composer gateway={localGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} updateExecutionProfile={updateExecutionProfile}/>);
+    render(<Composer gateway={localGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()}/>);
     const editor=screen.getByPlaceholderText('Message… Use @handle or @all');
     fireEvent.change(editor,{target:{value:'/plan @coder inspect'}});fireEvent.keyDown(editor,{key:'Enter'});
     await waitFor(()=>expect(send).toHaveBeenCalled());
@@ -39,7 +39,7 @@ describe('Composer agent list',()=>{
   it('arms Plan only for the next message',async()=>{
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
     const send=vi.fn<RoomGateway['send']>().mockResolvedValue(sentMessage),updateExecutionProfile=vi.fn(async()=>undefined),localGateway={...gateway,send};
-    render(<Composer gateway={localGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} updateExecutionProfile={updateExecutionProfile}/>);
+    render(<Composer gateway={localGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()}/>);
     fireEvent.click(screen.getByRole('button',{name:'Create plan'}));
     expect(screen.getByRole('button',{name:'Create plan'}).getAttribute('aria-pressed')).toBe('true');
     expect(send).not.toHaveBeenCalled();
@@ -49,7 +49,7 @@ describe('Composer agent list',()=>{
   it('selects implementers and snapshots the approved plan',async()=>{
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
     const send=vi.fn<RoomGateway['send']>().mockResolvedValue(sentMessage),updateExecutionProfile=vi.fn(async()=>undefined),onSent=vi.fn(async()=>undefined),localGateway={...gateway,send};
-    render(<Composer gateway={localGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={onSent} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} updateExecutionProfile={updateExecutionProfile} executionState={{profile:{reasoning_effort:null},plan:{path:'plan.md',current:{entry_id:'plan-entry',version_id:'plan-version'},approved:{entry_id:'plan-entry',version_id:'plan-version'}}}}/>);
+    render(<Composer gateway={localGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={onSent} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} executionState={{plan:{path:'plan.md',current:{entry_id:'plan-entry',version_id:'plan-version'},approved:{entry_id:'plan-entry',version_id:'plan-version'}}}}/>);
     fireEvent.click(screen.getByRole('button',{name:'Implement…'}));
     expect(screen.getByText('Who should implement?')).toBeTruthy();
     expect((screen.getByRole('checkbox',{name:/Coder/}) as HTMLInputElement).checked).toBe(true);
@@ -68,7 +68,7 @@ describe('Composer agent list',()=>{
 
   it('shows pending plan changes while keeping the approved version executable',()=>{
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));const openWorkspace=vi.fn(),approvePlan=vi.fn(async()=>undefined);
-    render(<Composer gateway={gateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={openWorkspace} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} approvePlan={approvePlan} executionState={{profile:{reasoning_effort:null},plan:{path:'plan.md',current:{entry_id:'plan-entry',version_id:'current-version'},approved:{entry_id:'plan-entry',version_id:'approved-version'}}}}/>);
+    render(<Composer gateway={gateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={openWorkspace} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} approvePlan={approvePlan} executionState={{plan:{path:'plan.md',current:{entry_id:'plan-entry',version_id:'current-version'},approved:{entry_id:'plan-entry',version_id:'approved-version'}}}}/>);
     fireEvent.click(screen.getByRole('button',{name:/Changes pending/}));expect(openWorkspace).toHaveBeenLastCalledWith({entryId:'plan-entry',versionId:'approved-version'});
     fireEvent.click(screen.getByRole('button',{name:'Open changes'}));expect(openWorkspace).toHaveBeenLastCalledWith({entryId:'plan-entry',versionId:'current-version'});
     fireEvent.click(screen.getByRole('button',{name:'Re-approve'}));expect(approvePlan).toHaveBeenCalledWith('current-version');expect(screen.getByRole('button',{name:'Implement…'})).toBeTruthy();
@@ -77,7 +77,7 @@ describe('Composer agent list',()=>{
   it('hides Plan controls and sends /plan as ordinary Work text when disabled',async()=>{
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
     const send=vi.fn<RoomGateway['send']>().mockResolvedValue(sentMessage),localGateway={...gateway,send};
-    render(<Composer gateway={localGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} planModeEnabled={false} executionState={{profile:{reasoning_effort:null},plan:{path:'plan.md',current:{entry_id:'plan-entry',version_id:'plan-version'},approved:{entry_id:'plan-entry',version_id:'plan-version'}}}}/>);
+    render(<Composer gateway={localGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} planModeEnabled={false} executionState={{plan:{path:'plan.md',current:{entry_id:'plan-entry',version_id:'plan-version'},approved:{entry_id:'plan-entry',version_id:'plan-version'}}}}/>);
     expect(screen.queryByRole('button',{name:'Update plan'})).toBeNull();
     expect(screen.queryByRole('button',{name:'Implement…'})).toBeNull();
     const editor=screen.getByPlaceholderText('Message… Use @handle or @all');

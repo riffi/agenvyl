@@ -2686,3 +2686,4 @@
     grid-row: 1 / span 2;
   }
 }
+.field-error{color:#b45309;font-size:10px;font-weight:600}

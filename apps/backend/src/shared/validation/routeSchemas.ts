@@ -26,13 +26,12 @@ export const createRoomBodySchema = objectSchema({
 
 export const renameRoomBodySchema = objectSchema({ title: { type: 'string' } });
 const workflowModeSchema={type:'string',enum:['plan','work']} as const;
-export const roomExecutionProfileBodySchema={type:'object',additionalProperties:false,minProperties:1,properties:{reasoning_effort:nullableStringSchema,workflow_mode:{not:{}}}} as const;
+export const updateRoomPersonaBodySchema=objectSchema({reasoning_effort_override:nullableStringSchema},['reasoning_effort_override']);
 export const approvePlanBodySchema=objectSchema({version_id:{type:'string'}},['version_id']);
 export const updatePlanBodySchema=objectSchema({content:{type:'string',minLength:1},expected_version_id:{type:'string'}},['content','expected_version_id']);
-const roomExecutionProfileResponseSchema=objectSchema({reasoning_effort:nullableStringSchema},['reasoning_effort']);
 const planVersionRefSchema=objectSchema({entry_id:{type:'string'},version_id:{type:'string'}},['entry_id','version_id']);
 const roomPlanStateSchema=objectSchema({path:{type:'string',const:'plan.md'},current:{anyOf:[{type:'null'},planVersionRefSchema]},approved:{anyOf:[{type:'null'},planVersionRefSchema]}},['path','current','approved']);
-export const roomExecutionStateResponseSchema=objectSchema({profile:roomExecutionProfileResponseSchema,plan:roomPlanStateSchema},['profile','plan']);
+export const roomExecutionStateResponseSchema=objectSchema({plan:roomPlanStateSchema},['plan']);
 
 export const createPersonaBodySchema = objectSchema({
   handle: { type: 'string' },
@@ -45,6 +44,7 @@ export const createPersonaBodySchema = objectSchema({
   model_id: { type: 'string' },
   permission_profile_id: nullableStringSchema,
   agent_variant_id: nullableStringSchema,
+  default_reasoning_effort: nullableStringSchema,
   system_prompt: { type: 'string' },
   group_id: nullableStringSchema,
 });
@@ -88,10 +88,12 @@ export const personaGroupResponseSchema=objectSchema({
 export const personaResponseSchema=objectSchema({
   id:{type:'string'},handle:{type:'string'},name:{type:'string'},role:{type:'string'},color:{type:'string'},
   requested_model:nullableStringSchema,effective_model:nullableStringSchema,
-  harness_instance_id:{type:'string'},harness_type:{type:'string'},model_id:{type:'string'},permission_profile_id:nullableStringSchema,agent_variant_id:nullableStringSchema,
+  harness_instance_id:{type:'string'},harness_type:{type:'string'},model_id:{type:'string'},permission_profile_id:nullableStringSchema,agent_variant_id:nullableStringSchema,default_reasoning_effort:nullableStringSchema,
   current_version_id:{type:'string'},system_prompt:{type:'string'},group_id:nullableStringSchema,
   created_at:{type:'string'},updated_at:{type:'string'},archived_at:nullableStringSchema,
-},['id','handle','name','role','color','requested_model','harness_instance_id','harness_type','model_id','permission_profile_id','agent_variant_id','group_id','archived_at']);
+},['id','handle','name','role','color','requested_model','harness_instance_id','harness_type','model_id','permission_profile_id','agent_variant_id','default_reasoning_effort','group_id','archived_at']);
+export const roomPersonaResponseSchema=objectSchema({persona:personaResponseSchema,reasoning_effort_override:nullableStringSchema},['persona','reasoning_effort_override']);
+export const participantListResponseSchema={type:'array',items:roomPersonaResponseSchema} as const;
 
 export const messageResponseSchema=objectSchema({
   id:{type:'string'},text:{type:'string'},createdAt:{type:'string'},targets:{type:'array',items:{type:'string'}},runIds:{type:'array',items:{type:'string'}},attachments:{type:'array'},author:objectSchema({profileId:{type:'string'},displayName:{type:'string'},handle:{type:'string'}},['profileId','displayName','handle']),addressedToAll:{type:'boolean'},
@@ -103,7 +105,7 @@ const connectorRunStateResponseSchema=objectSchema({state:{type:'string',enum:['
 const structuredQuestionOptionResponseSchema=objectSchema({label:{type:'string'},description:{type:'string'}},['label']);
 const structuredQuestionResponseSchema=objectSchema({id:{type:'string'},header:{type:'string'},question:{type:'string'},options:{type:'array',items:structuredQuestionOptionResponseSchema},isOther:{type:'boolean'},isSecret:{type:'boolean'},multiSelect:{type:'boolean'}},['id','header','question','isOther','isSecret']);
 const runRequestResponseSchema=objectSchema({kind:{type:'string',enum:['approval','clarification']},prompt:{type:'string'},choices:{type:'array',items:{type:'string'}},questions:{type:'array',items:structuredQuestionResponseSchema,maxItems:4},autoResolutionMs:{type:'integer'},resolved:{type:'string'}},['kind','prompt']);
-const runExecutionProfileResponseSchema=objectSchema({workflowMode:workflowModeSchema,requestedReasoningEffort:nullableStringSchema,reasoningEffort:nullableStringSchema,reasoningEffortFallback:{type:'boolean'},planEnforcement:{anyOf:[{type:'null'},{type:'string',enum:['native','instruction_only']}]},permissionProfileId:nullableStringSchema,agentVariantId:nullableStringSchema,implementationPlanVersionId:nullableStringSchema},['workflowMode','requestedReasoningEffort','reasoningEffort','reasoningEffortFallback','planEnforcement','permissionProfileId','agentVariantId','implementationPlanVersionId']);
+const runExecutionProfileResponseSchema=objectSchema({workflowMode:workflowModeSchema,requestedReasoningEffort:nullableStringSchema,reasoningEffort:nullableStringSchema,reasoningEffortFallback:{type:'boolean'},reasoningEffortSource:{type:'string',enum:['room_override','persona_default','model_default','auto']},planEnforcement:{anyOf:[{type:'null'},{type:'string',enum:['native','instruction_only']}]},permissionProfileId:nullableStringSchema,agentVariantId:nullableStringSchema,implementationPlanVersionId:nullableStringSchema},['workflowMode','requestedReasoningEffort','reasoningEffort','reasoningEffortFallback','reasoningEffortSource','planEnforcement','permissionProfileId','agentVariantId','implementationPlanVersionId']);
 const timelineRunResponseSchema=objectSchema({
   id:{type:'string'},messageId:{type:'string'},agent:{type:'string'},requestedModel:{type:'string'},harnessInstanceId:{type:'string'},harnessType:{type:'string'},modelId:{type:'string'},executionProfile:runExecutionProfileResponseSchema,status:{type:'string'},upstreamStatus:upstreamStatusResponseSchema,connector:connectorRunStateResponseSchema,usage:{type:'object',additionalProperties:false,required:['inputTokens','outputTokens'],properties:{inputTokens:{type:'integer',minimum:0},outputTokens:{type:'integer',minimum:0},totalTokens:{type:'integer',minimum:0},reasoningTokens:{type:'integer',minimum:0},cacheReadTokens:{type:'integer',minimum:0},cacheWriteTokens:{type:'integer',minimum:0}}},text:{type:'string'},reasoning:{type:'string'},tools:{type:'array',items:toolActivityResponseSchema},retryOfRunId:{type:'string'},responseSlotId:{type:'string'},attemptNumber:{type:'integer',minimum:1},request:runRequestResponseSchema,error:{type:'string'},errorCode:{type:'string'},artifacts:{type:'array'},embeds:{type:'array'},
 },['id','messageId','agent','harnessInstanceId','harnessType','modelId','executionProfile','status','text','tools']);

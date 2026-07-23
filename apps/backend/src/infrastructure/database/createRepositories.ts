@@ -13,7 +13,7 @@ export async function createRepositories(databaseUrl:string,options:{legacySeed?
   if(options.legacySeed??process.env.NODE_ENV==='test'){const{seedLegacyTestDatabase}=await import('../../test/legacySeed.js');await seedLegacyTestDatabase(database);}
   const personas=new PersonaRepository(database);
   const roomEvents=new RoomEventRepository(database);
-  const workspace=new WorkspaceRepository(database),rooms=new RoomRepository(database,personas,workspace);
+  const workspace=new WorkspaceRepository(database),rooms=new RoomRepository(database,personas,workspace,roomEvents);
   const userProfile=new UserProfileRepository(database);
   return{database,personas,userProfile,personaGroups:new PersonaGroupRepository(database),rooms,messages:new MessageRepository(database,personas,userProfile,roomEvents,workspace),runs:new RunRepository(database,roomEvents),roomEvents,workspace};
 }

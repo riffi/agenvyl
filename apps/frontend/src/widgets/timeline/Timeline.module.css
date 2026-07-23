@@ -111,7 +111,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.profile-badge{display:inline-flex;width:max-content;margin-top:3px;padding:2px 5px;border:1px solid #e2e8f0;border-radius:5px;background:#f8fafc;color:#64748b;font-size:8px;font-weight:600;letter-spacing:.02em}.approved-action{color:#15803d!important}.approved-action svg{color:#16a34a!important}
+.approved-action{color:#15803d!important}.approved-action svg{color:#16a34a!important}
 .run-name {
   display: flex;
   min-width: 0;
@@ -129,6 +129,35 @@
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.model-meta {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 6px;
+}
+.model-meta .model-label {
+  flex: 0 1 auto;
+}
+.reasoning-level {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  padding-left: 13px;
+  color: #64748b;
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.reasoning-level svg {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 10px;
+  height: 10px;
+  color: #94a3b8;
+  stroke-width: 1.8;
+  transform: translateY(-50%);
 }
 .run-header-actions {
   display: flex;

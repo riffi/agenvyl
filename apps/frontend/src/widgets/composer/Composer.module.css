@@ -114,7 +114,8 @@
   flex-wrap: wrap;
   min-width: 0;
 }
-.targets button {
+.target-chip{display:inline-flex;align-items:center;gap:3px}
+.target-chip>button {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -124,7 +125,7 @@
   font-size: 10px;
   padding: 3px 6px 3px 4px;
 }
-.targets button i {
+.target-chip>button i {
   display: inline-grid;
   place-items: center;
   color: white;
@@ -133,7 +134,7 @@
   border-radius: 50%;
   font-style: normal;
 }
-.targets button svg { width: 11px; height: 11px; color: var(--muted); }
+.target-chip>button svg { width: 11px; height: 11px; color: var(--muted); }
 .targets em {
   overflow: hidden;
   color: #94a3b8;
@@ -211,14 +212,14 @@
   scrollbar-width:none;
 }
 .targets::-webkit-scrollbar { display:none; }
-.targets button {
+.target-chip>button {
   min-height:34px;
   flex:none;
   padding:5px 9px 5px 5px;
   font-size:12px;
 }
-.targets button i { width:22px;height:22px; }
-.targets button svg { width:14px;height:14px; }
+.target-chip>button i { width:22px;height:22px; }
+.target-chip>button svg { width:14px;height:14px; }
 .targets em { min-width:0; }
 .target-preview{display:none}.approved-plan{margin:6px 8px;align-items:flex-start}.approved-plan small{max-width:42vw}.approved-plan>div{flex-wrap:wrap;justify-content:flex-end}.approved-plan .start-implementation{width:100%}.implementation-handoff{margin:0 8px 6px}.implementation-targets{grid-template-columns:1fr}.implementation-handoff>footer{justify-content:stretch}.implementation-handoff>footer button{flex:1}
 .editor-wrap { min-width:0; }

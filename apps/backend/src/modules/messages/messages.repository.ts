@@ -11,7 +11,10 @@ import type {
 } from "../../types.js";
 import type { PersonaRepository } from "../personas/personas.repository.js";
 import type { RoomEventRepository } from "../room-events/roomEvents.repository.js";
-import { toMessage } from "../../infrastructure/database/rowMappers.js";
+import {
+  toMessage,
+  toPersona,
+} from "../../infrastructure/database/rowMappers.js";
 import type {
   WorkspaceRepository,
   WorkspaceVersionRow,
@@ -44,7 +47,13 @@ export class MessageRepository {
     roomId: string,
     text: string,
     targetPersonas: Persona[],
-    executionProfiles: ReadonlyMap<string, RunExecutionProfileSnapshot>,
+    resolveProfile:
+      | ((input: {
+          persona: Persona;
+          version: PersonaVersion;
+          roomOverride: string | null;
+        }) => RunExecutionProfileSnapshot)
+      | ReadonlyMap<string, RunExecutionProfileSnapshot>,
     requestedId?: string,
     attachmentVersionIds: string[] = [],
     addressedToAll = false,
@@ -104,8 +113,31 @@ export class MessageRepository {
         history: ConversationItem[];
         executionProfile: RunExecutionProfileSnapshot;
       }> = [];
+      const targetIds = targetPersonas.map((persona) => persona.id);
+      const personaRows = targetIds.length
+        ? await tx`SELECT * FROM personas WHERE id=ANY(${targetIds}) ORDER BY id FOR UPDATE`
+        : [];
+      const participantRows = targetIds.length
+        ? await tx`SELECT persona_id,reasoning_effort_override FROM room_participants WHERE room_id=${roomId} AND persona_id=ANY(${targetIds}) ORDER BY persona_id FOR UPDATE`
+        : [];
+      const currentPersonas = new Map(
+        personaRows.map((row) => {
+          const persona = toPersona(row);
+          return [persona.id, persona] as const;
+        }),
+      );
+      const participantOverrides = new Map(
+        participantRows.map((row) => [
+          String(row.persona_id),
+          typeof row.reasoning_effort_override === "string"
+            ? row.reasoning_effort_override
+            : null,
+        ]),
+      );
       for (const p of targetPersonas) {
-        const current = await this.personas.find(p.id, tx);
+        if (!participantOverrides.has(p.id))
+          throw new Error("persona_unavailable");
+        const current = currentPersonas.get(p.id);
         if (!current || current.archived_at)
           throw new Error("persona_unavailable");
         const version = await this.personas.version(
@@ -113,7 +145,14 @@ export class MessageRepository {
           tx,
         );
         if (!version?.requested_model) throw new Error("persona_model_missing");
-        const executionProfile = executionProfiles.get(p.id);
+        const executionProfile =
+          typeof resolveProfile === "function"
+            ? resolveProfile({
+                persona: current,
+                version,
+                roomOverride: participantOverrides.get(p.id) ?? null,
+              })
+            : resolveProfile.get(p.id);
         if (!executionProfile) throw new Error("execution_profile_missing");
         snapshots.push({
           persona: current,
@@ -311,4 +350,11 @@ function attachment(version: WorkspaceVersionRow) {
     preview_url: `/api/v1/rooms/${encodeURIComponent(version.room_id)}/workspace/versions/${version.id}/preview`,
   };
 }
-function stripLegacyWorkspaceManifest(value: string) { return value.replace(/\n\nЗафиксированные inline-изображения ответа:\n(?:- [^\n]*(?:\n|$))+/giu, "").trimEnd(); }
+function stripLegacyWorkspaceManifest(value: string) {
+  return value
+    .replace(
+      /\n\nЗафиксированные inline-изображения ответа:\n(?:- [^\n]*(?:\n|$))+/giu,
+      "",
+    )
+    .trimEnd();
+}

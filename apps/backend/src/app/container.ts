@@ -39,7 +39,7 @@ export async function createAppContainer(config: AppConfig, fetchImplementation?
     dependencyHealth:connectorRuns,
     activeRuns,
     runExecutor,
-    roomsService:new RoomsService(rooms,roomWorkspace,events,config.planModeEnabled),
+    roomsService:new RoomsService(rooms,roomWorkspace,events,config.planModeEnabled,harnessCatalogService),
     personasService:new PersonasService(personas,rooms,harnessCatalogService),
     userProfileService:new UserProfileService(userProfile),
     personaGroupsService:new PersonaGroupsService(personaGroups),

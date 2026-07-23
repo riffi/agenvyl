@@ -29,6 +29,7 @@ export const personaDraftValue = (persona?: Persona) => persona ? JSON.stringify
   model_id: persona.model_id,
   permission_profile_id: persona.permission_profile_id ?? null,
   agent_variant_id: persona.agent_variant_id ?? null,
+  default_reasoning_effort: persona.default_reasoning_effort ?? null,
   system_prompt: persona.system_prompt ?? '',
   group_id: persona.group_id ?? null,
 }) : '';
@@ -44,7 +45,7 @@ export const firstRunnableHarness = (catalog?: HarnessCatalog) =>
 
 export const newPersonaDraft = (catalog?: HarnessCatalog): Persona => {
   const instance=firstRunnableHarness(catalog),model=instance?.models[0];
-  return {id:'',handle:'',name:'',role:'',color:'#64748b',requested_model:model?.id??null,harness_instance_id:instance?.id??'',harness_type:instance?.type??'',model_id:model?.id??'',permission_profile_id:instance?.controls.permissionProfiles[0]?.id??null,agent_variant_id:instance?.controls.agentVariants[0]?.id??null,system_prompt:'',group_id:null,archived_at:null};
+  return {id:'',handle:'',name:'',role:'',color:'#64748b',requested_model:model?.id??null,harness_instance_id:instance?.id??'',harness_type:instance?.type??'',model_id:model?.id??'',permission_profile_id:instance?.controls.permissionProfiles[0]?.id??null,agent_variant_id:instance?.controls.agentVariants[0]?.id??null,default_reasoning_effort:null,system_prompt:'',group_id:null,archived_at:null};
 };
 
 export const selectHarnessInstance = (draft: Persona, instance: HarnessInstance): Persona => {
@@ -64,6 +65,7 @@ export const personaInputFromDraft = (draft: Persona): PersonaInput => ({
   model_id: draft.model_id,
   permission_profile_id: draft.permission_profile_id,
   agent_variant_id: draft.agent_variant_id,
+  default_reasoning_effort: draft.default_reasoning_effort,
   system_prompt: draft.system_prompt??'',
   group_id: draft.group_id||null,
 });

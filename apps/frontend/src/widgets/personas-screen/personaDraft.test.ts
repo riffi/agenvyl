@@ -3,7 +3,7 @@ import type {Persona} from '../../entities/persona';
 import type {HarnessCatalog} from '../../entities/harness';
 import {isPersonaDraftDirty,newPersonaDraft,personaHandleAfterNameChange,personaHandleFromName,personaInputFromDraft,personaSaveAvailable,selectHarnessInstance,selectHarnessModel} from './personaDraft';
 
-const persona:Persona={id:'persona-1',handle:'architect',name:'Architect',role:'Архитектура',color:'#64748b',requested_model:'sol',harness_instance_id:'local-hermes',harness_type:'hermes',model_id:'sol',permission_profile_id:null,agent_variant_id:null,system_prompt:'Проектируй',group_id:null,archived_at:null};
+const persona:Persona={id:'persona-1',handle:'architect',name:'Architect',role:'Архитектура',color:'#64748b',requested_model:'sol',harness_instance_id:'local-hermes',harness_type:'hermes',model_id:'sol',permission_profile_id:null,agent_variant_id:null,default_reasoning_effort:null,system_prompt:'Проектируй',group_id:null,archived_at:null};
 const controls=(permissions:string[]=[],variants:string[]=[])=>({nativeWorkflowModes:[] as Array<'plan'|'work'>,permissionProfiles:permissions.map(id=>({id})),agentVariants:variants.map(id=>({id}))});
 const catalog:HarnessCatalog={connectorEpoch:'epoch-1',instances:[
   {id:'local-hermes',type:'hermes',status:'healthy',capabilities:['model_catalog'],models:[{id:'sol',label:'Sonnet'}],controls:controls()},

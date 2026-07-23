@@ -11,7 +11,7 @@ import type { ApprovalChoice,RunEventMapping,RunEventStream,RunGateway,RunRecove
 import {ConnectorRunAdapter} from '../../integrations/connector/ConnectorRunAdapter.js';
 import {connectorContractFixtures,type ConnectorExecutionEvent} from '@agenvyl/connector-contract';
 
-const workProfile={workflowMode:'work' as const,requestedReasoningEffort:null,reasoningEffort:null,reasoningEffortFallback:false,planEnforcement:null,permissionProfileId:null,agentVariantId:null,implementationPlanVersionId:null};
+const workProfile={workflowMode:'work' as const,requestedReasoningEffort:null,reasoningEffort:null,reasoningEffortFallback:false,reasoningEffortSource:'auto',planEnforcement:null,permissionProfileId:null,agentVariantId:null,implementationPlanVersionId:null};
 const profiles=(personas:Array<{id:string}>)=>new Map(personas.map(persona=>[persona.id,workProfile]));
 
 describe('RunExecutor', () => {

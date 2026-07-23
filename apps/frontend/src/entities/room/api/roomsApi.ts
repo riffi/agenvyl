@@ -1,5 +1,5 @@
 import type { Room,TimelinePage } from '../model';
-import type {RoomExecutionState,RoomWorkspace,UpdatePlanResponse,UpdateRoomExecutionProfileRequest,WorkspaceEntry,WorkspaceVersion} from '@agenvyl/contracts';
+import type {RoomExecutionState,RoomPersona,RoomWorkspace,UpdatePlanResponse,UpdateRoomPersonaRequest,WorkspaceEntry,WorkspaceVersion} from '@agenvyl/contracts';
 import { apiRequest } from '../../../shared/api';
 
 export const roomKeys = { all: ['rooms'] as const };
@@ -15,8 +15,9 @@ export const roomsApi = {
   purge:(roomId:string)=>apiRequest(`/api/v1/rooms/${encodeURIComponent(roomId)}?permanent=true`,{method:'DELETE'}),
   addParticipant: (roomId: string, personaId: string) => apiRequest(`/api/v1/rooms/${encodeURIComponent(roomId)}/participants/${encodeURIComponent(personaId)}`, { method: 'PUT' }),
   removeParticipant: (roomId: string, personaId: string) => apiRequest(`/api/v1/rooms/${encodeURIComponent(roomId)}/participants/${encodeURIComponent(personaId)}`, { method: 'DELETE' }),
+  participants:(roomId:string,signal?:AbortSignal)=>apiRequest<RoomPersona[]>(`/api/v1/rooms/${encodeURIComponent(roomId)}/participants`,{signal}),
+  updateParticipant:(roomId:string,personaId:string,input:UpdateRoomPersonaRequest)=>apiRequest<RoomPersona>(`/api/v1/rooms/${encodeURIComponent(roomId)}/participants/${encodeURIComponent(personaId)}`,{method:'PATCH',body:input}),
   executionState:(roomId:string,signal?:AbortSignal)=>apiRequest<RoomExecutionState>(`/api/v1/rooms/${encodeURIComponent(roomId)}/execution-state`,{signal}),
-  updateExecutionProfile:(roomId:string,profile:UpdateRoomExecutionProfileRequest)=>apiRequest<RoomExecutionState>(`/api/v1/rooms/${encodeURIComponent(roomId)}/execution-profile`,{method:'PATCH',body:profile}),
   approvePlan:(roomId:string,versionId:string)=>apiRequest<RoomExecutionState>(`/api/v1/rooms/${encodeURIComponent(roomId)}/approved-plan`,{method:'PUT',body:{version_id:versionId}}),
   clearApprovedPlan:(roomId:string)=>apiRequest<RoomExecutionState>(`/api/v1/rooms/${encodeURIComponent(roomId)}/approved-plan`,{method:'DELETE'}),
   updatePlan:(roomId:string,content:string,expectedVersionId:string)=>apiRequest<UpdatePlanResponse>(`/api/v1/rooms/${encodeURIComponent(roomId)}/plan`,{method:'PUT',body:{content,expected_version_id:expectedVersionId}}),

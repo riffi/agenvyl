@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Ban, ChevronDown, ChevronUp, CircleCheck, CircleHelp, CircleX, Clock3, File, FoldVertical, Info, LoaderCircle, Paperclip, RotateCcw, Square, TriangleAlert, UnfoldVertical, Wrench, BadgeCheck } from 'lucide-react';
+import { Ban, Brain, ChevronDown, ChevronUp, CircleCheck, CircleHelp, CircleX, Clock3, File, FoldVertical, Info, LoaderCircle, Paperclip, RotateCcw, Square, TriangleAlert, UnfoldVertical, Wrench, BadgeCheck } from 'lucide-react';
 import type {RoomPlanState,UpstreamStatus} from '@agenvyl/contracts';
 import type {WorkspaceFocus} from '../artifacts-drawer';
 import {HarnessIcon,type HarnessCatalog} from '../../entities/harness';
@@ -64,7 +64,7 @@ function fullModelName(run:Run,persona:Persona,catalog:HarnessCatalog|undefined)
 }
 
 const unknownPersona = (handle: string): Persona => ({
-  id: '', handle, name: `@${handle}`, role: 'Agent unavailable', color: '#64748b', requested_model: null, harness_instance_id:'unknown',harness_type:'unknown',model_id:'unknown',permission_profile_id:null,agent_variant_id:null,group_id:null, archived_at: null,
+  id: '', handle, name: `@${handle}`, role: 'Agent unavailable', color: '#64748b', requested_model: null, harness_instance_id:'unknown',harness_type:'unknown',model_id:'unknown',permission_profile_id:null,agent_variant_id:null,default_reasoning_effort:null,group_id:null, archived_at: null,
 });
 
 export function UpstreamStatusNotice({status}:{status:UpstreamStatus}) {
@@ -144,8 +144,10 @@ function RunCard({
               <strong style={{ color: persona.color }}>{persona.name}</strong>
               <HarnessIcon type={run.harnessType}/>
             </span>
-            <small className={styles['model-label']} title={fullModelName(run,persona,harnessCatalog)}>{modelName(run,persona,harnessCatalog)}</small>
-            <small className={styles['profile-badge']}>{run.executionProfile.workflowMode==='plan'?`Plan · ${run.executionProfile.planEnforcement==='native'?'Native':'Instruction only'}`:run.harnessType==='antigravity'&&run.executionProfile.permissionProfileId==='plan'?'Work · plan-only ceiling':'Work'}{run.executionProfile.reasoningEffort?` · ${run.executionProfile.reasoningEffort}`:''}{run.executionProfile.reasoningEffortFallback?' ↘ fallback':''}</small>
+            <span className={styles['model-meta']}>
+              <small className={styles['model-label']} title={fullModelName(run,persona,harnessCatalog)}>{modelName(run,persona,harnessCatalog)}</small>
+              <small className={styles['reasoning-level']} aria-label={`Reasoning effort: ${run.executionProfile.reasoningEffort??'Auto'}`} title={`Reasoning: ${run.executionProfile.reasoningEffort??'Auto'} · ${run.executionProfile.reasoningEffortSource.replaceAll('_',' ')}${run.executionProfile.reasoningEffortFallback?` · fallback from ${run.executionProfile.requestedReasoningEffort}`:''}`}><Brain/><span>{run.executionProfile.reasoningEffort??'Auto'}</span></small>
+            </span>
           </span>
           <span className={styles['run-header-actions']}>
             <StatusIcon status={run.status}/>

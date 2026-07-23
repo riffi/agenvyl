@@ -10,8 +10,9 @@
 .groupToggle svg { width:14px;height:14px;flex:none;color:#94a3b8;transition:transform .15s ease; }
 .groupToggle svg.expanded { transform:rotate(90deg); }
 .groupToggle strong { min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
-.agentOptions label { display:flex;min-width:0;max-width:100%;align-items:center;gap:11px;padding:9px;border:1px solid transparent;border-radius:8px;cursor:pointer; }
-.agentOptions label:hover { border-color:var(--border);background:#f8fafc; }
+.agentRow{display:flex;min-width:0;align-items:center;gap:8px;padding-right:8px;border:1px solid transparent;border-radius:8px}
+.agentOptions label { display:flex;min-width:0;max-width:100%;flex:1;align-items:center;gap:11px;padding:9px;border:0;border-radius:8px;cursor:pointer; }
+.agentRow:hover { border-color:var(--border);background:#f8fafc; }
 .agentOptions label.selected,.selected { border-color:#a5b4fc;background:#eef2ff; }
 .agentOptions input { flex:none;accent-color:var(--primary); }
 .agentIdentity { display:flex;min-width:0;flex:1;flex-direction:column; }
