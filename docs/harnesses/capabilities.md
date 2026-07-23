@@ -25,14 +25,16 @@ provider, account, or upstream version implements it identically.
 | Model catalog and selection | ✅ `/v1/models` | ✅ Provider catalog | ✅ App-server catalog | ✅ CLI catalog | ✅ CLI catalog |
 | Plan workflow | ◐ Instruction-only Plan | ◐ Native with an upstream `plan` agent; otherwise instruction-only | ✅ Native Plan | ✅ Native Plan | ✅ Native Plan |
 | Work/edit workflow | ✅ Normal execution | ✅ Normal execution | ✅ Native Work | ✅ Native Work | ◐ Requires an `accept-edits` instance |
-| Reasoning effort control | — | — | ◐ Model-dependent levels | ◐ Model-dependent levels | — |
+| Reasoning effort control | — | ◐ Enabled model variants from the upstream catalog | ◐ Model-dependent levels | ◐ Model-dependent levels | — |
 | Permission profiles | — | — | ✅ Read only or workspace write; full access is opt-in | ✅ Ask before edits or accept edits | ◐ Plan-only or `accept-edits` instance ceiling |
 | Agent variants | — | ◐ Supplied by the upstream agent catalog | — | — | — |
 
 Plan workflow appears only when Agenvyl's experimental Plan Mode is enabled.
 For OpenCode, catalog agents marked hidden or as subagents are not offered as
 variants. The dedicated `plan` agent is represented as Plan workflow instead
-of an agent variant.
+of an agent variant. OpenCode model variants are shown as reasoning effort
+choices. A variant can bundle reasoning budget with other model settings;
+**Auto** sends no per-run variant and leaves the choice to OpenCode.
 
 ## Output and observability
 

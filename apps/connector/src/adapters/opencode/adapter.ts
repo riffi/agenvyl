@@ -6,11 +6,12 @@ import type { ExecutionStatus, TokenUsage } from '@agenvyl/connector-contract';
 import type { UpstreamStatus, UpstreamStatusReason } from '@agenvyl/connector-contract';
 import type { AdapterExecution, AdapterExecutionEvent, AdapterStartExecutionRequest, ConnectorAdapter } from '../../adapter.js';
 import { redactConnectorText } from '../../safety.js';
+import { enabledModelVariants, type OpenCodeCatalogModel } from './model-variants.js';
 
 type CatalogProvider = {
   id: string;
   name: string;
-  models: Record<string, { id: string; name: string }>;
+  models: Record<string, OpenCodeCatalogModel>;
 };
 type CatalogAgent = { name: string; description?: string; mode: 'subagent' | 'primary' | 'all'; hidden?: boolean };
 type PermissionReply = 'once' | 'always' | 'reject';
@@ -22,7 +23,7 @@ export interface OpenCodeClientPort {
   createSession(input: { directory: string; title: string; agent?: string; model: { id: string; providerID: string } }): Promise<{ id: string }>;
   sessionStatuses(directory?: string): Promise<Record<string, SessionStatus>>;
   subscribe(directory: string, signal: AbortSignal): Promise<AsyncIterable<unknown>>;
-  prompt(input: { sessionID: string; directory: string; system: string; message: string; agent?: string; model: { providerID: string; modelID: string } }): Promise<void>;
+  prompt(input: { sessionID: string; directory: string; system: string; message: string; agent?: string; variant?: string; model: { providerID: string; modelID: string } }): Promise<void>;
   replyPermission(input: { sessionID: string; requestID: string; directory: string; reply: PermissionReply; version: 'legacy' | 'v2' }): Promise<void>;
   replyQuestion(input: { sessionID: string; requestID: string; directory: string; answers: string[][]; version: QuestionVersion }): Promise<void>;
   abortSession(sessionID: string, directory?: string): Promise<void>;
@@ -50,6 +51,8 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
   private readonly pendingPermissions = new Map<string, PendingPermission>();
   private readonly pendingQuestions = new Map<string, PendingQuestion>();
   private agentNames=new Set<string>();
+  private supportedModelVariants=new Map<string,Set<string>>();
+  private catalogLoaded=false;
 
   constructor(options: OpenCodeAdapterOptions) {
     const baseUrl = normalizeBaseUrl(options.baseUrl);
@@ -63,28 +66,38 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
       this.client.agents(this.catalogDirectory),
     ]);
     const connected = new Set(providers.connected);
+    const supportedModelVariants=new Map<string,Set<string>>();
     const models = providers.all
       .filter(provider => connected.has(provider.id))
-      .flatMap(provider => Object.values(provider.models).map(model => ({
-        id: `${provider.id}/${model.id}`,
-        label: `${provider.name}/${model.name}`,
-      })))
+      .flatMap(provider => Object.values(provider.models).map(model => {
+        const id=`${provider.id}/${model.id}`,reasoningEfforts=enabledModelVariants(model);
+        supportedModelVariants.set(id,new Set(reasoningEfforts));
+        return {
+          id,
+          label: `${provider.name}/${model.name}`,
+          ...(reasoningEfforts.length ? { reasoningEfforts } : {}),
+        };
+      }))
       .sort((left, right) => left.label.localeCompare(right.label));
     const variants = agents
       .filter(agent => !agent.hidden && agent.mode !== 'subagent'&&agent.name!=='plan')
       .map(agent => ({ id: agent.name, label: agent.name }))
       .sort((left,right)=>left.id==='build'?-1:right.id==='build'?1:left.label.localeCompare(right.label));
     this.agentNames=new Set(agents.filter(agent=>!agent.hidden&&agent.mode!=='subagent').map(agent=>agent.name));
+    this.supportedModelVariants=supportedModelVariants;
+    this.catalogLoaded=true;
     const nativeWorkflowModes:Array<'plan'|'work'>=[];if(this.agentNames.has('plan'))nativeWorkflowModes.push('plan');if(this.agentNames.has('build'))nativeWorkflowModes.push('work');
     return { models, controls:{nativeWorkflowModes,permissionProfiles:[],agentVariants:variants} };
   }
 
   async start(request: AdapterStartExecutionRequest): Promise<AdapterExecution> {
     const model = parseModel(request.modelId);
-    if(!this.agentNames.size)await this.catalog();
+    if(!this.catalogLoaded)await this.catalog();
     const profile=request.executionProfile,native=profile.workflowMode==='plan'&&this.agentNames.has('plan')?'plan':undefined;
     const mode = native??profile.agentVariantId??undefined;
     if(mode&&!this.agentNames.has(mode))throw new Error('OpenCode agent variant is not supported');
+    const variant=profile.reasoningEffort??undefined;
+    if(variant&&!this.supportedModelVariants.get(request.modelId)?.has(variant))throw new Error('OpenCode model variant is not supported');
     const session = await this.client.createSession({
       directory: request.workspace.absolutePath,
       title: `Agenvyl execution ${request.executionId}`,
@@ -101,6 +114,7 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
         system: systemContext(request),
         message: request.input.message,
         ...(mode ? { agent: mode } : {}),
+        ...(variant ? { variant } : {}),
         model,
       });
       return { upstreamId: session.id };
@@ -272,6 +286,7 @@ function sdkClient(baseUrl: string, request: typeof fetch, username?: string, pa
         parts: [{ type: 'text', text: input.message }],
         model: input.model,
         ...(input.agent ? { agent: input.agent } : {}),
+        ...(input.variant ? { variant: input.variant } : {}),
       }, { throwOnError: true });
     },
     async replyPermission(input) {

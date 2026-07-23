@@ -30,7 +30,7 @@ This is the simplest local setup:
 2. Choose **Configure connectors**.
 3. Enable **OpenCode** and save.
 4. Open **Agents** in the Web UI and choose the OpenCode instance, provider
-   model, agent variant, and permissions.
+   model, available reasoning effort, agent variant, and permissions.
 
 When the CLI is available and no external endpoint is selected, Connector
 manages a local `opencode serve` child process. CLI fallback:
@@ -69,6 +69,12 @@ OpenCode supplies its model catalog and provider agent variants. Agenvyl
 supports text and reasoning streams, tools, manual approvals, structured
 clarifications with up to four questions including multi-select, usage, retries
 reported by the provider, and cancellation.
+
+Enabled OpenCode model variants appear as reasoning effort choices in Agenvyl.
+The selected value is sent as a per-run OpenCode variant. **Auto** sends no
+override and uses the model, agent, or global OpenCode default. A variant may
+bundle reasoning budget with other settings such as text verbosity; the names
+and exact behavior come from the current upstream catalog.
 
 External-directory permission requests are rejected at the adapter boundary.
 Malformed or unsupported question payloads fail closed instead of being

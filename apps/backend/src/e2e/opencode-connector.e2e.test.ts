@@ -28,6 +28,7 @@ describe.sequential('Core -> Connector -> OpenCode-compatible black-box gate', (
     const runId = await createRun(runtime.coreUrl, '[opencode:reasoning]');
     const completed = await waitForRun(runtime.coreUrl, runId, run => run.status === 'completed');
     expect(completed).toMatchObject({reasoning:'private analysis',text:'public answer',usage:{inputTokens:120,outputTokens:30,totalTokens:155,reasoningTokens:5,cacheReadTokens:40,cacheWriteTokens:2}});
+    expect(runtime.fixture.promptVariants).toEqual(['high']);
     const sql=connectTestDatabase(runtime.databaseUrl);
     try {
       const [run]=await sql`SELECT reasoning,text,usage FROM agent_runs WHERE id=${runId}`;
@@ -218,8 +219,8 @@ async function startRuntime(cleanups: Array<() => Promise<void>>, runTimeoutMs?:
 async function configureArchitect(databaseUrl: string) {
   const sql = connectTestDatabase(databaseUrl);
   try {
-    await sql`UPDATE personas SET requested_model='fixture/model',harness_instance_id='local-opencode',harness_type='opencode',model_id='fixture/model',agent_variant_id='build' WHERE id='persona-architect'`;
-    await sql`UPDATE persona_versions SET requested_model='fixture/model',harness_instance_id='local-opencode',harness_type='opencode',model_id='fixture/model',agent_variant_id='build' WHERE persona_id='persona-architect'`;
+    await sql`UPDATE personas SET requested_model='fixture/model',harness_instance_id='local-opencode',harness_type='opencode',model_id='fixture/model',agent_variant_id='build',default_reasoning_effort='high' WHERE id='persona-architect'`;
+    await sql`UPDATE persona_versions SET requested_model='fixture/model',harness_instance_id='local-opencode',harness_type='opencode',model_id='fixture/model',agent_variant_id='build',default_reasoning_effort='high' WHERE persona_id='persona-architect'`;
   } finally {
     await sql.end();
   }
@@ -297,6 +298,7 @@ class OpenCodeFixture {
   readonly createdSessionIds: string[] = [];
   readonly permissionReplies: Array<{ requestId: string; reply: string }> = [];
   readonly questionReplies: Array<{ requestId: string; answers: string[][] }> = [];
+  readonly promptVariants: Array<string | null> = [];
   private readonly sessions = new Map<string, FixtureSession>();
   private readonly scenarioAttempts = new Map<string, number>();
   private sequence = 0;
@@ -306,7 +308,7 @@ class OpenCodeFixture {
   constructor() {
     this.app.get('/v1/models', async () => ({ object: 'list', data: [{ id: 'fixture/model', root: 'Fixture Model' }] }));
     this.app.get('/provider', async () => ({
-      all: [{ id: 'fixture', name: 'Fixture', models: { model: { id: 'model', name: 'Fixture Model' } } }],
+      all: [{ id: 'fixture', name: 'Fixture', models: { model: { id: 'model', name: 'Fixture Model', variants: { high: { reasoningEffort: 'high' } } } } }],
       default: { fixture: 'model' }, connected: ['fixture'],
     }));
     this.app.get('/agent', async () => [{ name: 'build', description: 'Fixture build agent', mode: 'primary' }]);
@@ -323,9 +325,10 @@ class OpenCodeFixture {
       session.subscribed = true;
       return reply.header('content-type', 'text/event-stream; charset=utf-8').header('cache-control', 'no-cache').send(Readable.from(session.queue));
     });
-    this.app.post<{ Params: { id: string }; Body: { parts?: Array<{ type?: string; text?: string }> } }>('/session/:id/prompt_async', async (request, reply) => {
+    this.app.post<{ Params: { id: string }; Body: { parts?: Array<{ type?: string; text?: string }>; variant?: string } }>('/session/:id/prompt_async', async (request, reply) => {
       const session = this.sessions.get(request.params.id);
       if (!session) return reply.code(404).send({ error: 'not_found' });
+      this.promptVariants.push(request.body?.variant ?? null);
       session.status = 'busy';
       const text = request.body?.parts?.find(part => part.type === 'text')?.text ?? '';
       session.scenario = text;

@@ -8,7 +8,7 @@ describe('OpenCodeConnectorAdapter', () => {
     client.providers = vi.fn().mockResolvedValue({
       connected: ['anthropic'],
       all: [
-        { id: 'anthropic', name: 'Anthropic', models: { sonnet: { id: 'claude-sonnet', name: 'Claude Sonnet' } } },
+        { id: 'anthropic', name: 'Anthropic', models: { sonnet: { id: 'claude-sonnet', name: 'Claude Sonnet', variants: { max: { thinking: { budgetTokens: 32000 } }, high: { thinking: { budgetTokens: 16000 } }, disabled: { disabled: true }, malformed: null } } } },
         { id: 'unavailable', name: 'Unavailable', models: { hidden: { id: 'hidden', name: 'Hidden' } } },
       ],
     });
@@ -22,7 +22,7 @@ describe('OpenCodeConnectorAdapter', () => {
 
     expect(adapter.capabilities).toEqual(['model_catalog', 'execution_profiles', 'text_streaming', 'reasoning', 'tools', 'approvals', 'clarifications', 'usage']);
     await expect(adapter.catalog()).resolves.toEqual({
-      models: [{ id: 'anthropic/claude-sonnet', label: 'Anthropic/Claude Sonnet' }],
+      models: [{ id: 'anthropic/claude-sonnet', label: 'Anthropic/Claude Sonnet', reasoningEfforts: ['high', 'max'] }],
       controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[],agentVariants:[{id:'build',label:'build'}]},
     });
     expect(client.providers).toHaveBeenCalledWith('/workspace/catalog');
@@ -54,6 +54,25 @@ describe('OpenCodeConnectorAdapter', () => {
     expect(system).toContain(JSON.stringify(startRequest().input.history));
     expect(system).not.toContain('Continue');
     expect(system).not.toContain('tool named `question`');
+  });
+
+  it('passes a supported model variant as the per-run reasoning effort',async()=>{
+    const client=fixtureClient();
+    client.providers=vi.fn().mockResolvedValue({connected:['anthropic'],all:[{id:'anthropic',name:'Anthropic',models:{sonnet:{id:'claude-sonnet',name:'Claude Sonnet',variants:{high:{reasoningEffort:'high'}}}}}]});
+    const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client});
+
+    await adapter.start({...startRequest(),executionProfile:{...startRequest().executionProfile,reasoningEffort:'high'}});
+
+    expect(client.prompt).toHaveBeenCalledWith(expect.objectContaining({variant:'high'}));
+  });
+
+  it('rejects a model variant that the current catalog does not expose',async()=>{
+    const client=fixtureClient();
+    client.providers=vi.fn().mockResolvedValue({connected:['anthropic'],all:[{id:'anthropic',name:'Anthropic',models:{sonnet:{id:'claude-sonnet',name:'Claude Sonnet',variants:{high:{reasoningEffort:'high'}}}}}]});
+    const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client});
+
+    await expect(adapter.start({...startRequest(),executionProfile:{...startRequest().executionProfile,reasoningEffort:'max'}})).rejects.toThrow('model variant is not supported');
+    expect(client.createSession).not.toHaveBeenCalled();
   });
 
   it('names the structured question tool and its interaction shape in native Plan',async()=>{
