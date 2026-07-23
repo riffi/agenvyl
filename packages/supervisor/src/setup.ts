@@ -44,7 +44,7 @@ export function mergeConnectorSelection(state: SetupState, selected: HarnessType
       type: candidate.type,
       enabled,
       ...(candidate.endpoint ? { endpoint: candidate.endpoint.url } : {}),
-      ...(candidate.type === 'opencode' && (current?.managed === true || !candidate.endpoint?.reachable) ? { managed: true } : {}),
+      ...(candidate.type === 'opencode' ? { managed: current?.managed ?? true } : {}),
       ...(candidate.type === 'antigravity' && enabled && agyConfirmed ? { permissionMode: 'plan' as const } : {}),
       ...(candidate.type === 'codex'?{allowDangerFullAccess:current?.allowDangerFullAccess??false}:{}),
       ...(candidate.type === 'claude'?{allowSubscriptionOAuth:candidate.requiresConfirmation==='claude_oauth'&&enabled?(current?.allowSubscriptionOAuth===true||claudeOAuthConfirmed):false}:{}),

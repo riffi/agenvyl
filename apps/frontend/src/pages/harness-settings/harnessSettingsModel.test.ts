@@ -5,7 +5,7 @@ const opencode:HarnessDraft={id:'local-opencode',type:'opencode',enabled:true,en
 
 describe('harness settings model',()=>{
   it('creates unique instances of the same harness type from discovery defaults',()=>{
-    const next=addHarnessDraft('opencode',[opencode],[{type:'opencode',label:'OpenCode',cli:{found:true,command:'opencode'},endpoint:{url:'http://127.0.0.1:4096',reachable:false},safeToSelect:true,supportsManagedServer:true}]);
+    const next=addHarnessDraft('opencode',[opencode],[{type:'opencode',label:'OpenCode',cli:{found:true,command:'opencode'},endpoint:{url:'http://127.0.0.1:4096',reachable:true},safeToSelect:true,supportsManagedServer:true}]);
     expect(next).toMatchObject({id:'local-opencode-2',type:'opencode',endpoint:'http://127.0.0.1:4096',managed:true,status:'draft'});
   });
 

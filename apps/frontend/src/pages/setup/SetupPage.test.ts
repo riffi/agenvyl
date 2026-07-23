@@ -25,19 +25,27 @@ describe('setup harness configuration',()=>{
       {type:'antigravity',label:'AGY',cli:{found:true,command:'agy'},safeToSelect:false,supportsManagedServer:false},
     ]};
 
-    expect(initialConnectorSelection(state)).toEqual({selected:['opencode'],agy:false,claudeOAuthConfirmed:false});
+    expect(initialConnectorSelection(state)).toEqual({selected:['opencode'],agy:false,openCodeManaged:true,codexDangerFullAccess:false,claudeOAuthConfirmed:false});
   });
 
   it('preserves configured selections after setup so unavailable connectors can be disabled explicitly',()=>{
     const state:SetupState={completed:true,locale:'en',workspaceRoot:'C:/workspaces',instances:[{id:'local-hermes',type:'hermes',status:'unavailable'},{id:'local-antigravity',type:'antigravity',status:'healthy'}],candidates:[]};
-    expect(initialConnectorSelection(state)).toEqual({selected:['hermes'],agy:true,claudeOAuthConfirmed:false});
+    expect(initialConnectorSelection(state)).toEqual({selected:['hermes'],agy:true,openCodeManaged:true,codexDangerFullAccess:false,claudeOAuthConfirmed:false});
   });
 
   it('preserves managed OpenCode ownership after terminal setup made its endpoint reachable',()=>{
     expect(instanceConfig(candidate,{id:'local-opencode',type:'opencode',status:'healthy',managed:true})).toEqual({id:'local-opencode',type:'opencode',enabled:true,endpoint:'http://127.0.0.1:4096',managed:true});
   });
-  it('does not claim ownership of a reachable external OpenCode endpoint',()=>{
-    expect(instanceConfig(candidate)).toEqual({id:'local-opencode',type:'opencode',enabled:true,endpoint:'http://127.0.0.1:4096'});
+  it('enables managed OpenCode by default even when an endpoint is already reachable',()=>{
+    expect(instanceConfig(candidate)).toEqual({id:'local-opencode',type:'opencode',enabled:true,endpoint:'http://127.0.0.1:4096',managed:true});
   });
-  it('persists explicit Claude OAuth confirmation separately from credentials',()=>{const claude:SetupHarnessCandidate={type:'claude',label:'Claude',cli:{found:true,command:'claude',version:'2.1.217',compatible:true},safeToSelect:true,supportsManagedServer:false,auth:{authenticated:true,kind:'subscription_oauth'},requiresConfirmation:'claude_oauth'};expect(instanceConfig(claude,undefined,true)).toEqual({id:'local-claude',type:'claude',enabled:true,allowSubscriptionOAuth:true});});
+  it('preserves an explicit OpenCode managed-server opt-out',()=>{
+    expect(instanceConfig(candidate,{id:'local-opencode',type:'opencode',status:'healthy',managed:false})).toEqual({id:'local-opencode',type:'opencode',enabled:true,endpoint:'http://127.0.0.1:4096',managed:false});
+  });
+  it('persists explicit Codex and Claude confirmations separately from credentials',()=>{
+    const codex:SetupHarnessCandidate={type:'codex',label:'Codex',cli:{found:true,command:'codex',version:'0.145.0',compatible:true},safeToSelect:true,supportsManagedServer:false};
+    const claude:SetupHarnessCandidate={type:'claude',label:'Claude',cli:{found:true,command:'claude',version:'2.1.217',compatible:true},safeToSelect:true,supportsManagedServer:false,auth:{authenticated:true,kind:'subscription_oauth'},requiresConfirmation:'claude_oauth'};
+    expect(instanceConfig(codex,undefined,{codexDangerFullAccess:true})).toEqual({id:'local-codex',type:'codex',enabled:true,allowDangerFullAccess:true});
+    expect(instanceConfig(claude,undefined,{claudeOAuthConfirmed:true})).toEqual({id:'local-claude',type:'claude',enabled:true,allowSubscriptionOAuth:true});
+  });
 });

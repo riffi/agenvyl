@@ -38,7 +38,7 @@ export const addHarnessDraft=(type:SetupHarnessInstance['type'],current:HarnessD
   const candidate=candidates.find(item=>item.type===type);
   return{id,type,enabled:true,status:'draft',capabilities:[],personas:[],
     ...(candidate?.endpoint&&type!=='codex'&&type!=='claude'?{endpoint:candidate.endpoint.url}:{}),
-    ...(type==='opencode'?{managed:Boolean(candidate?.cli.found&&!candidate.endpoint?.reachable)}:{}),
+    ...(type==='opencode'?{managed:true}:{}),
     ...(type==='antigravity'?{permissionMode:'plan' as const}:{}),
     ...(type==='codex'?{allowDangerFullAccess:false}:{}),
     ...(type==='claude'?{allowSubscriptionOAuth:false}:{})};
