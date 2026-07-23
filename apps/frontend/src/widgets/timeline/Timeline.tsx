@@ -102,6 +102,7 @@ function RunCard({
   plan,
   approvePlan=async()=>{},
   openWorkspace,
+  planModeEnabled=true,
 }: {
   run: Run;
   persona: Persona;
@@ -122,6 +123,7 @@ function RunCard({
   plan:RoomPlanState;
   approvePlan?:(versionId:string)=>Promise<void>;
   openWorkspace:(target:Omit<WorkspaceFocus,'requestId'>)=>void;
+  planModeEnabled?:boolean;
 }) {
   const [retrying,setRetrying]=useState(false);const [retryError,setRetryError]=useState<string>();const [toolsOpen,setToolsOpen]=useState(false);
   const answer = run.text || (run.status === "queued" ? "Waiting for an available slot…" : "Analyzing…");
@@ -167,7 +169,7 @@ function RunCard({
           <span className={styles['run-footer-actions']}>
             {run.tools.length>0&&<button type="button" className={styles['footer-action']} onClick={()=>setToolsOpen(open=>!open)} aria-expanded={toolsOpen} aria-controls={`run-tools-${run.id}`}><Wrench/><span>Actions</span><em>{run.tools.length}</em>{toolsOpen?<ChevronUp className={styles.disclosure}/>:<ChevronDown className={styles.disclosure}/>}</button>}
             <button type="button" className={styles['footer-action']} onClick={select}><Info/><span>Run details</span></button>
-            {planArtifact&&plan.current?.version_id===planArtifact.version_id&&<button type="button" data-plan-approvable="true" className={`${styles['footer-action']} ${plan.approved?.version_id===planArtifact.version_id?styles['approved-action']:''}`} onClick={()=>void approvePlan(planArtifact.version_id)}><BadgeCheck/><span>{plan.approved?.version_id===planArtifact.version_id?'Approved plan':'Approve plan'}</span></button>}
+            {planModeEnabled&&planArtifact&&plan.current?.version_id===planArtifact.version_id&&<button type="button" data-plan-approvable="true" className={`${styles['footer-action']} ${plan.approved?.version_id===planArtifact.version_id?styles['approved-action']:''}`} onClick={()=>void approvePlan(planArtifact.version_id)}><BadgeCheck/><span>{plan.approved?.version_id===planArtifact.version_id?'Approved plan':'Approve plan'}</span></button>}
           </span>
           {attemptCount>1&&<span className={styles['attempt-carousel']}><IconButton onClick={previousAttempt} disabled={attemptIndex===0} aria-label="Previous attempt">‹</IconButton><small>{attemptIndex+1} of {attemptCount}</small><IconButton onClick={nextAttempt} disabled={attemptIndex===attemptCount-1} aria-label="Next attempt">›</IconButton></span>}
         </div>
@@ -192,6 +194,7 @@ export function Timeline({
   plan=state.executionState.plan,
   approvePlan=async()=>{},
   openWorkspace=()=>{},
+  planModeEnabled=true,
 }: {
   state: RoomState;
   personas: Persona[];
@@ -205,6 +208,7 @@ export function Timeline({
   plan?:RoomPlanState;
   approvePlan?:(versionId:string)=>Promise<void>;
   openWorkspace?:(target:Omit<WorkspaceFocus,'requestId'>)=>void;
+  planModeEnabled?:boolean;
 }) {
   const byHandle = new Map(personas.map((p) => [p.handle, p]));
   const [attemptView,setAttemptView]=useState<Record<string,string>>({});
@@ -297,7 +301,7 @@ export function Timeline({
                     select={() => select(id)}
                     cancel={() => gateway.cancel(id)}
                     retry={async()=>{setAttemptView(current=>{const next={...current};delete next[slot];return next});await gateway.retry(id)}}
-                    canRetry={messageIndex===state.messages.length-1&&['completed','failed','cancelled'].includes(state.runs[id].status)&&!activeAttempt&&gateway.mode==='real'}
+                    canRetry={messageIndex===state.messages.length-1&&['completed','failed','cancelled'].includes(state.runs[id].status)&&!activeAttempt&&gateway.mode==='real'&&(planModeEnabled||(state.runs[id].executionProfile.workflowMode!=='plan'&&!state.runs[id].executionProfile.implementationPlanVersionId))}
                     attemptIndex={shownIndex}
                     attemptCount={attemptIds.length}
                     previousAttempt={()=>void showAttempt(shownIndex-1)}
@@ -311,6 +315,7 @@ export function Timeline({
                     plan={plan}
                     approvePlan={approvePlan}
                     openWorkspace={openWorkspace}
+                    planModeEnabled={planModeEnabled}
                   />
                   </div>
                 )},

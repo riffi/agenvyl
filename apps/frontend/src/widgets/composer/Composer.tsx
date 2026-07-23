@@ -48,6 +48,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   updateExecutionProfile=async()=>{},
   approvePlan=async()=>{},
   clearApprovedPlan=async()=>{},
+  planModeEnabled=true,
 }: ComposerProps,ref) {
   const [text, setText] = useState("");
   const editorRef=useRef<HTMLTextAreaElement>(null);
@@ -79,12 +80,13 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   useEffect(()=>setMentionIndex(0),[mention?.query]);
   useEffect(()=>{setText('');setMention(undefined);setSendError(undefined);setProfileError(undefined);setHandoffOpen(false);setPlanning(false)},[roomId]);
   useEffect(()=>setHandoffOpen(false),[executionState.plan.approved?.version_id]);
+  useEffect(()=>{if(!planModeEnabled){setPlanning(false);setHandoffOpen(false)}},[planModeEnabled]);
   useEffect(()=>{const editor=editorRef.current;if(!editor)return;editor.style.height='auto';editor.style.height=`${Math.min(Math.max(editor.scrollHeight,72),220)}px`;if(mirrorRef.current){mirrorRef.current.scrollTop=editor.scrollTop;mirrorRef.current.scrollLeft=editor.scrollLeft}},[text]);
   useLayoutEffect(()=>{if(!mention||!matchMedia('(max-width: 767px)').matches)return;const position=()=>{const popover=mentionPopoverRef.current,editor=editorRef.current;if(!popover||!editor)return;popover.style.setProperty('--mention-bottom',`${Math.max(0,window.innerHeight-editor.getBoundingClientRect().top)}px`)};position();window.visualViewport?.addEventListener('resize',position);addEventListener('resize',position);return()=>{window.visualViewport?.removeEventListener('resize',position);removeEventListener('resize',position)}},[mention,text,targets.length]);
   const updateMention=(value:string,caret:number)=>setMention(activeMentionQuery(value,caret));
   const chooseMention=(handle:string)=>{if(!mention)return;const next=`${text.slice(0,mention.start)}@${handle} ${text.slice(mention.end)}`,caret=mention.start+handle.length+2;setText(next);setMention(undefined);requestAnimationFrame(()=>{editorRef.current?.focus();editorRef.current?.setSelectionRange(caret,caret)});};
   const send = async (retry=sendError) => {
-    let outgoing=retry?.text??text.trim(),planIntent=retry?.executionIntent?.kind==='plan'||planning;const command=!retry?outgoing.match(/^\/plan(?:\s+([\s\S]*))?$/i):null;if(command){planIntent=true;outgoing=(command[1]??'').trim();if(!outgoing){setPlanning(true);setText('');return;}}
+    let outgoing=retry?.text??text.trim(),planIntent=planModeEnabled&&(retry?.executionIntent?.kind==='plan'||planning);const command=planModeEnabled&&!retry?outgoing.match(/^\/plan(?:\s+([\s\S]*))?$/i):null;if(command){planIntent=true;outgoing=(command[1]??'').trim();if(!outgoing){setPlanning(true);setText('');return;}}
     const outgoingTargets=retry?.targets??parseMentions(outgoing,personas), messageId=retry?.messageId??crypto.randomUUID(),attachmentVersionIds=retry?.attachmentVersionIds??attachments.flatMap(item=>item.attachment?[item.attachment.version_id]:[]);
     if(planIntent&&outgoingTargets.length!==1){setProfileError('Create or update plan requires exactly one responder.');return;}
     if ((!outgoing&&!attachmentVersionIds.length) || !catalogReady || sending || (!retry&&attachmentsBusy))return;
@@ -130,8 +132,8 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
         </div>
       )}
       {active > 0 && <div className={styles['active-runs']}><span><i />{active} {active===1?'agent is responding':'agents are responding'}</span><Button size="sm" variant="danger" onClick={() => void gateway.cancel()}><Square /> Stop all</Button></div>}
-      <PlanCard state={executionState} openWorkspace={openWorkspace} approve={approvePlan} clear={clearApprovedPlan} handoffOpen={handoffOpen} toggleHandoff={()=>setHandoffOpen(open=>!open)}/>
-      {executionState.plan.approved&&handoffOpen&&<ImplementationHandoff targets={implementationTargets} initialTargets={targets} onStart={startImplementation} onClose={()=>setHandoffOpen(false)}/>}
+      {planModeEnabled&&<PlanCard state={executionState} openWorkspace={openWorkspace} approve={approvePlan} clear={clearApprovedPlan} handoffOpen={handoffOpen} toggleHandoff={()=>setHandoffOpen(open=>!open)}/>}
+      {planModeEnabled&&executionState.plan.approved&&handoffOpen&&<ImplementationHandoff targets={implementationTargets} initialTargets={targets} onStart={startImplementation} onClose={()=>setHandoffOpen(false)}/>}
       {profileError&&<Alert className={styles['send-error']} tone="error">Could not apply execution settings: {profileError}</Alert>}
       {sendError&&<Alert className={styles['send-error']} tone="error">Failed to send: {sendError.message} <Button size="sm" variant="danger" onClick={()=>void send(sendError)} disabled={sending}>Retry</Button></Alert>}
       <div className={styles['compose-card']}>
@@ -179,7 +181,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
           />
         </div>
         <footer>
-        <div className={styles['compose-tools']}><Button className={`${styles['plan-button']} ${planning?styles['plan-button-active']:''}`} size="sm" variant="ghost" title="Use Plan for the next message" aria-pressed={planning} onClick={()=>setPlanning(value=>!value)} icon={<FileText/>}><span className={styles['action-label']}>{executionState.plan.current?'Update plan':'Create plan'}</span></Button><Button className={styles['attachment-button']} size="sm" variant="ghost" title="Attach files" aria-label="Attach files" disabled={attachments.length>=10} onClick={openAttachmentPicker} icon={attachmentsBusy?<LoaderCircle className={styles.spinning}/>:<Paperclip/>}><span className={styles['action-label']}>Attach</span></Button><Button className={styles['workspace-button']} size="sm" variant="ghost" title="Open room workspace" aria-label="Open room workspace" onClick={()=>openWorkspace()} icon={<FolderOpen />}><span className={styles['action-label']}>Workspace</span></Button><label className={styles['reasoning-control']}>Reasoning<select aria-label="Reasoning effort" value={executionState.profile.reasoning_effort??''} onChange={event=>void updateProfile({reasoning_effort:event.target.value||null})}><option value="">Auto</option>{effortOptions.map(effort=><option key={effort} value={effort}>{effort}</option>)}</select></label></div>
+        <div className={styles['compose-tools']}>{planModeEnabled&&<Button className={`${styles['plan-button']} ${planning?styles['plan-button-active']:''}`} size="sm" variant="ghost" title="Use Plan for the next message" aria-pressed={planning} onClick={()=>setPlanning(value=>!value)} icon={<FileText/>}><span className={styles['action-label']}>{executionState.plan.current?'Update plan':'Create plan'}</span></Button>}<Button className={styles['attachment-button']} size="sm" variant="ghost" title="Attach files" aria-label="Attach files" disabled={attachments.length>=10} onClick={openAttachmentPicker} icon={attachmentsBusy?<LoaderCircle className={styles.spinning}/>:<Paperclip/>}><span className={styles['action-label']}>Attach</span></Button><Button className={styles['workspace-button']} size="sm" variant="ghost" title="Open room workspace" aria-label="Open room workspace" onClick={()=>openWorkspace()} icon={<FolderOpen />}><span className={styles['action-label']}>Workspace</span></Button><label className={styles['reasoning-control']}>Reasoning<select aria-label="Reasoning effort" value={executionState.profile.reasoning_effort??''} onChange={event=>void updateProfile({reasoning_effort:event.target.value||null})}><option value="">Auto</option>{effortOptions.map(effort=><option key={effort} value={effort}>{effort}</option>)}</select></label></div>
         <small>{!catalogReady?'Agent catalog unavailable':planning&&targets.length!==1?'Plan needs exactly one responder':targets.length?`${targets.length} ${targets.length===1?'responder':'responders'} · ${text.length} / 4000`:`No responders · posts to room · ${text.length} / 4000`}</small>
         <Button
           className={styles.send}
@@ -217,6 +219,7 @@ type ComposerProps={
   updateExecutionProfile?:(profile:UpdateRoomExecutionProfileRequest)=>Promise<unknown>;
   approvePlan?:(versionId:string)=>Promise<unknown>;
   clearApprovedPlan?:()=>Promise<unknown>;
+  planModeEnabled?:boolean;
 };
 
 function PlanCard({state,openWorkspace,approve,clear,handoffOpen,toggleHandoff}:{state:RoomExecutionState;openWorkspace:(target?:Omit<WorkspaceFocus,'requestId'>)=>void;approve:(versionId:string)=>Promise<unknown>;clear:()=>Promise<unknown>;handoffOpen:boolean;toggleHandoff:()=>void}){

@@ -74,6 +74,19 @@ describe('Composer agent list',()=>{
     fireEvent.click(screen.getByRole('button',{name:'Re-approve'}));expect(approvePlan).toHaveBeenCalledWith('current-version');expect(screen.getByRole('button',{name:'Implement…'})).toBeTruthy();
   });
 
+  it('hides Plan controls and sends /plan as ordinary Work text when disabled',async()=>{
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
+    const send=vi.fn<RoomGateway['send']>().mockResolvedValue(sentMessage),localGateway={...gateway,send};
+    render(<Composer gateway={localGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} planModeEnabled={false} executionState={{profile:{reasoning_effort:null},plan:{path:'plan.md',current:{entry_id:'plan-entry',version_id:'plan-version'},approved:{entry_id:'plan-entry',version_id:'plan-version'}}}}/>);
+    expect(screen.queryByRole('button',{name:'Update plan'})).toBeNull();
+    expect(screen.queryByRole('button',{name:'Implement…'})).toBeNull();
+    const editor=screen.getByPlaceholderText('Message… Use @handle or @all');
+    fireEvent.change(editor,{target:{value:'/plan @coder inspect'}});fireEvent.keyDown(editor,{key:'Enter'});
+    await waitFor(()=>expect(send).toHaveBeenCalled());
+    expect(send.mock.calls[0]?.slice(0,2)).toEqual(['/plan @coder inspect',['coder']]);
+    expect(send.mock.calls[0]?.[4]).toBeUndefined();
+  });
+
   it('distinguishes room posts from messages addressed to agents',()=>{
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
     render(<Composer gateway={gateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()}/>);

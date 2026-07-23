@@ -185,6 +185,18 @@ describe('RunExecutor', () => {
     await expect(runs.retry(runId)).resolves.toMatchObject({status:'created'});await executor.shutdown();await database.close();
   });
 
+  it('stops and fails persisted Plan runs when Plan Mode is disabled',async()=>{
+    const snapshot={...connectorContractFixtures.execution,executionId:'execution-plan-disabled',status:'streaming' as const,cursor:7,earliestReplayableCursor:1,pendingRequests:[]},connector=executionClient(snapshot,async function*(){}),transport=new ConnectorRunAdapter(connector);
+    const {executor,database,personas,messages}=await fixture(vi.fn<typeof fetch>(),4,connector,transport,undefined,undefined,false),persona=(await personas.find('persona-architect'))!,round=await messages.createRound('demo-room','disabled plan',[persona],profiles([persona])),runId=round.runs[0].id;
+    await database.sql`UPDATE agent_runs SET status='streaming',execution_profile=${database.sql.json({...workProfile,workflowMode:'plan',planEnforcement:'native'})},connector_execution_id='execution-plan-disabled',connector_epoch='epoch-1',connector_cursor=7 WHERE id=${runId}`;
+
+    expect(await executor.reconcilePersistedRuns()).toBe(1);
+    expect(connector.stop).toHaveBeenCalledWith('execution-plan-disabled');
+    expect(connector.inspect).not.toHaveBeenCalled();
+    expect((await database.sql`SELECT status,error_code FROM agent_runs WHERE id=${runId}`)[0]).toEqual({status:'failed',error_code:'plan_mode_disabled'});
+    await executor.shutdown();await database.close();
+  });
+
   it('waits for a temporarily unavailable Connector before recovering persisted execution',async()=>{
     const snapshot={...connectorContractFixtures.execution,executionId:'execution-delayed',status:'completed' as const,cursor:8,earliestReplayableCursor:1,pendingRequests:[]},connector=executionClient(snapshot,async function*(){yield{...connectorEvent(8,'execution.completed',{}),executionId:'execution-delayed'};}),transport=new ConnectorRunAdapter(connector);
     vi.mocked(connector.health).mockRejectedValueOnce(new Error('Connector is restarting')).mockResolvedValue({...connectorContractFixtures.health,connectorEpoch:'epoch-1'});
@@ -272,13 +284,13 @@ describe('RunExecutor', () => {
   });
 });
 
-async function fixture(fetchImplementation: typeof fetch,concurrency=4,connector?:ConnectorLifecycle,execution?:RunGateway&RunEventStream&Partial<RunRecovery>,runTimeoutMs?:number,recoveryHealthDelayMs?:number) {
+async function fixture(fetchImplementation: typeof fetch,concurrency=4,connector?:ConnectorLifecycle,execution?:RunGateway&RunEventStream&Partial<RunRecovery>,runTimeoutMs?:number,recoveryHealthDelayMs?:number,planModeEnabled?:boolean) {
   const {database,personas,runs,roomEvents,messages}=await createRepositories(testDatabaseUrl('run_executor'));
   const events = new RoomEventService(roomEvents,new RoomEventBus());
   const registry = new ActiveRunRegistry();
   const transport = new FetchRunTransport(fetchImplementation);
   const connectorExecution=execution&&'reattach'in execution?execution as RunGateway&RunEventStream&RunRecovery:undefined;
-  const executor = new RunExecutor({ personas,runs,events,runGateway:execution??transport,runEvents:execution??transport,connectorExecution,activeRuns:registry,concurrency,runTimeoutMs,messages,connector,recoveryHealthDelayMs });
+  const executor = new RunExecutor({ personas,runs,events,runGateway:execution??transport,runEvents:execution??transport,connectorExecution,activeRuns:registry,concurrency,runTimeoutMs,messages,connector,recoveryHealthDelayMs,planModeEnabled });
   return { executor, events, registry, database,personas,messages,runs };
 }
 

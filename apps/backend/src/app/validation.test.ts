@@ -45,7 +45,7 @@ describe('route validation contracts', () => {
   });
 
   it('accepts only the one-message plan and immutable implementation intents',async()=>{
-    const app=await buildApp({databaseUrl:testDatabaseUrl('validation_execution_intent'),distPath:'missing-dist',fetch:vi.fn<typeof fetch>()});
+    const app=await buildApp({databaseUrl:testDatabaseUrl('validation_execution_intent'),distPath:'missing-dist',fetch:vi.fn<typeof fetch>(),planModeEnabled:true});
     const legacy=await app.inject({method:'PATCH',url:'/api/v1/rooms/demo-room/execution-profile',payload:{workflow_mode:'plan'}});
     const missingVersion=await app.inject({method:'POST',url:'/api/v1/rooms/demo-room/messages',payload:{text:'@architect implement',execution_intent:{kind:'implement'}}});
     const pollutedPlan=await app.inject({method:'POST',url:'/api/v1/rooms/demo-room/messages',payload:{text:'@architect plan',execution_intent:{kind:'plan',approved_plan_version_id:'unexpected'}}});

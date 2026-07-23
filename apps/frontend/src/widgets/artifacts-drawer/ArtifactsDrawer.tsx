@@ -38,7 +38,7 @@ type Operation =
 
 export type WorkspaceFocus={entryId:string;versionId?:string;requestId:number};
 
-export function ArtifactsDrawer({ open, close, roomId, fake = false, onAttach,focus,plan }: {
+export function ArtifactsDrawer({ open, close, roomId, fake = false, onAttach,focus,plan,planModeEnabled=true }: {
   open: boolean;
   close: () => void;
   roomId: string;
@@ -46,6 +46,7 @@ export function ArtifactsDrawer({ open, close, roomId, fake = false, onAttach,fo
   onAttach?: (attachment: WorkspaceAttachment) => void;
   focus?:WorkspaceFocus;
   plan?:RoomPlanState;
+  planModeEnabled?:boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const createMenuRef = useRef<HTMLDivElement>(null);
@@ -235,7 +236,7 @@ export function ArtifactsDrawer({ open, close, roomId, fake = false, onAttach,fo
           }}>
             {query.isPending && <ExplorerMessage>Loading workspace…</ExplorerMessage>}
             {!query.isPending && !filteredTree.length && <ExplorerMessage icon={<FilePlus2 />}>{search ? 'No results' : trash ? 'Trash is empty' : 'Workspace is empty'}</ExplorerMessage>}
-            {filteredTree.map(node => <TreeRow key={node.path} node={node} depth={0} expanded={effectiveExpanded} selectedId={selectedId} activeDirectory={uploadDirectory} trash={trash} onFolder={toggleFolder} onFile={selectFile} onRename={entry => setOperation({ kind: 'rename', entry })} />)}
+            {filteredTree.map(node => <TreeRow key={node.path} node={node} depth={0} expanded={effectiveExpanded} selectedId={selectedId} activeDirectory={uploadDirectory} trash={trash} planModeEnabled={planModeEnabled} onFolder={toggleFolder} onFile={selectFile} onRename={entry => setOperation({ kind: 'rename', entry })} />)}
           </nav>
           <button className={`${styles.trashToggle} ${trash ? styles.trashActive : ''}`} onClick={() => {
             setTrash(value => !value);
@@ -252,10 +253,10 @@ export function ArtifactsDrawer({ open, close, roomId, fake = false, onAttach,fo
               <div className={styles.fileIdentity}><strong title={selected.name}>{selected.name}</strong><small title={selected.path}>{selected.path} <span>· {formatBytes(selected.size)}</span></small></div>
               <div className={styles.fileActions}>
                 {selected.deleted_at ? <Button size="sm" variant="primary" icon={<RotateCcw />} onClick={() => mutate.mutate(() => roomsApi.restoreEntry(roomId, selected.id))}>Restore</Button> : <>
-                  {selected.path==='plan.md'&&viewed?.id===current?.id&&!editingPlan&&<Button size="sm" variant="secondary" icon={<Pencil/>} onClick={()=>setEditingPlan(true)}>Edit</Button>}
+                  {planModeEnabled&&selected.path==='plan.md'&&viewed?.id===current?.id&&!editingPlan&&<Button size="sm" variant="secondary" icon={<Pencil/>} onClick={()=>setEditingPlan(true)}>Edit</Button>}
                   {onAttach && current && <Button className={styles.attachButton} size="sm" variant="primary" icon={<Paperclip />} onClick={attach}><span>Attach</span></Button>}
                   {viewed && <a className={styles.iconLink} href={viewed.url} aria-label="Download file" title="Download"><Download /></a>}
-                  {selected.path!=='plan.md'&&<div className={styles.menuAnchor} ref={fileMenuRef}>
+                  {(!planModeEnabled||selected.path!=='plan.md')&&<div className={styles.menuAnchor} ref={fileMenuRef}>
                     <IconButton aria-label="File actions" title="Actions" onClick={() => setFileMenu(value => !value)}><MoreHorizontal /></IconButton>
                     {fileMenu && <div className={`${styles.menu} ${styles.fileMenu}`} role="menu">
                       <button role="menuitem" onClick={() => { setFileMenu(false); setOperation({ kind: 'rename', entry: selected }); }}>Rename</button>
@@ -270,7 +271,7 @@ export function ArtifactsDrawer({ open, close, roomId, fake = false, onAttach,fo
               <button role="tab" aria-selected={tab === 'preview'} className={tab === 'preview' ? styles.activeTab : ''} onClick={() => setTab('preview')}>Preview</button>
               <button role="tab" aria-selected={tab === 'versions'} className={tab === 'versions' ? styles.activeTab : ''} onClick={() => setTab('versions')}><History />Versions{versions.data ? <em>{versions.data.length}</em> : null}</button>
             </div>
-            {tab === 'preview' ? editingPlan&&current?<PlanEditor version={current} save={async content=>{await mutate.mutateAsync(()=>roomsApi.updatePlan(roomId,content,current.id));setEditingPlan(false);await versions.refetch();}} cancel={()=>setEditingPlan(false)}/>:<FilePreview selected={selected} current={viewed} /> : <VersionHistory versions={versions.data ?? []} selected={selected} current={current} viewed={viewed} approvedVersionId={plan?.approved?.version_id} compare={compare} setCompare={setCompare} view={version=>{setViewVersionId(version.id);setTab('preview')}} restore={version => mutate.mutate(() => roomsApi.restoreVersion(roomId, version.id))} />}
+            {tab === 'preview' ? planModeEnabled&&editingPlan&&current?<PlanEditor version={current} save={async content=>{await mutate.mutateAsync(()=>roomsApi.updatePlan(roomId,content,current.id));setEditingPlan(false);await versions.refetch();}} cancel={()=>setEditingPlan(false)}/>:<FilePreview selected={selected} current={viewed} /> : <VersionHistory versions={versions.data ?? []} selected={selected} current={current} viewed={viewed} approvedVersionId={planModeEnabled?plan?.approved?.version_id:undefined} compare={compare} setCompare={setCompare} view={version=>{setViewVersionId(version.id);setTab('preview')}} restore={version => mutate.mutate(() => roomsApi.restoreVersion(roomId, version.id))} />}
           </> : <div className={styles.viewerEmpty}><File /><strong>{trash ? 'Select a deleted file' : 'Select a file'}</strong><span>{trash ? 'You can preview and restore it.' : 'Its contents will open here.'}</span></div>}
         </main>}
       </div>
@@ -279,13 +280,14 @@ export function ArtifactsDrawer({ open, close, roomId, fake = false, onAttach,fo
   </aside>;
 }
 
-function TreeRow({ node, depth, expanded, selectedId, activeDirectory, trash, onFolder, onFile, onRename }: {
+function TreeRow({ node, depth, expanded, selectedId, activeDirectory, trash, planModeEnabled,onFolder, onFile, onRename }: {
   node: WorkspaceTreeNode;
   depth: number;
   expanded: Set<string>;
   selectedId?: string;
   activeDirectory: string;
   trash: boolean;
+  planModeEnabled:boolean;
   onFolder: (path: string) => void;
   onFile: (entry: WorkspaceEntry) => void;
   onRename: (entry: WorkspaceEntry) => void;
@@ -298,14 +300,14 @@ function TreeRow({ node, depth, expanded, selectedId, activeDirectory, trash, on
       style={{ paddingLeft: 7 + depth * 14 }}
       title={node.path}
       onClick={() => node.kind === 'directory' ? onFolder(node.path) : entry && onFile(entry)}
-      onDoubleClick={() => !trash && entry?.path!=='plan.md' && entry && onRename(entry)}
+      onDoubleClick={() => !trash && (!planModeEnabled||entry?.path!=='plan.md') && entry && onRename(entry)}
     >
       {node.kind === 'directory' ? <ChevronRight className={`${styles.chevron} ${open ? styles.chevronOpen : ''}`} /> : <span className={styles.chevronSpace} />}
       {node.kind === 'directory' ? open ? <FolderOpen /> : <Folder /> : <File />}
       <span>{node.name}</span>
       {entry?.status === 'oversize' && <em>oversize</em>}
     </button>
-    {node.kind === 'directory' && open && node.children.map(child => <TreeRow key={child.path} node={child} depth={depth + 1} expanded={expanded} selectedId={selectedId} activeDirectory={activeDirectory} trash={trash} onFolder={onFolder} onFile={onFile} onRename={onRename} />)}
+    {node.kind === 'directory' && open && node.children.map(child => <TreeRow key={child.path} node={child} depth={depth + 1} expanded={expanded} selectedId={selectedId} activeDirectory={activeDirectory} trash={trash} planModeEnabled={planModeEnabled} onFolder={onFolder} onFile={onFile} onRename={onRename} />)}
   </div>;
 }
 

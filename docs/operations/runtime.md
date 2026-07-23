@@ -23,6 +23,11 @@ expires, Core durably fails the run with `run_timeout`, aborts its local event s
 and sends one best-effort stop command through the configured gateway. A late upstream
 completion or cancellation cannot replace the timeout terminal state.
 
+`AGENVYL_FEATURE_PLAN_MODE` controls the experimental Plan Mode workflow. It
+accepts only `true` or `false` (case-insensitive), defaults to `false`, and is
+read when Core starts. Changing it requires a Core restart, not a frontend
+rebuild.
+
 Cancelling a queued run removes it before any execution request and persists a
 `cancelled` terminal event. Queue depth and active count are available through the
 executor's internal `stats()` API for future metrics integration.

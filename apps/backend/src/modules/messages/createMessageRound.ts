@@ -17,6 +17,7 @@ import type {
   RunExecutionProfileSnapshot,
 } from "@agenvyl/contracts";
 import { resolveExecutionProfile } from "./executionProfile.js";
+import {assertPlanModeEnabled} from '../features/planMode.js';
 
 export class CreateMessageRound {
   constructor(
@@ -39,6 +40,7 @@ export class CreateMessageRound {
       activeRuns: ActiveRunRegistry;
       runExecutor: RunExecutor;
       roomWorkspace?: RoomWorkspaceService;
+      planModeEnabled?:boolean;
     },
   ) {}
 
@@ -51,6 +53,7 @@ export class CreateMessageRound {
     executionIntent?: ExecutionIntent;
     correlationId?: string;
   }) {
+    if(command.executionIntent)assertPlanModeEnabled(this.dependencies.planModeEnabled);
     const text = command.text?.trim() ?? "";
     if (!text && !command.attachmentVersionIds?.length)
       throw new AppError(

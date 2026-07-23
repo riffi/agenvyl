@@ -4,6 +4,7 @@ import type { RoomEventRepository } from '../room-events/roomEvents.repository.j
 import type { RunCheckpoint } from '../harness/harness.ports.js';
 import type { MappedRunEvent } from '../harness/harness.ports.js';
 import type {RunExecutionProfileSnapshot} from '@agenvyl/contracts';
+import {usesPlanWorkflow} from '../features/planMode.js';
 
 const nonTerminalStatuses=['queued','streaming','stopping','waiting_approval','waiting_clarification'];
 export type PersistedNonTerminalRun={id:string;messageId:string;roomId:string;personaVersionId:string;personaHandle:string;requestedModel:string;harnessInstanceId:string;harnessType:string;modelId:string;executionProfile:RunExecutionProfileSnapshot;status:string;text:string;context:ConversationItem[];upstreamRunId:string|null;connectorExecutionId:string|null;connectorEpoch:string|null;connectorCursor:number|null;executionDeadlineAt:string|null};
@@ -23,11 +24,12 @@ export class RunRepository{
   async finishNonTerminal(id:string,status:'completed'|'failed'|'cancelled',error?:string,errorCode?:string){return this.database.transaction(async tx=>{const[row]=await tx`UPDATE agent_runs SET status=${status},upstream_status=NULL,error=${error??null},error_code=${errorCode??null},updated_at=now() WHERE id=${id} AND status=ANY(${nonTerminalStatuses}) RETURNING room_id`;if(!row)return undefined;const roomId=row.room_id as string,event=await this.events.appendInTransaction(tx,roomId,'run.status',{runId:id,status,...(error?{error}:{}),...(errorCode?{errorCode}: {})},new Date().toISOString());return{id,roomId,event};});}
   async failNonTerminal(id:string,error:string,errorCode?:string){return this.finishNonTerminal(id,'failed',error,errorCode);}
   async select(id:string){const r=(await this.database.sql`SELECT id,room_id,response_slot_id,status,message_id FROM agent_runs WHERE id=${id}`)[0];if(!r)return{status:'not_found' as const};if(r.status!=='completed')return{status:'not_completed' as const};if((await this.database.sql`SELECT 1 FROM room_messages WHERE room_id=${r.room_id as string} AND created_at>(SELECT created_at FROM room_messages WHERE id=${r.message_id as string}) LIMIT 1`).length)return{status:'conversation_advanced' as const};await this.database.sql`UPDATE response_slots SET selected_run_id=${id} WHERE id=${r.response_slot_id as string}`;return{status:'selected' as const,roomId:r.room_id as string,slotId:r.response_slot_id as string,runId:id};}
-  async retry(id:string){return this.database.transaction(async tx=>{
+  async retry(id:string,planModeEnabled=true){return this.database.transaction(async tx=>{
     const s=(await tx`SELECT r.*,m.text message_text,m.run_ids,m.created_at message_created_at FROM agent_runs r JOIN room_messages m ON m.id=r.message_id WHERE r.id=${id} FOR UPDATE`)[0];
     if(!s)return{status:'not_found' as const};
     await tx`SELECT id FROM rooms WHERE id=${s.room_id as string} FOR UPDATE`;
     if(!['completed','failed','cancelled'].includes(s.status as string))return{status:'not_retryable' as const};
+    if(!planModeEnabled&&usesPlanWorkflow(s.execution_profile as RunExecutionProfileSnapshot))return{status:'plan_mode_disabled' as const};
     if((await tx`SELECT 1 FROM room_messages WHERE room_id=${s.room_id as string} AND created_at>${s.message_created_at as Date} LIMIT 1`).length)return{status:'conversation_advanced' as const};
     const slotId=(s.response_slot_id??s.id) as string;
     if((await tx`SELECT 1 FROM agent_runs WHERE response_slot_id=${slotId} AND status=ANY(${['queued','streaming','stopping','waiting_approval','waiting_clarification']}) LIMIT 1`).length)return{status:'retry_active' as const};

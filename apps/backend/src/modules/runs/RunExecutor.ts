@@ -29,6 +29,7 @@ type RunExecutorDependencies = {
   roomWorkspace?:RoomWorkspaceService;
   messages?:MessageRepository;
   connector?:ConnectorLifecycle;
+  planModeEnabled?:boolean;
   recoveryHealthAttempts?:number;
   recoveryHealthDelayMs?:number;
 };
@@ -60,9 +61,15 @@ export class RunExecutor {
   }
 
   async reconcilePersistedRuns(){
-    const candidates=await this.dependencies.runs.listNonTerminal();
-    const direct=candidates.filter(run=>!run.connectorExecutionId),connectorRuns=candidates.filter(run=>run.connectorExecutionId);
+    const persisted=await this.dependencies.runs.listNonTerminal();
     let recovered=0;
+    const disabledPlanRuns=this.dependencies.planModeEnabled===false?persisted.filter(run=>run.executionProfile.workflowMode==='plan'):[];
+    for(const run of disabledPlanRuns){
+      if(run.connectorExecutionId&&this.dependencies.connectorExecution)try{await this.dependencies.connectorExecution.stop(run.connectorExecutionId);}catch{/* best-effort stop before local failure */}
+      if(await this.failPersisted(run.id,'Plan Mode is disabled','plan_mode_disabled'))recovered++;
+    }
+    const disabledIds=new Set(disabledPlanRuns.map(run=>run.id)),candidates=persisted.filter(run=>!disabledIds.has(run.id));
+    const direct=candidates.filter(run=>!run.connectorExecutionId),connectorRuns=candidates.filter(run=>run.connectorExecutionId);
     for(const run of direct){
       if(await this.failPersisted(run.id,'Backend restarted before run reached a terminal state'))recovered++;
       this.logger.warn({runId:run.id,roomId:run.roomId,correlationId:'startup-recovery',upstreamRunId:run.upstreamRunId,transition:'failed'},'Recovered orphaned legacy run without Connector checkpoint');
