@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { Image as ImageIcon, ImageOff } from 'lucide-react';
+import { Download, FolderOpen, Image as ImageIcon, ImageOff } from 'lucide-react';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Lightbox from 'yet-another-react-lightbox';
@@ -9,7 +9,7 @@ import Zoom from 'yet-another-react-lightbox/plugins/zoom';
 import 'yet-another-react-lightbox/styles.css';
 import 'yet-another-react-lightbox/plugins/captions.css';
 import 'yet-another-react-lightbox/plugins/counter.css';
-import type { RunEmbedError } from '@agenvyl/contracts';
+import type { RunEmbedError, WorkspaceAttachment } from '@agenvyl/contracts';
 import type { Persona } from '../../entities/persona';
 import type { Run } from '../../entities/run';
 import styles from './MarkdownAnswer.module.css';
@@ -23,6 +23,7 @@ type MarkdownAnswerProps = {
   run: Run;
   personas?: Persona[];
   onMentionPersona?: (handle: string) => void;
+  openWorkspace?: (attachment: WorkspaceAttachment) => void;
 };
 
 export const MarkdownAnswer = memo(({
@@ -30,10 +31,12 @@ export const MarkdownAnswer = memo(({
   run,
   personas = [],
   onMentionPersona,
+  openWorkspace,
 }: MarkdownAnswerProps) => {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const openerRef = useRef<HTMLButtonElement | null>(null);
   const openerPathRef = useRef<string | null>(null);
+  const skipRestoreRef = useRef(false);
   const galleryImages = useMemo(
     () => (run.embeds ?? []).flatMap(embed => embed.status === 'resolved' && embed.attachment
       ? [{ path: embed.path, attachment: embed.attachment }]
@@ -58,11 +61,22 @@ export const MarkdownAnswer = memo(({
   };
 
   const closeGallery = () => {
+    skipRestoreRef.current = false;
     setOpenIndex(null);
+  };
+  const showWorkspace = () => {
+    const attachment = galleryImages[openIndex ?? -1]?.attachment;
+    if (!attachment || !openWorkspace) return;
+    skipRestoreRef.current = true;
+    setOpenIndex(null);
+    openWorkspace(attachment);
   };
 
   useEffect(() => {
-    if (openIndex !== null || !openerRef.current) return;
+    if (openIndex !== null || !openerRef.current || skipRestoreRef.current) {
+      skipRestoreRef.current = false;
+      return;
+    }
     let timeout: ReturnType<typeof setTimeout>;
     let attempts = 0;
     const restore = () => {
@@ -153,6 +167,13 @@ export const MarkdownAnswer = memo(({
       controller={{ aria: true, closeOnBackdropClick: true }}
       captions={{ descriptionTextAlign: 'center', descriptionMaxLines: 2, showToggle: false }}
       counter={{ separator: ' of ' }}
+      toolbar={{ buttons: [
+        ...(openWorkspace ? [<button key="workspace" className={styles.lightboxAction} type="button" onClick={showWorkspace} aria-label="Open image in Workspace" title="Open in Workspace"><FolderOpen /></button>] : []),
+        galleryImages[openIndex ?? -1]?.attachment
+          ? <a key="download" className={styles.lightboxAction} href={galleryImages[openIndex ?? 0].attachment.url} download aria-label="Download image" title="Download"><Download /></a>
+          : null,
+        'close',
+      ] }}
       labels={{
         Close: 'Close viewer',
         Next: 'Next image',

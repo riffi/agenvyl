@@ -26,6 +26,7 @@ import type { RoomPlanState, RoomWorkspace, WorkspaceAttachment, WorkspaceEntry,
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Alert, Button, Dialog, IconButton, Input } from '../../shared/ui';
+import {IsolatedHtmlPreview} from '../../shared/features';
 import { roomsApi } from '../../entities/room';
 import { buildWorkspaceTree, filterWorkspaceTree, treeDirectoryPaths, type WorkspaceTreeNode } from './workspaceTree';
 import styles from './ArtifactsDrawer.module.css';
@@ -52,6 +53,8 @@ export function ArtifactsDrawer({ open, close, roomId, fake = false, onAttach,fo
   const createMenuRef = useRef<HTMLDivElement>(null);
   const fileMenuRef = useRef<HTMLDivElement>(null);
   const appliedFocusRef=useRef<number|undefined>(undefined);
+  const preparedFocusRef=useRef<number|undefined>(undefined);
+  const activeFocusSearchRef=useRef<number|undefined>(undefined);
   const queryClient = useQueryClient();
   const key = ['rooms', roomId, 'workspace'] as const;
   const compact = useCompactWorkspace();
@@ -110,7 +113,17 @@ export function ArtifactsDrawer({ open, close, roomId, fake = false, onAttach,fo
     setCompare(undefined);
     setEditingPlan(false);
   }, [visibleEntries, selectedId]);
-  useEffect(()=>{if(!open||!focus||appliedFocusRef.current===focus.requestId)return;const entry=visibleEntries.find(item=>item.id===focus.entryId);if(!entry)return;appliedFocusRef.current=focus.requestId;setTrash(false);selectFile(entry);setViewVersionId(focus.versionId);setMobileStep('viewer');},[open,focus?.requestId,visibleEntries]);
+  useEffect(()=>{if(!open||!focus||preparedFocusRef.current===focus.requestId)return;preparedFocusRef.current=focus.requestId;activeFocusSearchRef.current=undefined;setTrash(false);setSearch('');setSelectedId(undefined);setMobileStep('explorer');},[open,focus?.requestId]);
+  useEffect(()=>{
+    if(!open||!focus||appliedFocusRef.current===focus.requestId||query.isFetching||!query.isSuccess)return;
+    if(trash&&activeFocusSearchRef.current!==focus.requestId)return;
+    if(!trash)activeFocusSearchRef.current=focus.requestId;
+    const entry=visibleEntries.find(item=>item.id===focus.entryId);
+    if(entry){appliedFocusRef.current=focus.requestId;selectFile(entry);setViewVersionId(focus.versionId);setMobileStep('viewer');return;}
+    if(!trash){setTrash(true);return;}
+    appliedFocusRef.current=focus.requestId;
+    setError('The referenced workspace file is no longer available.');
+  },[open,focus?.requestId,visibleEntries,trash,query.isFetching,query.isSuccess]);
   useEffect(() => {
     if (!open) return;
     setCreateMenu(false);
@@ -317,7 +330,7 @@ function ExplorerMessage({ children, icon }: { children: ReactNode; icon?: React
 
 function FilePreview({ selected, current }: { selected: WorkspaceEntry; current?: WorkspaceVersion }) {
   if (!current) return <div className={styles.previewFallback}><File /><span>Preview is not available yet</span></div>;
-  if (selected.mime_type === 'text/html') return <div className={styles.preview}><iframe title={selected.name} src={current.preview_url} sandbox="allow-scripts" /></div>;
+  if (selected.mime_type === 'text/html') return <div className={styles.preview}><IsolatedHtmlPreview title={selected.name} previewUrl={current.preview_url}/></div>;
   if (selected.mime_type === 'text/markdown') return <div className={styles.preview}><MarkdownPreview url={current.preview_url} /></div>;
   if (selected.mime_type.startsWith('image/')) return <div className={`${styles.preview} ${styles.imagePreview}`}><img src={current.preview_url} alt={selected.name} /></div>;
   if (selected.mime_type.startsWith('text/') || selected.mime_type === 'application/json') return <div className={styles.preview}><iframe title={selected.name} src={current.preview_url} sandbox="" /></div>;

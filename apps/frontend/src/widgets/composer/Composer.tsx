@@ -8,6 +8,7 @@ import { ApiError } from '../../shared/api';
 import { Alert, Button, TextArea } from '../../shared/ui';
 import type {ExecutionIntent,RoomExecutionState,RoomPersona} from '@agenvyl/contracts';
 import type {WorkspaceFocus} from '../artifacts-drawer';
+import {ArtifactActionsMenu,type OpenArtifact} from '../artifact-viewer';
 import styles from './Composer.module.css';
 import {ImplementationHandoff,type ImplementationDraft} from './ImplementationHandoff';
 import {ReasoningEffortChip,roomPersonaModel,roomPersonaReasoning} from '../../features/reasoning-effort';
@@ -39,6 +40,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   catalogReady,
   onSent,
   openWorkspace,
+  openArtifact=()=>{},
   roomId,
   attachments,
   attachmentsBusy,
@@ -74,6 +76,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   const implementationTargets=useMemo(()=>personas.map(persona=>({handle:persona.handle,name:persona.name,detail:personaModelName(persona,harnessCatalog),color:persona.color})),[personas,harnessCatalog]);
   const startImplementation=async(draft:ImplementationDraft)=>{const approved=executionState.plan.approved;if(!catalogReady)throw new Error('Agent catalog is unavailable');if(!approved)throw new Error('The plan is no longer approved');await gateway.send(draft.text,draft.targets,draft.messageId,[],{kind:'implement',approved_plan_version_id:approved.version_id});await onSent();};
   const targetExecutionPreview=targets.map(handle=>{const participant=participantsByHandle.get(handle),persona=participant?.persona??byHandle.get(handle),instance=harnessCatalog?.instances.find(item=>item.id===persona?.harness_instance_id),model=participant?roomPersonaModel(participant,harnessCatalog):instance?.models.find(item=>item.id===persona?.model_id),reasoning=participant?roomPersonaReasoning(participant,model):{effective:model?.defaultReasoningEffort??null,fallback:false},native=instance?.controls.nativeWorkflowModes.includes('plan'),ceiling=!planning&&instance?.type==='antigravity'&&instance.controls.permissionProfiles[0]?.id==='plan';return{handle,mode:planning?(native?'Native Plan':'Instruction-only Plan'):ceiling?'Work · plan-only ceiling':'Work',effort:reasoning.effective??'Auto',fallback:reasoning.fallback};});
+  const readyAttachments=attachments.flatMap(item=>item.attachment?[item.attachment]:[]);
   const mentionCandidates=useMemo(()=>[
     {handle:'all',name:'All agents',detail:'Notify every participant',color:'#4f6ef7'},
     ...personas.map(persona=>({handle:persona.handle,name:persona.name,detail:personaModelName(persona,harnessCatalog),color:persona.color})),
@@ -138,7 +141,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
       {profileError&&<Alert className={styles['send-error']} tone="error">Could not apply execution settings: {profileError}</Alert>}
       {sendError&&<Alert className={styles['send-error']} tone="error">Failed to send: {sendError.message} <Button size="sm" variant="danger" onClick={()=>void send(sendError)} disabled={sending}>Retry</Button></Alert>}
       <div className={styles['compose-card']}>
-        {attachments.length>0&&<div className={styles.attachments}>{attachments.map(item=><span key={item.id} className={[item.status==='error'?styles['attachment-error']:'',item.mimeType.startsWith('image/')&&item.attachment?styles['image-attachment']:''].filter(Boolean).join(' ')}>{item.status==='uploading'?<LoaderCircle className={styles.spinning}/>:item.mimeType.startsWith('image/')&&item.attachment?<img src={item.attachment.preview_url} alt=""/>:<FileText/>}<button type="button" disabled={!item.attachment} onClick={()=>item.attachment&&window.open(item.attachment.preview_url,'_blank')}>{item.name}</button><small>{item.status==='uploading'?`${item.progress}%`:item.status==='error'?item.error:formatBytes(item.size)}</small>{item.status==='uploading'&&<i style={{width:`${item.progress}%`}}/>}{item.status==='error'&&<button type="button" aria-label={`Retry upload ${item.name}`} onClick={()=>retryAttachment(item.id)}><RefreshCw/></button>}<button type="button" aria-label={`Remove ${item.name}`} onClick={()=>removeAttachment(item.id)}><X/></button></span>)}</div>}
+        {attachments.length>0&&<div className={styles.attachments}>{attachments.map(item=><span key={item.id} className={[item.status==='error'?styles['attachment-error']:'',item.mimeType.startsWith('image/')&&item.attachment?styles['image-attachment']:''].filter(Boolean).join(' ')}>{item.status==='uploading'?<LoaderCircle className={styles.spinning}/>:item.mimeType.startsWith('image/')&&item.attachment?<img src={item.attachment.preview_url} alt=""/>:<FileText/>}<button type="button" disabled={!item.attachment} onClick={event=>item.attachment&&openArtifact(item.attachment,readyAttachments,event.currentTarget)}>{item.name}</button><small>{item.status==='uploading'?`${item.progress}%`:item.status==='error'?item.error:formatBytes(item.size)}</small>{item.status==='uploading'&&<i style={{width:`${item.progress}%`}}/>}{item.attachment&&<ArtifactActionsMenu attachment={item.attachment} openWorkspace={attachment=>openWorkspace({entryId:attachment.entry_id,versionId:attachment.version_id})}/>} {item.status==='error'&&<button type="button" aria-label={`Retry upload ${item.name}`} onClick={()=>retryAttachment(item.id)}><RefreshCw/></button>}<button type="button" aria-label={`Remove ${item.name}`} onClick={()=>removeAttachment(item.id)}><X/></button></span>)}</div>}
         {targets.length>0&&<div className={styles['target-row']}>
           <span>Responders:</span>
           <div className={styles.targets}>
@@ -211,6 +214,7 @@ type ComposerProps={
   catalogReady: boolean;
   onSent:()=>Promise<void>;
   openWorkspace:(target?:Omit<WorkspaceFocus,'requestId'>)=>void;
+  openArtifact?:OpenArtifact;
   roomId:string;
   attachments:ComposerAttachment[];
   attachmentsBusy:boolean;

@@ -36,12 +36,33 @@ describe('versioned room workspace',()=>{
     await app.close();
   });
 
-  it('sandboxes HTML preview and rejects traversal',async()=>{
+  it('allows external HTML resources while preserving the iframe sandbox boundary',async()=>{
     const root=await mkdtemp(path.join(tmpdir(),'workspace-api-'));roots.push(root);
     const app=await buildApp({databaseUrl:testDatabaseUrl('workspace_preview'),workspaceRoot:root,workspaceAgentRoot:root,fetch:vi.fn<typeof fetch>(),distPath:'missing-dist'});
     const invalid=await app.inject({method:'POST',url:'/api/v1/rooms/demo-room/workspace/files',headers:{'content-type':'text/plain','x-file-path':encodeURIComponent('../secret.txt')},payload:Buffer.from('secret')});expect(invalid.statusCode).toBe(400);
     const uploaded=await app.inject({method:'POST',url:'/api/v1/rooms/demo-room/workspace/files',headers:{'content-type':'text/html','x-file-path':'demo.html'},payload:Buffer.from('<html><head></head><body><script>fetch("https://example.com")</script></body></html>')});
-    const preview=await app.inject(`/api/v1/rooms/demo-room/workspace/versions/${uploaded.json().version.id}/preview`);expect(preview.headers['content-security-policy']).toContain("connect-src 'none'");expect(preview.body).toContain('<base href=');
+    const preview=await app.inject(`/api/v1/rooms/demo-room/workspace/versions/${uploaded.json().version.id}/preview`),csp=preview.headers['content-security-policy'];
+    expect(csp).toContain("style-src 'self' http: https: 'unsafe-inline'");
+    expect(csp).toContain("connect-src 'self' http: https: ws: wss:");
+    expect(csp).toContain("font-src 'self' http: https: data:");
+    expect(csp).not.toContain("connect-src 'none'");
+    expect(preview.body).toContain('<base href=');
+    await app.close();
+  });
+
+  it('resolves HTML preview assets from the current workspace',async()=>{
+    const root=await mkdtemp(path.join(tmpdir(),'workspace-api-'));roots.push(root);
+    const app=await buildApp({databaseUrl:testDatabaseUrl('workspace_live_preview'),workspaceRoot:root,workspaceAgentRoot:root,fetch:vi.fn<typeof fetch>(),distPath:'missing-dist'});
+    const html=await app.inject({method:'POST',url:'/api/v1/rooms/demo-room/workspace/files',headers:{'content-type':'text/html','x-file-path':'site/index.html'},payload:Buffer.from('<link rel="stylesheet" href="style.css"><script src="app.js"></script>')});
+    await app.inject({method:'POST',url:'/api/v1/rooms/demo-room/workspace/files',headers:{'content-type':'text/css','x-file-path':'site/style.css'},payload:Buffer.from('body{color:red}')});
+    await app.inject({method:'POST',url:'/api/v1/rooms/demo-room/workspace/files',headers:{'content-type':'text/javascript','x-file-path':'site/app.js'},payload:Buffer.from('document.body.dataset.version="first"')});
+    const base=`/api/v1/rooms/demo-room/workspace/versions/${html.json().version.id}/preview`;
+    const firstStyle=await app.inject(`${base}/style.css`),script=await app.inject(`${base}/app.js`);
+    expect(firstStyle.statusCode).toBe(200);expect(firstStyle.body).toBe('body{color:red}');
+    expect(script.statusCode).toBe(200);expect(script.body).toContain('version="first"');
+    await app.inject({method:'POST',url:'/api/v1/rooms/demo-room/workspace/files',headers:{'content-type':'text/css','x-file-path':'site/style.css','x-conflict-strategy':'replace'},payload:Buffer.from('body{color:blue}')});
+    const currentStyle=await app.inject(`${base}/style.css`);
+    expect(currentStyle.statusCode).toBe(200);expect(currentStyle.body).toBe('body{color:blue}');
     await app.close();
   });
 

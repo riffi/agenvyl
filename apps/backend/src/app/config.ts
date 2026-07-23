@@ -13,6 +13,7 @@ export type AppConfig = {
   workspaceAgentRoot: string;
   workspaceMaxFileBytes: number;
   planModeEnabled: boolean;
+  previewOrigin: string;
 };
 
 export type AppConfigOverrides = Partial<AppConfig>;
@@ -40,6 +41,7 @@ export function resolveAppConfig(overrides: AppConfigOverrides = {}): AppConfig 
     workspaceAgentRoot: overrides.workspaceAgentRoot ?? process.env.AGENVYL_WORKSPACE_AGENT_ROOT ?? overrides.workspaceRoot ?? process.env.AGENVYL_WORKSPACE_ROOT ?? paths.workspaces,
     workspaceMaxFileBytes: positiveInteger(overrides.workspaceMaxFileBytes ?? process.env.AGENVYL_WORKSPACE_MAX_FILE_BYTES, 50*1024*1024),
     planModeEnabled: overrides.planModeEnabled ?? featureFlag(process.env.AGENVYL_FEATURE_PLAN_MODE, 'AGENVYL_FEATURE_PLAN_MODE'),
+    previewOrigin: overrides.previewOrigin ?? process.env.AGENVYL_PREVIEW_ORIGIN ?? `http://127.0.0.1:${positiveInteger(process.env.AGENVYL_PREVIEW_PORT,8792)}`,
   };
 }
 

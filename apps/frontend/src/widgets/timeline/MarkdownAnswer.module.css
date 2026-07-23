@@ -78,6 +78,21 @@
   text-align: center;
 }
 
+.lightboxAction {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  cursor: pointer;
+  filter: drop-shadow(2px 2px 2px #0008);
+}
+
+.lightboxAction:hover { color: #dbe4ff; }
+.lightboxAction svg { width: 22px; }
+
 @media (max-width: 767px) {
   .image { border-radius: 6px; }
 }

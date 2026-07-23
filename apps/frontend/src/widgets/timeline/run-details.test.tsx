@@ -8,6 +8,7 @@ import { initialState } from '../../entities/room';
 import type { Run } from '../../entities/run';
 import type { RoomGateway } from '../../features/room-session';
 import { Timeline } from './Timeline';
+import type { WorkspaceAttachment } from '@agenvyl/contracts';
 
 const persona: Persona = { id: 'persona-1', handle: 'coder', name: 'Coder', role: 'Code', color: '#64748b', requested_model: 'sol', effective_model: null, harness_instance_id: 'local-hermes', harness_type: 'hermes', model_id: 'sol', permission_profile_id:null,agent_variant_id:null, default_reasoning_effort:null, group_id: null, archived_at: null };
 const run: Run = { id: 'run-1', messageId: 'message-1', agent: 'coder', harnessInstanceId: 'local-hermes', harnessType: 'hermes', modelId: 'sol', executionProfile:{workflowMode:'work',requestedReasoningEffort:null,reasoningEffort:null,reasoningEffortFallback:false,reasoningEffortSource:'auto',planEnforcement:null,permissionProfileId:null,agentVariantId:null,implementationPlanVersionId:null}, status: 'completed', text: 'Готово', tools: [], usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 } };
@@ -43,5 +44,20 @@ describe('Timeline run details', () => {
     render(<Timeline state={state} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()} />);
     expect(screen.getByLabelText('Reasoning effort: max')).toBeTruthy();
     expect(screen.queryByText('Work · max')).toBeNull();
+  });
+
+  it('routes agent artifacts and message attachments through the immutable artifact viewer', () => {
+    const file:WorkspaceAttachment={version_id:'version-synopsis',entry_id:'entry-synopsis',path:'prvaya-popytka-synopsis.md',name:'prvaya-popytka-synopsis.md',size:8287,mime_type:'text/markdown',url:'/version-synopsis',preview_url:'/version-synopsis/preview'};
+    const artifactRun:Run={...run,artifacts:[{...file,change:'created',attribution:'exact'}]};
+    const state={...initialState,hydrated:true,messages:[{id:'message-1',text:'@coder продолжай',createdAt:'2026-07-23T07:31:58.341Z',targets:['coder' as const],runIds:['run-1'],attachments:[file],author:{profileId:'local-user',displayName:'User',handle:'user'},addressedToAll:false}],runs:{'run-1':artifactRun},runOrder:['run-1']};
+    const openArtifact=vi.fn();
+    const {container}=render(<Timeline state={state} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()} openArtifact={openArtifact}/>);
+
+    const buttons=screen.getAllByRole('button',{name:/^prvaya-popytka-synopsis\.md/});
+    fireEvent.click(buttons[0]);
+    fireEvent.click(buttons[1]);
+    expect(openArtifact).toHaveBeenCalledTimes(2);
+    expect(openArtifact.mock.calls[0]?.[0]).toMatchObject({entry_id:'entry-synopsis',version_id:'version-synopsis'});
+    expect(container.querySelector('a[target="_blank"]')).toBeNull();
   });
 });

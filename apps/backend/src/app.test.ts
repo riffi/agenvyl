@@ -216,6 +216,7 @@ describe("runtime features", () => {
       sql = connectTestDatabase(file);
     expect((await app.inject("/api/v1/features")).json()).toEqual({
       plan_mode: false,
+      preview_origin: "http://127.0.0.1:8792",
     });
     const requests = [
       await app.inject({

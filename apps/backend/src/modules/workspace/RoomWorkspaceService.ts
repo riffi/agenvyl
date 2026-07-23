@@ -61,7 +61,7 @@ export class RoomWorkspaceService{
 
   async versions(roomId:string,entryId:string){await this.assertRoom(roomId);return(await this.repository.versions(roomId,entryId)).map(toWorkspaceVersion);}
   async resolveVersion(roomId:string,versionId:string){const version=await this.versionRow(roomId,versionId);return{path:this.objectPath(version.sha256),contentType:version.mime_type,version:toWorkspaceVersion(version)};}
-  async resolvePreviewAsset(roomId:string,versionId:string,assetInput:string){const owner=await this.versionRow(roomId,versionId),asset=safeRelative(decodeURIComponent(assetInput)),logical=path.posix.join(path.posix.dirname(owner.path),asset),version=await this.repository.versionAt(roomId,logical,owner.created_at);if(!version)throw new AppError('version_not_found',404,'Related preview file not found');return{path:this.objectPath(version.sha256),contentType:version.mime_type};}
+  async resolvePreviewAsset(roomId:string,versionId:string,assetInput:string){const owner=await this.versionRow(roomId,versionId),asset=safeRelative(decodeURIComponent(assetInput)),logical=path.posix.join(path.posix.dirname(owner.path),asset),version=await this.repository.currentVersion(roomId,logical);if(!version)throw new AppError('version_not_found',404,'Related preview file not found');return{path:this.objectPath(version.sha256),contentType:version.mime_type};}
   async snapshotAgentPath(roomId:string,versionId:string){const version=await this.versionRow(roomId,versionId);return this.agentObjectPath(version.sha256);}
   streamVersion(roomId:string,versionId:string){return this.resolveVersion(roomId,versionId).then(file=>({...file,stream:createReadStream(file.path)}));}
 

@@ -2,7 +2,7 @@ export type AgentHandle = string;
 
 export type WorkflowMode = 'plan' | 'work';
 export type PlanEnforcement = 'native' | 'instruction_only';
-export type RuntimeFeatures = { plan_mode: boolean };
+export type RuntimeFeatures = { plan_mode: boolean; preview_origin: string };
 export type PlanVersionRef = { entry_id: string; version_id: string };
 export type RoomPlanState = { path: 'plan.md'; current: PlanVersionRef | null; approved: PlanVersionRef | null };
 export type RoomExecutionState = { plan: RoomPlanState };

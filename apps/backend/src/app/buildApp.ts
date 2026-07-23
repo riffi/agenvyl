@@ -17,7 +17,7 @@ import {registerUserProfileRoutes} from '../modules/user-profile/userProfile.rou
 import {registerSetupRoutes} from '../modules/setup/setup.routes.js';
 import {registerFeatureRoutes} from '../modules/features/features.routes.js';
 
-export type AppOptions = { databaseUrl?: string; connectorUrl?:string; connectorToken?:string; fetch?: typeof fetch; distPath?: string; runConcurrency?: number; runTimeoutMs?:number; shutdownTimeoutMs?: number; websocketMaxBufferedBytes?: number; workspaceRoot?:string; workspaceAgentRoot?:string; workspaceMaxFileBytes?:number; planModeEnabled?:boolean; logger?:boolean;legacySeed?:boolean };
+export type AppOptions = { databaseUrl?: string; connectorUrl?:string; connectorToken?:string; fetch?: typeof fetch; distPath?: string; runConcurrency?: number; runTimeoutMs?:number; shutdownTimeoutMs?: number; websocketMaxBufferedBytes?: number; workspaceRoot?:string; workspaceAgentRoot?:string; workspaceMaxFileBytes?:number; planModeEnabled?:boolean; previewOrigin?:string; logger?:boolean;legacySeed?:boolean };
 
 export async function buildApp(options: AppOptions = {}) {
   const config = resolveAppConfig({
@@ -33,6 +33,7 @@ export async function buildApp(options: AppOptions = {}) {
     workspaceAgentRoot:options.workspaceAgentRoot,
     workspaceMaxFileBytes:options.workspaceMaxFileBytes,
     planModeEnabled:options.planModeEnabled,
+    previewOrigin:options.previewOrigin,
   });
   const app = Fastify({ logger: options.logger === false ? false : { redact: ['req.headers.authorization', 'req.headers.x-api-key'] } });
   const { database, events, dependencyHealth, runExecutor, roomsService, personasService, userProfileService, personaGroupsService, createMessageRound, runsService,roomWorkspace,harnessCatalogService,setupService } = await createAppContainer(config, options.fetch,app.log,options.legacySeed);
@@ -45,7 +46,7 @@ export async function buildApp(options: AppOptions = {}) {
     await database.close();
   });
   await registerHealthRoutes(app, dependencyHealth,database);
-  await registerFeatureRoutes(app,{planMode:config.planModeEnabled});
+  await registerFeatureRoutes(app,{planMode:config.planModeEnabled,previewOrigin:config.previewOrigin});
   await registerConnectorRoutes(app,harnessCatalogService);
   await registerSetupRoutes(app,setupService);
   await registerRoomRoutes(app, roomsService);

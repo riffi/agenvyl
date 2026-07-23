@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Ban, Brain, ChevronDown, ChevronUp, CircleCheck, CircleHelp, CircleX, Clock3, File, FoldVertical, Info, LoaderCircle, Paperclip, RotateCcw, Square, TriangleAlert, UnfoldVertical, Wrench, BadgeCheck } from 'lucide-react';
-import type {RoomPlanState,UpstreamStatus} from '@agenvyl/contracts';
+import type {RoomPlanState,UpstreamStatus,WorkspaceAttachment} from '@agenvyl/contracts';
 import type {WorkspaceFocus} from '../artifacts-drawer';
+import {ArtifactActionsMenu,type OpenArtifact} from '../artifact-viewer';
 import {HarnessIcon,type HarnessCatalog} from '../../entities/harness';
 import type { Persona } from '../../entities/persona';
 import type { RoomState } from '../../entities/room';
@@ -102,6 +103,7 @@ function RunCard({
   plan,
   approvePlan=async()=>{},
   openWorkspace,
+  openArtifact,
   planModeEnabled=true,
 }: {
   run: Run;
@@ -123,6 +125,7 @@ function RunCard({
   plan:RoomPlanState;
   approvePlan?:(versionId:string)=>Promise<void>;
   openWorkspace:(target:Omit<WorkspaceFocus,'requestId'>)=>void;
+  openArtifact:OpenArtifact;
   planModeEnabled?:boolean;
 }) {
   const [retrying,setRetrying]=useState(false);const [retryError,setRetryError]=useState<string>();const [toolsOpen,setToolsOpen]=useState(false);
@@ -160,13 +163,13 @@ function RunCard({
         {run.reasoning&&<ReasoningBlock text={run.reasoning} harnessType={run.harnessType}/>}
         {run.upstreamStatus&&<UpstreamStatusNotice status={run.upstreamStatus}/>}
         <div className={`${styles.answer} ${collapsed?styles['answer-collapsed']:''}`}>
-          <MarkdownAnswer text={answer} run={run} personas={personas} onMentionPersona={onMentionPersona}/>
+          <MarkdownAnswer text={answer} run={run} personas={personas} onMentionPersona={onMentionPersona} openWorkspace={attachment=>openWorkspace({entryId:attachment.entry_id,versionId:attachment.version_id})}/>
           {run.status === "streaming" && <i className={styles.cursor} />}
         </div>
         {isLongAnswer(run.text)&&run.status==='completed'&&<button className={`${styles['answer-toggle']} ${collapsed?styles.expand:styles.collapse}`} type="button" onClick={toggleCollapsed} aria-expanded={!collapsed}>{collapsed?<><span>Expand response</span><ChevronDown/></>:<><span>Collapse response</span><ChevronUp/></>}</button>}
         {run.error && <Alert tone="error">{run.error}</Alert>}
         {run.request&&<RunRequest key={`${run.id}:${run.request.prompt}:${run.request.questions?.map(question=>question.id).join(',')??''}`} request={run.request} resolve={resolve}/>}
-        {run.artifacts?.some(item=>item.attribution==='exact'&&!run.embeds?.some(embed=>embed.status==='resolved'&&embed.attachment?.version_id===item.version_id))&&<div className={styles.artifacts}>{run.artifacts.filter(item=>item.attribution==='exact'&&!run.embeds?.some(embed=>embed.status==='resolved'&&embed.attachment?.version_id===item.version_id)).map(item=>item.path==='plan.md'?<button type="button" key={item.version_id} onClick={()=>openWorkspace({entryId:item.entry_id,versionId:item.version_id})}><File/><span><strong>{item.name}</strong><small>{item.change==='created'?'Created':'New version'}</small></span></button>:<a key={item.version_id} href={item.preview_url} target="_blank" rel="noreferrer"><File/><span><strong>{item.name}</strong><small>{item.change==='created'?'Created':item.change==='updated'?'Updated':'Deleted'}</small></span></a>)}</div>}
+        {run.artifacts?.some(item=>item.attribution==='exact'&&!run.embeds?.some(embed=>embed.status==='resolved'&&embed.attachment?.version_id===item.version_id))&&<div className={styles.artifacts}>{run.artifacts.filter(item=>item.attribution==='exact'&&!run.embeds?.some(embed=>embed.status==='resolved'&&embed.attachment?.version_id===item.version_id)).map(item=><ArtifactCard key={item.version_id} attachment={item} detail={item.change==='created'?'Created':item.change==='updated'?'Updated':'Deleted'} gallery={run.artifacts} openArtifact={openArtifact} openWorkspace={openWorkspace}/>)}</div>}
         <div className={styles['run-footer']}>
           <span className={styles['run-footer-actions']}>
             {run.tools.length>0&&<button type="button" className={styles['footer-action']} onClick={()=>setToolsOpen(open=>!open)} aria-expanded={toolsOpen} aria-controls={`run-tools-${run.id}`}><Wrench/><span>Actions</span><em>{run.tools.length}</em>{toolsOpen?<ChevronUp className={styles.disclosure}/>:<ChevronDown className={styles.disclosure}/>}</button>}
@@ -196,6 +199,7 @@ export function Timeline({
   plan=state.executionState.plan,
   approvePlan=async()=>{},
   openWorkspace=()=>{},
+  openArtifact=()=>{},
   planModeEnabled=true,
 }: {
   state: RoomState;
@@ -210,6 +214,7 @@ export function Timeline({
   plan?:RoomPlanState;
   approvePlan?:(versionId:string)=>Promise<void>;
   openWorkspace?:(target:Omit<WorkspaceFocus,'requestId'>)=>void;
+  openArtifact?:OpenArtifact;
   planModeEnabled?:boolean;
 }) {
   const byHandle = new Map(personas.map((p) => [p.handle, p]));
@@ -272,8 +277,8 @@ export function Timeline({
         <section className={`${styles.round} ${longRuns.length?styles['has-answer-navigation']:''}`} data-timeline-layout key={m.id}>
           <div className={`${styles['user-message']} ${imageAttachments.length?styles['with-images']:''}`}>
             <p><MentionText text={m.text} personas={personas} onMentionPersona={onMentionPersona}/></p>
-            {imageAttachments.length>0&&<div className={styles['image-attachments']} data-count={Math.min(imageAttachments.length,4)}>{imageAttachments.map(item=><a href={item.preview_url} target="_blank" rel="noreferrer" key={item.version_id} title={`Open ${item.name}`}><img src={item.preview_url} alt={item.name} loading="lazy"/><span>{item.name}</span></a>)}</div>}
-            {fileAttachments.length>0&&<div className={styles.attachments}>{fileAttachments.map(item=><a href={item.preview_url} target="_blank" rel="noreferrer" key={item.version_id}><Paperclip/><span>{item.name}</span><small>{formatBytes(item.size)}</small></a>)}</div>}
+            {imageAttachments.length>0&&<div className={styles['image-attachments']} data-count={Math.min(imageAttachments.length,4)}>{imageAttachments.map(item=><MessageImage key={item.version_id} attachment={item} gallery={imageAttachments} openArtifact={openArtifact} openWorkspace={openWorkspace}/>)}</div>}
+            {fileAttachments.length>0&&<div className={styles.attachments}>{fileAttachments.map(item=><MessageAttachment key={item.version_id} attachment={item} gallery={m.attachments} openArtifact={openArtifact} openWorkspace={openWorkspace}/>)}</div>}
             <small>
               {new Date(m.createdAt).toLocaleTimeString("ru", {
                 hour: "2-digit",
@@ -317,6 +322,7 @@ export function Timeline({
                     plan={plan}
                     approvePlan={approvePlan}
                     openWorkspace={openWorkspace}
+                    openArtifact={openArtifact}
                     planModeEnabled={planModeEnabled}
                   />
                   </div>
@@ -328,3 +334,26 @@ export function Timeline({
     </main>;
 }
 function formatBytes(value:number){if(value<1024)return`${value} B`;if(value<1024*1024)return`${(value/1024).toFixed(1)} KB`;return`${(value/1024/1024).toFixed(1)} MB`;}
+
+const workspaceTarget=(attachment:WorkspaceAttachment)=>({entryId:attachment.entry_id,versionId:attachment.version_id});
+
+function ArtifactCard({attachment,detail,gallery,openArtifact,openWorkspace}:{attachment:WorkspaceAttachment;detail:string;gallery?:WorkspaceAttachment[];openArtifact:OpenArtifact;openWorkspace:(target:Omit<WorkspaceFocus,'requestId'>)=>void}){
+  return <span className={styles.artifactCard}>
+    <button type="button" className={styles.artifactPrimary} onClick={event=>openArtifact(attachment,gallery,event.currentTarget)}><File/><span><strong>{attachment.name}</strong><small>{detail}</small></span></button>
+    <ArtifactActionsMenu attachment={attachment} openWorkspace={item=>openWorkspace(workspaceTarget(item))}/>
+  </span>;
+}
+
+function MessageAttachment({attachment,gallery,openArtifact,openWorkspace}:{attachment:WorkspaceAttachment;gallery?:WorkspaceAttachment[];openArtifact:OpenArtifact;openWorkspace:(target:Omit<WorkspaceFocus,'requestId'>)=>void}){
+  return <span className={styles.attachmentCard}>
+    <button type="button" className={styles.attachmentPrimary} onClick={event=>openArtifact(attachment,gallery,event.currentTarget)}><Paperclip/><span>{attachment.name}</span><small>{formatBytes(attachment.size)}</small></button>
+    <ArtifactActionsMenu attachment={attachment} openWorkspace={item=>openWorkspace(workspaceTarget(item))}/>
+  </span>;
+}
+
+function MessageImage({attachment,gallery,openArtifact,openWorkspace}:{attachment:WorkspaceAttachment;gallery:WorkspaceAttachment[];openArtifact:OpenArtifact;openWorkspace:(target:Omit<WorkspaceFocus,'requestId'>)=>void}){
+  return <span className={styles.messageImage}>
+    <button type="button" onClick={event=>openArtifact(attachment,gallery,event.currentTarget)} title={`Open ${attachment.name}`}><img src={attachment.preview_url} alt={attachment.name} loading="lazy"/><span>{attachment.name}</span></button>
+    <ArtifactActionsMenu attachment={attachment} openWorkspace={item=>openWorkspace(workspaceTarget(item))}/>
+  </span>;
+}

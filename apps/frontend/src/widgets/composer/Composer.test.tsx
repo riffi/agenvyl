@@ -97,4 +97,12 @@ describe('Composer agent list',()=>{
     fireEvent.change(editor,{target:{value:'@coder implement'}});
     expect(screen.getByRole('button',{name:'Send to 1 agent'})).toBeTruthy();
   });
+
+  it('opens a ready composer attachment in the shared viewer',()=>{
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
+    const openArtifact=vi.fn(),file={version_id:'version-notes',entry_id:'entry-notes',path:'notes.md',name:'notes.md',size:24,mime_type:'text/markdown',url:'/notes',preview_url:'/notes/preview'};
+    render(<Composer gateway={gateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} openArtifact={openArtifact} roomId="room" attachments={[{id:'version-notes',name:'notes.md',size:24,mimeType:'text/markdown',status:'ready',progress:100,attachment:file}]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()}/>);
+    fireEvent.click(screen.getByRole('button',{name:'notes.md'}));
+    expect(openArtifact).toHaveBeenCalledWith(file,[file],expect.any(HTMLElement));
+  });
 });
