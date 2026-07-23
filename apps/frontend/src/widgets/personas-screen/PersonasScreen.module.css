@@ -2687,3 +2687,9 @@
   }
 }
 .field-error{color:#b45309;font-size:10px;font-weight:600}
+
+.dialog-message {
+  margin: 0;
+  padding: 18px 22px;
+  line-height: 1.5;
+}
