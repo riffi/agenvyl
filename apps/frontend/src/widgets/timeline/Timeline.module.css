@@ -91,6 +91,38 @@
   flex: 1;
   min-width: 0;
 }
+.workspace-state {
+  display: inline-flex;
+  max-width: 100%;
+  gap: 5px;
+  align-items: center;
+  margin-top: 6px;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.35;
+}
+.workspace-state svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: #94a3b8;
+  stroke-width: 2;
+}
+.workspace-state span {
+  color: #475569;
+  font-weight: 600;
+}
+.workspace-state small {
+  color: #94a3b8;
+  font: inherit;
+}
+.workspace-state-success svg {
+  color: #4f8060;
+}
+.workspace-state-progress svg {
+  color: #71839b;
+  animation: status-spin 0.9s linear infinite;
+}
 .run-header {
   display: flex;
   gap: 10px;

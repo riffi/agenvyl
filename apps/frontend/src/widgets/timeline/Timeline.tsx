@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Ban, Brain, ChevronDown, ChevronUp, CircleCheck, CircleHelp, CircleX, Clock3, File, FoldVertical, Info, LoaderCircle, Paperclip, RotateCcw, Square, TriangleAlert, UnfoldVertical, Wrench, BadgeCheck } from 'lucide-react';
+import { Archive, Ban, Brain, ChevronDown, ChevronUp, CircleCheck, CircleHelp, CircleX, Clock3, File, FolderCheck, FoldVertical, Info, LoaderCircle, Paperclip, RotateCcw, Square, TriangleAlert, UnfoldVertical, Wrench, BadgeCheck } from 'lucide-react';
 import type {RoomPlanState,UpstreamStatus,WorkspaceAttachment,WorkspaceConflictChoice,WorkspaceConflictSide} from '@agenvyl/contracts';
 import type {WorkspaceFocus} from '../artifacts-drawer';
 import {ArtifactActionsMenu,type OpenArtifact} from '../artifact-viewer';
@@ -138,6 +138,7 @@ function RunCard({
   const retryLabel=run.status==='completed'?'Create another response':'Run again';
   const retryRun=async()=>{setRetrying(true);setRetryError(undefined);try{await retry()}catch(error){setRetryError(error instanceof Error?error.message:String(error))}finally{setRetrying(false)}};
   const planArtifact=run.artifacts?.find(item=>item.attribution==='exact'&&item.path==='plan.md'&&item.change!=='deleted');
+  const publishedFileCount=run.artifacts?.filter(item=>item.attribution==='exact').length??0;
   return (
     <article
       className={`${styles['run-card']} ${styles[run.status]}`}
@@ -166,10 +167,10 @@ function RunCard({
         </header>
         {run.reasoning&&<ReasoningBlock text={run.reasoning} harnessType={run.harnessType}/>}
         {run.upstreamStatus&&<UpstreamStatusNotice status={run.upstreamStatus}/>}
-        {run.status==='finalizing'&&<Alert>Finalizing files…</Alert>}
-        {run.workspaceResult?.publish_status==='published'&&<Alert>Published</Alert>}
+        {run.status==='finalizing'&&<div className={`${styles['workspace-state']} ${styles['workspace-state-progress']}`} role="status" aria-live="polite"><LoaderCircle aria-hidden="true"/><span>Finalizing files…</span></div>}
+        {run.workspaceResult?.publish_status==='published'&&publishedFileCount>0&&<div className={`${styles['workspace-state']} ${styles['workspace-state-success']}`} role="status" title="The agent’s captured files are now the current versions in this room."><FolderCheck aria-hidden="true"/><span>Changes applied to room workspace</span><small>· {publishedFileCount} {publishedFileCount===1?'file':'files'}</small></div>}
         {run.workspaceResult?.publish_status==='partially_published'&&<WorkspaceConflictPanel roomId={roomId} runId={run.id}/>}
-        {run.workspaceResult?.publish_status==='not_published'&&<Alert tone="warning">Snapshot saved, not published</Alert>}
+        {run.workspaceResult?.publish_status==='not_published'&&<div className={styles['workspace-state']} role="status" title="The captured files remain available from this response, but the room workspace was not changed."><Archive aria-hidden="true"/><span>Snapshot saved</span><small>· Room workspace unchanged</small></div>}
         <div className={`${styles.answer} ${collapsed?styles['answer-collapsed']:''}`}>
           <MarkdownAnswer text={answer} run={run} personas={personas} onMentionPersona={onMentionPersona} openWorkspace={attachment=>openWorkspace({entryId:attachment.entry_id,versionId:attachment.version_id})}/>
           {run.status === "streaming" && <i className={styles.cursor} />}

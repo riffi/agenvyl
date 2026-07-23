@@ -49,7 +49,7 @@ describe('Timeline run details', () => {
 
   it('routes agent artifacts and message attachments through the immutable artifact viewer', () => {
     const file:WorkspaceAttachment={version_id:'version-synopsis',entry_id:'entry-synopsis',path:'prvaya-popytka-synopsis.md',name:'prvaya-popytka-synopsis.md',size:8287,mime_type:'text/markdown',url:'/version-synopsis',preview_url:'/version-synopsis/preview'};
-    const artifactRun:Run={...run,artifacts:[{...file,change:'created',attribution:'exact'}]};
+    const artifactRun:Run={...run,artifacts:[{...file,change:'created',attribution:'exact'}],workspaceResult:{base_snapshot_id:'base',result_snapshot_id:'result',published_snapshot_id:'published',capture_status:'complete',publish_status:'published',conflict_count:0,errors:[]}};
     const state={...initialState,hydrated:true,messages:[{id:'message-1',text:'@coder продолжай',createdAt:'2026-07-23T07:31:58.341Z',targets:['coder' as const],runIds:['run-1'],attachments:[file],author:{profileId:'local-user',displayName:'User',handle:'user'},addressedToAll:false}],runs:{'run-1':artifactRun},runOrder:['run-1']};
     const openArtifact=vi.fn();
     const {container}=render(<Timeline state={state} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()} openArtifact={openArtifact}/>);
@@ -60,6 +60,9 @@ describe('Timeline run details', () => {
     expect(openArtifact).toHaveBeenCalledTimes(2);
     expect(openArtifact.mock.calls[0]?.[0]).toMatchObject({entry_id:'entry-synopsis',version_id:'version-synopsis'});
     expect(container.querySelector('a[target="_blank"]')).toBeNull();
+    expect(screen.getByText('Changes applied to room workspace')).toBeTruthy();
+    expect(screen.getByText('· 1 file')).toBeTruthy();
+    expect(screen.queryByText('Published')).toBeNull();
   });
 
   it('resolves every workspace conflict in one request and reloads stale conflicts',async()=>{
