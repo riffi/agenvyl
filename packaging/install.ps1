@@ -77,7 +77,9 @@ try {
   if (Test-Path -LiteralPath $destination) { Move-Item -LiteralPath $destination -Destination $previous }
   Move-Item -LiteralPath $staged -Destination $destination
   $pathPolicy = if ($NoPath -or $env:AGENVYL_NO_PATH -eq '1') { 'none' } else { 'user' }
-  & (Join-Path $destination 'bin\agenvyl.cmd') init --locale en --shortcuts recommended --path $pathPolicy
+  $bundleCommand = Join-Path $destination 'bin\agenvyl.cmd'
+  Write-Host "Preparing Agenvyl $releaseVersion for first use..."
+  $null = @(& $bundleCommand init --locale en --shortcuts recommended --path $pathPolicy --json)
   if ($LASTEXITCODE -ne 0) {
     Remove-Item -LiteralPath $destination -Recurse -Force
     if (Test-Path -LiteralPath $previous) { Move-Item -LiteralPath $previous -Destination $destination }
@@ -92,12 +94,20 @@ try {
     return $resolved.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath (Join-Path $resolved 'manifest.json'))
   }
   if ($pathPolicy -eq 'user' -and $oldBundle -and $oldBundle -ne $destination -and (Test-OwnedVersionDirectory $oldBundle)) { Remove-Item -LiteralPath $oldBundle -Recurse -Force }
-  Write-Host "Agenvyl $releaseVersion installed at $destination"
-  if ($pathPolicy -eq 'user') { Write-Host 'Open a new terminal to use the agenvyl command.' }
+  $setupComplete = $false
   if (-not $NoLaunch -and $env:AGENVYL_NO_LAUNCH -ne '1') {
-    & (Join-Path $destination 'bin\agenvyl.cmd') setup --all
-    if ($LASTEXITCODE -ne 0) { Write-Warning "Agenvyl was installed but could not be launched. Run '$commandPath setup --all' to retry." }
+    Write-Host 'Starting Agenvyl and detecting available coding agents...'
+    $null = @(& $bundleCommand setup --all --json)
+    if ($LASTEXITCODE -eq 0) { $setupComplete = $true }
+    else { Write-Warning "Agenvyl was installed, but initial setup did not finish. Run '$bundleCommand setup --all' to retry." }
   }
+  if ($setupComplete) {
+    Write-Host "Agenvyl $releaseVersion is installed and ready."
+  } else {
+    Write-Host "Agenvyl $releaseVersion installed at $destination"
+    if ($NoLaunch -or $env:AGENVYL_NO_LAUNCH -eq '1') { Write-Host "Automatic startup was skipped. Run '$bundleCommand setup --all' to finish setup." }
+  }
+  if ($pathPolicy -eq 'user') { Write-Host 'Open a new terminal to use the agenvyl command.' }
 }
 finally {
   if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Recurse -Force }

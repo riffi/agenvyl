@@ -101,7 +101,7 @@ npm run install:local:windows -- `
 Run installer contract tests separately:
 
 ```bash
-node --test scripts/installer-contract.test.js
+npx vitest run scripts/installer-contract.test.js
 ```
 
 Platform integration tests are in `scripts/installer-posix.integration.test.js`
@@ -136,4 +136,3 @@ database build silently.
 
 Release assembly is a maintainer workflow. Follow the
 [release runbook](../releases/README.md).
-

@@ -6,8 +6,10 @@ describe('one-line installer contracts', () => {
     const script = await readFile(new URL('../packaging/install.sh', import.meta.url), 'utf8');
     expect(script).toContain("--proto '=https'");
     expect(script).toContain('Archive checksum mismatch.');
-    expect(script).toContain('agenvyl" init --locale en --shortcuts recommended --path');
-    expect(script).toContain('agenvyl" setup --all');
+    expect(script).toContain('"$bundle_command" init --locale en --shortcuts recommended --path');
+    expect(script).toContain('"$bundle_command" setup --all --json');
+    expect(script).toContain('Preparing Agenvyl $version for first use');
+    expect(script).toContain('Agenvyl $version is installed and ready');
     expect(script).toContain('the previous installation was restored');
     expect(script).not.toMatch(/\bsudo\b/u);
   });
@@ -19,7 +21,9 @@ describe('one-line installer contracts', () => {
     expect(script).toContain("Join-Path $env:LOCALAPPDATA 'Agenvyl\\versions'");
     expect(script).toContain("System32\\tar.exe");
     expect(script).toContain('the previous installation was restored');
-    expect(script).toContain("'bin\\agenvyl.cmd') setup --all");
+    expect(script).toContain('$bundleCommand setup --all --json');
+    expect(script).toContain('Preparing Agenvyl $releaseVersion for first use');
+    expect(script).toContain('Agenvyl $releaseVersion is installed and ready');
     expect(script).not.toMatch(/Start-Process.+-Verb\s+RunAs/u);
   });
 });

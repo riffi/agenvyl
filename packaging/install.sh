@@ -118,7 +118,9 @@ mv "$staged" "$destination"
 
 path_policy=user
 [ "$no_path" = 1 ] && path_policy=none
-if ! "$destination/bin/agenvyl" init --locale en --shortcuts recommended --path "$path_policy"; then
+bundle_command=$destination/bin/agenvyl
+echo "Preparing Agenvyl $version for first use..."
+if ! "$bundle_command" init --locale en --shortcuts recommended --path "$path_policy" --json >/dev/null; then
   rm -rf "$destination"
   if [ -e "$previous" ]; then mv "$previous" "$destination"; fi
   echo 'Agenvyl initialization failed; the previous installation was restored.' >&2
@@ -132,12 +134,19 @@ is_owned_version() {
 }
 if [ "$path_policy" = user ] && [ -n "$old_bundle" ] && [ "$old_bundle" != "$destination" ] && is_owned_version "$old_bundle"; then rm -rf "$old_bundle"; fi
 
-echo "Agenvyl $version installed at $destination"
+setup_complete=0
+if [ "$no_launch" != 1 ]; then
+  echo 'Starting Agenvyl and detecting available coding agents...'
+  if "$bundle_command" setup --all --json >/dev/null; then setup_complete=1
+  else echo "Agenvyl was installed, but initial setup did not finish. Run '$bundle_command setup --all' to retry." >&2
+  fi
+fi
+if [ "$setup_complete" = 1 ]; then
+  echo "Agenvyl $version is installed and ready."
+else
+  echo "Agenvyl $version installed at $destination"
+  if [ "$no_launch" = 1 ]; then echo "Automatic startup was skipped. Run '$bundle_command setup --all' to finish setup."; fi
+fi
 if [ "$path_policy" = user ] && ! command -v agenvyl >/dev/null 2>&1; then
   echo "The command shim is at $command_path. Add $(dirname "$command_path") to PATH if your shell does not already include it."
-fi
-if [ "$no_launch" != 1 ]; then
-  if ! "$destination/bin/agenvyl" setup --all; then
-    echo "Agenvyl was installed but could not be launched. Run '$command_path setup --all' to retry." >&2
-  fi
 fi

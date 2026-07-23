@@ -13,6 +13,10 @@ describe.skipIf(process.platform === 'win32')('POSIX installer integration', () 
     const root = await fixture(); roots.push(root.path);
     const first = runInstaller(root);
     expect(first.status, first.stderr).toBe(0);
+    expect(first.stdout).toContain('Preparing Agenvyl 0.1.0 for first use...');
+    expect(first.stdout).toContain('Starting Agenvyl and detecting available coding agents...');
+    expect(first.stdout).toContain('Agenvyl 0.1.0 is installed and ready.');
+    expect(first.stdout.indexOf('Starting Agenvyl')).toBeLessThan(first.stdout.indexOf('is installed and ready'));
     const invocations = await readFile(root.initLog, 'utf8');
     expect(invocations).toContain('init --locale en --shortcuts recommended --path user');
     expect(invocations).toContain('setup --all');

@@ -14,6 +14,11 @@ describe.skipIf(process.platform !== 'win32')('PowerShell installer integration'
     const command = `$ErrorActionPreference='Stop'; function Invoke-WebRequest { param([switch]$UseBasicParsing,[string]$Uri,[string]$OutFile); Copy-Item -LiteralPath (Join-Path $env:FIXTURE_DOWNLOAD_ROOT ([IO.Path]::GetFileName(([uri]$Uri).AbsolutePath))) -Destination $OutFile }; & '${resolve('packaging/install.ps1').replaceAll("'", "''")}' -NoPath -ManifestUrl 'https://fixture.test/agenvyl-release.txt' -InstallRoot $env:FIXTURE_INSTALL_ROOT`;
     const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', command], { encoding: 'utf8', env: { ...process.env, LOCALAPPDATA: root.localAppData, FIXTURE_DOWNLOAD_ROOT: root.downloads, FIXTURE_INSTALL_ROOT: root.installRoot, AGENVYL_INIT_LOG: root.initLog } });
     expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain('Preparing Agenvyl 0.1.0 for first use...');
+    expect(result.stdout).toContain('Starting Agenvyl and detecting available coding agents...');
+    expect(result.stdout).toContain('Agenvyl 0.1.0 is installed and ready.');
+    expect(result.stdout).not.toContain('installed and ready to start');
+    expect(result.stdout.indexOf('Starting Agenvyl')).toBeLessThan(result.stdout.indexOf('is installed and ready'));
     const invocations = await readFile(root.initLog, 'utf8');
     expect(invocations).toContain('init --locale en --shortcuts recommended --path none');
     expect(invocations).toContain('setup --all');
@@ -29,6 +34,9 @@ describe.skipIf(process.platform !== 'win32')('PowerShell installer integration'
       '-ArchivePath', root.archive, '-InstallRoot', root.installRoot, '-NoPath', '-NoLaunch',
     ], { encoding: 'utf8', env: { ...process.env, LOCALAPPDATA: root.localAppData, AGENVYL_INIT_LOG: root.initLog } });
     expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain(`Agenvyl ${currentVersion} installed at`);
+    expect(result.stdout).toContain('Automatic startup was skipped.');
+    expect(result.stdout).not.toContain('is installed and ready.');
     const invocations = await readFile(root.initLog, 'utf8');
     expect(invocations).toContain('init --locale en --shortcuts recommended --path none');
     expect(invocations).not.toContain('setup --all');
