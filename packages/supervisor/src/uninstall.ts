@@ -71,7 +71,33 @@ async function scheduleWindowsRemoval(bundleRoot: string, dataRoots: string[], f
   dataRoots.forEach((path, index) => { env[`AGENVYL_UNINSTALL_DATA_${index}`] = path; });
   files.forEach((path, index) => { env[`AGENVYL_UNINSTALL_FILE_${index}`] = path; });
   const powershell = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-  const child = spawn(powershell, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script], { cwd: tmpdir(), env, stdio: 'ignore', windowsHide: true });
+  // PowerShell does not reliably execute when Node creates it as a detached Windows process.
+  // A detached hidden cmd host keeps the cleanup independent while PowerShell remains its attached child.
+  const child = spawn(process.env.ComSpec ?? 'cmd.exe', [
+    '/d',
+    '/q',
+    '/c',
+    powershell,
+    '-NoProfile',
+    '-NonInteractive',
+    '-ExecutionPolicy',
+    'Bypass',
+    '-File',
+    script,
+  ], {
+    cwd: tmpdir(),
+    detached: true,
+    env,
+    stdio: 'ignore',
+    windowsHide: true,
+  });
+  await new Promise<void>((resolveSpawn, rejectSpawn) => {
+    child.once('error', rejectSpawn);
+    child.once('spawn', () => {
+      child.off('error', rejectSpawn);
+      resolveSpawn();
+    });
+  });
   child.unref();
 }
 
