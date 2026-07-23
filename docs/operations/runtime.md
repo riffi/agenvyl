@@ -90,21 +90,63 @@ logged. Harness credentials never enter Core; Connector applies header redaction
 
 ## Room workspaces
 
-Each room gets a live filesystem directory below `AGENVYL_WORKSPACE_ROOT`. Arbitrary
-files up to `AGENVYL_WORKSPACE_MAX_FILE_BYTES` (50 MiB by default) can be uploaded;
-the same limit applies to versions captured from agent writes. Larger agent files
-remain visible on disk as `oversize`, but cannot be attached or versioned. The
-path exposed to harness runs can be configured separately with
-`AGENVYL_WORKSPACE_AGENT_ROOT`; use it whenever Core and the harness observe the
-same workspace through different absolute paths.
+Each room has one canonical published workspace snapshot and one live
+filesystem materialization below `AGENVYL_WORKSPACE_ROOT`. Uploads and external
+edits refresh the published snapshot after reconciliation. The path exposed to
+harness runs can be configured separately with `AGENVYL_WORKSPACE_AGENT_ROOT`;
+use it whenever Core and the harness observe the same workspace through
+different absolute paths.
+
+Before a run starts, Core:
+
+1. records the room's current published snapshot as the run's base;
+2. creates a managed worktree below
+   `.agenvyl/runs/<run-id>/workspace`;
+3. materializes the base snapshot into that worktree; and
+4. passes the corresponding agent-visible path to Connector.
+
+Parallel runs therefore receive independent worktrees and do not normally
+observe one another's unfinished writes. This is a consistency mechanism, not
+a security boundary: a harness with sufficient operating-system permissions
+may still access paths outside its assigned worktree.
+
+When a run finalizes, Core scans its worktree and stores a result snapshot. A
+complete result is compared with the base and latest published snapshots:
+
+- paths changed only by the run are applied automatically;
+- paths changed identically in both states need no resolution;
+- paths changed independently become `workspace_publish_conflicts`;
+- the non-conflicting result is still published, producing
+  `partially_published`; and
+- an incomplete capture remains `not_published`.
+
+Conflict resolution is optimistic. The request includes the published snapshot
+the user reviewed. If the room changes before resolution is committed, Core
+recalculates the outstanding conflicts and rejects the stale decision. A
+successful resolution creates another immutable published snapshot.
+
+After publication, Core materializes the published snapshot into the live room
+tree and cleans up the run worktree. Startup recovery retries pending
+materializations and cleanup of captured orphan worktrees. The top-level
+`.agenvyl` path is reserved; a pre-existing unmanaged path causes run
+preparation to fail closed instead of overwriting user data.
+
+Arbitrary files up to `AGENVYL_WORKSPACE_MAX_FILE_BYTES` (50 MiB by default)
+can be uploaded; the same limit applies to versions captured from run or
+external writes. Larger live files remain visible as `oversize`, but cannot be
+attached or versioned. An oversize or unreadable run result makes capture
+incomplete and prevents its publication.
 
 Immutable content-addressed versions are stored below the hidden `.versions/`
-directory at the workspace root. Message attachments point to a version rather
-than mutable live content. A recursive watcher plus reconciliation on list/run
-completion captures direct agent writes; concurrent writers are attributed as a
-shared change. Do not edit `.versions/` manually. Room deletion is recoverable;
-permanent deletion removes room data, its live tree and blobs no longer referenced
-by another room.
+directory at the workspace root. Workspace history is associated with a stable
+entry identity, so rename and move operations retain earlier versions. Message
+attachments and run artifacts point to exact versions and, when applicable,
+their origin snapshots rather than mutable live content. Do not edit
+`.versions/` or `.agenvyl/` manually.
+
+Room deletion is recoverable. Permanent deletion removes room records, the
+live tree, managed run worktrees, and blobs no longer referenced by another
+room.
 
 Room workspaces are shared-file locations, not sandboxes, and do not restrict which
 other VPS paths or repositories an agent may use when the task calls for it.

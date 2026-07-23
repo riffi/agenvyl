@@ -29,8 +29,8 @@ Agenvyl gives them one browser-based room:
   answers from earlier turns.
 - **Parallel runs** — mention several agents once and let them explore the same
   task independently.
-- **Shared files** — agents in a room work with the same local workspace and
-  immutable attachment versions.
+- **Shared files** — agents start from the same saved room files. Agenvyl keeps
+  earlier versions and safely applies completed changes.
 - **Your existing setup** — reuse each harness with its configured models,
   permissions, skills, tools, hooks, and MCP servers.
 
@@ -45,8 +45,10 @@ Agenvyl gives them one browser-based room:
    result.
 
 Agents launched by the same message receive the same pre-round conversation and
-can run in parallel. They do not see one another's unfinished output. Completed
-selected answers become context for later turns.
+the same starting files, and can run in parallel. They do not see one another's
+unfinished output or file changes. Agenvyl applies completed file changes to the
+room and asks you to resolve a conflict instead of silently overwriting newer
+work. Completed selected answers become context for later turns.
 
 A message without an `@mention` is saved in the room but starts no agent.
 
@@ -143,6 +145,7 @@ and model comparison all use the same shared-history pattern.
 Use the [documentation map](docs/README.md) to choose a route:
 
 - [Install and use Agenvyl](docs/user-guide/installation.md)
+- [Work with Workspace files and previews](docs/user-guide/workspace.md)
 - [Connect an agent tool](docs/harnesses/README.md)
 - [Understand the architecture](docs/architecture/overview.md)
 - [Operate a custom deployment](docs/operations/deployment-boundaries.md)

@@ -23,16 +23,18 @@ Important paths below those roots are:
 | `secrets.json` | Generated Connector token and managed PostgreSQL password |
 | `supervisor-settings.json` | Language, shortcuts, and owned command integration |
 | `postgres/` | Personal PostgreSQL cluster |
-| `workspaces/` | Live room directories and hidden immutable file versions |
+| `workspaces/` | Published room files, hidden immutable versions, and managed run worktrees |
 | `logs/` | Supervisor, PostgreSQL, Connector, Core, and restore logs |
 | `state/` | Runtime lock, process, and health state; not a backup |
 | `backups/` | Database dumps created by `agenvyl backup` |
 | `versions/` | Installed portable application versions |
 
 Do not edit `secrets.json`, the PostgreSQL data directory, workspace
-`.versions/` directories, or runtime state by hand. Configuration and backup
-files can contain sensitive local information and should not be committed or
-placed in a public cloud folder.
+`.versions/` directories, reserved `.agenvyl/` directories, or runtime state
+by hand. `.versions/` stores immutable file content; `.agenvyl/` contains
+application-managed run worktrees and markers. Configuration and backup files
+can contain sensitive local information and should not be committed or placed
+in a public cloud folder.
 
 ## What the backup command includes
 
@@ -48,8 +50,8 @@ It does **not** copy the room workspace files or configuration directory. A
 complete recoverable backup needs:
 
 1. the PostgreSQL dump;
-2. the entire `workspaces/` directory, including hidden `.versions/` content;
-   and
+2. the entire `workspaces/` directory, including all hidden application-managed
+   content; and
 3. the configuration directory if you want to preserve Connector selections
    and local settings.
 
@@ -112,4 +114,3 @@ compatibility error.
 When `AGENVYL_DATABASE_URL` selects an external database, Agenvyl does not own
 its lifecycle, backup, or restore. Use the
 [server database procedure](../operations/database.md) instead.
-

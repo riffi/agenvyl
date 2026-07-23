@@ -16,7 +16,10 @@ flowchart LR
   User[You in the browser] --> Room[Agenvyl room]
   Room --> Agents[Selected agents]
   Agents --> Tools[Your installed agent tools]
-  Tools --> Files[Shared room workspace]
+  Room --> Files[Published room workspace]
+  Files --> Copies[Isolated run copies]
+  Copies <--> Tools
+  Copies -->|publish completed changes| Files
   Agents --> Room
 ```
 
@@ -25,7 +28,8 @@ flowchart LR
   and a connection to an installed coding-agent tool.
 - A **coding-agent tool** (or *harness*) is the program that does the actual
   model and tool work, such as Codex CLI, Claude Code, OpenCode, Hermes, or AGY.
-- The **workspace** is the folder shared by the agents in that room.
+- The **workspace** is the room's published set of files. Each run starts from
+  an isolated copy of that published state.
 
 Agenvyl coordinates these parts. It does not provide model access and does not
 replace the agent tools or their accounts.
@@ -38,16 +42,19 @@ Suppose a room contains `@architect`, `@builder`, and `@reviewer`.
 2. Agenvyl saves the message and creates one run for every addressed agent.
 3. Agents addressed in the same message start independently and can run in
    parallel. They all receive the conversation as it existed before that round.
-4. Each agent works through its configured tool and can see the same room
-   workspace.
-5. Agenvyl streams supported progress back to the room and saves the final
-   result.
-6. Completed results become context for later messages, so another agent can
+4. Each agent works through its configured tool in an isolated copy of the same
+   published room workspace.
+5. Agenvyl streams supported progress back to the room, captures the resulting
+   files, and publishes changes that do not conflict with newer room changes.
+6. If the same path changed independently, Agenvyl keeps the current room path
+   until the user resolves the conflict.
+7. Completed results become context for later messages, so another agent can
    compare or combine them.
 
-The agents in one round do not see one another's unfinished answers. Send a
-follow-up message when you want an agent to review the completed answers from
-that round. A message without an `@mention` is saved but starts no agent.
+The agents in one round do not see one another's unfinished answers or file
+changes. Send a follow-up message when you want an agent to review the
+completed answers and published files from that round. A message without an
+`@mention` is saved but starts no agent.
 
 If you retry an answer, Agenvyl creates a separate attempt with the same saved
 agent configuration and conversation snapshot. You can compare completed
@@ -164,11 +171,16 @@ documented in the [harness guides](../harnesses/README.md).
 
 Several rules keep a room understandable and reproducible:
 
-- Each room has one canonical workspace directory.
-- Direct agent writes are detected and versioned by Agenvyl.
+- Each room has one canonical published workspace state.
+- Each run records the workspace snapshot it started from and works in a
+  separate materialized directory.
+- Run results are captured as immutable snapshots before publication.
+- Non-conflicting changes are merged into a new published snapshot. Conflicting
+  paths require an explicit choice between the current room state, the agent
+  candidate, or deletion.
 - Attachments refer to immutable versions rather than mutable paths.
 - Every run saves the exact agent version, tool instance, model, execution
-  controls, and conversation snapshot it started with.
+  controls, conversation snapshot, and workspace base snapshot it started with.
 - Every attempt ends once as completed, failed, or cancelled.
 - A retry is a new attempt; it does not rewrite the original attempt.
 - Only the selected completed attempt is included in later conversation
@@ -177,6 +189,36 @@ Several rules keep a room understandable and reproducible:
 Experimental Plan Mode adds a versioned `plan.md`, explicit plan approval, and
 an implementation handoff. It is disabled by default and does not change the
 basic room and run model.
+
+### Workspace capture and publication
+
+```mermaid
+flowchart LR
+  Base[Run base snapshot] --> Run[Isolated run workspace]
+  Run --> Result[Captured result snapshot]
+  Base --> Merge[Three-way merge]
+  Latest[Latest published snapshot] --> Merge
+  Result --> Merge
+  Merge --> Next[Next published snapshot]
+  Merge --> Conflicts[Conflict set]
+  Conflicts --> Resolution[Explicit user resolution]
+  Resolution --> Next
+```
+
+Publication compares three states: the run's base snapshot, the latest
+published snapshot, and the captured run result. A path changed only by the run
+can be published automatically. If the published path also changed since the
+run started, the latest room state wins provisionally and Agenvyl records a
+conflict for the user.
+
+The captured result remains addressable independently of publication. This is
+why a response can still preview or download an exact artifact when its run was
+only partially published or could not publish an incomplete capture.
+
+For the task-oriented UI, version, and conflict workflow, see
+[Workspace and file previews](../user-guide/workspace.md). Operational
+materialization, cleanup, and recovery rules are in the
+[runtime policy](../operations/runtime.md#room-workspaces).
 
 ## Reliability model
 

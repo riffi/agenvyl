@@ -79,4 +79,23 @@ the selected files. Agenvyl has no public multi-user authorization layer. Put a
 separate authenticated TLS boundary in front of Core before any non-loopback
 exposure.
 
+## File preview boundary
+
+Workspace **Source** view decodes saved file bytes and displays them as text. It
+does not execute HTML, SVG, JavaScript, or other source content. Use Source
+when you want to inspect unfamiliar generated markup before rendering it.
+
+Rendered HTML runs in a separate sandboxed preview context with a restrictive
+content security policy. It cannot navigate the main Agenvyl interface, but the
+document may execute its own scripts and request network resources allowed by
+the preview policy. Those requests can disclose normal network metadata to the
+destination, just as opening a web page can.
+
+Rendered Markdown ignores embedded HTML. SVG is displayed as an image, and PDF
+uses a sandboxed browser frame. These controls reduce exposure but do not turn
+generated files or connected agent tools into trusted content.
+
+For supported formats, version behavior, and preview limits, see
+[Workspace and file previews](workspace.md).
+
 Report vulnerabilities using [SECURITY.md](../../SECURITY.md).

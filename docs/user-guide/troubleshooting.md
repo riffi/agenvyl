@@ -35,6 +35,43 @@ sharing because local paths and process diagnostics can still be sensitive.
    agenvyl start
    ```
 
+## A Workspace preview looks wrong or is unavailable
+
+Open the file in Workspace and check the selected version first. An attachment
+or agent artifact intentionally opens the exact saved version from that
+message, which may be older than the file currently published in the room.
+
+For HTML, Markdown, or SVG, switch between **Rendered** and **Source**. If text
+contains incorrect characters, open Source and change **Encoding** from Auto to
+the expected UTF-8, UTF-16, Windows-1251/1252, or KOI8-R value. This changes
+only the display, not the saved file.
+
+Source highlighting is disabled above 1 MiB, and inline source preview is
+disabled above 5 MiB. Unsupported binary content and larger source files remain
+available through **Download**. These preview limits are separate from the
+default 50 MiB workspace file limit.
+
+Use **Refresh workspace** if an external program changed files while the window
+was open. See [Workspace and file previews](workspace.md) for the complete
+format and version behavior.
+
+## Agent file changes are missing from the current Workspace
+
+Check the status shown with the agent response:
+
+- **Changes applied to room workspace** means the captured changes were
+  published.
+- **Partially published** means non-conflicting changes were applied but one or
+  more paths need a decision. Select **Review conflicts**, choose Keep current,
+  Accept agent, or Delete path for every conflict, and apply the resolutions.
+- **Snapshot saved · Room workspace unchanged** means Agenvyl preserved the
+  captured result but did not publish it, commonly because capture was
+  incomplete.
+
+Response artifacts remain available for preview and download even when they
+are not the current Workspace versions. Parallel agents start from the same
+published state but do not see one another's unfinished file changes.
+
 ## An installed harness is not detected
 
 1. Open the control center and choose **Configure connectors**, or run:

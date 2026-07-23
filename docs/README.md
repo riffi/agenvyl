@@ -10,6 +10,7 @@ center, and your first room.
 
 Continue with:
 
+- [Workspace and file previews](user-guide/workspace.md)
 - [Data and backups](user-guide/data-and-backups.md)
 - [Updates and uninstall](user-guide/update-and-uninstall.md)
 - [Troubleshooting](user-guide/troubleshooting.md)
@@ -61,4 +62,3 @@ Contribution policy remains in the repository
 Maintainers should follow the
 [Technical Preview release runbook](releases/README.md). Version-specific notes
 are archived beside it, beginning with [v0.1.0](releases/v0.1.0.md).
-
