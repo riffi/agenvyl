@@ -1,8 +1,16 @@
-name: Preview Release
+name: Release Draft
 
 on:
   workflow_dispatch:
     inputs:
+      release_type:
+        description: GitHub release classification and manifest channel
+        required: true
+        default: prerelease
+        type: choice
+        options:
+          - prerelease
+          - stable
       postgres_artifact_run_id:
         description: PostgreSQL Runtime run ID used when native caches miss
         required: false
@@ -63,15 +71,28 @@ jobs:
         shell: bash
         run: |
           version=$(node -p "require('./package.json').version")
+          release_type="${{ inputs.release_type }}"
+          if [ "$release_type" = stable ]; then
+            channel=stable
+            prerelease=false
+            title="Agenvyl v$version"
+          else
+            channel=preview
+            prerelease=true
+            title="Agenvyl v$version Technical Preview"
+          fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
           echo "notes=docs/releases/v$version.md" >> "$GITHUB_OUTPUT"
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+          echo "title=$title" >> "$GITHUB_OUTPUT"
       - name: Build release manifest and shell index
         shell: bash
         run: >-
           node scripts/release-manifest.mjs
           --version "${{ steps.metadata.outputs.version }}"
-          --channel preview
+          --channel "${{ steps.metadata.outputs.channel }}"
           --base-url "https://github.com/${{ github.repository }}/releases/download/${{ steps.metadata.outputs.tag }}/"
           artifacts/portable/agenvyl-${{ steps.metadata.outputs.version }}-linux-x64.tar.xz
           artifacts/portable/agenvyl-${{ steps.metadata.outputs.version }}-linux-arm64.tar.xz
@@ -98,15 +119,22 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_NOTES: ${{ steps.metadata.outputs.notes }}
           RELEASE_TAG: ${{ steps.metadata.outputs.tag }}
+          RELEASE_TITLE: ${{ steps.metadata.outputs.title }}
+          RELEASE_PRERELEASE: ${{ steps.metadata.outputs.prerelease }}
         shell: bash
         run: |
-          if ! release_json=$(gh release view "$RELEASE_TAG" --json isDraft,targetCommitish 2>/dev/null); then
-            gh release create "$RELEASE_TAG" \
-              --draft \
-              --prerelease \
-              --target "$GITHUB_SHA" \
-              --title "Agenvyl $RELEASE_TAG Technical Preview" \
+          if ! release_json=$(gh release view "$RELEASE_TAG" --json isDraft,isPrerelease,targetCommitish 2>/dev/null); then
+            create_args=(
+              "$RELEASE_TAG"
+              --draft
+              --target "$GITHUB_SHA"
+              --title "$RELEASE_TITLE"
               --notes-file "$RELEASE_NOTES"
+            )
+            if [ "$RELEASE_PRERELEASE" = true ]; then
+              create_args+=(--prerelease)
+            fi
+            gh release create "${create_args[@]}"
           else
             is_draft=$(printf '%s\n' "$release_json" | jq -r '.isDraft')
             if [ "$is_draft" != true ]; then
@@ -121,10 +149,15 @@ jobs:
               exit 1
             fi
 
+            is_prerelease=$(printf '%s\n' "$release_json" | jq -r '.isPrerelease')
+            if [ "$is_prerelease" != "$RELEASE_PRERELEASE" ]; then
+              echo "::error::Draft $RELEASE_TAG has prerelease=$is_prerelease, but this run requested prerelease=$RELEASE_PRERELEASE. Delete the obsolete draft deliberately before changing release type."
+              exit 1
+            fi
+
             gh release edit "$RELEASE_TAG" \
               --draft \
-              --prerelease \
-              --title "Agenvyl $RELEASE_TAG Technical Preview" \
+              --title "$RELEASE_TITLE" \
               --notes-file "$RELEASE_NOTES"
           fi
           gh release upload "$RELEASE_TAG" --clobber artifacts/release/*

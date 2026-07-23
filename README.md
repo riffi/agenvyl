@@ -150,7 +150,7 @@ Use the [documentation map](docs/README.md) to choose a route:
 - [Understand the architecture](docs/architecture/overview.md)
 - [Operate a custom deployment](docs/operations/deployment-boundaries.md)
 - [Develop Agenvyl](docs/development/README.md)
-- [Prepare a Technical Preview release](docs/releases/README.md)
+- [Prepare a prerelease or stable release](docs/releases/README.md)
 
 Contribution policy is in [CONTRIBUTING.md](CONTRIBUTING.md), and private
 vulnerability reporting is in [SECURITY.md](SECURITY.md).

@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Published prerelease version without the v prefix
+        description: Published release version without the v prefix
         required: true
         type: string
 

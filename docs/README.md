@@ -60,5 +60,5 @@ Contribution policy remains in the repository
 ## Prepare a release
 
 Maintainers should follow the
-[Technical Preview release runbook](releases/README.md). Version-specific notes
+[Prerelease and stable release runbook](releases/README.md). Version-specific notes
 are archived beside it, beginning with [v0.1.0](releases/v0.1.0.md).
