@@ -1,8 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Archive, Ban, Brain, ChevronDown, ChevronUp, CircleCheck, CircleHelp, CircleX, Clock3, File, FolderCheck, FoldVertical, Info, LoaderCircle, Paperclip, RotateCcw, Square, TriangleAlert, UnfoldVertical, Wrench, BadgeCheck } from 'lucide-react';
 import type {RoomPlanState,UpstreamStatus,WorkspaceAttachment,WorkspaceConflictChoice,WorkspaceConflictSide} from '@agenvyl/contracts';
-import type {WorkspaceFocus} from '../artifacts-drawer';
-import {ArtifactActionsMenu,type OpenArtifact} from '../artifact-viewer';
+import {WorkspaceArtifactActions,type OpenWorkspaceArtifact,type WorkspaceTarget} from '../workspace-window';
 import {HarnessIcon,type HarnessCatalog} from '../../entities/harness';
 import type { Persona } from '../../entities/persona';
 import type { RoomState } from '../../entities/room';
@@ -127,8 +126,8 @@ function RunCard({
   onMentionPersona:(handle:string)=>void;
   plan:RoomPlanState;
   approvePlan?:(versionId:string)=>Promise<void>;
-  openWorkspace:(target:Omit<WorkspaceFocus,'requestId'>)=>void;
-  openArtifact:OpenArtifact;
+  openWorkspace:(target:WorkspaceTarget)=>void;
+  openArtifact:OpenWorkspaceArtifact;
   planModeEnabled?:boolean;
   roomId:string;
 }) {
@@ -223,8 +222,8 @@ export function Timeline({
   onMentionPersona:(handle:string)=>void;
   plan?:RoomPlanState;
   approvePlan?:(versionId:string)=>Promise<void>;
-  openWorkspace?:(target:Omit<WorkspaceFocus,'requestId'>)=>void;
-  openArtifact?:OpenArtifact;
+  openWorkspace?:(target:WorkspaceTarget)=>void;
+  openArtifact?:OpenWorkspaceArtifact;
   planModeEnabled?:boolean;
   roomId?:string;
 }) {
@@ -347,12 +346,10 @@ export function Timeline({
 }
 function formatBytes(value:number){if(value<1024)return`${value} B`;if(value<1024*1024)return`${(value/1024).toFixed(1)} KB`;return`${(value/1024/1024).toFixed(1)} MB`;}
 
-const workspaceTarget=(attachment:WorkspaceAttachment)=>({entryId:attachment.entry_id,versionId:attachment.version_id});
-
-function ArtifactCard({attachment,detail,gallery,openArtifact,openWorkspace}:{attachment:WorkspaceAttachment;detail:string;gallery?:WorkspaceAttachment[];openArtifact:OpenArtifact;openWorkspace:(target:Omit<WorkspaceFocus,'requestId'>)=>void}){
+function ArtifactCard({attachment,detail,gallery,openArtifact,openWorkspace}:{attachment:WorkspaceAttachment;detail:string;gallery?:WorkspaceAttachment[];openArtifact:OpenWorkspaceArtifact;openWorkspace:(target:WorkspaceTarget)=>void}){
   return <span className={styles.artifactCard}>
     <button type="button" className={styles.artifactPrimary} onClick={event=>openArtifact(attachment,gallery,event.currentTarget)}><File/><span><strong>{attachment.name}</strong><small>{detail}</small></span></button>
-    <ArtifactActionsMenu attachment={attachment} openWorkspace={item=>openWorkspace(workspaceTarget(item))}/>
+    <WorkspaceArtifactActions attachment={attachment} openWorkspace={openWorkspace}/>
   </span>;
 }
 
@@ -382,16 +379,16 @@ function ConflictSide({label,side}:{label:string;side?:WorkspaceConflictSide}){
   return <section><small>{label}</small>{!side?<em>Path does not exist</em>:side.kind==='directory'?<em>Directory</em>:attachment?.mime_type.startsWith('image/')?<img src={attachment.preview_url} alt=""/>:isText?<pre>{text??'Loading…'}</pre>:attachment?<a href={attachment.url}>Open {attachment.mime_type}</a>:<code>{side.version_id}</code>}</section>;
 }
 
-function MessageAttachment({attachment,gallery,openArtifact,openWorkspace}:{attachment:WorkspaceAttachment;gallery?:WorkspaceAttachment[];openArtifact:OpenArtifact;openWorkspace:(target:Omit<WorkspaceFocus,'requestId'>)=>void}){
+function MessageAttachment({attachment,gallery,openArtifact,openWorkspace}:{attachment:WorkspaceAttachment;gallery?:WorkspaceAttachment[];openArtifact:OpenWorkspaceArtifact;openWorkspace:(target:WorkspaceTarget)=>void}){
   return <span className={styles.attachmentCard}>
     <button type="button" className={styles.attachmentPrimary} onClick={event=>openArtifact(attachment,gallery,event.currentTarget)}><Paperclip/><span>{attachment.name}</span><small>{formatBytes(attachment.size)}</small></button>
-    <ArtifactActionsMenu attachment={attachment} openWorkspace={item=>openWorkspace(workspaceTarget(item))}/>
+    <WorkspaceArtifactActions attachment={attachment} openWorkspace={openWorkspace}/>
   </span>;
 }
 
-function MessageImage({attachment,gallery,openArtifact,openWorkspace}:{attachment:WorkspaceAttachment;gallery:WorkspaceAttachment[];openArtifact:OpenArtifact;openWorkspace:(target:Omit<WorkspaceFocus,'requestId'>)=>void}){
+function MessageImage({attachment,gallery,openArtifact,openWorkspace}:{attachment:WorkspaceAttachment;gallery:WorkspaceAttachment[];openArtifact:OpenWorkspaceArtifact;openWorkspace:(target:WorkspaceTarget)=>void}){
   return <span className={styles.messageImage}>
     <button type="button" onClick={event=>openArtifact(attachment,gallery,event.currentTarget)} title={`Open ${attachment.name}`}><img src={attachment.preview_url} alt={attachment.name} loading="lazy"/><span>{attachment.name}</span></button>
-    <ArtifactActionsMenu attachment={attachment} openWorkspace={item=>openWorkspace(workspaceTarget(item))}/>
+    <WorkspaceArtifactActions attachment={attachment} openWorkspace={openWorkspace}/>
   </span>;
 }

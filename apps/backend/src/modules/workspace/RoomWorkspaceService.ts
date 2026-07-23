@@ -2,6 +2,7 @@ import {createHash} from 'node:crypto';
 import {constants,createReadStream,watch,type FSWatcher} from 'node:fs';
 import {copyFile,lstat,mkdir,readdir,readFile,rename,rm,stat,writeFile} from 'node:fs/promises';
 import path from 'node:path';
+import mime from 'mime';
 import {AppError} from '../../shared/errors/AppError.js';
 import type {RoomRepository} from '../rooms/rooms.repository.js';
 import type {WorkspaceRepository} from './workspace.repository.js';
@@ -33,7 +34,7 @@ export class RoomWorkspaceService{
 
   async ensure(roomId:string){await this.assertRoom(roomId);const directory=this.roomPath(roomId);await mkdir(directory,{recursive:true});this.startWatcher(roomId,directory);return directory;}
   async list(roomId:string,includeDeleted=false){await this.ensure(roomId);await this.reconcile(roomId);const current=await this.snapshots?.current(roomId);return{path:this.agentRoomPath(roomId),current_snapshot_id:current?.id??'',materialization_status:current?.materializationStatus??'ready' as const,entries:await this.repository.list(roomId,includeDeleted)};}
-  async recover(){if(!this.snapshots)return;const started=Date.now(),materializations=await this.snapshots.materializationsToRecover(),worktrees=await this.snapshots.capturedWorktrees();for(const item of materializations)await this.materializeSnapshot(item.roomId,item.snapshotId).catch(()=>{});for(const item of worktrees)await rm(path.join(this.roomPath(item.roomId),'.agenvyl','runs',item.runId),{recursive:true,force:true});this.logger?.info({metric:'workspace.recovery',durationMs:Date.now()-started,materializations:materializations.length,orphanWorktreesRemoved:worktrees.length},'Workspace recovery completed');}
+  async recover(){if(!this.snapshots)return;const started=Date.now(),materializations=await this.snapshots.materializationsToRecover(),worktrees=await this.snapshots.capturedWorktrees();for(const item of materializations)await this.materializeSnapshot(item.roomId,item.snapshotId).catch(()=>{});let removed=0,deferred=0;for(const item of worktrees){if(await this.cleanupRunDirectory(item.roomId,item.runId,'recovery'))removed++;else deferred++;}this.logger?.info({metric:'workspace.recovery',durationMs:Date.now()-started,materializations:materializations.length,orphanWorktreesRemoved:removed,orphanWorktreesDeferred:deferred},'Workspace recovery completed');}
 
   async prepareRun(roomId:string,runId:string){
     const started=Date.now();
@@ -89,7 +90,7 @@ export class RoomWorkspaceService{
         await this.snapshots.markNotPublished(runId);resumed=(await this.snapshots.result(runId))!;
       }
       if(status==='completed'&&resumed.published_snapshot_id&&existing.publish_status!=='pending')await this.withPublication(roomId,()=>this.materializeSnapshot(roomId,resumed.published_snapshot_id!).catch(()=>{}));
-      await rm(path.join(this.roomPath(roomId),'.agenvyl','runs',runId),{recursive:true,force:true});
+      await this.cleanupRunDirectory(roomId,runId,'finalization');
       await this.events.emit(roomId,'run.workspace.finalized',{runId,workspaceResult:resumed}).catch(()=>{});
       if(resumed.publish_status==='published'||resumed.publish_status==='partially_published')await this.events.emit(roomId,'run.workspace.publish.updated',{runId,workspaceResult:resumed}).catch(()=>{});
       this.logger?.info({metric:'workspace.capture',roomId,runId,durationMs:Date.now()-started,captureStatus:resumed.capture_status,publishStatus:resumed.publish_status,conflicts:resumed.conflict_count,recovered:true},'Run workspace finalization resumed');
@@ -127,7 +128,7 @@ export class RoomWorkspaceService{
         const snapshotId=change.change==='deleted'?existing.base_snapshot_id:resultSnapshotId;
         await this.events.emit(roomId,'artifact.created',{runId,artifact:{version_id:version.id,...(version.entry_id?{entry_id:version.entry_id}:{}),snapshot_id:snapshotId,path:version.path,name:path.basename(version.path),size:version.size,mime_type:version.mime_type,url:`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace/versions/${encodeURIComponent(version.id)}`,preview_url:`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace/snapshots/${encodeURIComponent(snapshotId)}/preview/${version.path.split('/').map(encodeURIComponent).join('/')}`,change:change.change,attribution:'exact'}}).catch(()=>{});
       }
-      await rm(path.join(this.roomPath(roomId),'.agenvyl','runs',runId),{recursive:true,force:true});
+      await this.cleanupRunDirectory(roomId,runId,'finalization');
       await this.events.emit(roomId,'run.workspace.finalized',{runId,workspaceResult:result}).catch(()=>{});
       if(result.publish_status==='published'||result.publish_status==='partially_published')await this.events.emit(roomId,'run.workspace.publish.updated',{runId,workspaceResult:result}).catch(()=>{});
       this.logger?.info({metric:'workspace.capture',roomId,runId,durationMs:Date.now()-started,captureStatus:result.capture_status,publishStatus:result.publish_status,conflicts:result.conflict_count,errorCount:result.errors.length},'Run workspace finalized');
@@ -195,6 +196,7 @@ export class RoomWorkspaceService{
   async planVersionContent(roomId:string,versionId:string){const file=await this.resolveVersion(roomId,versionId);if(file.contentType!=='text/markdown')throw new AppError('invalid_approved_plan',409,'Approved plan must be Markdown');return readFile(file.path,'utf8');}
 
   async versions(roomId:string,entryId:string){await this.assertRoom(roomId);return(await this.repository.versions(roomId,entryId)).map(toWorkspaceVersion);}
+  async version(roomId:string,versionId:string){return toWorkspaceVersion(await this.versionRow(roomId,versionId));}
   async resolveVersion(roomId:string,versionId:string){const version=await this.versionRow(roomId,versionId);return{path:this.objectPath(version.sha256),contentType:version.mime_type,version:toWorkspaceVersion(version)};}
   async resolveSnapshotFile(roomId:string,snapshotId:string,filePathInput:string){if(!this.snapshots)throw new AppError('version_not_found',404,'Snapshot not found');const filePath=safeRelative(decodeURIComponent(filePathInput)),version=await this.snapshots.snapshotFile(roomId,snapshotId,filePath);if(!version)throw new AppError('version_not_found',404,'Snapshot file not found');return{path:this.objectPath(version.sha256),contentType:version.mime_type,version:toWorkspaceVersion(version),snapshotId};}
   async resolvePreviewAsset(roomId:string,versionId:string,assetInput:string){const owner=await this.versionRow(roomId,versionId),asset=safeRelative(decodeURIComponent(assetInput)),logical=path.posix.join(path.posix.dirname(owner.path),asset),version=await this.repository.currentVersion(roomId,logical);if(!version)throw new AppError('version_not_found',404,'Related preview file not found');return{path:this.objectPath(version.sha256),contentType:version.mime_type};}
@@ -206,6 +208,12 @@ export class RoomWorkspaceService{
   purgeCandidates(roomId:string){return this.repository.roomHashes(roomId);}
   async purgeFiles(roomId:string,hashes:string[]){this.watchers.get(roomId)?.close();this.watchers.delete(roomId);await rm(this.roomPath(roomId),{recursive:true,force:true});for(const sha of hashes)if(!await this.repository.hashExists(sha))await rm(this.objectPath(sha),{force:true});}
   close(){for(const watcher of this.watchers.values())watcher.close();for(const timer of this.timers.values())clearTimeout(timer);this.watchers.clear();this.timers.clear();}
+
+  private async cleanupRunDirectory(roomId:string,runId:string,phase:'recovery'|'finalization'){
+    const target=path.join(this.roomPath(roomId),'.agenvyl','runs',runId);
+    try{await rm(target,{recursive:true,force:true,maxRetries:5,retryDelay:100});return true;}
+    catch(error){this.logger?.warn({metric:'workspace.cleanup',roomId,runId,phase,error:error instanceof Error?error.message:String(error)},'Run workspace cleanup deferred');return false;}
+  }
 
   private startWatcher(roomId:string,directory:string){if(this.watchers.has(roomId))return;try{const watcher=watch(directory,{recursive:true},()=>{if(this.materializing.has(roomId))return;const prior=this.timers.get(roomId);if(prior)clearTimeout(prior);this.timers.set(roomId,setTimeout(()=>{this.timers.delete(roomId);void this.reconcile(roomId).catch(()=>{});},350));});watcher.on('error',()=>{watcher.close();this.watchers.delete(roomId);});this.watchers.set(roomId,watcher);}catch{/* reconciliation on list/run still guarantees correctness */}}
 
@@ -303,5 +311,23 @@ function assertPublicPath(value:string){if(value==='.agenvyl'||value.startsWith(
 function decodeHeaderName(value:string){try{return decodeURIComponent(value);}catch{throw new AppError('invalid_file_name',400,'Invalid file name');}}
 async function availableName(root:string,relative:string){const parsed=path.posix.parse(relative);for(let index=2;index<10_000;index++){const candidate=path.posix.join(parsed.dir,`${parsed.name} (${index})${parsed.ext}`);if(!await stat(path.join(root,candidate)).then(()=>true).catch(()=>false))return candidate;}throw new AppError('file_exists',409,'Could not find an available name');}
 function hash(data:Buffer){return createHash('sha256').update(data).digest('hex');}
-function mimeFor(name:string,data?:Buffer){switch(path.extname(name).toLowerCase()){case'.png':return'image/png';case'.jpg':case'.jpeg':return'image/jpeg';case'.webp':return'image/webp';case'.gif':return'image/gif';case'.svg':return'image/svg+xml';case'.html':case'.htm':return'text/html';case'.md':case'.markdown':return'text/markdown';case'.txt':case'.log':return'text/plain';case'.css':return'text/css';case'.js':case'.mjs':return'text/javascript';case'.json':return'application/json';default:return data&&data.subarray(0,1024).every(byte=>byte===9||byte===10||byte===13||(byte>=32&&byte<127))?'text/plain':'application/octet-stream';}}
+const sourceMimeTypes=new Map([
+  ['.ts','text/typescript'],['.tsx','text/typescript'],['.jsx','text/javascript'],
+  ['.py','text/x-python'],['.rb','text/x-ruby'],['.rs','text/x-rust'],['.go','text/x-go'],
+  ['.java','text/x-java-source'],['.kt','text/x-kotlin'],['.swift','text/x-swift'],
+  ['.c','text/x-c'],['.h','text/x-c'],['.cc','text/x-c++'],['.cpp','text/x-c++'],['.hpp','text/x-c++'],
+  ['.sh','text/x-shellscript'],['.bash','text/x-shellscript'],['.ps1','text/x-powershell'],
+  ['.sql','text/x-sql'],['.graphql','text/x-graphql'],['.gql','text/x-graphql'],
+  ['.toml','text/x-toml'],['.ini','text/plain'],['.env','text/plain'],['.gitignore','text/plain'],
+]);
+function mimeFor(name:string,data?:Buffer){
+  const extension=path.extname(name).toLowerCase(),sourceType=sourceMimeTypes.get(extension);
+  if(sourceType)return sourceType;
+  const detected=mime.getType(name);
+  if(detected)return detected;
+  if(!data?.length)return'application/octet-stream';
+  const sample=data.subarray(0,Math.min(data.length,64*1024));
+  if(sample.includes(0))return'application/octet-stream';
+  try{new TextDecoder('utf-8',{fatal:true}).decode(sample);return'text/plain';}catch{return'application/octet-stream';}
+}
 function imageMime(data:Buffer){if(data.length>=8&&data.subarray(0,8).equals(Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a])))return'image/png';if(data.length>=3&&data[0]===0xff&&data[1]===0xd8&&data[2]===0xff)return'image/jpeg';if(data.length>=12&&data.toString('ascii',0,4)==='RIFF'&&data.toString('ascii',8,12)==='WEBP')return'image/webp';if(data.length>=6&&['GIF87a','GIF89a'].includes(data.toString('ascii',0,6)))return'image/gif';return undefined;}

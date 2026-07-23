@@ -16,12 +16,15 @@ Runs are scheduled in process through a FIFO queue. `AGENVYL_RUN_CONCURRENCY` co
 maximum number of simultaneous execution streams and defaults to `4`. The queue is not
 distributed and intentionally assumes one backend process.
 
-`AGENVYL_RUN_TIMEOUT_MS` sets a vendor-neutral execution deadline, starting after the
-upstream run is accepted (default `900000`, or 15 minutes). The deadline is persisted,
-survives a Core restart, and does not include time spent in the local queue. When it
-expires, Core durably fails the run with `run_timeout`, aborts its local event stream,
-and sends one best-effort stop command through the configured gateway. A late upstream
-completion or cancellation cannot replace the timeout terminal state.
+`AGENVYL_RUN_TIMEOUT_MS` sets a vendor-neutral inactivity deadline, starting after the
+upstream run is accepted (default `900000`, or 15 minutes). Every accepted Connector
+transition refreshes the deadline, so an agent that continues to report reasoning,
+tool progress, requests, or output is not interrupted merely because the overall task
+is long. The deadline is persisted, survives a Core restart, and does not include time
+spent in the local queue. When it expires, Core durably fails the run with
+`run_timeout`, aborts its local event stream, and sends one stop command through the
+configured gateway. A late upstream completion or cancellation cannot replace the
+timeout terminal state.
 
 `AGENVYL_FEATURE_PLAN_MODE` controls the experimental Plan Mode workflow. It
 accepts only `true` or `false` (case-insensitive), defaults to `false`, and is

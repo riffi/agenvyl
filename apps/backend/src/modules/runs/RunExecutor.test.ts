@@ -273,6 +273,23 @@ describe('RunExecutor', () => {
     await executor.shutdown();await database.close();
   });
 
+  it('refreshes the durable inactivity deadline after accepted Connector activity',async()=>{
+    let releaseActivity!:()=>void,releaseCompletion!:()=>void;
+    const activity=new Promise<void>(resolve=>{releaseActivity=resolve;}),completion=new Promise<void>(resolve=>{releaseCompletion=resolve;});
+    const snapshot={...connectorContractFixtures.execution,cursor:2,pendingRequests:[]},connector=executionClient(snapshot,async function*(){await activity;yield connectorEvent(3,'output.text.delta',{text:'working'});await completion;yield connectorEvent(4,'execution.completed',{});}),transport=new ConnectorRunAdapter(connector);
+    vi.mocked(connector.start).mockImplementation(async request=>({...snapshot,executionId:request.executionId}));
+    const{executor,registry,database,personas,messages}=await fixture(vi.fn<typeof fetch>(),4,connector,transport,1_000),persona=(await personas.find('persona-architect'))!,round=await messages.createRound('demo-room','active timeout',[persona],profiles([persona])),runId=round.runs[0].id;
+    registry.add(run(runId,round.message.id));executor.start(runId,'active timeout');
+    await vi.waitFor(async()=>expect((await database.sql`SELECT connector_cursor,execution_deadline_at FROM agent_runs WHERE id=${runId}`)[0]).toMatchObject({connector_cursor:'2',execution_deadline_at:expect.any(Date)}));
+    const initial=(await database.sql`SELECT execution_deadline_at FROM agent_runs WHERE id=${runId}`)[0]?.execution_deadline_at as Date;
+    await new Promise(resolve=>setTimeout(resolve,20));releaseActivity();
+    await vi.waitFor(async()=>expect((await database.sql`SELECT connector_cursor FROM agent_runs WHERE id=${runId}`)[0]?.connector_cursor).toBe('3'));
+    const refreshed=(await database.sql`SELECT execution_deadline_at FROM agent_runs WHERE id=${runId}`)[0]?.execution_deadline_at as Date;
+    expect(refreshed.getTime()).toBeGreaterThan(initial.getTime());
+    releaseCompletion();await vi.waitFor(()=>expect(registry.get(runId)).toBeUndefined());
+    await executor.shutdown();await database.close();
+  });
+
   it('enforces an expired persisted deadline before replay after a Core restart',async()=>{
     const snapshot={...connectorContractFixtures.execution,executionId:'execution-expired',cursor:7,pendingRequests:[]},connector=executionClient(snapshot,async function*(){yield connectorEvent(8,'execution.completed',{});}),transport=new ConnectorRunAdapter(connector),{executor,database,personas,messages,events}=await fixture(vi.fn<typeof fetch>(),4,connector,transport,60_000),persona=(await personas.find('persona-architect'))!,round=await messages.createRound('demo-room','expired',[persona],profiles([persona])),runId=round.runs[0].id;
     await database.sql`UPDATE agent_runs SET status='streaming',connector_execution_id='execution-expired',connector_epoch='epoch-1',connector_cursor=7,execution_deadline_at=now()-interval '1 second' WHERE id=${runId}`;

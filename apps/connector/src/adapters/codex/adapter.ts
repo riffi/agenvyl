@@ -8,16 +8,17 @@ import {buildCodexCatalog,parseCodexPermission} from './mode-catalog.js';
 type RpcId=string|number;
 type PendingRequest={rpcId:RpcId;method:string};
 type ExecutionState={
-  id:string;threadId:string;turnId?:string;status:ExecutionStatus;queue:EventQueue;pending:Map<string,PendingRequest>;itemText:Map<string,number>;reasoningIndexes:Map<string,number>;
+  id:string;threadId:string;turnId?:string;status:ExecutionStatus;queue:EventQueue;pending:Map<string,PendingRequest>;itemText:Map<string,number>;reasoningIndexes:Map<string,number>;forceStopTimer?:ReturnType<typeof setTimeout>;
 };
 
-export type CodexAdapterOptions={command?:string;env?:NodeJS.ProcessEnv;allowDangerFullAccess?:boolean;client?:CodexAppServerPort};
+export type CodexAdapterOptions={command?:string;env?:NodeJS.ProcessEnv;allowDangerFullAccess?:boolean;client?:CodexAppServerPort;stopGraceMs?:number};
 
 export class CodexConnectorAdapter implements ConnectorAdapter{
   readonly type='codex';
   readonly capabilities:ConnectorAdapter['capabilities']=['model_catalog','execution_profiles','text_streaming','reasoning','tools','approvals','clarifications','usage'];
   private readonly client:CodexAppServerPort;
   private readonly allowDangerFullAccess:boolean;
+  private readonly stopGraceMs:number;
   private readonly executions=new Map<string,ExecutionState>();
   private readonly byThread=new Map<string,ExecutionState>();
   private supportedModels=new Map<string,Set<string>>();
@@ -25,6 +26,7 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
   constructor(options:CodexAdapterOptions={}){
     this.client=options.client??new CodexAppServerClient(options.command?.trim()||'codex',options.env);
     this.allowDangerFullAccess=Boolean(options.allowDangerFullAccess);
+    this.stopGraceMs=Math.max(0,options.stopGraceMs??3_000);
     this.client.onMessage(message=>this.onMessage(message));
     this.client.onExit(error=>this.onExit(error));
   }
@@ -82,6 +84,7 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
     if(!state.turnId||isTerminal(state.status))return;
     state.status='stopping';
     await this.client.request('turn/interrupt',{threadId:state.threadId,turnId:state.turnId});
+    this.armForcedStop(state);
   }
 
   close(){return this.client.close();}
@@ -158,7 +161,18 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
   }
   private fail(state:ExecutionState,code:string,message:string){if(isTerminal(state.status))return;state.status='failed';state.queue.push({type:'execution.failed',payload:{error:{code,message}}});state.queue.end();this.remove(state,false);}
   private onExit(error:Error){for(const state of [...this.executions.values()])this.fail(state,'codex_app_server_exited',redactConnectorText(error.message,500));}
-  private remove(state:ExecutionState,end=true){this.executions.delete(state.id);this.byThread.delete(state.threadId);if(end)state.queue.end();}
+  private armForcedStop(state:ExecutionState){
+    if(state.forceStopTimer)clearTimeout(state.forceStopTimer);
+    state.forceStopTimer=setTimeout(()=>void this.forceStop(state),this.stopGraceMs);
+  }
+  private async forceStop(state:ExecutionState){
+    state.forceStopTimer=undefined;
+    if(this.executions.get(state.id)!==state||state.status!=='stopping')return;
+    if(this.executions.size>1){this.armForcedStop(state);return;}
+    state.status='cancelled';state.queue.push({type:'execution.cancelled',payload:{}});state.queue.end();this.remove(state,false);
+    await this.client.close();
+  }
+  private remove(state:ExecutionState,end=true){if(state.forceStopTimer)clearTimeout(state.forceStopTimer);state.forceStopTimer=undefined;this.executions.delete(state.id);this.byThread.delete(state.threadId);if(end)state.queue.end();}
   private require(id:string){const state=this.executions.get(id);if(!state)throw new Error('Codex execution is not active');return state;}
 }
 

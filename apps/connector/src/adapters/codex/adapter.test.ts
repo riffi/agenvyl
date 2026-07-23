@@ -25,6 +25,15 @@ describe('Codex connector adapter',()=>{
     client.emit({id:'q1',method:'item/tool/requestUserInput',params:{threadId:'thread-1',turnId:'turn-1',questions:[{id:'format',header:'Format',question:'Which format?',isOther:true,isSecret:false,options:[{label:'SVG',description:'Vector'}]},{id:'token',header:'Token',question:'Secret?',isOther:false,isSecret:true,options:null}]}});const clarification=await iterator.next();expect(clarification).toMatchObject({value:{type:'request.opened',payload:{request:{kind:'clarification',questions:[{id:'format',isOther:true},{id:'token',isSecret:true}]}}}});await adapter.resolveRequest(execution,(clarification.value as Extract<typeof clarification.value,{type:'request.opened'}>).payload.request,{answers:{format:['SVG'],token:['secret']}});expect(client.responses.at(-1)).toEqual({id:'q1',result:{answers:{format:{answers:['SVG']},token:{answers:['secret']}}}});
     client.emit({method:'turn/completed',params:{threadId:'thread-1',turn:{id:'turn-1',status:'completed'}}});expect(await iterator.next()).toMatchObject({value:{type:'execution.completed'}});expect(await iterator.next()).toEqual({value:undefined,done:true});});
   it('supports concurrent threads and interrupts only the selected turn',async()=>{const client=new FakeAppServer(),adapter=new CodexConnectorAdapter({client});const first=await adapter.start(input('one')),second=await adapter.start(input('two'));await adapter.stop(second);expect(client.requests.at(-1)).toEqual({method:'turn/interrupt',params:{threadId:'thread-2',turnId:'turn-2'}});expect(await adapter.inspect(first)).toEqual({status:'running'});});
+  it('force closes a lone app-server when an interrupted turn never settles',async()=>{
+    vi.useFakeTimers();
+    try{
+      const client=new FakeAppServer(),adapter=new CodexConnectorAdapter({client,stopGraceMs:25}),execution=await adapter.start(input()),iterator=adapter.events(execution)[Symbol.asyncIterator]();
+      await adapter.stop(execution);await vi.advanceTimersByTimeAsync(25);
+      expect(client.close).toHaveBeenCalledTimes(1);
+      expect(await iterator.next()).toMatchObject({value:{type:'execution.cancelled'}});
+    }finally{vi.useRealTimers();}
+  });
   it('exposes bounded redacted parameters for Codex tool items',async()=>{const client=new FakeAppServer(),adapter=new CodexConnectorAdapter({client});const execution=await adapter.start(input()),iterator=adapter.events(execution)[Symbol.asyncIterator]();
     client.emit({method:'item/started',params:{threadId:'thread-1',turnId:'turn-1',item:{id:'command',type:'commandExecution',command:'npm test',cwd:'C:/workspace/room'}}});
     expect(await iterator.next()).toMatchObject({value:{type:'tool.started',payload:{safeInput:'{"command":"npm test","cwd":"[ABSOLUTE_PATH]"}'}}});

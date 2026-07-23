@@ -323,7 +323,15 @@ export class RunExecutor {
 
   private async applyMapping(run:RunContext,mapping:RunEventMapping){
     const mappedEvents:MappedRunEvent[]=[...(mapping.status&&mapping.status!==run.status?[{type:'run.status' as const,payload:{runId:run.id,status:mapping.status}}]:[]),...mapping.events];
-    if(mapping.checkpoint){const accepted=await this.dependencies.runs.acceptConnectorTransition(run.id,mapping.checkpoint,mappedEvents);if(!accepted.accepted){if(mapping.terminal)await this.terminal(run,mapping.terminal.status,mapping.terminal.error);return;}for(const event of accepted.events)this.dependencies.events.publishPersisted(accepted.roomId!,event);}else for(const event of mappedEvents)await this.dependencies.events.emit(run.roomId,event.type,event.payload);
+    if(mapping.checkpoint){
+      const accepted=await this.dependencies.runs.acceptConnectorTransition(run.id,mapping.checkpoint,mappedEvents);
+      if(!accepted.accepted){if(mapping.terminal)await this.terminal(run,mapping.terminal.status,mapping.terminal.error);return;}
+      for(const event of accepted.events)this.dependencies.events.publishPersisted(accepted.roomId!,event);
+      if(!mapping.terminal){
+        const deadline=await this.dependencies.runs.refreshExecutionDeadline(run.id,this.runTimeoutMs);
+        if(deadline){run.executionDeadlineAt=deadline;this.armDeadline(run);}
+      }
+    }else for(const event of mappedEvents)await this.dependencies.events.emit(run.roomId,event.type,event.payload);
     if(mapping.status)run.status=mapping.status;
     for(const event of mapping.events){if(event.type==='run.delta')run.responseText=(run.responseText??'')+String(event.payload.text??'');if(event.type==='request.created')run.waitingFor=event.payload.kind as'approval'|'clarification';if(event.type==='request.resolved')run.waitingFor=undefined;}
     if(mapping.terminal)await this.terminal(run,mapping.terminal.status,mapping.terminal.error);

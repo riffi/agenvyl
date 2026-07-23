@@ -31,6 +31,8 @@ describe('RoomWorkspaceService',()=>{
     expect(uploaded).toMatchObject({entry:{name:'заметки.md',mime_type:'text/markdown',size:7},version:{sha256:expect.any(String)}});
     expect(await readFile(path.join(root,'room-1','docs','заметки.md'),'utf8')).toBe('# notes');
     expect((await service.list('room-1')).entries).toEqual(expect.arrayContaining([expect.objectContaining({path:'docs/заметки.md'})]));
+    const source=await service.upload('room-1','src/main.ts','text/plain',Buffer.from('export const привет = true'));
+    expect(source.entry.mime_type).toBe('text/typescript');
     service.close();
   });
 

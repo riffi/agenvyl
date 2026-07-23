@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Menu, MessageCircle, Paperclip, Plus } from "lucide-react";
 import { harnessKeys, harnessesApi, type HarnessCatalog } from '../../entities/harness';
 import { fakePersonas, personaKeys, personasApi, type Persona } from "../../entities/persona";
@@ -11,8 +12,7 @@ import {AttachmentPicker,useRoomAttachments} from '../../features/send-message';
 import {useRuntimeFeatures} from '../../shared/features';
 import { FakeRoomGateway, HttpRoomGateway, type RoomGateway } from "../../features/room-session";
 import { Button, EmptyState } from "../../shared/ui";
-import { ArtifactsDrawer, type WorkspaceFocus } from "../artifacts-drawer";
-import { ArtifactViewer, type ArtifactViewerRequest, type OpenArtifact } from "../artifact-viewer";
+import { WorkspaceWindow, workspaceRequestFromSearch, workspaceSearchWithRequest, type OpenWorkspaceArtifact, type WorkspaceOpenRequest, type WorkspaceRequestUpdate, type WorkspaceTarget } from '../workspace-window';
 import { Composer, type ComposerHandle } from "../composer";
 import { PersonasScreen } from "../personas-screen";
 import { RoomHeader } from "../room-header";
@@ -62,6 +62,8 @@ export function WorkspaceApp({
   navigateToPersona:(id?:string,options?:{replace?:boolean})=>void;
 }) {
   const{plan_mode:planModeEnabled}=useRuntimeFeatures();
+  const [searchParams,setSearchParams]=useSearchParams();
+  const navigate=useNavigate();
   const fake=useMemo(()=>{const query=new URLSearchParams(location.search).get('gateway');return query==='fake'||(query!=='real'&&import.meta.env.VITE_GATEWAY_MODE==='fake')},[]);
   const queryClient=useQueryClient();
   const [demoRooms,setDemoRooms]=useState<Room[]>(fakeRooms);
@@ -94,14 +96,21 @@ export function WorkspaceApp({
   const catalogError=catalogFailure instanceof Error?catalogFailure.message:catalogFailure?String(catalogFailure):undefined;
   const harnessError=harnessCatalogQuery.error instanceof Error?harnessCatalogQuery.error.message:harnessCatalogQuery.error?String(harnessCatalogQuery.error):undefined;
   const [menu, setMenu] = useState(false),
-    [artifacts, setArtifacts] = useState(false),
     [creatingRoom,setCreatingRoom]=useState(false),
     [managingAgents,setManagingAgents]=useState(false),
     [selected, setSelected] = useState<string>();
   const attachments=useRoomAttachments(roomId);
   const [attachmentPicker,setAttachmentPicker]=useState(false);
-  const [workspaceFocus,setWorkspaceFocus]=useState<WorkspaceFocus>();
-  const [artifactViewer,setArtifactViewer]=useState<ArtifactViewerRequest>();
+  const [workspaceTransient,setWorkspaceTransient]=useState<WorkspaceOpenRequest>();
+  const workspaceOpenedByUiRef=useRef(false);
+  const urlWorkspaceRequest=useMemo(()=>workspaceRequestFromSearch(searchParams),[searchParams]);
+  const workspaceRequest=useMemo<WorkspaceOpenRequest|undefined>(()=>urlWorkspaceRequest?{
+    ...urlWorkspaceRequest,
+    ...workspaceTransient,
+    target:{...workspaceTransient?.target,...urlWorkspaceRequest.target},
+    mode:urlWorkspaceRequest.mode??workspaceTransient?.mode,
+    treeVisible:urlWorkspaceRequest.treeVisible,
+  }:undefined,[urlWorkspaceRequest,workspaceTransient]);
   const composerRef=useRef<ComposerHandle>(null);
   const [draggingFiles,setDraggingFiles]=useState(false);
   const dragDepth=useRef(0);
@@ -144,11 +153,45 @@ export function WorkspaceApp({
   const currentRoom=rooms.find(room=>room.id===roomId);
   const approvePlan=async(versionId:string)=>{const approved=state.executionState.plan.approved;if(approved&&approved.version_id!==versionId&&!confirm('Replace the approved plan version?'))return;if(!fake)await roomsApi.approvePlan(roomId,versionId)};
   const clearApprovedPlan=async()=>fake?state.executionState:roomsApi.clearApprovedPlan(roomId);
-  const openWorkspace=useCallback((target?:Omit<WorkspaceFocus,'requestId'>)=>{setArtifactViewer(undefined);setWorkspaceFocus(target?{...target,requestId:Date.now()}:undefined);setArtifacts(true)},[]);
-  const openArtifact=useCallback<OpenArtifact>((attachment,gallery,opener)=>setArtifactViewer({attachment,gallery,opener}),[]);
-  const closeArtifactViewer=useCallback(()=>setArtifactViewer(undefined),[]);
-  useEffect(()=>{if(!selected&&!artifacts)return;const closeDrawers=(event:KeyboardEvent)=>{if(event.key==='Escape'){setSelected(undefined);setArtifacts(false)}};addEventListener('keydown',closeDrawers);return()=>removeEventListener('keydown',closeDrawers)},[selected,artifacts]);
-  useEffect(()=>{if(artifacts&&!fake)void queryClient.invalidateQueries({queryKey:['rooms',roomId,'workspace']})},[artifacts,state.lastSequence,roomId,fake,queryClient]);
+  const pushWorkspace=useCallback((request:WorkspaceOpenRequest)=>{
+    workspaceOpenedByUiRef.current=true;
+    setWorkspaceTransient(request);
+    setSearchParams(workspaceSearchWithRequest(searchParams,request),{replace:false});
+  },[searchParams,setSearchParams]);
+  const openWorkspace=useCallback((target?:WorkspaceTarget)=>pushWorkspace({origin:'workspace',target,treeVisible:true,followCurrent:!target?.versionId}),[pushWorkspace]);
+  const openArtifact=useCallback<OpenWorkspaceArtifact>((attachment,gallery,opener)=>{
+    const candidates=gallery?.some(item=>item.version_id===attachment.version_id)?gallery:[attachment,...(gallery??[])];
+    pushWorkspace({
+      origin:'artifact',
+      target:{entryId:attachment.entry_id,versionId:attachment.version_id,snapshotId:attachment.snapshot_id,path:attachment.path},
+      treeVisible:false,
+      gallery:candidates,
+      opener,
+      followCurrent:false,
+    });
+  },[pushWorkspace]);
+  const updateWorkspaceRequest=useCallback((update:WorkspaceRequestUpdate)=>{
+    if(!workspaceRequest)return;
+    const next:WorkspaceOpenRequest={
+      ...workspaceRequest,
+      ...update,
+      target:update.target?{...workspaceRequest.target,...update.target}:workspaceRequest.target,
+      gallery:Object.prototype.hasOwnProperty.call(update,'gallery')?update.gallery:workspaceRequest.gallery,
+    };
+    setWorkspaceTransient(next);
+    setSearchParams(workspaceSearchWithRequest(searchParams,next),{replace:true});
+  },[searchParams,setSearchParams,workspaceRequest]);
+  const closeWorkspace=useCallback(()=>{
+    if(workspaceOpenedByUiRef.current){
+      workspaceOpenedByUiRef.current=false;
+      navigate(-1);
+      return;
+    }
+    setSearchParams(workspaceSearchWithRequest(searchParams),{replace:true});
+  },[navigate,searchParams,setSearchParams]);
+  useEffect(()=>{if(!urlWorkspaceRequest)setWorkspaceTransient(undefined)},[urlWorkspaceRequest]);
+  useEffect(()=>{if(!selected)return;const closeDrawer=(event:KeyboardEvent)=>{if(event.key==='Escape')setSelected(undefined)};addEventListener('keydown',closeDrawer);return()=>removeEventListener('keydown',closeDrawer)},[selected]);
+  useEffect(()=>{if(workspaceRequest&&!fake)void queryClient.invalidateQueries({queryKey:['rooms',roomId,'workspace']})},[workspaceRequest,state.lastSequence,roomId,fake,queryClient]);
   return (
     <>
       <Sidebar
@@ -187,7 +230,7 @@ export function WorkspaceApp({
             active={active}
             connection={state.connection}
             openMenu={() => setMenu(true)}
-            openArtifacts={() => {setWorkspaceFocus(undefined);setArtifacts(true)}}
+            openArtifacts={() => openWorkspace()}
             manageAgents={() => setManagingAgents(true)}
           />
           <Timeline roomId={roomId} state={state} personas={personaCatalog} harnessCatalog={harnessCatalog} select={setSelected} gateway={gateway} loadOlder={loadOlder} loadingOlder={loadingOlder} initialLoading={!fake&&timelineQuery.isPending} onMentionPersona={handle=>composerRef.current?.insertMention(handle)} plan={state.executionState.plan} approvePlan={approvePlan} openWorkspace={openWorkspace} openArtifact={openArtifact} planModeEnabled={planModeEnabled}/>
@@ -216,8 +259,7 @@ export function WorkspaceApp({
         harnessCatalog={harnessCatalog}
         close={() => setSelected(undefined)}
       />
-      <ArtifactsDrawer open={artifacts} close={() => setArtifacts(false)} roomId={roomId} fake={fake} onAttach={attachment=>attachments.addExisting([attachment])} focus={workspaceFocus} plan={state.executionState.plan} planModeEnabled={planModeEnabled}/>
-      <ArtifactViewer request={artifactViewer} close={closeArtifactViewer} openWorkspace={attachment=>openWorkspace({entryId:attachment.entry_id,versionId:attachment.version_id})}/>
+      <WorkspaceWindow request={workspaceRequest} roomId={roomId} fake={fake} onAttach={attachment=>attachments.addExisting([attachment])} plan={state.executionState.plan} planModeEnabled={planModeEnabled} onClose={closeWorkspace} onRequestChange={updateWorkspaceRequest}/>
       <AttachmentPicker open={attachmentPicker} roomId={roomId} selected={attachments.ready} onClose={()=>setAttachmentPicker(false)} onConfirm={attachments.replaceReady} onUpload={files=>void attachments.uploadFiles(files)}/>
       {creatingRoom&&<CreateRoomDialog personas={personaCatalog.filter(persona=>!persona.archived_at)} catalog={harnessCatalog} groups={groups} onClose={()=>setCreatingRoom(false)} onCreated={createRoom}/>}
       {managingAgents&&currentRoom&&<RoomAgentManager personas={personaCatalog.filter(persona=>!persona.archived_at)} catalog={harnessCatalog} groups={groups} roomPersonas={roomPersonas} onUpdateReasoning={updateParticipantReasoning} onClose={()=>setManagingAgents(false)} onSave={saveRoomAgents}/>}

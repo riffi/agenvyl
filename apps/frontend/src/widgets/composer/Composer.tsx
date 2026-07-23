@@ -7,8 +7,7 @@ import { activeMentionQuery, insertMentionAt, parseMentions, removeMentionTarget
 import { ApiError } from '../../shared/api';
 import { Alert, Button, TextArea } from '../../shared/ui';
 import type {ExecutionIntent,RoomExecutionState,RoomPersona} from '@agenvyl/contracts';
-import type {WorkspaceFocus} from '../artifacts-drawer';
-import {ArtifactActionsMenu,type OpenArtifact} from '../artifact-viewer';
+import {WorkspaceArtifactActions,type OpenWorkspaceArtifact,type WorkspaceTarget} from '../workspace-window';
 import styles from './Composer.module.css';
 import {ImplementationHandoff,type ImplementationDraft} from './ImplementationHandoff';
 import {ReasoningEffortChip,roomPersonaModel,roomPersonaReasoning} from '../../features/reasoning-effort';
@@ -141,7 +140,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
       {profileError&&<Alert className={styles['send-error']} tone="error">Could not apply execution settings: {profileError}</Alert>}
       {sendError&&<Alert className={styles['send-error']} tone="error">Failed to send: {sendError.message} <Button size="sm" variant="danger" onClick={()=>void send(sendError)} disabled={sending}>Retry</Button></Alert>}
       <div className={styles['compose-card']}>
-        {attachments.length>0&&<div className={styles.attachments}>{attachments.map(item=><span key={item.id} className={[item.status==='error'?styles['attachment-error']:'',item.mimeType.startsWith('image/')&&item.attachment?styles['image-attachment']:''].filter(Boolean).join(' ')}>{item.status==='uploading'?<LoaderCircle className={styles.spinning}/>:item.mimeType.startsWith('image/')&&item.attachment?<img src={item.attachment.preview_url} alt=""/>:<FileText/>}<button type="button" disabled={!item.attachment} onClick={event=>item.attachment&&openArtifact(item.attachment,readyAttachments,event.currentTarget)}>{item.name}</button><small>{item.status==='uploading'?`${item.progress}%`:item.status==='error'?item.error:formatBytes(item.size)}</small>{item.status==='uploading'&&<i style={{width:`${item.progress}%`}}/>}{item.attachment&&<ArtifactActionsMenu attachment={item.attachment} openWorkspace={attachment=>openWorkspace({entryId:attachment.entry_id,versionId:attachment.version_id})}/>} {item.status==='error'&&<button type="button" aria-label={`Retry upload ${item.name}`} onClick={()=>retryAttachment(item.id)}><RefreshCw/></button>}<button type="button" aria-label={`Remove ${item.name}`} onClick={()=>removeAttachment(item.id)}><X/></button></span>)}</div>}
+        {attachments.length>0&&<div className={styles.attachments}>{attachments.map(item=><span key={item.id} className={[item.status==='error'?styles['attachment-error']:'',item.mimeType.startsWith('image/')&&item.attachment?styles['image-attachment']:''].filter(Boolean).join(' ')}>{item.status==='uploading'?<LoaderCircle className={styles.spinning}/>:item.mimeType.startsWith('image/')&&item.attachment?<img src={item.attachment.preview_url} alt=""/>:<FileText/>}<button type="button" disabled={!item.attachment} onClick={event=>item.attachment&&openArtifact(item.attachment,readyAttachments,event.currentTarget)}>{item.name}</button><small>{item.status==='uploading'?`${item.progress}%`:item.status==='error'?item.error:formatBytes(item.size)}</small>{item.status==='uploading'&&<i style={{width:`${item.progress}%`}}/>}{item.attachment&&<WorkspaceArtifactActions attachment={item.attachment} openWorkspace={openWorkspace}/>} {item.status==='error'&&<button type="button" aria-label={`Retry upload ${item.name}`} onClick={()=>retryAttachment(item.id)}><RefreshCw/></button>}<button type="button" aria-label={`Remove ${item.name}`} onClick={()=>removeAttachment(item.id)}><X/></button></span>)}</div>}
         {targets.length>0&&<div className={styles['target-row']}>
           <span>Responders:</span>
           <div className={styles.targets}>
@@ -213,8 +212,8 @@ type ComposerProps={
   harnessCatalog?:HarnessCatalog;
   catalogReady: boolean;
   onSent:()=>Promise<void>;
-  openWorkspace:(target?:Omit<WorkspaceFocus,'requestId'>)=>void;
-  openArtifact?:OpenArtifact;
+  openWorkspace:(target?:WorkspaceTarget)=>void;
+  openArtifact?:OpenWorkspaceArtifact;
   roomId:string;
   attachments:ComposerAttachment[];
   attachmentsBusy:boolean;
@@ -229,7 +228,7 @@ type ComposerProps={
   planModeEnabled?:boolean;
 };
 
-function PlanCard({state,openWorkspace,approve,clear,handoffOpen,toggleHandoff}:{state:RoomExecutionState;openWorkspace:(target?:Omit<WorkspaceFocus,'requestId'>)=>void;approve:(versionId:string)=>Promise<unknown>;clear:()=>Promise<unknown>;handoffOpen:boolean;toggleHandoff:()=>void}){
+function PlanCard({state,openWorkspace,approve,clear,handoffOpen,toggleHandoff}:{state:RoomExecutionState;openWorkspace:(target?:WorkspaceTarget)=>void;approve:(versionId:string)=>Promise<unknown>;clear:()=>Promise<unknown>;handoffOpen:boolean;toggleHandoff:()=>void}){
   const{current,approved}=state.plan;if(!current&&!approved)return null;const pending=Boolean(current&&approved&&current.version_id!==approved.version_id),status=pending?'Changes pending':approved?'Approved':'Ready to approve',primary=approved??current!;
   const open=(value=primary)=>openWorkspace({entryId:value.entry_id,versionId:value.version_id});
   return <div className={`${styles['approved-plan']} ${pending?styles['plan-pending']:!approved?styles['plan-ready']:''}`}><button type="button" className={styles['plan-title']} onClick={()=>open()}><strong>{status}</strong><small>plan.md · {pending?'Implement still uses the approved version.':approved?'Immutable version ready for implementation.':'Review the workspace artifact before approval.'}</small></button><div>{pending&&approved&&<button type="button" onClick={()=>open(approved)}>Open approved</button>}{pending&&current&&<button type="button" onClick={()=>open(current)}>Open changes</button>}{!pending&&<button type="button" onClick={()=>open()}>Open</button>}{current&&(!approved||pending)&&<button type="button" onClick={()=>void approve(current.version_id)}>{approved?'Re-approve':'Approve'}</button>}{approved&&<button type="button" onClick={()=>void clear()}>Clear</button>}{approved&&<button type="button" className={styles['start-implementation']} aria-expanded={handoffOpen} onClick={toggleHandoff}>Implement…</button>}</div></div>;

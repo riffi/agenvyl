@@ -51,6 +51,19 @@ describe('versioned room workspace',()=>{
     await app.close();
   });
 
+  it('keeps version history attached to a file after it is moved',async()=>{
+    const root=await mkdtemp(path.join(tmpdir(),'workspace-api-'));roots.push(root);
+    const app=await buildApp({databaseUrl:testDatabaseUrl('workspace_version_move'),workspaceRoot:root,workspaceAgentRoot:root,fetch:vi.fn<typeof fetch>(),distPath:'missing-dist'});
+    const first=await app.inject({method:'POST',url:'/api/v1/rooms/demo-room/workspace/files',headers:{'content-type':'text/plain','x-file-path':'notes.txt'},payload:Buffer.from('first')});
+    const second=await app.inject({method:'POST',url:'/api/v1/rooms/demo-room/workspace/files',headers:{'content-type':'text/plain','x-file-path':'notes.txt','x-conflict-strategy':'replace'},payload:Buffer.from('second')});
+    const entry=second.json().entry;
+    expect((await app.inject({method:'PATCH',url:`/api/v1/rooms/demo-room/workspace/entries/${entry.id}`,payload:{path:'archive/notes.txt'}})).statusCode).toBe(200);
+    const versions=await app.inject(`/api/v1/rooms/demo-room/workspace/entries/${entry.id}/versions`);
+    expect(versions.statusCode).toBe(200);
+    expect(versions.json().map((version:{id:string})=>version.id)).toEqual([second.json().version.id,first.json().version.id]);
+    await app.close();
+  });
+
   it('resolves HTML preview assets from the current workspace',async()=>{
     const root=await mkdtemp(path.join(tmpdir(),'workspace-api-'));roots.push(root);
     const app=await buildApp({databaseUrl:testDatabaseUrl('workspace_live_preview'),workspaceRoot:root,workspaceAgentRoot:root,fetch:vi.fn<typeof fetch>(),distPath:'missing-dist'});
