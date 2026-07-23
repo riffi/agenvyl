@@ -66,12 +66,13 @@ environment used for every Agenvyl start.
 ## Behavior and permissions
 
 OpenCode supplies its model catalog and provider agent variants. Agenvyl
-supports text and reasoning streams, tools, manual approvals, one-question
-clarifications, usage, retries reported by the provider, and cancellation.
+supports text and reasoning streams, tools, manual approvals, structured
+clarifications with up to four questions including multi-select, usage, retries
+reported by the provider, and cancellation.
 
 External-directory permission requests are rejected at the adapter boundary.
-Batch and multi-select questions fail closed because Agenvyl cannot represent
-them safely.
+Malformed or unsupported question payloads fail closed instead of being
+answered implicitly.
 
 ## Verify and troubleshoot
 

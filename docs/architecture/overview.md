@@ -146,21 +146,19 @@ and secrets are outside the product repository. See
 
 ## Supported tool integrations
 
-The tools expose different capabilities, so the experience is not identical
-for every agent:
+| Tool | How Connector uses it |
+| --- | --- |
+| Hermes | Connects to an existing local HTTP service |
+| OpenCode | Connects to, or manages, an OpenCode server |
+| Codex CLI | Starts the user-installed `codex app-server` |
+| Claude Code CLI *(experimental)* | Starts a fresh user-installed `claude` process for each attempt |
+| Antigravity / AGY | Starts a fresh `agy --print` process for each attempt |
 
-| Tool | How Connector uses it | Important difference |
-| --- | --- | --- |
-| Hermes | Connects to an existing local HTTP service | Supports streaming, tools, approvals, usage, and cancellation |
-| OpenCode | Connects to, or manages, an OpenCode server | Supports reasoning, tools, approvals, simple questions, usage, and cancellation |
-| Codex CLI | Starts the user-installed `codex app-server` | Supports Plan/Work, reasoning effort, permissions, tools, approvals, questions, usage, and interruption |
-| Claude Code CLI *(experimental)* | Starts a fresh user-installed `claude` process for each attempt | Preserves normal Claude settings and supports permissions, reasoning, tools, questions, usage, and interruption |
-| Antigravity / AGY | Starts a fresh `agy --print` process for each attempt | Exposes only a final answer and cancellation; edit access requires an explicit opt-in |
-
-Connector reports only capabilities a tool actually exposes. For example, it
-does not invent partial output, tool events, or usage data for AGY. Exact setup,
-version, authentication, and safety requirements are documented in the
-[harness guides](../harnesses/README.md).
+Connector reports only behavior an integration can represent safely. The
+[harness capability matrix](../harnesses/capabilities.md) compares the current
+configuration, output, interaction, and lifecycle support without duplicating
+those details here. Setup, version, authentication, and safety requirements are
+documented in the [harness guides](../harnesses/README.md).
 
 ## Files, history, and retries
 

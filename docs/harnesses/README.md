@@ -16,6 +16,10 @@ different: its HTTP API server must already be running.
 | [Antigravity / AGY](antigravity.md) | One `agy --print` process per attempt | Plan by default; edits require explicit opt-in |
 | [Hermes](hermes.md) | Existing authenticated HTTP API | Hermes host permissions and configured model routes |
 
+Compare model controls, streaming, reasoning, tool activity, interactions, and
+run lifecycle behavior in the
+[harness capability matrix](capabilities.md).
+
 After adding a harness, open **Agents** in the Web UI. Create or edit an agent,
 choose the harness instance and model, then add that agent to a room.
 
@@ -32,4 +36,3 @@ If a harness does not appear:
 Harnesses keep their own settings, credentials, tools, skills, plugins, hooks,
 MCP servers, network behavior, and telemetry. Agenvyl adds no telemetry of its
 own, but it does not disable behavior configured in the harness.
-
