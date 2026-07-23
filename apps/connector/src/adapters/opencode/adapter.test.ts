@@ -56,6 +56,36 @@ describe('OpenCodeConnectorAdapter', () => {
     expect(system).not.toContain('tool named `question`');
   });
 
+  it('deletes a completed session and disposes its OpenCode instance before reporting completion',async()=>{
+    const calls:string[]=[],client=fixtureClient(calls);
+    client.subscribe=vi.fn(async()=>{calls.push('subscribe');return events([{type:'session.idle',properties:{sessionID:'session-1'}}]);});
+    client.deleteSession=vi.fn(async()=>{calls.push('delete');});
+    client.disposeInstance=vi.fn(async()=>{calls.push('dispose');});
+    const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client});
+
+    await expect(collect(adapter.events(await adapter.start(startRequest())))).resolves.toEqual([{type:'execution.completed',payload:{}}]);
+
+    expect(client.abortSession).not.toHaveBeenCalled();
+    expect(client.deleteSession).toHaveBeenCalledWith('session-1','/srv/workspaces/room-1/subdir');
+    expect(client.disposeInstance).toHaveBeenCalledWith('/srv/workspaces/room-1/subdir');
+    expect(calls).toEqual(['create','subscribe','prompt','delete','dispose']);
+    await adapter.close();
+    expect(client.deleteSession).toHaveBeenCalledTimes(1);
+    expect(client.disposeInstance).toHaveBeenCalledTimes(1);
+  });
+
+  it('cleans the upstream session and instance when start fails after session creation',async()=>{
+    const client=fixtureClient();
+    client.prompt=vi.fn().mockRejectedValue(new Error('prompt failed'));
+    const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client});
+
+    await expect(adapter.start(startRequest())).rejects.toThrow('prompt failed');
+
+    expect(client.abortSession).toHaveBeenCalledWith('session-1','/srv/workspaces/room-1/subdir');
+    expect(client.deleteSession).toHaveBeenCalledWith('session-1','/srv/workspaces/room-1/subdir');
+    expect(client.disposeInstance).toHaveBeenCalledWith('/srv/workspaces/room-1/subdir');
+  });
+
   it('passes a supported model variant as the per-run reasoning effort',async()=>{
     const client=fixtureClient();
     client.providers=vi.fn().mockResolvedValue({connected:['anthropic'],all:[{id:'anthropic',name:'Anthropic',models:{sonnet:{id:'claude-sonnet',name:'Claude Sonnet',variants:{high:{reasoningEffort:'high'}}}}}]});
@@ -271,6 +301,8 @@ describe('OpenCodeConnectorAdapter', () => {
     await adapter.stop(execution);
     expect(client.sessionStatuses).toHaveBeenCalledWith('/srv/workspaces/room-1/subdir');
     expect(client.abortSession).toHaveBeenCalledWith('session-1', '/srv/workspaces/room-1/subdir');
+    expect(client.deleteSession).toHaveBeenCalledWith('session-1', '/srv/workspaces/room-1/subdir');
+    expect(client.disposeInstance).toHaveBeenCalledWith('/srv/workspaces/room-1/subdir');
   });
 
   it('clears a pending approval when stopping and still cleans local state if SDK abort fails', async () => {
@@ -286,8 +318,46 @@ describe('OpenCodeConnectorAdapter', () => {
     if (!opened.value || opened.value.type !== 'request.opened') throw new Error('Expected approval request');
 
     await expect(adapter.stop(execution)).rejects.toThrow('abort failed');
+    expect(client.deleteSession).toHaveBeenCalledWith('session-1','/srv/workspaces/room-1/subdir');
+    expect(client.disposeInstance).toHaveBeenCalledWith('/srv/workspaces/room-1/subdir');
     await expect(adapter.resolveRequest(execution, opened.value.payload.request, 'once')).rejects.toThrow('not pending');
     await iterator.return?.();
+  });
+
+  it('aborts and deletes active sessions when the adapter closes',async()=>{
+    const client=fixtureClient(),adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client});
+    await adapter.start(startRequest());
+
+    await adapter.close();
+
+    expect(client.abortSession).toHaveBeenCalledWith('session-1','/srv/workspaces/room-1/subdir');
+    expect(client.deleteSession).toHaveBeenCalledWith('session-1','/srv/workspaces/room-1/subdir');
+    expect(client.disposeInstance).toHaveBeenCalledWith('/srv/workspaces/room-1/subdir');
+  });
+
+  it('keeps a shared directory instance alive until its last active session ends',async()=>{
+    const client=fixtureClient();
+    client.createSession=vi.fn().mockResolvedValueOnce({id:'session-1'}).mockResolvedValueOnce({id:'session-2'});
+    const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client});
+    const first=await adapter.start(startRequest()),second=await adapter.start({...startRequest(),executionId:'execution-2'});
+
+    await adapter.stop(first);
+    expect(client.deleteSession).toHaveBeenCalledWith('session-1','/srv/workspaces/room-1/subdir');
+    expect(client.disposeInstance).not.toHaveBeenCalled();
+
+    await adapter.stop(second);
+    expect(client.deleteSession).toHaveBeenCalledWith('session-2','/srv/workspaces/room-1/subdir');
+    expect(client.disposeInstance).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not turn a successful execution into a failure when upstream cleanup times out',async()=>{
+    const client=fixtureClient();
+    client.subscribe=vi.fn().mockResolvedValue(events([{type:'session.idle',properties:{sessionID:'session-1'}}]));
+    client.deleteSession=vi.fn(()=>new Promise<void>(()=>undefined));
+    const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client,cleanupTimeoutMs:5});
+
+    await expect(collect(adapter.events(await adapter.start(startRequest())))).resolves.toEqual([{type:'execution.completed',payload:{}}]);
+    expect(client.disposeInstance).toHaveBeenCalledWith('/srv/workspaces/room-1/subdir');
   });
 
   it.each([
@@ -364,6 +434,8 @@ function fixtureClient(calls: string[] = []): OpenCodeClientPort {
     replyPermission: vi.fn().mockResolvedValue(undefined),
     replyQuestion: vi.fn().mockResolvedValue(undefined),
     abortSession: vi.fn().mockResolvedValue(undefined),
+    deleteSession: vi.fn().mockResolvedValue(undefined),
+    disposeInstance: vi.fn().mockResolvedValue(undefined),
   };
 }
 

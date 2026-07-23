@@ -27,6 +27,8 @@ export interface OpenCodeClientPort {
   replyPermission(input: { sessionID: string; requestID: string; directory: string; reply: PermissionReply; version: 'legacy' | 'v2' }): Promise<void>;
   replyQuestion(input: { sessionID: string; requestID: string; directory: string; answers: string[][]; version: QuestionVersion }): Promise<void>;
   abortSession(sessionID: string, directory?: string): Promise<void>;
+  deleteSession(sessionID: string, directory?: string): Promise<void>;
+  disposeInstance(directory: string): Promise<void>;
 }
 
 export type OpenCodeAdapterOptions = {
@@ -36,9 +38,10 @@ export type OpenCodeAdapterOptions = {
   request?: typeof fetch;
   client?: OpenCodeClientPort;
   catalogDirectory?: string;
+  cleanupTimeoutMs?: number;
 };
 
-type ActiveSession = { directory: string; controller: AbortController; stream: AsyncIterable<unknown>; consumed: boolean; partTypes: Map<string, string>; usageByMessage: Map<string,TokenUsage>; lastUsage?:TokenUsage };
+type ActiveSession = { directory: string; controller: AbortController; stream: AsyncIterable<unknown>; consumed: boolean; partTypes: Map<string, string>; usageByMessage: Map<string,TokenUsage>; lastUsage?:TokenUsage; cleanup?:Promise<void> };
 type PendingPermission = { upstreamId: string; nativeRequestId: string; directory: string; version: 'legacy' | 'v2' };
 type PendingQuestion = { upstreamId: string; nativeRequestId: string; directory: string; version: QuestionVersion; questionIds:string[] };
 
@@ -47,7 +50,10 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
   readonly capabilities: ConnectorAdapter['capabilities'] = ['model_catalog', 'execution_profiles', 'text_streaming', 'reasoning', 'tools', 'approvals', 'clarifications', 'usage'];
   private readonly client: OpenCodeClientPort;
   private readonly catalogDirectory: string | undefined;
+  private readonly cleanupTimeoutMs:number;
   private readonly sessions = new Map<string, ActiveSession>();
+  private readonly directoryUsers=new Map<string,number>();
+  private readonly directoryDisposals=new Map<string,Promise<void>>();
   private readonly pendingPermissions = new Map<string, PendingPermission>();
   private readonly pendingQuestions = new Map<string, PendingQuestion>();
   private agentNames=new Set<string>();
@@ -58,6 +64,8 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
     const baseUrl = normalizeBaseUrl(options.baseUrl);
     this.client = options.client ?? sdkClient(baseUrl, options.request ?? fetch, options.username, options.password);
     this.catalogDirectory = options.catalogDirectory || undefined;
+    this.cleanupTimeoutMs=options.cleanupTimeoutMs??3_000;
+    if(!Number.isSafeInteger(this.cleanupTimeoutMs)||this.cleanupTimeoutMs<1)throw new Error('OpenCode cleanup timeout must be a positive integer');
   }
 
   async catalog() {
@@ -98,19 +106,22 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
     if(mode&&!this.agentNames.has(mode))throw new Error('OpenCode agent variant is not supported');
     const variant=profile.reasoningEffort??undefined;
     if(variant&&!this.supportedModelVariants.get(request.modelId)?.has(variant))throw new Error('OpenCode model variant is not supported');
-    const session = await this.client.createSession({
-      directory: request.workspace.absolutePath,
-      title: `Agenvyl execution ${request.executionId}`,
-      ...(mode ? { agent: mode } : {}),
-      model: { id: model.modelID, providerID: model.providerID },
-    });
-    const controller = new AbortController();
+    const directory=request.workspace.absolutePath,controller=new AbortController();
+    await this.retainDirectory(directory);
+    let session:{id:string}|undefined,active:ActiveSession|undefined;
     try {
-      const stream = await this.client.subscribe(request.workspace.absolutePath, controller.signal);
-      this.sessions.set(session.id, { directory: request.workspace.absolutePath, controller, stream, consumed: false, partTypes: new Map(), usageByMessage:new Map() });
+      session = await this.client.createSession({
+        directory,
+        title: `Agenvyl execution ${request.executionId}`,
+        ...(mode ? { agent: mode } : {}),
+        model: { id: model.modelID, providerID: model.providerID },
+      });
+      const stream = await this.client.subscribe(directory, controller.signal);
+      active={directory,controller,stream,consumed:false,partTypes:new Map(),usageByMessage:new Map()};
+      this.sessions.set(session.id,active);
       await this.client.prompt({
         sessionID: session.id,
-        directory: request.workspace.absolutePath,
+        directory,
         system: systemContext(request),
         message: request.input.message,
         ...(mode ? { agent: mode } : {}),
@@ -120,8 +131,9 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
       return { upstreamId: session.id };
     } catch (error) {
       controller.abort();
-      this.sessions.delete(session.id);
-      try { await this.client.abortSession(session.id, request.workspace.absolutePath); } catch { /* preserve the start error */ }
+      if(session&&active)await this.cleanupSession(session.id,active,true).catch(()=>undefined);
+      else if(session)await this.cleanupUpstream(session.id,directory,true).catch(()=>undefined);
+      else await this.releaseDirectory(directory).catch(()=>undefined);
       throw error;
     }
   }
@@ -173,7 +185,7 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
         if (event.type === 'permission.asked' || event.type === 'permission.v2.asked') {
           const permission = normalizePermission(event, execution.upstreamId, active.directory);
           if (!permission) {
-            try { await this.client.abortSession(execution.upstreamId, active.directory); } catch { /* preserve the interaction error */ }
+            await this.cleanupSession(execution.upstreamId,active,true).catch(()=>undefined);
             yield { type: 'execution.failed' as const, payload: { error: { code: 'invalid_approval_request', message: 'OpenCode returned an invalid approval request' } } };
             return;
           }
@@ -194,7 +206,7 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
         if (event.type === 'question.asked' || event.type === 'question.v2.asked') {
           const question = normalizeQuestion(event, execution.upstreamId, active.directory);
           if (!question) {
-            try { await this.client.abortSession(execution.upstreamId, active.directory); } catch { /* preserve the interaction error */ }
+            await this.cleanupSession(execution.upstreamId,active,true).catch(()=>undefined);
             yield { type: 'execution.failed' as const, payload: { error: { code: 'unsupported_interaction', message: 'OpenCode requested a malformed clarification' } } };
             return;
           }
@@ -203,10 +215,12 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
           continue;
         }
         if (event.type === 'session.error') {
+          await this.cleanupSession(execution.upstreamId,active,false).catch(()=>undefined);
           yield { type: 'execution.failed' as const, payload: { error: { code: 'opencode_execution_failed', message: 'OpenCode execution failed' } } };
           return;
         }
         if (event.type === 'session.idle' || isIdleStatus(event)) {
+          await this.cleanupSession(execution.upstreamId,active,false).catch(()=>undefined);
           yield { type: 'execution.completed' as const, payload: {} };
           return;
         }
@@ -215,9 +229,7 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
       if (active.controller.signal.aborted && isAbortError(error)) return;
       throw error;
     } finally {
-      active.controller.abort();
-      this.sessions.delete(execution.upstreamId);
-      this.clearPending(execution.upstreamId);
+      await this.cleanupSession(execution.upstreamId,active,true).catch(()=>undefined);
     }
   }
 
@@ -250,13 +262,40 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
 
   async stop(execution: AdapterExecution): Promise<void> {
     const active = this.sessions.get(execution.upstreamId);
-    try {
-      await this.client.abortSession(execution.upstreamId, active?.directory ?? this.catalogDirectory);
-    } finally {
-      active?.controller.abort();
-      this.sessions.delete(execution.upstreamId);
-      this.clearPending(execution.upstreamId);
-    }
+    if(!active)return;
+    await this.cleanupSession(execution.upstreamId,active,true);
+  }
+
+  async close(){await Promise.allSettled([...this.sessions].map(([sessionId,active])=>this.cleanupSession(sessionId,active,true)));await Promise.allSettled(this.directoryDisposals.values());}
+
+  private cleanupSession(sessionId:string,active:ActiveSession,abort:boolean){
+    if(active.cleanup)return active.cleanup;
+    active.controller.abort();
+    active.cleanup=this.cleanupUpstream(sessionId,active.directory,abort).finally(()=>{
+      if(this.sessions.get(sessionId)===active)this.sessions.delete(sessionId);
+      this.clearPending(sessionId);
+    });
+    return active.cleanup;
+  }
+
+  private async cleanupUpstream(sessionId:string,directory:string,abort:boolean){
+    const errors:unknown[]=[];
+    if(abort)await this.captureCleanup(errors,()=>this.client.abortSession(sessionId,directory),'session abort');
+    await this.captureCleanup(errors,()=>this.client.deleteSession(sessionId,directory),'session deletion');
+    await this.captureCleanup(errors,()=>this.releaseDirectory(directory),'instance disposal');
+    if(errors.length)throw errors[0];
+  }
+
+  private async captureCleanup(errors:unknown[],action:()=>Promise<void>,label:string){try{await this.beforeCleanupDeadline(action(),label);}catch(error){errors.push(error);}}
+  private async beforeCleanupDeadline(action:Promise<void>,label:string){let timer:ReturnType<typeof setTimeout>|undefined;try{await Promise.race([action,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error(`OpenCode ${label} timed out`)),this.cleanupTimeoutMs);})]);}finally{if(timer)clearTimeout(timer);}}
+  private async retainDirectory(directory:string){await this.directoryDisposals.get(directory)?.catch(()=>undefined);this.directoryUsers.set(directory,(this.directoryUsers.get(directory)??0)+1);}
+  private releaseDirectory(directory:string){
+    const users=this.directoryUsers.get(directory)??0;
+    if(users>1){this.directoryUsers.set(directory,users-1);return Promise.resolve();}
+    this.directoryUsers.delete(directory);
+    const existing=this.directoryDisposals.get(directory);if(existing)return existing;
+    const disposal=this.beforeCleanupDeadline(this.client.disposeInstance(directory),'instance disposal').finally(()=>{if(this.directoryDisposals.get(directory)===disposal)this.directoryDisposals.delete(directory);});
+    this.directoryDisposals.set(directory,disposal);return disposal;
   }
 
   private clearPending(upstreamId: string) {
@@ -304,6 +343,8 @@ function sdkClient(baseUrl: string, request: typeof fetch, username?: string, pa
       await client.question.reply({ requestID: input.requestID, directory: input.directory, answers: input.answers }, { throwOnError: true });
     },
     async abortSession(sessionID, directory) { await client.session.abort({ sessionID, ...(directory ? { directory } : {}) }, { throwOnError: true }); },
+    async deleteSession(sessionID, directory) { await client.session.delete({ sessionID, ...(directory ? { directory } : {}) }, { throwOnError: true }); },
+    async disposeInstance(directory) { await client.instance.dispose({ directory }, { throwOnError: true }); },
   };
 }
 
