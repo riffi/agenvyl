@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { resolveSupervisorConfig } from './config.js';
-import { uninstallPortable, windowsCleanupScript } from './uninstall.js';
+import { uninstallPortable, windowsCleanupLaunch, windowsCleanupScript } from './uninstall.js';
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(path => rm(path, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }))); });
@@ -27,6 +27,14 @@ describe('portable uninstall cleanup', () => {
     expect(script).toContain('Start-Sleep -Milliseconds 500');
     expect(script).toContain('$PSScriptRoot');
     expect(script).not.toContain('ping');
+  });
+
+  it('hides both the detached command host and its PowerShell child', () => {
+    const launch = windowsCleanupLaunch('/tmp/uninstall.ps1', {}, '/Windows', '/tmp', 'cmd.exe');
+    const powershell = join('/Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+    expect(launch.file).toBe('cmd.exe');
+    expect(launch.args).toEqual(['/d', '/q', '/c', powershell, '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', '/tmp/uninstall.ps1']);
+    expect(launch.options).toMatchObject({ cwd: '/tmp', detached: true, stdio: 'ignore', windowsHide: true });
   });
 
   it('removes only the portable bundle by default', async () => {

@@ -70,27 +70,8 @@ async function scheduleWindowsRemoval(bundleRoot: string, dataRoots: string[], f
   const env: NodeJS.ProcessEnv = { ...process.env, AGENVYL_UNINSTALL_BUNDLE: bundleRoot };
   dataRoots.forEach((path, index) => { env[`AGENVYL_UNINSTALL_DATA_${index}`] = path; });
   files.forEach((path, index) => { env[`AGENVYL_UNINSTALL_FILE_${index}`] = path; });
-  const powershell = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-  // PowerShell does not reliably execute when Node creates it as a detached Windows process.
-  // A detached hidden cmd host keeps the cleanup independent while PowerShell remains its attached child.
-  const child = spawn(process.env.ComSpec ?? 'cmd.exe', [
-    '/d',
-    '/q',
-    '/c',
-    powershell,
-    '-NoProfile',
-    '-NonInteractive',
-    '-ExecutionPolicy',
-    'Bypass',
-    '-File',
-    script,
-  ], {
-    cwd: tmpdir(),
-    detached: true,
-    env,
-    stdio: 'ignore',
-    windowsHide: true,
-  });
+  const launch = windowsCleanupLaunch(script, env);
+  const child = spawn(launch.file, launch.args, launch.options);
   await new Promise<void>((resolveSpawn, rejectSpawn) => {
     child.once('error', rejectSpawn);
     child.once('spawn', () => {
@@ -99,6 +80,21 @@ async function scheduleWindowsRemoval(bundleRoot: string, dataRoots: string[], f
     });
   });
   child.unref();
+}
+
+export function windowsCleanupLaunch(
+  script: string,
+  env: NodeJS.ProcessEnv,
+  systemRoot = process.env.SystemRoot ?? 'C:\\Windows',
+  workingDirectory = tmpdir(),
+  commandHost = process.env.ComSpec ?? 'cmd.exe',
+) {
+  const powershell = join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  return {
+    file: commandHost,
+    args: ['/d', '/q', '/c', powershell, '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', script],
+    options: { cwd: workingDirectory, detached: true, env, stdio: 'ignore' as const, windowsHide: true },
+  };
 }
 
 export function windowsCleanupScript(dataRootCount: number, fileCount = 0) {
