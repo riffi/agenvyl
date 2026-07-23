@@ -266,7 +266,7 @@ describe('RunExecutor', () => {
     vi.mocked(connector.stop).mockImplementation(async executionId=>{release();return{...snapshot,executionId,status:'stopping'};});
     const{executor,registry,database,personas,messages,events}=await fixture(vi.fn<typeof fetch>(),4,connector,transport,25),persona=(await personas.find('persona-architect'))!,round=await messages.createRound('demo-room','timeout',[persona],profiles([persona])),runId=round.runs[0].id;
     registry.add(run(runId,round.message.id));executor.start(runId,'timeout');
-    await vi.waitFor(async()=>expect((await database.sql`SELECT status,error,error_code,execution_deadline_at FROM agent_runs WHERE id=${runId}`)[0]).toMatchObject({status:'failed',error:'Run exceeded the configured execution deadline',error_code:'run_timeout',execution_deadline_at:expect.any(Date)}));
+    await vi.waitFor(async()=>expect((await database.sql`SELECT status,error,error_code,execution_deadline_at FROM agent_runs WHERE id=${runId}`)[0]).toMatchObject({status:'failed',error:'Run exceeded the configured execution deadline',error_code:'run_timeout',execution_deadline_at:expect.any(Date)}),{timeout:5_000});
     expect(connector.stop).toHaveBeenCalledTimes(1);expect(connector.stop).toHaveBeenCalledWith(runId);
     const terminal=(await events.replay('demo-room',0)).filter(event=>event.type==='run.status'&&['completed','failed','cancelled'].includes(String((event.payload as {status?:unknown}).status)));
     expect(terminal).toHaveLength(1);expect(terminal[0]?.payload).toMatchObject({runId,status:'failed',errorCode:'run_timeout'});

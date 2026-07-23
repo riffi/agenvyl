@@ -1,7 +1,7 @@
 {
   "name": "agenvyl",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Room-first orchestration for multiple coding-agent harnesses",
   "license": "Apache-2.0",
   "repository": {
@@ -64,8 +64,8 @@
     "start:connector": "node apps/connector/dist/index.js"
   },
   "dependencies": {
-    "@agenvyl/contracts": "0.1.0",
-    "@agenvyl/runtime-config": "0.1.0",
+    "@agenvyl/contracts": "0.2.0",
+    "@agenvyl/runtime-config": "0.2.0",
     "@fastify/static": "^10.1.0",
     "@fastify/websocket": "^11.3.0",
     "fastify": "^5.10.0",

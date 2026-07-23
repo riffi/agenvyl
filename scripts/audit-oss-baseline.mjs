@@ -41,6 +41,7 @@ const allowedLicenses = new Set([
   'MIT',
   'MIT OR CC0-1.0',
   '(MIT OR CC0-1.0)',
+  '(MPL-2.0 OR Apache-2.0)',
   'MIT-0',
   'MPL-2.0',
   'Unlicense',
