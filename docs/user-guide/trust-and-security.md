@@ -67,6 +67,10 @@ not disable SmartScreen globally.
 - Agenvyl adds no telemetry or remote analytics.
 - Installed harnesses retain their own network, telemetry, plugins, hooks, MCP
   servers, and provider behavior.
+- Claude Code approvals use an authenticated, loopback-only MCP endpoint owned
+  by Connector. Its bearer tokens are scoped to one execution and revoked when
+  that execution finishes. The endpoint is not exposed through Core and does
+  not modify persistent Claude Code configuration.
 - Harness processes run with the permissions of your operating-system user.
 - A room workspace is a shared working directory, **not a sandbox**.
 
@@ -76,4 +80,3 @@ separate authenticated TLS boundary in front of Core before any non-loopback
 exposure.
 
 Report vulnerabilities using [SECURITY.md](../../SECURITY.md).
-

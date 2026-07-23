@@ -144,6 +144,32 @@ publishes final text and terminal state only. OpenCode multi-select questions
 and external-directory permission requests fail closed. Other adapter-specific
 limits are documented in the [harness overview](../harnesses/README.md).
 
+### Claude permission bridge lifecycle
+
+Claude Code approvals use an internal MCP server owned by Connector. The
+server starts lazily, binds to `127.0.0.1` on an operating-system-assigned
+port, and is shared by all configured Claude instances until Connector stops.
+It is not part of the public Connector API.
+
+Each Claude execution receives a distinct random bearer token and a temporary
+MCP configuration. Connector passes that file to the child process with
+`--mcp-config` and selects the bridge tool with
+`--permission-prompt-tool`. It never persists the server through
+`claude mcp add` or edits user, project, or local Claude configuration.
+
+Run tokens isolate parallel executions. Permission requests are correlated
+with their execution and tool request before they are published through the
+normal Connector request events. Resolving, cancelling, or stopping an
+execution completes only its own pending MCP calls. Tokens, MCP sessions, and
+temporary files are removed at the end of the execution; a Connector restart
+invalidates all remaining sessions.
+
+The per-run server definition allows an MCP permission call to wait for a user
+decision for up to 30 minutes. Agenvyl intentionally does not pass
+`--strict-mcp-config`, so existing Claude MCP servers remain available, and it
+does not pass `--bare`, so native credentials and normal Claude settings
+continue to load.
+
 ## Core connection
 
 Core requires both values:

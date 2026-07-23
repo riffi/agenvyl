@@ -151,7 +151,7 @@ and secrets are outside the product repository. See
 | Hermes | Connects to an existing local HTTP service |
 | OpenCode | Connects to, or manages, an OpenCode server |
 | Codex CLI | Starts the user-installed `codex app-server` |
-| Claude Code CLI *(experimental)* | Starts a fresh user-installed `claude` process for each attempt |
+| Claude Code CLI *(experimental)* | Starts a fresh user-installed `claude` process for each attempt and routes unresolved permissions through a shared loopback MCP bridge |
 | Antigravity / AGY | Starts a fresh `agy --print` process for each attempt |
 
 Connector reports only behavior an integration can represent safely. The

@@ -4,19 +4,22 @@ import { loadConnectorConfig } from './config.js';
 import { saveConnectorInstances } from './config.js';
 import { discoverHarnesses } from './discovery.js';
 import {ManagedHarnessServers} from './managed-servers.js';
+import {ClaudePermissionMcpBridge} from './adapters/claude/permission-bridge.js';
 
 try {
   const config = await loadConnectorConfig();
   const managed=new ManagedHarnessServers();
+  const claudePermissions=new ClaudePermissionMcpBridge();
   await managed.apply(config.instances);
-  const adapters = buildConfiguredAdapters(config);
-  const app = buildConnectorApp(config, { logger: true, adapters,discover:()=>discoverHarnesses(),configureInstances:async instances=>{await managed.apply(instances);return buildConfiguredAdapters({...config,instances});},persistInstances:instances=>saveConnectorInstances(config,instances) });
+  const adapters = buildConfiguredAdapters(config,process.env,fetch,{claudePermissionBridge:claudePermissions});
+  const app = buildConnectorApp(config, { logger: true, adapters,discover:()=>discoverHarnesses(),configureInstances:async instances=>{await managed.apply(instances);return buildConfiguredAdapters({...config,instances},process.env,fetch,{claudePermissionBridge:claudePermissions});},persistInstances:instances=>saveConnectorInstances(config,instances) });
   let closing = false;
   const shutdown = async () => {
     if (closing) return;
     closing = true;
     managed.close();
     await app.close();
+    await claudePermissions.close();
   };
   process.once('SIGINT', () => void shutdown());
   process.once('SIGTERM', () => void shutdown());

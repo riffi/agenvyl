@@ -5,8 +5,9 @@ import { OpenCodeConnectorAdapter } from './opencode/adapter.js';
 import { AntigravityConnectorAdapter } from './antigravity/adapter.js';
 import { CodexConnectorAdapter } from './codex/adapter.js';
 import { ClaudeConnectorAdapter } from './claude/adapter.js';
+import type {ClaudePermissionBridgePort} from './claude/permission-bridge.js';
 
-export function buildConfiguredAdapters(config: ConnectorConfig, env: NodeJS.ProcessEnv = process.env, request: typeof fetch = fetch) {
+export function buildConfiguredAdapters(config: ConnectorConfig, env: NodeJS.ProcessEnv = process.env, request: typeof fetch = fetch, options:{claudePermissionBridge?:ClaudePermissionBridgePort}={}) {
   const adapters = new Map<string, ConnectorAdapter>();
   const hermesInstances = config.instances.filter(instance => instance.enabled && instance.type === 'hermes');
   for (const instance of hermesInstances) {
@@ -45,6 +46,7 @@ export function buildConfiguredAdapters(config: ConnectorConfig, env: NodeJS.Pro
     command:env.AGENVYL_CONNECTOR_CLAUDE_COMMAND,
     env,
     allowSubscriptionOAuth:instance.allowSubscriptionOAuth,
+    permissionBridge:options.claudePermissionBridge,
   }));
   return adapters;
 }

@@ -65,6 +65,31 @@ The harness, not Agenvyl, owns model access.
    [Hermes model routes](../harnesses/hermes.md).
 5. Inspect Connector logs without publishing credentials.
 
+## Claude cannot edit files or no approval appears
+
+Agenvyl injects its permission bridge into Claude processes automatically. Do
+not run `claude mcp add` and do not add `agenvyl_permissions` to a user or
+project `.mcp.json`.
+
+Check the installed CLI and Connector:
+
+```bash
+claude --version
+claude auth status
+agenvyl logs connector --lines 200
+```
+
+Claude Code `2.1.217` or newer is required. Confirm that the agent uses **Ask
+before edits** when you expect an approval card; **Accept edits** allows normal
+file edits without one. Update Claude Code if Connector reports an incompatible
+initialization response or an MCP connection failure.
+
+An approval expires when its agent run stops, its MCP client disconnects, or
+Connector restarts. Start a new run instead of answering an expired card.
+Ordinary Claude terminal sessions should not list
+`agenvyl_permissions`; its presence there means it was configured manually and
+that persistent entry should be removed.
+
 ## A required port is already in use
 
 The personal runtime uses loopback ports `8791` for Core, `4310` for Connector,
@@ -114,4 +139,3 @@ insufficient disk space. Do not delete `postgres/` as a troubleshooting step.
 
 If the problem remains, report it with the Agenvyl version, operating system,
 `doctor` output, and redacted component logs.
-

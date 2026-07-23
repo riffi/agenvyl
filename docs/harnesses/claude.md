@@ -54,13 +54,47 @@ store.
 
 ## Permissions and preserved settings
 
-- **Ask before edits** uses Claude's normal approval flow.
+- **Ask before edits** sends unresolved Claude tool permissions to the
+  Agenvyl room.
 - **Accept edits** permits edits without an edit-by-edit prompt.
+- **Allow for session** applies only to the current Agenvyl execution and is
+  not written into Claude Code settings.
 - Experimental Plan Mode selects Claude's Plan permission mode.
 
 Agenvyl intentionally does not pass `--bare`. Normal user, project, and local
 settings, `CLAUDE.md`, skills, plugins, hooks, MCP configuration, provider
 credentials, and Claude telemetry behavior remain active.
+
+## Agenvyl permission bridge
+
+Agenvyl handles Claude Code approval requests through an internal MCP
+permission bridge. No manual Claude Code configuration is required. Agenvyl
+does not run `claude mcp add` and does not modify `~/.claude.json`, project
+`.mcp.json` files, or Claude Code settings.
+
+Connector starts one loopback-only MCP server when the first Claude execution
+needs it and reuses that server for later executions. For each Claude
+execution, Agenvyl:
+
+1. creates a run-scoped bearer token;
+2. writes a temporary MCP configuration;
+3. passes it to the child `claude` process through `--mcp-config`;
+4. selects the Agenvyl permission tool through
+   `--permission-prompt-tool`; and
+5. removes the token and temporary configuration when the execution finishes.
+
+The bridge converts Claude tool permissions and questions into approval or
+clarification cards in the Agenvyl room. The user's decision is returned only
+to the matching Claude execution. Stopping the execution cancels its pending
+requests.
+
+Existing user and project MCP servers remain available because Agenvyl does
+not pass `--strict-mcp-config`. The injected permission server applies only to
+Claude processes started by Agenvyl and does not affect ordinary terminal
+sessions.
+
+Claude Code authentication remains owned by the installed CLI. The permission
+bridge does not read, copy, or replace its OAuth or API credentials.
 
 ## Verify and troubleshoot
 
@@ -79,4 +113,3 @@ export AGENVYL_CONNECTOR_CLAUDE_COMMAND=/absolute/path/to/claude
 Windows `.exe`, `.cmd`, and `.bat` installations are supported. Unknown or
 incompatible initialization responses make the harness unavailable rather than
 guessing at behavior.
-
