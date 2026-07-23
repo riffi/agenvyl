@@ -169,7 +169,8 @@ export async function getSupervisorStatus(config: SupervisorConfig): Promise<Run
   const alive = isProcessAlive(state.daemonPid);
   const health: RuntimeStatus['health'] = {};
   if (alive) {
-    health.connector = await httpHealthy(`http://127.0.0.1:${state.ports.connector}/v2/health`) ? 'ready' : 'not_ready';
+    const secrets = await readSecrets(config).catch(() => undefined);
+    health.connector = secrets && await httpHealthy(`http://127.0.0.1:${state.ports.connector}/v2/health`, secrets.connectorToken) ? 'ready' : 'not_ready';
     health.core = await httpHealthy(`http://127.0.0.1:${state.ports.core}/api/v1/health`) ? 'ready' : 'not_ready';
     health.postgresql = state.managedPostgres && !isProcessAlive(state.components.postgresql?.pid ?? 0) ? 'not_ready' : 'ready';
   }
@@ -246,10 +247,9 @@ async function prepareDirectories(config: SupervisorConfig) {
 
 async function loadOrCreateSecrets(config: SupervisorConfig): Promise<Secrets> {
   try {
-    const value = JSON.parse(await readFile(config.secretsFile, 'utf8')) as Partial<Secrets>;
-    if (typeof value.connectorToken !== 'string' || value.connectorToken.length < 32 || typeof value.postgresPassword !== 'string' || value.postgresPassword.length < 32) throw new Error(`Invalid supervisor secrets file: ${config.secretsFile}`);
+    const value = await readSecrets(config);
     await chmod(config.secretsFile, 0o600).catch(() => undefined);
-    return value as Secrets;
+    return value;
   }
   catch (error) {
     if (!isMissing(error)) throw error;
@@ -258,6 +258,12 @@ async function loadOrCreateSecrets(config: SupervisorConfig): Promise<Secrets> {
     await chmod(config.secretsFile, 0o600).catch(() => undefined);
     return secrets;
   }
+}
+
+async function readSecrets(config: SupervisorConfig): Promise<Secrets> {
+  const value = JSON.parse(await readFile(config.secretsFile, 'utf8')) as Partial<Secrets>;
+  if (typeof value.connectorToken !== 'string' || value.connectorToken.length < 32 || typeof value.postgresPassword !== 'string' || value.postgresPassword.length < 32) throw new Error(`Invalid supervisor secrets file: ${config.secretsFile}`);
+  return value as Secrets;
 }
 
 async function acquireLock(config: SupervisorConfig) {

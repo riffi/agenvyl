@@ -53,6 +53,7 @@ try {
   cliJson(['start', '--json']);
   const first = cliJson(['status', '--json']);
   if (!first.running || first.state?.phase !== 'running') throw new Error('Supervisor did not reach running state');
+  if (first.health?.connector !== 'ready') throw new Error('Supervisor did not authenticate the Connector health check');
 
   const databaseUrl = await managedDatabaseUrl();
   run(executable('psql'), ['--dbname', databaseUrl, '-v', 'ON_ERROR_STOP=1', '-c', "CREATE TABLE probe(value text NOT NULL); INSERT INTO probe VALUES ('portable-data-ok');"], undefined, postgresEnvironment());
@@ -170,5 +171,5 @@ function freePort() {
   });
 }
 async function writeFixture(path, source) { await writeFile(path, source, { mode: 0o700 }); await chmod(path, 0o700).catch(() => undefined); }
-function connectorFixture() { return `import http from 'node:http';\nconst server=http.createServer((request,response)=>{response.writeHead(200,{'content-type':'application/json'});response.end(JSON.stringify({status:'ready'}));});\nserver.listen(Number(process.env.AGENVYL_CONNECTOR_PORT),'127.0.0.1');\nconst stop=()=>server.close(()=>process.exit(0));process.on('SIGTERM',stop);process.on('SIGINT',stop);\n`; }
+function connectorFixture() { return `import http from 'node:http';\nconst server=http.createServer((request,response)=>{const authorized=request.headers.authorization===\`Bearer \${process.env.AGENVYL_CONNECTOR_TOKEN}\`;response.writeHead(authorized?200:401,{'content-type':'application/json'});response.end(JSON.stringify(authorized?{status:'ready'}:{error:'unauthorized'}));});\nserver.listen(Number(process.env.AGENVYL_CONNECTOR_PORT),'127.0.0.1');\nconst stop=()=>server.close(()=>process.exit(0));process.on('SIGTERM',stop);process.on('SIGINT',stop);\n`; }
 function coreFixture() { return `import http from 'node:http';\nconst server=http.createServer((request,response)=>{response.writeHead(200,{'content-type':'application/json'});response.end(JSON.stringify({status:'ready'}));});\nserver.listen(Number(process.env.AGENVYL_PORT),'127.0.0.1');\nconst stop=()=>server.close(()=>process.exit(0));process.on('SIGTERM',stop);process.on('SIGINT',stop);\n`; }

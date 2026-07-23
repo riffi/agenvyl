@@ -23,11 +23,13 @@ describe('isolated run workspace snapshots',()=>{
     try{
       await service.upload('demo-room','site/index.html','text/html',Buffer.from('<link rel="stylesheet" href="style.css">'));
       await service.upload('demo-room','site/style.css','text/css',Buffer.from('body{color:black}'));
-      const personas=(await repositories.personas.list('demo-room')).slice(0,2),profiles=new Map(personas.map(persona=>[persona.id,profile]));
+      const personas=(await repositories.personas.list('demo-room')).slice(0,3),profiles=new Map(personas.map(persona=>[persona.id,profile]));
       const round=await repositories.messages.createRound('demo-room','parallel edit',personas,profiles);
-      const [first,second]=round.runs;
-      const [firstWorkspace,secondWorkspace]=await Promise.all([service.prepareRun('demo-room',first.id),service.prepareRun('demo-room',second.id)]);
-      expect(firstWorkspace.absolutePath).not.toBe(secondWorkspace.absolutePath);
+      const [first,second,third]=round.runs;
+      const workspaces=await Promise.all(round.runs.map(run=>service.prepareRun('demo-room',run.id)));
+      expect(new Set(workspaces.map(workspace=>workspace.absolutePath)).size).toBe(3);
+      expect(await stat(path.join(root,'demo-room','.agenvyl','.managed')).then(item=>item.isFile())).toBe(true);
+      await service.finalizeRun('demo-room',third.id,'failed');
       await Promise.all([
         writeFile(path.join(service.runPath('demo-room',first.id),'site','style.css'),'body{color:red}'),
         writeFile(path.join(service.runPath('demo-room',second.id),'site','style.css'),'body{color:blue}'),

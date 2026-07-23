@@ -14,6 +14,7 @@ import {extractWorkspaceImageReferences} from './workspaceEmbeds.js';
 import {assertPlanModeEnabled} from '../features/planMode.js';
 import type {WorkspaceSnapshotRepository} from './workspaceSnapshots.repository.js';
 import {diffSnapshots,type SnapshotEntry} from './workspaceSnapshots.js';
+import {RunWorkspaceCleanup} from './RunWorkspaceCleanup.js';
 
 type WorkspaceLogger={info:(context:Record<string,unknown>,message:string)=>void;warn:(context:Record<string,unknown>,message:string)=>void};
 
@@ -23,7 +24,13 @@ export class RoomWorkspaceService{
   private reconciling=new Map<string,Promise<void>>();
   private materializing=new Set<string>();
   private roomMutations=new Map<string,Promise<void>>();
-  constructor(private readonly rooms:RoomRepository,private readonly repository:WorkspaceRepository,private readonly events:RoomEventService,private readonly activeRuns:ActiveRunRegistry,private readonly root:string,private readonly agentRoot:string,readonly maxFileBytes:number,private readonly planModeEnabled?:boolean,private readonly snapshots?:WorkspaceSnapshotRepository,private readonly logger?:WorkspaceLogger){}
+  private readonly runCleanup:RunWorkspaceCleanup;
+  constructor(private readonly rooms:RoomRepository,private readonly repository:WorkspaceRepository,private readonly events:RoomEventService,private readonly activeRuns:ActiveRunRegistry,private readonly root:string,private readonly agentRoot:string,readonly maxFileBytes:number,private readonly planModeEnabled?:boolean,private readonly snapshots?:WorkspaceSnapshotRepository,private readonly logger?:WorkspaceLogger){
+    this.runCleanup=new RunWorkspaceCleanup(
+      async task=>rm(path.join(this.roomPath(task.roomId),'.agenvyl','runs',task.runId),{recursive:true,force:true,maxRetries:5,retryDelay:100}),
+      logger,
+    );
+  }
 
   roomPath(roomId:string){return path.join(path.resolve(this.root),roomId);}
   agentRoomPath(roomId:string){return path.join(path.resolve(this.agentRoot),roomId);}
@@ -39,10 +46,8 @@ export class RoomWorkspaceService{
   async prepareRun(roomId:string,runId:string){
     const started=Date.now();
     if(!this.snapshots){await this.ensure(roomId);return{relativePath:'.',absolutePath:this.agentRoomPath(roomId)};}
-    const roomDirectory=await this.ensure(roomId),internal=path.join(roomDirectory,'.agenvyl'),marker=path.join(internal,'.managed');
-    const internalExists=await stat(internal).then(item=>item.isDirectory()).catch(()=>false);
-    if(internalExists&&!await stat(marker).then(item=>item.isFile()).catch(()=>false))throw new AppError('workspace_reserved_path_conflict',409,'The room already contains the reserved .agenvyl path');
-    await mkdir(internal,{recursive:true});await writeFile(marker,'Agenvyl managed workspace. Do not edit.\n',{flag:'a'});
+    const roomDirectory=await this.ensure(roomId);
+    await this.ensureManagedRunRoot(roomId,roomDirectory);
     const result=await this.snapshots.prepareRun(roomId,runId),target=this.runPath(roomId,runId);
     await rm(target,{recursive:true,force:true});await mkdir(target,{recursive:true});
     try{
@@ -207,12 +212,10 @@ export class RoomWorkspaceService{
   async resolveRunEmbeds(roomId:string,runId:string,markdown:string){const supported=new Set(['image/png','image/jpeg','image/webp','image/gif']),embeds:RunEmbed[]=[],result=await this.snapshots?.result(runId),snapshotId=result?.result_snapshot_id;for(const reference of extractWorkspaceImageReferences(markdown)){if(reference.error){embeds.push({kind:'image',path:reference.path,status:'error',error:reference.error});continue;}const version=snapshotId?await this.snapshots!.snapshotFile(roomId,snapshotId,reference.path):await this.repository.currentVersion(roomId,reference.path);if(!version){embeds.push({kind:'image',path:reference.path,status:'error',error:'not_found'});continue;}if(!supported.has(version.mime_type)){embeds.push({kind:'image',path:reference.path,status:'error',error:'unsupported_type'});continue;}const content=await readFile(this.objectPath(version.sha256));if(!content.length||imageMime(content)!==version.mime_type){embeds.push({kind:'image',path:reference.path,status:'error',error:'invalid_content'});continue;}embeds.push({kind:'image',path:reference.path,status:'resolved',attachment:{version_id:version.id,...(version.entry_id?{entry_id:version.entry_id}:{}),...(snapshotId?{snapshot_id:snapshotId}:{}),path:version.path,name:path.basename(version.path),size:version.size,mime_type:version.mime_type,url:`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace/versions/${encodeURIComponent(version.id)}`,preview_url:snapshotId?`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace/snapshots/${encodeURIComponent(snapshotId)}/preview/${reference.path.split('/').map(encodeURIComponent).join('/')}`:`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace/versions/${encodeURIComponent(version.id)}/preview`}});}await this.repository.saveRunEmbeds(runId,embeds);return embeds;}
   purgeCandidates(roomId:string){return this.repository.roomHashes(roomId);}
   async purgeFiles(roomId:string,hashes:string[]){this.watchers.get(roomId)?.close();this.watchers.delete(roomId);await rm(this.roomPath(roomId),{recursive:true,force:true});for(const sha of hashes)if(!await this.repository.hashExists(sha))await rm(this.objectPath(sha),{force:true});}
-  close(){for(const watcher of this.watchers.values())watcher.close();for(const timer of this.timers.values())clearTimeout(timer);this.watchers.clear();this.timers.clear();}
+  close(){for(const watcher of this.watchers.values())watcher.close();for(const timer of this.timers.values())clearTimeout(timer);this.runCleanup.close();this.watchers.clear();this.timers.clear();}
 
   private async cleanupRunDirectory(roomId:string,runId:string,phase:'recovery'|'finalization'){
-    const target=path.join(this.roomPath(roomId),'.agenvyl','runs',runId);
-    try{await rm(target,{recursive:true,force:true,maxRetries:5,retryDelay:100});return true;}
-    catch(error){this.logger?.warn({metric:'workspace.cleanup',roomId,runId,phase,error:error instanceof Error?error.message:String(error)},'Run workspace cleanup deferred');return false;}
+    return this.runCleanup.removeOrDefer({roomId,runId,phase});
   }
 
   private startWatcher(roomId:string,directory:string){if(this.watchers.has(roomId))return;try{const watcher=watch(directory,{recursive:true},()=>{if(this.materializing.has(roomId))return;const prior=this.timers.get(roomId);if(prior)clearTimeout(prior);this.timers.set(roomId,setTimeout(()=>{this.timers.delete(roomId);void this.reconcile(roomId).catch(()=>{});},350));});watcher.on('error',()=>{watcher.close();this.watchers.delete(roomId);});this.watchers.set(roomId,watcher);}catch{/* reconciliation on list/run still guarantees correctness */}}
@@ -267,6 +270,15 @@ export class RoomWorkspaceService{
     const gate=new Promise<void>(resolve=>{release=resolve}),queued=prior.catch(()=>{}).then(()=>gate);this.roomMutations.set(roomId,queued);
     await prior.catch(()=>{});
     try{return await operation()}finally{release();if(this.roomMutations.get(roomId)===queued)this.roomMutations.delete(roomId)}
+  }
+  private ensureManagedRunRoot(roomId:string,roomDirectory:string){
+    return this.withRoomMutation(roomId,async()=>{
+      const internal=path.join(roomDirectory,'.agenvyl'),marker=path.join(internal,'.managed');
+      const internalEntry=await stat(internal).catch(()=>undefined);
+      if(internalEntry&&(!internalEntry.isDirectory()||!await stat(marker).then(item=>item.isFile()).catch(()=>false)))throw new AppError('workspace_reserved_path_conflict',409,'The room already contains the reserved .agenvyl path');
+      await mkdir(internal,{recursive:true});
+      await writeFile(marker,'Agenvyl managed workspace. Do not edit.\n',{flag:'a'});
+    });
   }
   private async emitPublishedChanges(roomId:string,beforeSnapshotId:string,afterSnapshotId:string){
     if(!this.snapshots||beforeSnapshotId===afterSnapshotId)return;
