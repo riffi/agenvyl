@@ -6,7 +6,7 @@ import type {ConnectorRequestAnswer,ConnectorRequestSnapshot,ExecutionStatus,Tok
 import type {AdapterExecution,AdapterExecutionEvent,AdapterStartExecutionRequest,ConnectorAdapter} from '../../adapter.js';
 import {redactConnectorText} from '../../safety.js';
 import {runClaudeAuthStatus} from '../../discovery.js';
-import {buildClaudeCatalog,parseClaudeMode} from './mode-catalog.js';
+import {buildClaudeCatalog,parseClaudePermission} from './mode-catalog.js';
 import {ClaudeCliProcess,type ClaudeProcessPort} from './process.js';
 import {controlResponse,record,userFrame,type ClaudeMessage} from './protocol.js';
 
@@ -16,22 +16,23 @@ export type ClaudeAdapterOptions={command?:string;env?:NodeJS.ProcessEnv;allowSu
 
 export class ClaudeConnectorAdapter implements ConnectorAdapter{
   readonly type='claude';
-  readonly capabilities:ConnectorAdapter['capabilities']=['model_catalog','mode_catalog','text_streaming','reasoning','tools','approvals','clarifications','usage'];
+  readonly capabilities:ConnectorAdapter['capabilities']=['model_catalog','execution_profiles','text_streaming','reasoning','tools','approvals','clarifications','usage'];
   private readonly states=new Map<string,State>();
-  private supportedModes=new Map<string,Set<string>>();
+  private supportedEfforts=new Map<string,Set<string>>();
   constructor(private readonly options:ClaudeAdapterOptions={}){}
 
   async catalog(){
     await this.checkAuth();
     const processPort=this.createProcess(globalThis.process.cwd(),probeArgs());
-    try{const initialized=await processPort.initialize();this.assertAuth(initialized.account);const catalog=buildClaudeCatalog(initialized.models);this.supportedModes=new Map(catalog.models.map(model=>[model.id,new Set(model.supportedModeIds)]));return catalog;}finally{await processPort.close();}
+    try{const initialized=await processPort.initialize();this.assertAuth(initialized.account);const catalog=buildClaudeCatalog(initialized.models);this.supportedEfforts=new Map(catalog.models.map(model=>[model.id,new Set(model.reasoningEfforts)]));return catalog;}finally{await processPort.close();}
   }
 
   async start(request:AdapterStartExecutionRequest):Promise<AdapterExecution>{
     if(this.states.has(request.executionId))throw new Error('Claude execution already exists');
-    if(!this.supportedModes.size)await this.catalog();else await this.checkAuth();
-    if(!this.supportedModes.get(request.modelId)?.has(request.modeId??''))throw new Error('Claude model and mode combination is not supported');
-    const mode=parseClaudeMode(request.modeId),prompt=await createPromptFile(request),args=executionArgs(request.modelId,mode.permissionMode,mode.effort,prompt.path);
+    if(!this.supportedEfforts.size)await this.catalog();else await this.checkAuth();
+    const efforts=this.supportedEfforts.get(request.modelId);if(!efforts)throw new Error('Claude model is not supported');
+    const profile=request.executionProfile;if(profile.reasoningEffort&&!efforts.has(profile.reasoningEffort))throw new Error('Claude reasoning effort is not supported');
+    const permission=profile.workflowMode==='plan'?'plan':parseClaudePermission(profile.permissionProfileId),prompt=await createPromptFile(request),args=executionArgs(request.modelId,permission,profile.reasoningEffort??undefined,prompt.path);
     const process=this.createProcess(request.workspace.absolutePath,args),state:State={id:request.executionId,sessionId:randomUUID(),status:'running',queue:new EventQueue(),process,pending:new Map(),tools:new Map(),textChars:0,reasoningChars:0,cleanup:prompt.cleanup,terminal:false};
     this.states.set(state.id,state);process.onMessage(message=>this.onMessage(state,message));process.onExit(error=>{if(error)this.fail(state,'claude_process_exited',error.message);else if(!state.terminal)this.fail(state,'claude_process_exited','Claude exited without a terminal result');});
     try{const initialized=await process.initialize();this.assertAuth(initialized.account);process.send(userFrame(state.sessionId,request.input.message));return{upstreamId:state.id};}catch(error){await this.finish(state,'failed',{code:'claude_start_failed',message:safeError(error)});throw error;}

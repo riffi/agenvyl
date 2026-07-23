@@ -52,7 +52,7 @@ describe.sequential('Core -> Connector -> Hermes black-box gate', () => {
     const connectorUrl = await listen(connector);
     cleanups.push(() => connector.close());
 
-    expect(await getJson(`${connectorUrl}/v1/health`, connectorHeaders())).toMatchObject({
+    expect(await getJson(`${connectorUrl}/v2/health`, connectorHeaders())).toMatchObject({
       status: 'ready',
       connectorEpoch: 'hermes-e2e-epoch',
     });
@@ -114,7 +114,7 @@ describe.sequential('Core -> Connector -> Hermes black-box gate', () => {
     expect(replayed.text).toBe('before-restart after-restart');
 
     const execution = await getJson(
-      `${connectorUrl}/v1/executions/${encodeURIComponent(replayedId)}`,
+      `${connectorUrl}/v2/executions/${encodeURIComponent(replayedId)}`,
       connectorHeaders(),
     );
     expect(execution).toMatchObject({

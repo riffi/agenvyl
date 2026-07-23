@@ -8,10 +8,10 @@ import type {Persona} from '../../entities/persona';
 import {HarnessRouteFields,PersonaInstructionFields} from './PersonasScreen';
 
 const catalog:HarnessCatalog={connectorEpoch:'epoch-1',instances:[
-  {id:'local-hermes',type:'hermes',status:'healthy',capabilities:['model_catalog'],models:[{id:'sol',label:'Sonnet'}],modes:[]},
-  {id:'local-opencode',type:'opencode',status:'healthy',capabilities:['model_catalog','mode_catalog'],models:[{id:'gpt-5',label:'GPT-5'}],modes:[{id:'build',label:'Build'},{id:'plan',label:'Plan'}]},
+  {id:'local-hermes',type:'hermes',status:'healthy',capabilities:['model_catalog'],models:[{id:'sol',label:'Sonnet'}],controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]}},
+  {id:'local-opencode',type:'opencode',status:'healthy',capabilities:['model_catalog'],models:[{id:'gpt-5',label:'GPT-5'}],controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[],agentVariants:[{id:'build',label:'Build'},{id:'plan',label:'Plan'}]}},
 ]};
-const persona=(patch:Partial<Persona>={}):Persona=>({id:'persona-1',handle:'coder',name:'Coder',role:'Code',color:'#64748b',requested_model:'sol',harness_instance_id:'local-hermes',harness_type:'hermes',model_id:'sol',mode_id:null,group_id:null,archived_at:null,...patch});
+const persona=(patch:Partial<Persona>={}):Persona=>({id:'persona-1',handle:'coder',name:'Coder',role:'Code',color:'#64748b',requested_model:'sol',harness_instance_id:'local-hermes',harness_type:'hermes',model_id:'sol',permission_profile_id:null,agent_variant_id:null,group_id:null,archived_at:null,...patch});
 
 afterEach(cleanup);
 
@@ -39,20 +39,20 @@ describe('persona harness route fields',()=>{
     expect(screen.getByRole('img',{name:'OpenCode'})).toBeTruthy();
   });
 
-  it('renders OpenCode models and optional modes for an OpenCode persona',()=>{
-    const html=renderToStaticMarkup(<HarnessRouteFields form={persona({requested_model:'gpt-5',harness_instance_id:'local-opencode',harness_type:'opencode',model_id:'gpt-5',mode_id:'build'})} catalog={catalog} onChange={vi.fn()}/>);
+  it('renders OpenCode models and provider agent variants',()=>{
+    const html=renderToStaticMarkup(<HarnessRouteFields form={persona({requested_model:'gpt-5',harness_instance_id:'local-opencode',harness_type:'opencode',model_id:'gpt-5',agent_variant_id:'build'})} catalog={catalog} onChange={vi.fn()}/>);
     expect(html).toContain('GPT-5');
-    expect(html).toContain('Harness mode');
+    expect(html).toContain('Agent variant');
     expect(html).toContain('Build');
     expect(html).toContain('Plan');
   });
 
-  it('requires an explicit AGY mode and does not offer a default mode',()=>{
-    const agyCatalog:HarnessCatalog={connectorEpoch:'agy',instances:[{id:'local-antigravity',type:'antigravity',status:'healthy',capabilities:['model_catalog','mode_catalog'],models:[{id:'gemini'}],modes:[{id:'plan',label:'Plan'},{id:'accept-edits',label:'Accept edits'}]}]};
-    const html=renderToStaticMarkup(<HarnessRouteFields form={persona({harness_instance_id:'local-antigravity',harness_type:'antigravity',model_id:'gemini',requested_model:'gemini',mode_id:null})} catalog={agyCatalog} onChange={vi.fn()}/>);
-    expect(html).toContain('Select a mode');
-    expect(html).not.toContain('Default');
-    expect(html).toContain('Plan');
+  it('shows AGY permissions without exposing room workflow state',()=>{
+    const agyCatalog:HarnessCatalog={connectorEpoch:'agy',instances:[{id:'local-antigravity',type:'antigravity',status:'healthy',capabilities:['model_catalog'],models:[{id:'gemini'}],controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[{id:'accept-edits',label:'Accept edits'}],agentVariants:[]}}]};
+    const html=renderToStaticMarkup(<HarnessRouteFields form={persona({harness_instance_id:'local-antigravity',harness_type:'antigravity',model_id:'gemini',requested_model:'gemini',permission_profile_id:'accept-edits'})} catalog={agyCatalog} onChange={vi.fn()}/>);
+    expect(html).toContain('Permissions');
+    expect(html).not.toContain('Harness mode');
+    expect(html).toContain('Accept edits');
   });
 
   it('keeps a saved route visible when discovery is unavailable',()=>{

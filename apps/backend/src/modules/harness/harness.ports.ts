@@ -4,7 +4,7 @@ export type StartRunInput = {
   executionId: string;
   harnessInstanceId: string;
   modelId: string;
-  modeId: string | null;
+  executionProfile: import('@agenvyl/contracts').RunExecutionProfileSnapshot;
   workspace: { roomId: string; relativePath: string; absolutePath?: string };
   input: string;
   sessionId: string;

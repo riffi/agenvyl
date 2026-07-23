@@ -29,6 +29,7 @@ type RunExecutorDependencies = {
   roomWorkspace?:RoomWorkspaceService;
   messages?:MessageRepository;
   connector?:ConnectorLifecycle;
+  planModeEnabled?:boolean;
   recoveryHealthAttempts?:number;
   recoveryHealthDelayMs?:number;
 };
@@ -60,9 +61,15 @@ export class RunExecutor {
   }
 
   async reconcilePersistedRuns(){
-    const candidates=await this.dependencies.runs.listNonTerminal();
-    const direct=candidates.filter(run=>!run.connectorExecutionId),connectorRuns=candidates.filter(run=>run.connectorExecutionId);
+    const persisted=await this.dependencies.runs.listNonTerminal();
     let recovered=0;
+    const disabledPlanRuns=this.dependencies.planModeEnabled===false?persisted.filter(run=>run.executionProfile.workflowMode==='plan'):[];
+    for(const run of disabledPlanRuns){
+      if(run.connectorExecutionId&&this.dependencies.connectorExecution)try{await this.dependencies.connectorExecution.stop(run.connectorExecutionId);}catch{/* best-effort stop before local failure */}
+      if(await this.failPersisted(run.id,'Plan Mode is disabled','plan_mode_disabled'))recovered++;
+    }
+    const disabledIds=new Set(disabledPlanRuns.map(run=>run.id)),candidates=persisted.filter(run=>!disabledIds.has(run.id));
+    const direct=candidates.filter(run=>!run.connectorExecutionId),connectorRuns=candidates.filter(run=>run.connectorExecutionId);
     for(const run of direct){
       if(await this.failPersisted(run.id,'Backend restarted before run reached a terminal state'))recovered++;
       this.logger.warn({runId:run.id,roomId:run.roomId,correlationId:'startup-recovery',upstreamRunId:run.upstreamRunId,transition:'failed'},'Recovered orphaned legacy run without Connector checkpoint');
@@ -102,7 +109,7 @@ export class RunExecutor {
   }
 
   private resumePersisted(persisted:PersistedNonTerminalRun,execution:ExecutionSnapshot,transport:RunGateway&RunEventStream&RunRecovery){
-    const waitingFor=execution.pendingRequests[0]?.kind,run:RunContext={id:persisted.id,messageId:persisted.messageId,roomId:persisted.roomId,personaVersionId:persisted.personaVersionId,personaHandle:persisted.personaHandle,requestedModel:persisted.requestedModel,harnessInstanceId:persisted.harnessInstanceId,harnessType:persisted.harnessType,modelId:persisted.modelId,modeId:persisted.modeId,conversationHistory:persisted.context,responseText:persisted.text,upstreamRunId:persisted.connectorExecutionId!,connectorExecutionId:persisted.connectorExecutionId!,...(persisted.executionDeadlineAt?{executionDeadlineAt:persisted.executionDeadlineAt}:{}),status:persisted.status as RunStatus,terminal:false,started:true,refreshContext:false,stopping:persisted.status==='stopping'||execution.status==='stopping',...(waitingFor?{waitingFor}:{})};
+    const waitingFor=execution.pendingRequests[0]?.kind,run:RunContext={id:persisted.id,messageId:persisted.messageId,roomId:persisted.roomId,personaVersionId:persisted.personaVersionId,personaHandle:persisted.personaHandle,requestedModel:persisted.requestedModel,harnessInstanceId:persisted.harnessInstanceId,harnessType:persisted.harnessType,modelId:persisted.modelId,executionProfile:persisted.executionProfile,conversationHistory:persisted.context,responseText:persisted.text,upstreamRunId:persisted.connectorExecutionId!,connectorExecutionId:persisted.connectorExecutionId!,...(persisted.executionDeadlineAt?{executionDeadlineAt:persisted.executionDeadlineAt}:{}),status:persisted.status as RunStatus,terminal:false,started:true,refreshContext:false,stopping:persisted.status==='stopping'||execution.status==='stopping',...(waitingFor?{waitingFor}:{})};
     this.dependencies.activeRuns.add(run);
     const task=this.consumeRecovered(run,execution,transport).finally(()=>{this.tasks.delete(run.id);this.pump();});
     this.tasks.set(run.id,task);
@@ -263,12 +270,13 @@ export class RunExecutor {
       const human=currentMessage?.author;
       const identityInstructions=`\n\nPlatform entity identity (mandatory invariant):\n- You are the current agent: ${persona.name} (@${run.personaHandle}), role: ${persona.role || 'not specified'}.\n- The human user is ${human?`${human.displayName} (@${human.handle})`:'the local user'}; this is a separate human entity, not a persona or agent.\n- The remaining personas below are other agents, not the human user.\nThe current message has already been routed to you according to its explicit recipient field. A mention of @${run.personaHandle} addresses you, not a third party.`;
       const participantInstructions=`\n\nOther active agents in the room:\n${roomPersonas.filter(item=>item.handle!==run.personaHandle).map(item=>`- @${item.handle} — ${item.name}${item.role?` — ${item.role}`:''}`).join('\n')||'- none'}\n\nWhen mentioning an agent, always use the exact @handle from this list. Do not use a bare handle as a mention and do not invent new handles. Never identify the human user as an agent merely because of a mention or the message topic.`;
-      const instructions = `${version.system_prompt}${identityInstructions}${participantInstructions}${snapshotInstructions}\n\nRespond only as yourself. Do not impersonate other agents or add messages, sections, or signatures on their behalf.\n\nFormat the response as Markdown when it improves readability. Paragraphs, lists, headings, links, tables, and fenced code blocks are allowed. Do not wrap the entire response in one code block and do not use HTML.\n\nEvery image in the response must be stored in the room workspace. Never embed an external image with ![](http://...) or ![](https://...), even if the URL works in a browser. Download it directly to a temporary name inside the workspace; never use /tmp or another external directory. Verify a successful HTTP response, non-zero size, and the actual image format, then atomically rename the temporary file inside the workspace. Do not use sudo. To embed the stored image in the response, use ![Caption](workspace:path/to/file.png). The path is relative to the workspace root; encode spaces and special characters as URI components. PNG, JPEG, WebP, and GIF are allowed, with no more than 10 distinct images per response. Normal clickable links to external pages are allowed.`;
+      const workflowInstructions=await this.workflowInstructions(run);
+      const instructions = `${version.system_prompt}${identityInstructions}${participantInstructions}${snapshotInstructions}${workflowInstructions}\n\nRespond only as yourself. Do not impersonate other agents or add messages, sections, or signatures on their behalf.\n\nFormat the response as Markdown when it improves readability. Paragraphs, lists, headings, links, tables, and fenced code blocks are allowed. Do not wrap the entire response in one code block and do not use HTML.\n\nEvery image in the response must be stored in the room workspace. Never embed an external image with ![](http://...) or ![](https://...), even if the URL works in a browser. Download it directly to a temporary name inside the workspace; never use /tmp or another external directory. Verify a successful HTTP response, non-zero size, and the actual image format, then atomically rename the temporary file inside the workspace. Do not use sudo. To embed the stored image in the response, use ![Caption](workspace:path/to/file.png). The path is relative to the workspace root; encode spaces and special characters as URI components. PNG, JPEG, WebP, and GIF are allowed, with no more than 10 distinct images per response. Normal clickable links to external pages are allowed.`;
       const handle = await runGateway.createRun({
         executionId:run.id,
         harnessInstanceId:run.harnessInstanceId,
         modelId:run.modelId,
-        modeId:run.modeId,
+        executionProfile:run.executionProfile,
         workspace:{roomId:run.roomId,relativePath:'.',...(workspacePath?{absolutePath:workspacePath}:{})},
         input,
         sessionId,
@@ -306,6 +314,13 @@ export class RunExecutor {
     }
   }
 
+  private async workflowInstructions(run:RunContext){
+    if(run.executionProfile.workflowMode==='plan')return`\n\n<workflow_mode mode="plan" enforcement="${run.executionProfile.planEnforcement}">\nInvestigate the request and relevant context, ask focused clarifying questions when needed, and return the complete desired Markdown contents of plan.md. Read the existing plan.md first when revising a plan. Do not write plan.md yourself: Agenvyl saves your final response as its next version. When clarification is needed and the harness exposes a structured clarification or user-input tool, you MUST use that tool instead of writing unanswered questions in the response, wait for the human's answers, and only then return the plan. If no such tool is available, list focused questions in the response as the fallback. Do not perform the implementation, edit files, or make state-changing actions in this run.${run.executionProfile.planEnforcement==='instruction_only'?' This harness does not provide a technical Plan sandbox; the restriction is instruction-enforced only.':''}\n</workflow_mode>`;
+    const versionId=run.executionProfile.implementationPlanVersionId;if(!versionId)return'';
+    const text=await this.dependencies.roomWorkspace?.planVersionContent(run.roomId,versionId);if(text===undefined)throw new Error(`Approved plan version ${versionId} is unavailable`);
+    return`\n\n<approved_plan version_id="${versionId}" path="plan.md">\nThis immutable approved version is the authoritative implementation snapshot. The live plan.md may contain newer unapproved changes; follow the snapshot below unless the current human message explicitly changes the requirement.\n\n${text}\n</approved_plan>`;
+  }
+
   private async applyMapping(run:RunContext,mapping:RunEventMapping){
     const mappedEvents:MappedRunEvent[]=[...(mapping.status&&mapping.status!==run.status?[{type:'run.status' as const,payload:{runId:run.id,status:mapping.status}}]:[]),...mapping.events];
     if(mapping.checkpoint){const accepted=await this.dependencies.runs.acceptConnectorTransition(run.id,mapping.checkpoint,mappedEvents);if(!accepted.accepted){if(mapping.terminal)await this.terminal(run,mapping.terminal.status,mapping.terminal.error);return;}for(const event of accepted.events)this.dependencies.events.publishPersisted(accepted.roomId!,event);}else for(const event of mappedEvents)await this.dependencies.events.emit(run.roomId,event.type,event.payload);
@@ -332,6 +347,9 @@ export class RunExecutor {
       status='failed';
       error='Response rejected: external images must be saved to the workspace first';
       errorCode='external_image_not_persisted';
+    }
+    if(status==='completed'&&run.executionProfile.workflowMode==='plan'&&this.dependencies.roomWorkspace){
+      try{await this.dependencies.roomWorkspace.savePlanFromRun(run.roomId,run.id,responseText);}catch(planError){status='failed';error=planError instanceof Error?`Could not save plan.md: ${planError.message}`:'Could not save plan.md';errorCode='plan_artifact_failed';}
     }
     run.terminal = true;
     this.clearDeadline(run.id);

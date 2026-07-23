@@ -83,8 +83,9 @@ of truth for run state and recovery.
 
 1. Core stores the human message, target persona snapshots, queued runs, and
    initial room events in one PostgreSQL transaction.
-2. Each run receives an immutable harness instance, harness type, model, mode,
-   persona version, and pre-round conversation snapshot.
+2. Each run receives an immutable harness instance, harness type, model,
+   one-message execution intent, persona version, optional implementation-plan
+   version, and pre-round conversation snapshot.
 3. Core starts a Connector execution with a Core-owned execution ID and a
    canonical room-relative workspace identity.
 4. Connector resolves the workspace, starts the selected adapter, assigns an
@@ -99,9 +100,10 @@ and conversation snapshot.
 
 ## Connector protocol
 
-The internal v1 HTTP surface is intentionally smaller than any harness API:
+The internal v2 HTTP surface is intentionally smaller than any harness API.
+Core and Connector reject mixed protocol versions:
 
-- health, instance discovery, and per-instance model/mode catalog;
+- health, instance discovery, and per-instance model/control catalog;
 - idempotent execution start and execution inspection;
 - ordered SSE events with cursor-based bounded replay;
 - stop and approval/clarification resolution commands.
@@ -119,11 +121,11 @@ payloads are not part of the Core API.
 
 | Adapter | Transport | Supported behavior |
 | --- | --- | --- |
-| Hermes | HTTP and event stream | catalog, text, tools, approvals, usage, cancel |
-| OpenCode | pinned native SDK over HTTP/SSE | catalog and modes, text/reasoning, tools, approvals, one-question clarifications, usage, cancel |
-| Codex | user-installed `codex app-server` over JSONL/JSON-RPC stdio | model-specific modes, text/reasoning, tools, approvals, structured clarifications, usage, interrupt |
-| Claude (experimental) | fresh user-installed `claude` process over bounded bidirectional NDJSON | dynamic model/effort modes, text/thinking, tools, approvals, 1–4 structured questions, usage, interrupt |
-| Antigravity | fresh `agy --print` subprocess | exact model/mode catalog, final text, POSIX process-group or Windows process-tree cancel |
+| Hermes | HTTP and event stream | instruction-only Plan, catalog, text, tools, approvals, usage, cancel |
+| OpenCode | pinned native SDK over HTTP/SSE | native/soft Plan, provider agent variants, text/reasoning, tools, approvals, clarifications, usage, cancel |
+| Codex | user-installed `codex app-server` over JSONL/JSON-RPC stdio | collaboration mode, separate effort and sandbox, completed plan items, text/reasoning, tools, approvals, clarifications, usage, interrupt |
+| Claude (experimental) | fresh user-installed `claude` process over bounded bidirectional NDJSON | permission mode and separate effort, text/thinking, tools, approvals, structured questions, usage, interrupt |
+| Antigravity | fresh `agy --print` subprocess | per-run Plan/Work, exact model catalog, final text, process-tree cancel |
 
 OpenCode uses its native server and SDK because that path exposes the lifecycle
 needed by Agenvyl without introducing a second translation layer. ACP is not a

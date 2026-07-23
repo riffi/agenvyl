@@ -1,1 +1,1 @@
-export { ArtifactsDrawer } from './ArtifactsDrawer';
+export { ArtifactsDrawer, type WorkspaceFocus } from './ArtifactsDrawer';

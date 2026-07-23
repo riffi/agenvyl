@@ -7,14 +7,14 @@ export function toPersona(row: DatabaseRow): Persona {
   return {
     id: text(row.id), handle: text(row.handle), name: text(row.name), role: text(row.role), color: text(row.color),
     requested_model: nullableText(row.requested_model), effective_model: nullableText(row.effective_model),
-    harness_instance_id:text(row.harness_instance_id),harness_type:text(row.harness_type),model_id:text(row.model_id),mode_id:nullableText(row.mode_id),
+    harness_instance_id:text(row.harness_instance_id),harness_type:text(row.harness_type),model_id:text(row.model_id),permission_profile_id:nullableText(row.permission_profile_id),agent_variant_id:nullableText(row.agent_variant_id),
     current_version_id: text(row.current_version_id), group_id: nullableText(row.group_id),
     created_at: timestamp(row.created_at), updated_at: timestamp(row.updated_at), archived_at: nullableTimestamp(row.archived_at),
   };
 }
 
 export function toPersonaVersion(row: DatabaseRow): PersonaVersion {
-  return { id:text(row.id),persona_id:text(row.persona_id),version:number(row.version),requested_model:nullableText(row.requested_model),harness_instance_id:text(row.harness_instance_id),harness_type:text(row.harness_type),model_id:text(row.model_id),mode_id:nullableText(row.mode_id),system_prompt:text(row.system_prompt),created_at:timestamp(row.created_at) };
+  return { id:text(row.id),persona_id:text(row.persona_id),version:number(row.version),requested_model:nullableText(row.requested_model),harness_instance_id:text(row.harness_instance_id),harness_type:text(row.harness_type),model_id:text(row.model_id),permission_profile_id:nullableText(row.permission_profile_id),agent_variant_id:nullableText(row.agent_variant_id),system_prompt:text(row.system_prompt),created_at:timestamp(row.created_at) };
 }
 
 export function toPersonaGroup(row: DatabaseRow): PersonaGroup {
@@ -36,7 +36,7 @@ export function toRoomEvent(row: DatabaseRow): RoomEvent {
 export function toTimelineRun(row: DatabaseRow, tools: ToolActivity[], request?: Run['request'],artifacts:RunArtifact[]=[],embeds:RunEmbed[]=[]): Run {
   const connector=connectorRunState(row);
   return {
-    id:text(row.id),messageId:text(row.message_id),agent:text(row.persona_handle),requestedModel:text(row.requested_model),harnessInstanceId:text(row.harness_instance_id),harnessType:text(row.harness_type),modelId:text(row.model_id),modeId:nullableText(row.mode_id),status:runStatus(row.status),text:text(row.text),reasoning:text(row.reasoning),tools,
+    id:text(row.id),messageId:text(row.message_id),agent:text(row.persona_handle),requestedModel:text(row.requested_model),harnessInstanceId:text(row.harness_instance_id),harnessType:text(row.harness_type),modelId:text(row.model_id),executionProfile:runExecutionProfile(row.execution_profile),status:runStatus(row.status),text:text(row.text),reasoning:text(row.reasoning),tools,
     ...(row.upstream_status && typeof row.upstream_status === 'object' ? { upstreamStatus: row.upstream_status as Run['upstreamStatus'] } : {}),
     ...(row.usage&&typeof row.usage==='object'?{usage:row.usage as Run['usage']}:{}),
     ...(connector ? { connector } : {}),
@@ -46,6 +46,8 @@ export function toTimelineRun(row: DatabaseRow, tools: ToolActivity[], request?:
     ...(request ? { request } : {}), ...(row.error == null ? {} : { error:text(row.error) }),...(row.error_code == null ? {} : { errorCode:text(row.error_code) }),artifacts,embeds,
   };
 }
+
+function runExecutionProfile(value:unknown):Run['executionProfile']{if(!value||typeof value!=='object'||Array.isArray(value))throw new TypeError('Expected run execution profile');return value as Run['executionProfile'];}
 
 function connectorRunState(row:DatabaseRow):ConnectorRunState|undefined{
   const checkpointed=row.connector_execution_id!=null&&row.connector_epoch!=null&&row.connector_cursor!=null;

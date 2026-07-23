@@ -63,7 +63,7 @@ export class CodexAppServerClient implements CodexAppServerPort{
     this.decoder=new JsonLineDecoder();child.stdout.on('data',chunk=>this.readChunk(String(chunk)));
     child.once('error',error=>this.terminated(error));
     child.once('close',(code,signal)=>this.terminated(new Error(stderr.trim()||`Codex app-server exited with ${signal??`code ${code??'unknown'}`}`)));
-    const initialized=await this.rawRequest('initialize',{clientInfo:{name:'agenvyl_connector',title:'Agenvyl Connector',version:'0.1.0'},capabilities:null});
+    const initialized=await this.rawRequest('initialize',{clientInfo:{name:'agenvyl_connector',title:'Agenvyl Connector',version:'0.1.0'},capabilities:{experimentalApi:true}});
     if(!isRecord(initialized))throw new Error('Codex app-server returned an invalid initialize response');
     this.notify('initialized',{});
   }

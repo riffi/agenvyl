@@ -1,17 +1,19 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Ban, ChevronDown, ChevronUp, CircleCheck, CircleHelp, CircleX, Clock3, File, FoldVertical, Info, LoaderCircle, Paperclip, RotateCcw, Square, TriangleAlert, UnfoldVertical, Wrench } from 'lucide-react';
-import type {UpstreamStatus} from '@agenvyl/contracts';
+import { Ban, ChevronDown, ChevronUp, CircleCheck, CircleHelp, CircleX, Clock3, File, FoldVertical, Info, LoaderCircle, Paperclip, RotateCcw, Square, TriangleAlert, UnfoldVertical, Wrench, BadgeCheck } from 'lucide-react';
+import type {RoomPlanState,UpstreamStatus} from '@agenvyl/contracts';
+import type {WorkspaceFocus} from '../artifacts-drawer';
 import {HarnessIcon,type HarnessCatalog} from '../../entities/harness';
 import type { Persona } from '../../entities/persona';
 import type { RoomState } from '../../entities/room';
 import type { Run } from '../../entities/run';
 import type { RoomGateway } from '../../features/room-session';
-import { Alert, Avatar, Button, EmptyState, IconButton, Input } from '../../shared/ui';
+import { Alert, Avatar, EmptyState, IconButton } from '../../shared/ui';
 import styles from './Timeline.module.css';
 import { isLongAnswer, shouldUseSingleColumn } from './layout';
 import { MarkdownAnswer } from './MarkdownAnswer';
 import {MentionText} from './mentions';
 import {ReasoningBlock} from './ReasoningBlock';
+import {RunRequest} from './RunRequest';
 
 export { MarkdownAnswer } from './MarkdownAnswer';
 export {ReasoningBlock} from './ReasoningBlock';
@@ -62,7 +64,7 @@ function fullModelName(run:Run,persona:Persona,catalog:HarnessCatalog|undefined)
 }
 
 const unknownPersona = (handle: string): Persona => ({
-  id: '', handle, name: `@${handle}`, role: 'Agent unavailable', color: '#64748b', requested_model: null, harness_instance_id:'unknown',harness_type:'unknown',model_id:'unknown',mode_id:null,group_id:null, archived_at: null,
+  id: '', handle, name: `@${handle}`, role: 'Agent unavailable', color: '#64748b', requested_model: null, harness_instance_id:'unknown',harness_type:'unknown',model_id:'unknown',permission_profile_id:null,agent_variant_id:null,group_id:null, archived_at: null,
 });
 
 export function UpstreamStatusNotice({status}:{status:UpstreamStatus}) {
@@ -80,48 +82,6 @@ export function UpstreamStatusNotice({status}:{status:UpstreamStatus}) {
   return <div className={styles['upstream-status']} role="status" aria-live="polite"><RotateCcw/><span>{text}{status.attempt!==undefined&&<small>Attempt {status.attempt}</small>}</span></div>;
 }
 
-function Request({ run, resolve }: { run: Run; resolve: (v: import('@agenvyl/contracts').RunRequestResolution|string) => void }) {
-  const [reply, setReply] = useState("");
-  const [answers,setAnswers]=useState<Record<string,string[]>>({});
-  const [otherAnswers,setOtherAnswers]=useState<Record<string,string>>({});
-  if (!run.request) return null;
-  return (
-    <div className={`${styles.request} ${styles[run.request.kind] ?? ''}`}>
-      <strong>{run.request.kind === "approval"
-        ? <><TriangleAlert /> Action approval</>
-        : <><CircleHelp /> Agent clarification</>}</strong>
-      <p>{run.request.prompt}</p>
-      {run.request.resolved ? (
-        <small>Response: {run.request.resolved}</small>
-      ) : run.request.kind === "approval" ? (
-        <div>
-          <Button variant="primary" size="sm" onClick={() => resolve("approved")}>
-            Allow
-          </Button>
-          <Button size="sm" onClick={() => resolve("denied")}>Deny</Button>
-        </div>
-      ) : run.request.questions?.length ? <form className={styles['request-questions']} onSubmit={event=>{event.preventDefault();const payload=Object.fromEntries(run.request!.questions!.map(question=>{const other=otherAnswers[question.id]?.trim();return[question.id,[...(answers[question.id]??[]),...(other?[other]:[])]];}));if(Object.values(payload).every(values=>values.length>0))resolve({answers:payload});}}>
-        {run.request.questions.map(question=><fieldset key={question.id} className={styles['request-question']}><legend>{question.header}</legend><p>{question.question}</p>{question.options?.map(option=>{const checked=answers[question.id]?.includes(option.label)??false;return <label key={option.label}><input type={question.multiSelect?'checkbox':'radio'} name={question.id} checked={checked} onChange={()=>{setAnswers(current=>({...current,[question.id]:question.multiSelect?(checked?(current[question.id]??[]).filter(value=>value!==option.label):[...(current[question.id]??[]),option.label]):[option.label]}));if(!question.multiSelect)setOtherAnswers(current=>({...current,[question.id]:''}));}}/><span>{option.label}{option.description&&<small>{option.description}</small>}</span></label>;})}{(!question.options?.length||question.isOther)&&<Input type={question.isSecret?'password':'text'} autoComplete={question.isSecret?'off':undefined} value={otherAnswers[question.id]??''} onChange={event=>{const value=event.target.value;setOtherAnswers(current=>({...current,[question.id]:value}));if(!question.multiSelect&&value)setAnswers(current=>({...current,[question.id]:[]}));}} placeholder={question.isOther?'Other…':'Your response…'}/>}</fieldset>)}
-        <Button variant="primary" size="sm">Respond</Button>
-      </form> : (<>
-        {run.request.choices?.length ? <div className={styles['request-choices']}>{run.request.choices.map(choice=><Button key={choice} type="button" size="sm" onClick={()=>setReply(choice)}>{choice}</Button>)}</div> : null}
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (reply.trim()) resolve(reply.trim());
-          }}
-        >
-          <Input
-            value={reply}
-            onChange={(e) => setReply(e.target.value)}
-            placeholder="Your response…"
-          />
-          <Button variant="primary" size="sm">Respond</Button>
-        </form>
-      </>)}
-    </div>
-  );
-}
 function RunCard({
   run,
   persona,
@@ -139,6 +99,10 @@ function RunCard({
   harnessCatalog,
   personas,
   onMentionPersona,
+  plan,
+  approvePlan=async()=>{},
+  openWorkspace,
+  planModeEnabled=true,
 }: {
   run: Run;
   persona: Persona;
@@ -156,12 +120,17 @@ function RunCard({
   harnessCatalog?:HarnessCatalog;
   personas:Persona[];
   onMentionPersona:(handle:string)=>void;
+  plan:RoomPlanState;
+  approvePlan?:(versionId:string)=>Promise<void>;
+  openWorkspace:(target:Omit<WorkspaceFocus,'requestId'>)=>void;
+  planModeEnabled?:boolean;
 }) {
   const [retrying,setRetrying]=useState(false);const [retryError,setRetryError]=useState<string>();const [toolsOpen,setToolsOpen]=useState(false);
   const answer = run.text || (run.status === "queued" ? "Waiting for an available slot…" : "Analyzing…");
   const canCancel=['queued','streaming','waiting_approval','waiting_clarification'].includes(run.status);
   const retryLabel=run.status==='completed'?'Create another response':'Run again';
   const retryRun=async()=>{setRetrying(true);setRetryError(undefined);try{await retry()}catch(error){setRetryError(error instanceof Error?error.message:String(error))}finally{setRetrying(false)}};
+  const planArtifact=run.artifacts?.find(item=>item.attribution==='exact'&&item.path==='plan.md'&&item.change!=='deleted');
   return (
     <article
       className={`${styles['run-card']} ${styles[run.status]}`}
@@ -176,6 +145,7 @@ function RunCard({
               <HarnessIcon type={run.harnessType}/>
             </span>
             <small className={styles['model-label']} title={fullModelName(run,persona,harnessCatalog)}>{modelName(run,persona,harnessCatalog)}</small>
+            <small className={styles['profile-badge']}>{run.executionProfile.workflowMode==='plan'?`Plan · ${run.executionProfile.planEnforcement==='native'?'Native':'Instruction only'}`:run.harnessType==='antigravity'&&run.executionProfile.permissionProfileId==='plan'?'Work · plan-only ceiling':'Work'}{run.executionProfile.reasoningEffort?` · ${run.executionProfile.reasoningEffort}`:''}{run.executionProfile.reasoningEffortFallback?' ↘ fallback':''}</small>
           </span>
           <span className={styles['run-header-actions']}>
             <StatusIcon status={run.status}/>
@@ -193,12 +163,13 @@ function RunCard({
         </div>
         {isLongAnswer(run.text)&&run.status==='completed'&&<button className={`${styles['answer-toggle']} ${collapsed?styles.expand:styles.collapse}`} type="button" onClick={toggleCollapsed} aria-expanded={!collapsed}>{collapsed?<><span>Expand response</span><ChevronDown/></>:<><span>Collapse response</span><ChevronUp/></>}</button>}
         {run.error && <Alert tone="error">{run.error}</Alert>}
-        <Request run={run} resolve={resolve} />
-        {run.artifacts?.some(item=>item.attribution==='exact'&&!run.embeds?.some(embed=>embed.status==='resolved'&&embed.attachment?.version_id===item.version_id))&&<div className={styles.artifacts}>{run.artifacts.filter(item=>item.attribution==='exact'&&!run.embeds?.some(embed=>embed.status==='resolved'&&embed.attachment?.version_id===item.version_id)).map(item=><a key={item.version_id} href={item.preview_url} target="_blank" rel="noreferrer"><File/><span><strong>{item.name}</strong><small>{item.change==='created'?'Created':item.change==='updated'?'Updated':'Deleted'}</small></span></a>)}</div>}
+        {run.request&&<RunRequest key={`${run.id}:${run.request.prompt}:${run.request.questions?.map(question=>question.id).join(',')??''}`} request={run.request} resolve={resolve}/>}
+        {run.artifacts?.some(item=>item.attribution==='exact'&&!run.embeds?.some(embed=>embed.status==='resolved'&&embed.attachment?.version_id===item.version_id))&&<div className={styles.artifacts}>{run.artifacts.filter(item=>item.attribution==='exact'&&!run.embeds?.some(embed=>embed.status==='resolved'&&embed.attachment?.version_id===item.version_id)).map(item=>item.path==='plan.md'?<button type="button" key={item.version_id} onClick={()=>openWorkspace({entryId:item.entry_id,versionId:item.version_id})}><File/><span><strong>{item.name}</strong><small>{item.change==='created'?'Created':'New version'}</small></span></button>:<a key={item.version_id} href={item.preview_url} target="_blank" rel="noreferrer"><File/><span><strong>{item.name}</strong><small>{item.change==='created'?'Created':item.change==='updated'?'Updated':'Deleted'}</small></span></a>)}</div>}
         <div className={styles['run-footer']}>
           <span className={styles['run-footer-actions']}>
             {run.tools.length>0&&<button type="button" className={styles['footer-action']} onClick={()=>setToolsOpen(open=>!open)} aria-expanded={toolsOpen} aria-controls={`run-tools-${run.id}`}><Wrench/><span>Actions</span><em>{run.tools.length}</em>{toolsOpen?<ChevronUp className={styles.disclosure}/>:<ChevronDown className={styles.disclosure}/>}</button>}
             <button type="button" className={styles['footer-action']} onClick={select}><Info/><span>Run details</span></button>
+            {planModeEnabled&&planArtifact&&plan.current?.version_id===planArtifact.version_id&&<button type="button" data-plan-approvable="true" className={`${styles['footer-action']} ${plan.approved?.version_id===planArtifact.version_id?styles['approved-action']:''}`} onClick={()=>void approvePlan(planArtifact.version_id)}><BadgeCheck/><span>{plan.approved?.version_id===planArtifact.version_id?'Approved plan':'Approve plan'}</span></button>}
           </span>
           {attemptCount>1&&<span className={styles['attempt-carousel']}><IconButton onClick={previousAttempt} disabled={attemptIndex===0} aria-label="Previous attempt">‹</IconButton><small>{attemptIndex+1} of {attemptCount}</small><IconButton onClick={nextAttempt} disabled={attemptIndex===attemptCount-1} aria-label="Next attempt">›</IconButton></span>}
         </div>
@@ -220,6 +191,10 @@ export function Timeline({
   initialLoading,
   harnessCatalog,
   onMentionPersona,
+  plan=state.executionState.plan,
+  approvePlan=async()=>{},
+  openWorkspace=()=>{},
+  planModeEnabled=true,
 }: {
   state: RoomState;
   personas: Persona[];
@@ -230,6 +205,10 @@ export function Timeline({
   initialLoading:boolean;
   harnessCatalog?:HarnessCatalog;
   onMentionPersona:(handle:string)=>void;
+  plan?:RoomPlanState;
+  approvePlan?:(versionId:string)=>Promise<void>;
+  openWorkspace?:(target:Omit<WorkspaceFocus,'requestId'>)=>void;
+  planModeEnabled?:boolean;
 }) {
   const byHandle = new Map(personas.map((p) => [p.handle, p]));
   const [attemptView,setAttemptView]=useState<Record<string,string>>({});
@@ -322,7 +301,7 @@ export function Timeline({
                     select={() => select(id)}
                     cancel={() => gateway.cancel(id)}
                     retry={async()=>{setAttemptView(current=>{const next={...current};delete next[slot];return next});await gateway.retry(id)}}
-                    canRetry={messageIndex===state.messages.length-1&&['completed','failed','cancelled'].includes(state.runs[id].status)&&!activeAttempt&&gateway.mode==='real'}
+                    canRetry={messageIndex===state.messages.length-1&&['completed','failed','cancelled'].includes(state.runs[id].status)&&!activeAttempt&&gateway.mode==='real'&&(planModeEnabled||(state.runs[id].executionProfile.workflowMode!=='plan'&&!state.runs[id].executionProfile.implementationPlanVersionId))}
                     attemptIndex={shownIndex}
                     attemptCount={attemptIds.length}
                     previousAttempt={()=>void showAttempt(shownIndex-1)}
@@ -333,6 +312,10 @@ export function Timeline({
                     harnessCatalog={harnessCatalog}
                     personas={personas}
                     onMentionPersona={onMentionPersona}
+                    plan={plan}
+                    approvePlan={approvePlan}
+                    openWorkspace={openWorkspace}
+                    planModeEnabled={planModeEnabled}
                   />
                   </div>
                 )},

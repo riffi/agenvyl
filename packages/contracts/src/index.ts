@@ -1,5 +1,24 @@
 export type AgentHandle = string;
 
+export type WorkflowMode = 'plan' | 'work';
+export type PlanEnforcement = 'native' | 'instruction_only';
+export type RuntimeFeatures = { plan_mode: boolean };
+export type RoomExecutionProfile = { reasoning_effort: string | null };
+export type PlanVersionRef = { entry_id: string; version_id: string };
+export type RoomPlanState = { path: 'plan.md'; current: PlanVersionRef | null; approved: PlanVersionRef | null };
+export type RoomExecutionState = { profile: RoomExecutionProfile; plan: RoomPlanState };
+export type ExecutionIntent = { kind: 'plan' } | { kind: 'implement'; approved_plan_version_id: string };
+export type RunExecutionProfileSnapshot = {
+  workflowMode: WorkflowMode;
+  requestedReasoningEffort: string | null;
+  reasoningEffort: string | null;
+  reasoningEffortFallback: boolean;
+  planEnforcement: PlanEnforcement | null;
+  permissionProfileId: string | null;
+  agentVariantId: string | null;
+  implementationPlanVersionId: string | null;
+};
+
 export type RunStatus =
   | 'queued'
   | 'streaming'
@@ -51,7 +70,7 @@ export type ConfigureSetupHarnessesRequest={instances:SetupHarnessInstance[]};
 export type HarnessSettingsPersona={id:string;name:string;handle:string;archived:boolean};
 export type HarnessSettingsInstance=SetupHarnessInstance&{status:'healthy'|'degraded'|'unavailable'|'disabled';capabilities:string[];error?:{code:string;message:string};personas:HarnessSettingsPersona[]};
 export type HarnessSettingsState={connectorEpoch:string;instances:HarnessSettingsInstance[];candidates:SetupHarnessCandidate[]};
-export type CompleteSetupRequest={locale:'en'|'ru';workspace_root:string;profile:{display_name:string;handle:string};room_title:string;route:{harness_instance_id:string;harness_type:string;model_id:string;mode_id:string|null}|null};
+export type CompleteSetupRequest={locale:'en'|'ru';workspace_root:string;profile:{display_name:string;handle:string};room_title:string;route:{harness_instance_id:string;harness_type:string;model_id:string;permission_profile_id:string|null;agent_variant_id:string|null}|null};
 export type CompleteSetupResult={roomId:string};
 
 export type Run = {
@@ -62,7 +81,7 @@ export type Run = {
   harnessInstanceId: string;
   harnessType: string;
   modelId: string;
-  modeId: string | null;
+  executionProfile: RunExecutionProfileSnapshot;
   status: RunStatus;
   upstreamStatus?: UpstreamStatus;
   connector?: ConnectorRunState;
@@ -118,7 +137,8 @@ export type Persona = {
   harness_instance_id: string;
   harness_type: string;
   model_id: string;
-  mode_id: string | null;
+  permission_profile_id: string | null;
+  agent_variant_id: string | null;
   current_version_id?: string;
   system_prompt?: string;
   group_id: string | null;
@@ -139,10 +159,16 @@ export type TimelinePage = {
   messages: Message[];
   runs: Run[];
   selectedRuns: Record<string, string>;
+  executionState: RoomExecutionState;
   lastSequence: number;
   hasMore: boolean;
   nextCursor?: string;
 };
+
+export type UpdateRoomExecutionProfileRequest = Partial<RoomExecutionProfile>;
+export type ApprovePlanRequest = { version_id: string };
+export type UpdatePlanRequest = { content: string; expected_version_id: string };
+export type UpdatePlanResponse = { entry: WorkspaceEntry; version: WorkspaceVersion };
 
 export type ErrorEnvelope = {
   error: string;
@@ -152,7 +178,7 @@ export type ErrorEnvelope = {
 
 export type CreateRoomRequest = { title?: string; persona_ids?: string[] };
 export type RenameRoomRequest = { title?: string };
-export type CreateMessageRequest = { text?: string; targets?: AgentHandle[]; message_id?: string; attachment_version_ids?:string[] };
+export type CreateMessageRequest = { text?: string; targets?: AgentHandle[]; message_id?: string; attachment_version_ids?:string[]; execution_intent?:ExecutionIntent };
 export type StructuredQuestion={id:string;header:string;question:string;options?:Array<{label:string;description?:string}>;isOther:boolean;isSecret:boolean;multiSelect?:boolean};
 export type RunRequestResolution={resolution:string}|{answers:Record<string,string[]>};
 export type ResolveRunRequest = RunRequestResolution;
@@ -161,7 +187,8 @@ export type PersonaInput = Pick<Persona, 'handle' | 'name' | 'role' | 'color' | 
   requested_model?: string | null;
   harness_instance_id?: string;
   model_id?: string;
-  mode_id?: string | null;
+  permission_profile_id?: string | null;
+  agent_variant_id?: string | null;
   system_prompt: string;
   room_id?: string;
 };
@@ -187,6 +214,8 @@ export type ServerRoomEvent =
   | Envelope<'request.created', { runId: string; kind: 'approval' | 'clarification'; prompt: string; choices?: string[];questions?:StructuredQuestion[];autoResolutionMs?:number }>
   | Envelope<'request.resolved', { runId: string; resolution: string }>
   | Envelope<'run.selected', { responseSlotId: string; runId: string }>
+  | Envelope<'room.execution_profile.updated', RoomExecutionProfile>
+  | Envelope<'room.plan.approval.updated', { approved: PlanVersionRef | null }>
   | Envelope<'workspace.changed', { entry:WorkspaceEntry;change:'created'|'updated'|'deleted'|'restored'|'moved' }>
   | Envelope<'artifact.created', { runId:string;artifact:RunArtifact }>
   | Envelope<'run.embeds', { runId:string;embeds:RunEmbed[] }>;
@@ -203,6 +232,8 @@ const eventTypes = new Set<ServerRoomEvent['type']>([
   'request.created',
   'request.resolved',
   'run.selected',
+  'room.execution_profile.updated',
+  'room.plan.approval.updated',
   'workspace.changed',
   'artifact.created',
   'run.embeds',
@@ -216,7 +247,7 @@ export function isServerRoomEvent(value: unknown): value is ServerRoomEvent {
   const payload = value.payload;
   switch (value.type) {
     case 'message.created': return typeof payload.id === 'string' && typeof payload.text === 'string' && Array.isArray(payload.targets) && Array.isArray(payload.runIds) && (payload.attachments===undefined||Array.isArray(payload.attachments)) && isRecord(payload.author) && strings(payload.author,'profileId','displayName','handle') && typeof payload.addressedToAll==='boolean';
-    case 'run.created': return typeof payload.id === 'string' && typeof payload.messageId === 'string' && typeof payload.agent === 'string' && (payload.requestedModel === undefined || typeof payload.requestedModel === 'string') && strings(payload,'harnessInstanceId','harnessType','modelId') && (payload.modeId === null || typeof payload.modeId === 'string') && typeof payload.status === 'string' && runStatuses.has(payload.status as RunStatus) && (payload.upstreamStatus===undefined||(isRecord(payload.upstreamStatus)&&payload.upstreamStatus.state!=='recovered'&&isUpstreamStatusEvent(payload.upstreamStatus))) && (payload.usage===undefined||isTokenUsage(payload.usage)) && typeof payload.text === 'string' && (payload.reasoning===undefined||typeof payload.reasoning==='string') && Array.isArray(payload.tools) && (payload.artifacts===undefined||Array.isArray(payload.artifacts)) && (payload.embeds===undefined||Array.isArray(payload.embeds));
+    case 'run.created': return typeof payload.id === 'string' && typeof payload.messageId === 'string' && typeof payload.agent === 'string' && (payload.requestedModel === undefined || typeof payload.requestedModel === 'string') && strings(payload,'harnessInstanceId','harnessType','modelId') && isRunExecutionProfile(payload.executionProfile) && typeof payload.status === 'string' && runStatuses.has(payload.status as RunStatus) && (payload.upstreamStatus===undefined||(isRecord(payload.upstreamStatus)&&payload.upstreamStatus.state!=='recovered'&&isUpstreamStatusEvent(payload.upstreamStatus))) && (payload.usage===undefined||isTokenUsage(payload.usage)) && typeof payload.text === 'string' && (payload.reasoning===undefined||typeof payload.reasoning==='string') && Array.isArray(payload.tools) && (payload.artifacts===undefined||Array.isArray(payload.artifacts)) && (payload.embeds===undefined||Array.isArray(payload.embeds));
     case 'run.delta': case 'run.reasoning.delta': return strings(payload, 'runId', 'text');
     case 'run.status': return strings(payload, 'runId', 'status') && runStatuses.has(payload.status as RunStatus) && (payload.error===undefined||typeof payload.error==='string') && (payload.errorCode===undefined||typeof payload.errorCode==='string');
     case 'run.upstream_status': return typeof payload.runId === 'string' && isUpstreamStatusEvent(payload);
@@ -225,6 +256,8 @@ export function isServerRoomEvent(value: unknown): value is ServerRoomEvent {
     case 'request.created': return strings(payload, 'runId', 'kind', 'prompt') && (payload.kind === 'approval' || payload.kind === 'clarification') && (payload.choices===undefined||(Array.isArray(payload.choices)&&payload.choices.every(choice=>typeof choice==='string'))) && (payload.questions===undefined||isStructuredQuestions(payload.questions)) && (payload.autoResolutionMs===undefined||Number.isSafeInteger(payload.autoResolutionMs));
     case 'request.resolved': return strings(payload, 'runId', 'resolution');
     case 'run.selected': return strings(payload, 'responseSlotId', 'runId');
+    case 'room.execution_profile.updated': return payload.reasoning_effort===null||typeof payload.reasoning_effort==='string';
+    case 'room.plan.approval.updated': return payload.approved===null||isPlanVersionRef(payload.approved);
     case 'workspace.changed': return isRecord(payload.entry) && typeof payload.entry.id==='string' && typeof payload.change==='string';
     case 'artifact.created': return typeof payload.runId==='string' && isRecord(payload.artifact) && typeof payload.artifact.version_id==='string';
     case 'run.embeds': return typeof payload.runId==='string'&&Array.isArray(payload.embeds);
@@ -236,6 +269,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 function isTokenUsage(value:unknown):value is TokenUsage{if(!isRecord(value)||!tokenCount(value.inputTokens)||!tokenCount(value.outputTokens))return false;return['totalTokens','reasoningTokens','cacheReadTokens','cacheWriteTokens'].every(key=>value[key]===undefined||tokenCount(value[key]));}
+function isPlanVersionRef(value:unknown):value is PlanVersionRef{return isRecord(value)&&strings(value,'entry_id','version_id');}
+function isRunExecutionProfile(value:unknown):value is RunExecutionProfileSnapshot{return isRecord(value)&&(value.workflowMode==='plan'||value.workflowMode==='work')&&(value.requestedReasoningEffort===null||typeof value.requestedReasoningEffort==='string')&&(value.reasoningEffort===null||typeof value.reasoningEffort==='string')&&typeof value.reasoningEffortFallback==='boolean'&&(value.planEnforcement===null||value.planEnforcement==='native'||value.planEnforcement==='instruction_only')&&(value.permissionProfileId===null||typeof value.permissionProfileId==='string')&&(value.agentVariantId===null||typeof value.agentVariantId==='string')&&(value.implementationPlanVersionId===null||typeof value.implementationPlanVersionId==='string');}
 function tokenCount(value:unknown){return Number.isSafeInteger(value)&&Number(value)>=0;}
 function isStructuredQuestions(value:unknown):value is StructuredQuestion[]{return Array.isArray(value)&&value.length>0&&value.length<=4&&value.every(question=>isRecord(question)&&strings(question,'id','header','question')&&typeof question.isOther==='boolean'&&typeof question.isSecret==='boolean'&&(question.multiSelect===undefined||typeof question.multiSelect==='boolean')&&(question.options===undefined||(Array.isArray(question.options)&&question.options.every(option=>isRecord(option)&&typeof option.label==='string'&&(option.description===undefined||typeof option.description==='string')))));}
 

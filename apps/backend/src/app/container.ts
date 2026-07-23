@@ -25,9 +25,9 @@ export async function createAppContainer(config: AppConfig, fetchImplementation?
   const harnessCatalogService=new HarnessCatalogService(connector);
   const connectorRuns=new ConnectorRunAdapter(connector);
   const activeRuns = new ActiveRunRegistry();
-  const roomWorkspace=new RoomWorkspaceService(rooms,workspace,events,activeRuns,config.workspaceRoot,config.workspaceAgentRoot,config.workspaceMaxFileBytes);
+  const roomWorkspace=new RoomWorkspaceService(rooms,workspace,events,activeRuns,config.workspaceRoot,config.workspaceAgentRoot,config.workspaceMaxFileBytes,config.planModeEnabled);
 
-  const runExecutor=new RunExecutor({ personas, runs, events, runGateway:connectorRuns, runEvents:connectorRuns, connectorExecution:connectorRuns,activeRuns,concurrency:config.runConcurrency,runTimeoutMs:config.runTimeoutMs,logger,roomWorkspace,messages,connector });
+  const runExecutor=new RunExecutor({ personas, runs, events, runGateway:connectorRuns, runEvents:connectorRuns, connectorExecution:connectorRuns,activeRuns,concurrency:config.runConcurrency,runTimeoutMs:config.runTimeoutMs,logger,roomWorkspace,messages,connector,planModeEnabled:config.planModeEnabled });
   await runExecutor.reconcilePersistedRuns();
   return {
     database,
@@ -39,12 +39,12 @@ export async function createAppContainer(config: AppConfig, fetchImplementation?
     dependencyHealth:connectorRuns,
     activeRuns,
     runExecutor,
-    roomsService:new RoomsService(rooms,roomWorkspace),
+    roomsService:new RoomsService(rooms,roomWorkspace,events,config.planModeEnabled),
     personasService:new PersonasService(personas,rooms,harnessCatalogService),
     userProfileService:new UserProfileService(userProfile),
     personaGroupsService:new PersonaGroupsService(personaGroups),
-    createMessageRound:new CreateMessageRound({personas,messages,events,harnesses:harnessCatalogService,activeRuns,runExecutor,roomWorkspace}),
-    runsService:new RunsService({runs,events,activeRuns,executor:runExecutor}),
+    createMessageRound:new CreateMessageRound({personas,rooms,messages,events,harnesses:harnessCatalogService,activeRuns,runExecutor,roomWorkspace,planModeEnabled:config.planModeEnabled}),
+    runsService:new RunsService({runs,events,activeRuns,executor:runExecutor,planModeEnabled:config.planModeEnabled}),
     harnessCatalogService,
     roomWorkspace,
     setupService:new SetupService(database,connector,config.workspaceRoot),

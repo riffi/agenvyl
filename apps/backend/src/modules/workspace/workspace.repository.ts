@@ -25,17 +25,20 @@ export class WorkspaceRepository{
     return (await this.entry(roomId,path))!;
   }
 
-  async saveVersion(input:{roomId:string;path:string;size:number;mimeType:string;sha256:string;source:WorkspaceSource;runIds:string[];createdAt?:string}){
+  async saveVersion(input:{roomId:string;path:string;size:number;mimeType:string;sha256:string;source:WorkspaceSource;runIds:string[];createdAt?:string;force?:boolean;artifactChange?:RunArtifact['change'];expectedCurrentVersionId?:string}){
     return this.database.transaction(async tx=>{
       const now=input.createdAt??new Date().toISOString();
+      if(input.path==='plan.md')await tx`SELECT id FROM rooms WHERE id=${input.roomId} FOR UPDATE`;
       let entry=(await tx`SELECT * FROM workspace_entries WHERE room_id=${input.roomId} AND path=${input.path} FOR UPDATE`)[0];
       const created=!entry||entry.deleted_at!=null;
+      if(input.expectedCurrentVersionId!==undefined&&entry?.current_version_id!==input.expectedCurrentVersionId)throw new Error('plan_version_conflict');
       if(!entry){const id=crypto.randomUUID();await tx`INSERT INTO workspace_entries(id,room_id,path,kind,size,mime_type,status,created_at,updated_at) VALUES(${id},${input.roomId},${input.path},'file',${input.size},${input.mimeType},'tracked',${now},${now})`;entry=(await tx`SELECT * FROM workspace_entries WHERE id=${id}`)[0];}
       const current=entry.current_version_id?(await tx`SELECT sha256 FROM workspace_versions WHERE id=${entry.current_version_id as string}`)[0]:undefined;
-      if(current?.sha256===input.sha256&&entry.deleted_at==null){await tx`UPDATE workspace_entries SET size=${input.size},mime_type=${input.mimeType},updated_at=${now},status='tracked' WHERE id=${entry.id as string}`;return{entry:toEntry({...entry,size:input.size,mime_type:input.mimeType,updated_at:now}),version:undefined,created:false};}
+      if(!input.force&&current?.sha256===input.sha256&&entry.deleted_at==null){await tx`UPDATE workspace_entries SET size=${input.size},mime_type=${input.mimeType},updated_at=${now},status='tracked' WHERE id=${entry.id as string}`;return{entry:toEntry({...entry,size:input.size,mime_type:input.mimeType,updated_at:now}),version:undefined,created:false};}
       const versionId=crypto.randomUUID();
       await tx`INSERT INTO workspace_versions(id,entry_id,path,size,mime_type,sha256,source,run_ids,created_at) VALUES(${versionId},${entry.id as string},${input.path},${input.size},${input.mimeType},${input.sha256},${input.source},${this.database.sql.json(input.runIds)},${now})`;
       await tx`UPDATE workspace_entries SET kind='file',size=${input.size},mime_type=${input.mimeType},status='tracked',current_version_id=${versionId},updated_at=${now},deleted_at=NULL WHERE id=${entry.id as string}`;
+      if(input.artifactChange&&input.runIds.length){const attribution=input.runIds.length===1?'exact':'shared';for(const runId of input.runIds)await tx`INSERT INTO run_artifacts(run_id,version_id,change,attribution,created_at) VALUES(${runId},${versionId},${input.artifactChange},${attribution},${now}) ON CONFLICT DO NOTHING`;}
       const saved=(await tx`SELECT v.*,e.room_id FROM workspace_versions v JOIN workspace_entries e ON e.id=v.entry_id WHERE v.id=${versionId}`)[0];
       return{entry:toEntry((await tx`SELECT * FROM workspace_entries WHERE id=${entry.id as string}`)[0]),version:toVersionRow(saved),created};
     });
@@ -48,11 +51,11 @@ export class WorkspaceRepository{
   async restoreEntry(roomId:string,id:string){const row=(await this.database.sql`UPDATE workspace_entries SET deleted_at=NULL,updated_at=now() WHERE room_id=${roomId} AND id=${id} RETURNING *`)[0];return row?toEntry(row):undefined;}
   async restoreTree(roomId:string,id:string){const rows=await this.database.sql`UPDATE workspace_entries SET deleted_at=NULL,updated_at=now() WHERE room_id=${roomId} AND (id=${id} OR path LIKE (SELECT path||'/%' FROM workspace_entries WHERE id=${id} AND room_id=${roomId})) RETURNING *`;return rows.map(toEntry);}
 
-  async version(roomId:string,id:string){const row=(await this.database.sql`SELECT v.*,e.room_id FROM workspace_versions v JOIN workspace_entries e ON e.id=v.entry_id WHERE e.room_id=${roomId} AND v.id=${id}`)[0];return row?toVersionRow(row):undefined;}
+  async version(roomId:string,id:string,db:QueryContext=this.database.sql){const row=(await db`SELECT v.*,e.room_id FROM workspace_versions v JOIN workspace_entries e ON e.id=v.entry_id WHERE e.room_id=${roomId} AND v.id=${id}`)[0];return row?toVersionRow(row):undefined;}
   async versions(roomId:string,entryId:string){return(await this.database.sql`SELECT v.*,e.room_id FROM workspace_versions v JOIN workspace_entries e ON e.id=v.entry_id WHERE e.room_id=${roomId} AND e.id=${entryId} ORDER BY v.created_at DESC`).map(toVersionRow);}
   async versionAt(roomId:string,filePath:string,at:string){const row=(await this.database.sql`SELECT v.*,e.room_id FROM workspace_versions v JOIN workspace_entries e ON e.id=v.entry_id WHERE e.room_id=${roomId} AND v.path=${filePath} AND v.created_at<=${at} ORDER BY v.created_at DESC LIMIT 1`)[0];return row?toVersionRow(row):undefined;}
   async validateVersions(roomId:string,ids:string[],db:QueryContext=this.database.sql){if(!ids.length)return[];const rows=await db`SELECT v.*,e.room_id FROM workspace_versions v JOIN workspace_entries e ON e.id=v.entry_id WHERE e.room_id=${roomId} AND v.id=ANY(${ids})`;const map=new Map(rows.map(row=>[text(row.id),toVersionRow(row)]));return ids.map(id=>map.get(id)).filter((item):item is VersionRow=>Boolean(item));}
-  async currentVersion(roomId:string,filePath:string){const row=(await this.database.sql`SELECT v.*,e.room_id FROM workspace_entries e JOIN workspace_versions v ON v.id=e.current_version_id WHERE e.room_id=${roomId} AND e.path=${filePath} AND e.deleted_at IS NULL AND e.kind='file' AND e.status='tracked'`)[0];return row?toVersionRow(row):undefined;}
+  async currentVersion(roomId:string,filePath:string,db:QueryContext=this.database.sql){const row=(await db`SELECT v.*,e.room_id FROM workspace_entries e JOIN workspace_versions v ON v.id=e.current_version_id WHERE e.room_id=${roomId} AND e.path=${filePath} AND e.deleted_at IS NULL AND e.kind='file' AND e.status='tracked'`)[0];return row?toVersionRow(row):undefined;}
 
   async messageAttachments(messageIds:string[],db:QueryContext=this.database.sql){if(!messageIds.length)return new Map<string,WorkspaceAttachment[]>();const rows=await db`SELECT ma.message_id,ma.position,v.*,e.room_id FROM message_attachments ma JOIN workspace_versions v ON v.id=ma.version_id JOIN workspace_entries e ON e.id=v.entry_id WHERE ma.message_id=ANY(${messageIds}) ORDER BY ma.message_id,ma.position`;const result=new Map<string,WorkspaceAttachment[]>();for(const row of rows){const id=text(row.message_id),items=result.get(id)??[];items.push(toAttachment(toVersionRow(row)));result.set(id,items);}return result;}
   async attachMessage(messageId:string,versionIds:string[],db:QueryContext){for(let position=0;position<versionIds.length;position++)await db`INSERT INTO message_attachments(message_id,version_id,position) VALUES(${messageId},${versionIds[position]},${position})`;}

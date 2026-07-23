@@ -23,8 +23,8 @@ the explicit AGY permission mode, and the Codex full-access opt-in may be persis
 paths, and OAuth state remain in the process environment or native harness stores.
 Unknown YAML fields are rejected.
 
-The bearer-protected `GET /v1/discovery` reports local CLI/endpoint readiness.
-`PUT /v1/instances` atomically persists a validated selection and applies its
+The bearer-protected `GET /v2/discovery` reports local CLI/endpoint readiness.
+`PUT /v2/instances` atomically persists a validated selection and applies its
 adapter lifecycle. Hermes is attach-only; OpenCode can attach to an endpoint or
 run as a Connector-managed `opencode serve` child.
 
@@ -52,7 +52,7 @@ Connector binds to `127.0.0.1:4310` by default. Check it with:
 ```bash
 curl -fsS \
   -H "Authorization: Bearer $AGENVYL_CONNECTOR_TOKEN" \
-  http://127.0.0.1:4310/v1/health
+  http://127.0.0.1:4310/v2/health
 ```
 
 The personal portable runtime uses the repository's Node-based supervisor. A

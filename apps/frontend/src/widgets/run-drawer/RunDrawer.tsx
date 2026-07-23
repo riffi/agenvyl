@@ -110,7 +110,12 @@ export function RunDrawer({run,persona,harnessCatalog,close}:{run?:Run;persona?:
           <dl>
             <div><dt>Harness</dt><dd><code>{run.harnessInstanceId} · {run.harnessType}</code></dd></div>
             <div><dt>Model snapshot</dt><dd><code>{run.modelId}</code></dd></div>
-            <div><dt>Mode snapshot</dt><dd><code>{run.modeId??'not set'}</code></dd></div>
+            <div><dt>Workflow snapshot</dt><dd><code>{run.executionProfile.workflowMode} · {run.executionProfile.planEnforcement??'standard'}</code></dd></div>
+            <div><dt>Reasoning effort</dt><dd><code>{run.executionProfile.reasoningEffort??'Auto'}{run.executionProfile.reasoningEffortFallback?' (fallback)':''}</code></dd></div>
+            {run.executionProfile.reasoningEffortFallback&&<div><dt>Requested effort</dt><dd><code>{run.executionProfile.requestedReasoningEffort}</code></dd></div>}
+            <div><dt>Permissions</dt><dd><code>{run.executionProfile.permissionProfileId??'harness default'}</code></dd></div>
+            <div><dt>Agent variant</dt><dd><code>{run.executionProfile.agentVariantId??'harness default'}</code></dd></div>
+            {run.executionProfile.implementationPlanVersionId&&<div><dt>Implementation plan</dt><dd><code>{run.executionProfile.implementationPlanVersionId}</code></dd></div>}
             <div><dt>Attempt</dt><dd><code>{run.attemptNumber??1}</code></dd></div>
             <div><dt>Model route</dt><dd><code>{model.route??'not specified'}</code></dd></div>
             <div><dt>System status</dt><dd><code>{run.status}</code></dd></div>

@@ -17,7 +17,7 @@ for (let attempt = 1; attempt <= attempts; attempt += 1) {
 }
 
 async function connectorHealth() {
-  const url = new URL('/v1/health', process.env.AGENVYL_CONNECTOR_URL ?? 'http://127.0.0.1:4310');
+  const url = new URL('/v2/health', process.env.AGENVYL_CONNECTOR_URL ?? 'http://127.0.0.1:4310');
   const token = process.env.AGENVYL_CONNECTOR_TOKEN;
   if (!token) throw new Error('AGENVYL_CONNECTOR_TOKEN is required for the Connector health probe');
   const response = await fetch(url, { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(2_000) });

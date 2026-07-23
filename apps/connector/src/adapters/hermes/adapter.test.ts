@@ -6,7 +6,7 @@ describe('HermesConnectorAdapter', () => {
   it('advertises and normalizes the Hermes model catalog',async()=>{
     const mock=fetchMock([jsonResponse({object:'list',data:[{id:'sol',root:'anthropic/claude-sonnet-4'},{id:'local'}]})]),adapter=new HermesConnectorAdapter({baseUrl:'http://localhost:8642',request:mock.request});
     expect(adapter.capabilities).toContain('model_catalog');
-    await expect(adapter.catalog()).resolves.toEqual({models:[{id:'sol',label:'anthropic/claude-sonnet-4'},{id:'local'}],modes:[]});
+    await expect(adapter.catalog()).resolves.toEqual({models:[{id:'sol',label:'anthropic/claude-sonnet-4'},{id:'local'}],controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]}});
     expect(mock.calls[0]?.url).toBe('http://localhost:8642/v1/models');
   });
 
@@ -98,7 +98,7 @@ describe('HermesConnectorAdapter', () => {
 
 function startRequest(): AdapterStartExecutionRequest {
   return {
-    executionId: 'execution-1', harnessInstanceId: 'local-hermes', modelId: 'sol', modeId: null,
+    executionId: 'execution-1', harnessInstanceId: 'local-hermes', modelId: 'sol', executionProfile:{workflowMode:'work',reasoningEffort:null,permissionProfileId:null,agentVariantId:null,planEnforcement:null},
     workspace: { roomId: 'room-1', relativePath: 'subdir', absolutePath: '/srv/workspaces/room-1/subdir' },
     input: { systemPrompt: 'Be useful.', history: [{ role: 'user', content: 'Earlier' }], message: 'Continue' },
   };

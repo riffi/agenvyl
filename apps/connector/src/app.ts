@@ -52,7 +52,7 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
     return reply.code(401).header('www-authenticate', 'Bearer').send({ apiVersion: CONNECTOR_API_VERSION, error: 'unauthorized', message: 'Valid Connector Bearer token required' });
   });
 
-  app.get('/v1/health', async (): Promise<ConnectorHealth> => ({
+  app.get('/v2/health', async (): Promise<ConnectorHealth> => ({
     apiVersion: CONNECTOR_API_VERSION,
     connectorEpoch,
     status: enabledInstances.some(instance => !isReady(instance)) ? 'degraded' : 'ready',
@@ -64,7 +64,7 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
     },
   }));
 
-  app.get('/v1/instances', async (): Promise<ConnectorInstanceList> => ({
+  app.get('/v2/instances', async (): Promise<ConnectorInstanceList> => ({
     apiVersion: CONNECTOR_API_VERSION,
     connectorEpoch,
     instances: enabledInstances.map(instance => {
@@ -79,12 +79,12 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
     }),
   }));
 
-  app.get('/v1/configuration',async()=>({apiVersion:CONNECTOR_API_VERSION,instances:structuredClone(config.instances)}));
+  app.get('/v2/configuration',async()=>({apiVersion:CONNECTOR_API_VERSION,instances:structuredClone(config.instances)}));
 
-  app.get('/v1/discovery',async(_request,reply)=>options.discover?options.discover():reply.code(503).send({apiVersion:CONNECTOR_API_VERSION,error:'discovery_unavailable',message:'Harness discovery is unavailable'}));
+  app.get('/v2/discovery',async(_request,reply)=>options.discover?options.discover():reply.code(503).send({apiVersion:CONNECTOR_API_VERSION,error:'discovery_unavailable',message:'Harness discovery is unavailable'}));
 
-  app.put('/v1/instances',async(request,reply)=>{
-    if(!isConfigureConnectorInstancesRequest(request.body))return reply.code(400).send({apiVersion:CONNECTOR_API_VERSION,error:'invalid_request',message:'Connector instances do not match the v1 contract'});
+  app.put('/v2/instances',async(request,reply)=>{
+    if(!isConfigureConnectorInstancesRequest(request.body))return reply.code(400).send({apiVersion:CONNECTOR_API_VERSION,error:'invalid_request',message:'Connector instances do not match the v2 contract'});
     if(!options.configureInstances||!options.persistInstances)return reply.code(503).send({apiVersion:CONNECTOR_API_VERSION,error:'configuration_unavailable',message:'Connector configuration is unavailable'});
     const instances=structuredClone(request.body.instances) as ConnectorConfig['instances'];
     const previous=structuredClone(config.instances);
@@ -99,7 +99,7 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
     }catch(error){app.log.error({err:error},'Connector configuration failed');await options.configureInstances(previous).catch(()=>undefined);await options.persistInstances(previous).catch(()=>undefined);return reply.code(409).send({apiVersion:CONNECTOR_API_VERSION,error:'configuration_failed',message:'Connector configuration could not be applied'});}
   });
 
-  app.get<{ Params: { id: string } }>('/v1/instances/:id/catalog', async (request, reply) => {
+  app.get<{ Params: { id: string } }>('/v2/instances/:id/catalog', async (request, reply) => {
     const instance=enabledInstances.find(candidate=>candidate.id===request.params.id);
     if (!instance) return reply.code(404).send({ apiVersion: CONNECTOR_API_VERSION, error: 'instance_not_found', message: 'Connector instance not found' });
     const adapter=adapters.get(instance.id);
@@ -108,8 +108,8 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
     catch{return reply.code(503).send({apiVersion:CONNECTOR_API_VERSION,error:'catalog_unavailable',message:'Connector instance catalog is unavailable'});}
   });
 
-  app.post('/v1/executions', async (request, reply) => {
-    if (!isStartExecutionRequest(request.body)) return error(reply, new RegistryError('invalid_request', 'Execution request does not match Connector v1 contract', 400));
+  app.post('/v2/executions', async (request, reply) => {
+    if (!isStartExecutionRequest(request.body)) return error(reply, new RegistryError('invalid_request', 'Execution request does not match Connector v2 contract', 400));
     try {
       const result = registry.start(request.body);
       return reply.code(result.created ? 201 : 200).send({ execution: result.execution });
@@ -118,7 +118,7 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
     }
   });
 
-  app.get<{ Params: { id: string } }>('/v1/executions/:id', async (request, reply) => {
+  app.get<{ Params: { id: string } }>('/v2/executions/:id', async (request, reply) => {
     try {
       return { execution: registry.inspect(request.params.id) };
     } catch (caught) {
@@ -126,7 +126,7 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
     }
   });
 
-  app.get<{ Params: { id: string }; Querystring: { after?: string } }>('/v1/executions/:id/events', async (request, reply) => {
+  app.get<{ Params: { id: string }; Querystring: { after?: string } }>('/v2/executions/:id/events', async (request, reply) => {
     const after = request.query.after === undefined ? 0 : Number(request.query.after);
     const controller = new AbortController();
     reply.raw.once('close', () => controller.abort());
@@ -142,7 +142,7 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
     }
   });
 
-  app.post<{ Params: { id: string } }>('/v1/executions/:id/stop', async (request, reply) => {
+  app.post<{ Params: { id: string } }>('/v2/executions/:id/stop', async (request, reply) => {
     try {
       return { execution: await registry.stop(request.params.id) };
     } catch (caught) {
@@ -150,8 +150,8 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
     }
   });
 
-  app.post<{ Params: { id: string; requestId: string } }>('/v1/executions/:id/requests/:requestId/resolve', async (request, reply) => {
-    if (!isResolveConnectorRequest(request.body)) return error(reply, new RegistryError('invalid_request', 'Request resolution does not match Connector v1 contract', 400));
+  app.post<{ Params: { id: string; requestId: string } }>('/v2/executions/:id/requests/:requestId/resolve', async (request, reply) => {
+    if (!isResolveConnectorRequest(request.body)) return error(reply, new RegistryError('invalid_request', 'Request resolution does not match Connector v2 contract', 400));
     try {
       return await registry.resolveRequest(request.params.id, request.params.requestId, request.body);
     } catch (caught) {

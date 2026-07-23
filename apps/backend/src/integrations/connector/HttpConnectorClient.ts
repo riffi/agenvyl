@@ -22,48 +22,48 @@ export class HttpConnectorClient implements ConnectorExecutionClient {
   }
 
   async health(): Promise<ConnectorHealth> {
-    const value = await this.get('/v1/health', 'health');
+    const value = await this.get('/v2/health', 'health');
     if (!isConnectorHealth(value)) throw new ConnectorClientError('connector_invalid_response', 'Connector returned an invalid health response');
     return value;
   }
 
   async inspect(executionId: string): Promise<ExecutionSnapshot> {
-    const value = await this.get(`/v1/executions/${encodeURIComponent(executionId)}`, 'execution');
+    const value = await this.get(`/v2/executions/${encodeURIComponent(executionId)}`, 'execution');
     const execution = isRecord(value) ? value.execution : undefined;
     if (!isExecutionSnapshot(execution)||execution.executionId!==executionId) throw new ConnectorClientError('connector_invalid_response', 'Connector returned an invalid execution response');
     return execution;
   }
 
   async instances():Promise<ConnectorInstanceList>{
-    const value=await this.get('/v1/instances','discovery');
+    const value=await this.get('/v2/instances','discovery');
     if(!isConnectorInstanceList(value))throw new ConnectorClientError('connector_invalid_response','Connector returned an invalid instance list');
     return value;
   }
 
   async catalog(instanceId:string):Promise<ConnectorCatalog>{
-    const value=await this.get(`/v1/instances/${encodeURIComponent(instanceId)}/catalog`,'discovery');
+    const value=await this.get(`/v2/instances/${encodeURIComponent(instanceId)}/catalog`,'discovery');
     if(!isConnectorCatalog(value))throw new ConnectorClientError('connector_invalid_response','Connector returned an invalid catalog response');
     return value;
   }
 
-  async discover():Promise<ConnectorDiscovery>{const value=await this.get('/v1/discovery','discovery');if(!isConnectorDiscovery(value))throw invalidResponse('Connector returned invalid discovery');return value;}
-  async configuration():Promise<ConnectorConfigurationResult>{const value=await this.get('/v1/configuration','discovery');if(!isConnectorConfigurationResult(value))throw invalidResponse('Connector returned invalid configuration');return value;}
-  async configureInstances(input:ConfigureConnectorInstancesRequest):Promise<ConnectorConfigurationResult>{const value=await this.json('/v1/instances','PUT',input,'discovery',15_000);if(!isRecord(value)||value.apiVersion!=='v1'||!Array.isArray(value.instances))throw invalidResponse('Connector returned invalid configuration');return value as ConnectorConfigurationResult;}
+  async discover():Promise<ConnectorDiscovery>{const value=await this.get('/v2/discovery','discovery');if(!isConnectorDiscovery(value))throw invalidResponse('Connector returned invalid discovery');return value;}
+  async configuration():Promise<ConnectorConfigurationResult>{const value=await this.get('/v2/configuration','discovery');if(!isConnectorConfigurationResult(value))throw invalidResponse('Connector returned invalid configuration');return value;}
+  async configureInstances(input:ConfigureConnectorInstancesRequest):Promise<ConnectorConfigurationResult>{const value=await this.json('/v2/instances','PUT',input,'discovery',15_000);if(!isRecord(value)||value.apiVersion!=='v2'||!Array.isArray(value.instances))throw invalidResponse('Connector returned invalid configuration');return value as ConnectorConfigurationResult;}
 
   async start(request:StartExecutionRequest):Promise<ExecutionSnapshot>{
-    const value=await this.json('/v1/executions','POST',request,'execution');
+    const value=await this.json('/v2/executions','POST',request,'execution');
     if(!isConnectorCommandResult(value)||value.execution.executionId!==request.executionId)throw invalidResponse('Connector returned an invalid start response');
     return value.execution;
   }
 
   async stop(executionId:string):Promise<ExecutionSnapshot>{
-    const value=await this.json(`/v1/executions/${encodeURIComponent(executionId)}/stop`,'POST',undefined,'execution');
+    const value=await this.json(`/v2/executions/${encodeURIComponent(executionId)}/stop`,'POST',undefined,'execution');
     if(!isConnectorCommandResult(value)||value.execution.executionId!==executionId)throw invalidResponse('Connector returned an invalid stop response');
     return value.execution;
   }
 
   async resolve(executionId:string,requestId:string,answer:ConnectorRequestAnswer|string):Promise<ConnectorRequestCommandResult>{
-    const value=await this.json(`/v1/executions/${encodeURIComponent(executionId)}/requests/${encodeURIComponent(requestId)}/resolve`,'POST',typeof answer==='string'?{resolution:answer}:answer,'execution');
+    const value=await this.json(`/v2/executions/${encodeURIComponent(executionId)}/requests/${encodeURIComponent(requestId)}/resolve`,'POST',typeof answer==='string'?{resolution:answer}:answer,'execution');
     if(!isConnectorRequestCommandResult(value)||value.execution.executionId!==executionId||value.request.id!==requestId)throw invalidResponse('Connector returned an invalid request resolution response');
     return value;
   }
@@ -71,7 +71,7 @@ export class HttpConnectorClient implements ConnectorExecutionClient {
   async *events(executionId:string,options:{after:number;connectorEpoch:string;signal:AbortSignal}):AsyncIterable<ConnectorExecutionEvent>{
     if(!Number.isSafeInteger(options.after)||options.after<0)throw new ConnectorClientError('connector_invalid_response','Connector event cursor must be a non-negative safe integer');
     let response:Response;
-    try{response=await this.request(`${this.baseUrl}/v1/executions/${encodeURIComponent(executionId)}/events?after=${options.after}`,{headers:this.headers(),signal:options.signal});}
+    try{response=await this.request(`${this.baseUrl}/v2/executions/${encodeURIComponent(executionId)}/events?after=${options.after}`,{headers:this.headers(),signal:options.signal});}
     catch(error){if(options.signal.aborted)throw error;throw new ConnectorClientError('connector_unavailable','Connector is unavailable');}
     if(!response.ok){throw await this.failure(response,'execution');}
     if(!response.body||!response.headers.get('content-type')?.toLowerCase().includes('text/event-stream'))throw invalidResponse('Connector returned an invalid event stream');

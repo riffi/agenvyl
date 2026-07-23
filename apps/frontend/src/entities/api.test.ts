@@ -44,7 +44,7 @@ describe('entity APIs', () => {
   });
 
   it('loads the aggregated harness catalog through the typed gateway', async () => {
-    const catalog={connectorEpoch:'epoch-1',instances:[{id:'local-hermes',type:'hermes',status:'healthy',capabilities:['model_catalog'],models:[{id:'sol',label:'Sonnet'}],modes:[]}]};
+    const catalog={connectorEpoch:'epoch-1',instances:[{id:'local-hermes',type:'hermes',status:'healthy',capabilities:['model_catalog'],models:[{id:'sol',label:'Sonnet'}],controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]}}]};
     const fetchMock=vi.fn<typeof fetch>().mockResolvedValue(Response.json(catalog));
     vi.stubGlobal('fetch',fetchMock);
     await expect(harnessesApi.catalog()).resolves.toEqual(catalog);

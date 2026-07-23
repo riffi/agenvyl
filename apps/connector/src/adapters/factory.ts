@@ -27,13 +27,14 @@ export function buildConfiguredAdapters(config: ConnectorConfig, env: NodeJS.Pro
     }));
   }
   const antigravityInstances = config.instances.filter(instance => instance.enabled && instance.type === 'antigravity');
-  if (antigravityInstances.length) {
+  for(const instance of antigravityInstances){
     const adapter = new AntigravityConnectorAdapter({
       command: env.AGENVYL_CONNECTOR_AGY_COMMAND,
       env,
+      permissionMode:instance.permissionMode,
       printTimeoutMs: positiveInteger(env.AGENVYL_CONNECTOR_AGY_PRINT_TIMEOUT_MS, 30 * 60_000, 'AGENVYL_CONNECTOR_AGY_PRINT_TIMEOUT_MS'),
     });
-    for (const instance of antigravityInstances) if(instance.permissionMode)adapters.set(instance.id, adapter);
+    if(instance.permissionMode)adapters.set(instance.id, adapter);
   }
   for(const instance of config.instances.filter(candidate=>candidate.enabled&&candidate.type==='codex'))adapters.set(instance.id,new CodexConnectorAdapter({
     command:env.AGENVYL_CONNECTOR_CODEX_COMMAND,

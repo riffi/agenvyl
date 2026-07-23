@@ -12,6 +12,7 @@ export type AppConfig = {
   workspaceRoot: string;
   workspaceAgentRoot: string;
   workspaceMaxFileBytes: number;
+  planModeEnabled: boolean;
 };
 
 export type AppConfigOverrides = Partial<AppConfig>;
@@ -38,10 +39,20 @@ export function resolveAppConfig(overrides: AppConfigOverrides = {}): AppConfig 
     workspaceRoot: overrides.workspaceRoot ?? process.env.AGENVYL_WORKSPACE_ROOT ?? paths.workspaces,
     workspaceAgentRoot: overrides.workspaceAgentRoot ?? process.env.AGENVYL_WORKSPACE_AGENT_ROOT ?? overrides.workspaceRoot ?? process.env.AGENVYL_WORKSPACE_ROOT ?? paths.workspaces,
     workspaceMaxFileBytes: positiveInteger(overrides.workspaceMaxFileBytes ?? process.env.AGENVYL_WORKSPACE_MAX_FILE_BYTES, 50*1024*1024),
+    planModeEnabled: overrides.planModeEnabled ?? featureFlag(process.env.AGENVYL_FEATURE_PLAN_MODE, 'AGENVYL_FEATURE_PLAN_MODE'),
   };
 }
 
 function positiveInteger(value: unknown, fallback: number) {
   const parsed=Number(value);
   return Number.isInteger(parsed)&&parsed>0?parsed:fallback;
+}
+
+function featureFlag(value: unknown, name: string) {
+  if(value===undefined)return false;
+  if(typeof value==='boolean')return value;
+  const normalized=String(value).trim().toLowerCase();
+  if(normalized==='true')return true;
+  if(normalized==='false')return false;
+  throw new Error(`${name} must be true or false`);
 }

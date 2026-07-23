@@ -7,7 +7,7 @@ describe('buildConfiguredAdapters', () => {
     expect(buildConfiguredAdapters(config(), {})).toHaveLength(0);
     const adapters = buildConfiguredAdapters(config(), { AGENVYL_CONNECTOR_HERMES_URL: 'http://localhost:8642' });
     expect([...adapters.keys()]).toEqual(['local-hermes']);
-    expect(adapters.get('local-hermes')).toMatchObject({ type: 'hermes', capabilities: ['model_catalog','text_streaming', 'tools', 'approvals', 'usage'] });
+    expect(adapters.get('local-hermes')).toMatchObject({ type: 'hermes', capabilities: ['model_catalog','execution_profiles','text_streaming', 'tools', 'approvals', 'usage'] });
   });
 
   it('loads Codex while keeping disabled instances unloaded', () => {
@@ -26,7 +26,7 @@ describe('buildConfiguredAdapters', () => {
     expect(buildConfiguredAdapters(value, {})).toHaveLength(0);
     const adapters = buildConfiguredAdapters(value, { AGENVYL_CONNECTOR_OPENCODE_URL: 'http://127.0.0.1:4096' });
     expect([...adapters.keys()]).toEqual(['local-opencode']);
-    expect(adapters.get('local-opencode')).toMatchObject({ type: 'opencode', capabilities: ['model_catalog', 'mode_catalog', 'text_streaming', 'reasoning', 'tools', 'approvals', 'clarifications', 'usage'] });
+    expect(adapters.get('local-opencode')).toMatchObject({ type: 'opencode', capabilities: ['model_catalog', 'execution_profiles', 'text_streaming', 'reasoning', 'tools', 'approvals', 'clarifications', 'usage'] });
   });
 
   it('loads Antigravity only behind the persisted explicit permission mode', () => {
@@ -39,7 +39,7 @@ describe('buildConfiguredAdapters', () => {
       AGENVYL_CONNECTOR_AGY_PRINT_TIMEOUT_MS: '1200000',
     });
     expect([...adapters.keys()]).toEqual(['local-antigravity']);
-    expect(adapters.get('local-antigravity')).toMatchObject({ type: 'antigravity', capabilities: ['model_catalog', 'mode_catalog'] });
+    expect(adapters.get('local-antigravity')).toMatchObject({ type: 'antigravity', capabilities: ['model_catalog', 'execution_profiles'] });
     expect(() => buildConfiguredAdapters(value, { AGENVYL_CONNECTOR_AGY_PRINT_TIMEOUT_MS: 'invalid' })).toThrow('must be a positive integer');
   });
 });

@@ -5,7 +5,7 @@ import {HarnessIcon} from '../../entities/harness';
 import {apiRequest} from '../../shared/api';
 import styles from './SetupPage.module.css';
 
-type Catalog={instances:Array<{id:string;type:string;status:string;models:Array<{id:string;label?:string;supportedModeIds?:string[]}>;modes:Array<{id:string;label?:string}>}>};
+type Catalog={instances:Array<{id:string;type:string;status:string;models:Array<{id:string;label?:string}>;controls:{permissionProfiles:Array<{id:string}>;agentVariants:Array<{id:string}>}}>};
 
 export function SetupPage(){
   const navigate=useNavigate(),location=useLocation(),configure=new URLSearchParams(location.search).get('configure')==='1',[state,setState]=useState<SetupState>(),[selected,setSelected]=useState<string[]>([]),[agy,setAgy]=useState(false),[agyConfirmation,setAgyConfirmation]=useState(''),[claudeOAuthConfirmed,setClaudeOAuthConfirmed]=useState(false),[name,setName]=useState('User'),[handle,setHandle]=useState('user'),[roomTitle,setRoomTitle]=useState('First room'),[busy,setBusy]=useState(false),[error,setError]=useState('');
@@ -18,7 +18,7 @@ export function SetupPage(){
     if(configure&&state?.firstRoomId){navigate(`/rooms/${state.firstRoomId}`,{replace:true});return;}
     const catalog=instances.length?await apiRequest<Catalog>('/api/v1/harnesses'):undefined;
     const first=catalog?.instances.find(instance=>instance.status!=='unavailable'&&instance.models.length);
-    const route:CompleteSetupRequest['route']=first?{harness_instance_id:first.id,harness_type:first.type,model_id:first.models[0].id,mode_id:first.type==='antigravity'?'plan':first.type==='codex'?'workspace-write/default':first.type==='claude'?first.models[0].supportedModeIds?.find(id=>id.startsWith('default/'))??null:first.modes[0]?.id??null}:null;
+    const route:CompleteSetupRequest['route']=first?{harness_instance_id:first.id,harness_type:first.type,model_id:first.models[0].id,permission_profile_id:first.controls.permissionProfiles[0]?.id??null,agent_variant_id:first.controls.agentVariants[0]?.id??null}:null;
     const result=await apiRequest<{roomId:string}>('/api/v1/setup/complete',{method:'POST',body:{locale:'en',workspace_root:state?.workspaceRoot??'',profile:{display_name:name,handle},room_title:roomTitle,route} satisfies CompleteSetupRequest});navigate(`/rooms/${result.roomId}`,{replace:true});
   }catch(issue){setError(message(issue));}finally{setBusy(false);}};
   if(configure)return null;

@@ -92,7 +92,7 @@ export async function runSupervisorDaemon(config: SupervisorConfig, env = proces
       AGENVYL_WORKSPACE_ROOT: config.paths.workspaces,
       AGENVYL_CONNECTOR_PORT: String(config.connectorPort),
     });
-    await waitForHttp(`http://127.0.0.1:${config.connectorPort}/v1/health`, config.readinessTimeoutMs, secrets.connectorToken);
+    await waitForHttp(`http://127.0.0.1:${config.connectorPort}/v2/health`, config.readinessTimeoutMs, secrets.connectorToken);
     children.core = await startNodeComponent('core', config.coreEntrypoint, config, state, {
       ...env,
       AGENVYL_DATABASE_URL: databaseUrl,
@@ -169,7 +169,7 @@ export async function getSupervisorStatus(config: SupervisorConfig): Promise<Run
   const alive = isProcessAlive(state.daemonPid);
   const health: RuntimeStatus['health'] = {};
   if (alive) {
-    health.connector = await httpHealthy(`http://127.0.0.1:${state.ports.connector}/v1/health`) ? 'ready' : 'not_ready';
+    health.connector = await httpHealthy(`http://127.0.0.1:${state.ports.connector}/v2/health`) ? 'ready' : 'not_ready';
     health.core = await httpHealthy(`http://127.0.0.1:${state.ports.core}/api/v1/health`) ? 'ready' : 'not_ready';
     health.postgresql = state.managedPostgres && !isProcessAlive(state.components.postgresql?.pid ?? 0) ? 'not_ready' : 'ready';
   }
