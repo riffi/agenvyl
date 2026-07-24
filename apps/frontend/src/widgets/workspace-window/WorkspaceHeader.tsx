@@ -91,7 +91,7 @@ export const WorkspaceHeader = ({
     callback();
   };
 
-  return <header className={styles.globalHeader}>
+  return <header className={`${styles.globalHeader} ${treeVisible ? styles.treeHeader : styles.viewerHeader}`}>
     <div className={styles.headerLead}>
       <IconButton
         aria-label={treeVisible ? 'Hide workspace files' : 'Show workspace files'}
@@ -99,7 +99,8 @@ export const WorkspaceHeader = ({
         className={treeVisible ? styles.treeToggleActive : ''}
         onClick={onTreeToggle}
       >
-        <PanelLeft />
+        <PanelLeft className={styles.desktopTreeIcon} />
+        <ChevronLeft className={styles.mobileBackIcon} />
       </IconButton>
 
       <div className={styles.workspaceIdentity}>

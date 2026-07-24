@@ -47,6 +47,7 @@ const attachment = (value: WorkspaceVersion): WorkspaceAttachment => ({
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe('WorkspaceWindow', () => {
@@ -107,5 +108,25 @@ describe('WorkspaceWindow', () => {
     /></QueryClientProvider>);
     await waitFor(() => expect(screen.getByText('site')).toBeTruthy());
     expect(screen.getByRole('navigation', { name: 'Workspace files' })).toBeTruthy();
+  });
+
+  it('switches from the full-width mobile tree to the file viewer after selection', async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true })));
+    vi.spyOn(roomsApi, 'workspace').mockResolvedValue({ path: '/room', current_snapshot_id: 'snapshot', materialization_status: 'ready', entries: [entry] });
+    const onRequestChange = vi.fn();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><WorkspaceWindow
+      request={{ origin: 'workspace', treeVisible: true }}
+      roomId="room"
+      onClose={vi.fn()}
+      onRequestChange={onRequestChange}
+    /></QueryClientProvider>);
+
+    fireEvent.click(await screen.findByText('site'));
+    fireEvent.click(screen.getByText('page.html'));
+    expect(onRequestChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      target: { entryId: entry.id, versionId: entry.current_version_id },
+      treeVisible: false,
+    }));
   });
 });

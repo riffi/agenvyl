@@ -152,6 +152,7 @@ export const WorkspaceWindow = ({
       mode: defaultWorkspaceMode(nextAttachment),
       followCurrent: true,
       gallery: undefined,
+      ...(isCompactWorkspace() ? { treeVisible: false } : {}),
     });
   };
 
@@ -242,7 +243,7 @@ export const WorkspaceWindow = ({
     {error && <div className={styles.alert}><Alert tone="error">{error}</Alert></div>}
     {workspaceQuery.error && <div className={styles.alert}><Alert tone="error">{workspaceQuery.error instanceof Error ? workspaceQuery.error.message : String(workspaceQuery.error)}</Alert></div>}
     {notice && <button className={styles.notice} onClick={() => setNotice(undefined)}>{notice}<X /></button>}
-    <div className={styles.layout}>
+    <div className={`${styles.layout} ${treeVisible ? styles.treePane : ''}`}>
       {treeVisible && <div className={styles.explorerShell} style={{ width: explorerWidth }}>
         <WorkspaceExplorer
           entries={visibleEntries}
@@ -318,3 +319,4 @@ const fetchDeletedWorkspace = async (roomId: string, signal?: AbortSignal): Prom
 
 const parentPath = (path: string) => path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
 const clampWidth = (value: number) => Math.max(220, Math.min(460, value));
+const isCompactWorkspace = () => typeof matchMedia === 'function' && matchMedia('(max-width: 899px)').matches;

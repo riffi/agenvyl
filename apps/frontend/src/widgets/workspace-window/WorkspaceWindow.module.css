@@ -1,5 +1,6 @@
 .window{position:fixed;z-index:90;inset:0;display:flex;min-width:0;min-height:0;flex-direction:column;background:#f5f7fa;color:#1f2a3a;animation:workspace-in 150ms cubic-bezier(.2,.8,.2,1)}
 .globalHeader{display:grid;height:48px;flex:none;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:8px;padding:0 9px;border-bottom:1px solid #d9dfe8;background:#fff;box-shadow:0 1px 0 #fff inset}.headerLead{display:flex;min-width:0;align-items:center;gap:8px}.headerLead>button{flex:none}.treeToggleActive{background:#e9edff!important;color:#3949a3!important}
+.mobileBackIcon{display:none}
 .workspaceIdentity{display:flex;min-width:0;align-items:center;gap:7px}.workspaceIcon{width:16px;height:16px;flex:none;color:#4f5fb5}.workspaceIdentity>strong{flex:none;font-size:11px;font-weight:700;letter-spacing:.015em}.identityDivider{flex:none;color:#c2c8d2;font-size:12px}.fileName{min-width:0;overflow:hidden;transform:translateY(1px);color:#738095;font:10px/1.3 "Cascadia Code",Consolas,monospace;text-overflow:ellipsis;white-space:nowrap}.headerCenter{display:flex;min-width:0;align-items:center;justify-content:center;gap:6px}.headerControls{display:flex;min-width:0;align-items:center;justify-self:end;gap:5px}
 .headerModeSwitch{display:flex;height:30px;align-items:center;padding:2px;border:1px solid #dfe4eb;border-radius:7px;background:#f4f6f8}.headerModeSwitch button{display:grid;width:28px;height:24px;place-items:center;padding:0;border:0;border-radius:5px;background:transparent;color:#718096}.headerModeSwitch button:hover{color:#344054}.headerModeSwitch button svg{width:13px;height:13px}.headerModeActive{background:#fff!important;color:#33428e!important;box-shadow:0 1px 3px #15233b1c}
 .layout{display:flex;min-height:0;flex:1}.explorerShell{position:relative;display:flex;min-width:220px;max-width:460px;flex:none}.explorerResizer{position:absolute;z-index:3;top:0;right:-4px;bottom:0;width:8px;cursor:ew-resize}.explorerResizer::after{position:absolute;top:0;right:3px;bottom:0;width:1px;background:#dce2ea;content:""}.explorerResizer:hover::after{width:2px;background:#8290a4}
@@ -15,6 +16,17 @@
 .operationForm{display:grid;gap:7px;padding:18px 20px}.operationForm label{display:grid;gap:6px}.operationForm label>span{color:#475569;font-size:11px;font-weight:600}.validation{color:#b91c1c;font-size:10px}
 .planEditor{display:flex;min-height:0;flex:1;flex-direction:column;gap:8px;padding:14px;background:#f3f5f8}.planEditor>header{display:flex;align-items:center;justify-content:space-between;gap:12px}.planEditor>header>span{display:grid;gap:2px}.planEditor>header strong{font-size:12px}.planEditor>header small{color:#718096;font-size:9px}.planEditor>header>div{display:flex;gap:6px}.planEditor textarea{min-height:0;flex:1;resize:none;padding:20px;border:1px solid #ccd4df;border-radius:8px;outline:0;background:#fff;color:#273449;font:12px/1.65 "Cascadia Code",Consolas,monospace;tab-size:2}.planEditor textarea:focus{border-color:#8492e3;box-shadow:0 0 0 3px #e6e9ff}
 @keyframes workspace-in{from{opacity:.7;transform:scale(.996)}to{opacity:1;transform:none}}
-@media(max-width:899px){.explorerShell{position:absolute;z-index:8;top:48px;bottom:0;left:0;width:min(86vw,340px)!important;max-width:none;box-shadow:18px 0 42px #0f172a2e}.explorerResizer{display:none}.notice{top:54px;max-width:calc(100vw - 24px);white-space:nowrap}}
-@media(max-width:680px){.globalHeader{gap:5px;padding-right:6px;padding-left:6px}.headerLead{gap:5px}.workspaceIdentity{gap:5px}.workspaceIcon{display:none}.identityDivider,.fileName{display:none}.headerCenter{gap:4px}.versionCarousel{height:28px}.versionCarousel>button{width:24px;height:26px}.versionPicker>summary{height:26px;min-width:42px;font-size:9px}.workspaceMenu>summary{width:28px;height:28px}.versionPopover{position:fixed;top:54px;right:8px;left:8px;width:auto}}
+@media(max-width:899px){
+  .globalHeader{grid-template-columns:minmax(0,1fr) auto auto}
+  .treeHeader .headerLead>button,.treeHeader .headerCenter{display:none}
+  .treeHeader .identityDivider,.treeHeader .fileName{display:none}
+  .viewerHeader .desktopTreeIcon,.viewerHeader .workspaceIcon,.viewerHeader .workspaceIdentity>strong,.viewerHeader .identityDivider{display:none}
+  .viewerHeader .mobileBackIcon,.viewerHeader .fileName{display:block}
+  .viewerHeader .fileName{transform:none;color:#3f4c60;font-family:inherit;font-size:11px;font-weight:600;line-height:1.3}
+  .explorerShell{position:static;width:100%!important;min-width:0;max-width:none;flex:1;box-shadow:none}
+  .explorerResizer{display:none}
+  .treePane .viewer{display:none}
+  .notice{top:54px;max-width:calc(100vw - 24px);white-space:nowrap}
+}
+@media(max-width:680px){.globalHeader{gap:5px;padding-right:6px;padding-left:6px}.headerLead{gap:5px}.workspaceIdentity{gap:5px}.viewerHeader .workspaceIcon{display:none}.treeHeader .identityDivider,.treeHeader .fileName{display:none}.viewerHeader .fileName{display:block}.headerCenter{gap:4px}.versionCarousel{height:28px}.versionCarousel>button{width:24px;height:26px}.versionPicker>summary{height:26px;min-width:42px;font-size:9px}.workspaceMenu>summary{width:28px;height:28px}.versionPopover{position:fixed;top:54px;right:8px;left:8px;width:auto}}
 @media(prefers-reduced-motion:reduce){.window{animation:none}}
