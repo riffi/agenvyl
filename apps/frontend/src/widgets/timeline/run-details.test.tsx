@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Persona } from '../../entities/persona';
 import { initialState, roomsApi } from '../../entities/room';
@@ -11,7 +10,7 @@ import { Timeline } from './Timeline';
 import type { WorkspaceAttachment } from '@agenvyl/contracts';
 import styles from './Timeline.module.css';
 
-const persona: Persona = { id: 'persona-1', handle: 'coder', name: 'Coder', role: 'Code', color: '#64748b', requested_model: 'sol', effective_model: null, harness_instance_id: 'local-hermes', harness_type: 'hermes', model_id: 'sol', permission_profile_id:null,agent_variant_id:null, default_reasoning_effort:null, group_id: null, archived_at: null };
+const persona: Persona = { id: 'persona-1', handle: 'coder', name: 'Coder', color: '#64748b', requested_model: 'sol', effective_model: null, harness_instance_id: 'local-hermes', harness_type: 'hermes', model_id: 'sol', permission_profile_id:null,agent_variant_id:null, default_reasoning_effort:null, group_id: null, archived_at: null };
 const run: Run = { id: 'run-1', messageId: 'message-1', agent: 'coder', harnessInstanceId: 'local-hermes', harnessType: 'hermes', modelId: 'sol', executionProfile:{workflowMode:'work',requestedReasoningEffort:null,reasoningEffort:null,reasoningEffortFallback:false,reasoningEffortSource:'auto',planEnforcement:null,permissionProfileId:null,agentVariantId:null,implementationPlanVersionId:null}, status: 'completed', text: 'Готово', tools: [], usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 } };
 const gateway: RoomGateway = { mode: 'fake', subscribe: vi.fn(() => vi.fn()), send: vi.fn(), resolve: vi.fn(), cancel: vi.fn(), retry: vi.fn(), select: vi.fn(), dispose: vi.fn() };
 afterEach(()=>vi.restoreAllMocks());
@@ -20,11 +19,14 @@ describe('Timeline run details', () => {
   it('offers run details when the run has usage but no tool calls', () => {
     const historicalRun={...run,harnessInstanceId:'local-opencode',harnessType:'opencode'};
     const state = { ...initialState, hydrated: true, messages: [{ id: 'message-1', text: '@coder ответь', createdAt: '2026-07-20T12:00:00.000Z', targets: ['coder' as const], runIds: ['run-1'], author: { profileId: 'local-user', displayName: 'User', handle: 'user' }, addressedToAll: false }], runs: { 'run-1': historicalRun }, runOrder: ['run-1'] };
-    const html = renderToStaticMarkup(<Timeline state={state} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()} />);
+    const {container}=render(<Timeline state={state} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()} />);
+    const html=container.innerHTML;
     expect(html).toContain('Run details');
     expect(html).toContain('aria-label="OpenCode"');
     expect(html).not.toContain('aria-label="Hermes"');
     expect(html).not.toContain('Actions');
+    expect(screen.getByRole('button',{name:'Run details: Coder'}).closest('header')).toBeTruthy();
+    expect(container.querySelector(`.${styles['run-meta-row']}`)).toBeNull();
   });
 
   it('keeps tool activity behind the run activity disclosure', () => {

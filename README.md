@@ -39,7 +39,7 @@ Agenvyl gives them one browser-based room:
 ![Diagram showing one message running several agents in an Agenvyl room and collecting their results](docs/assets/how-agenvyl-works.svg)
 
 1. Create a room for a project, review, experiment, or other task.
-2. Add agents with different names, roles, models, and instructions.
+2. Add agents with different names, models, and instructions.
 3. Send one message to an agent, several agents, or `@all`.
 4. Review their completed answers and ask another agent to synthesize the
    result.

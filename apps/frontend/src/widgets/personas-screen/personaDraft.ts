@@ -21,7 +21,6 @@ export const personaHandleAfterNameChange=(previousName:string,nextName:string,c
 export const personaDraftValue = (persona?: Persona) => persona ? JSON.stringify({
   handle: persona.handle,
   name: persona.name,
-  role: persona.role,
   color: persona.color,
   requested_model: persona.requested_model ?? '',
   harness_instance_id: persona.harness_instance_id,
@@ -45,7 +44,7 @@ export const firstRunnableHarness = (catalog?: HarnessCatalog) =>
 
 export const newPersonaDraft = (catalog?: HarnessCatalog): Persona => {
   const instance=firstRunnableHarness(catalog),model=instance?.models[0];
-  return {id:'',handle:'',name:'',role:'',color:'#64748b',requested_model:model?.id??null,harness_instance_id:instance?.id??'',harness_type:instance?.type??'',model_id:model?.id??'',permission_profile_id:instance?.controls.permissionProfiles[0]?.id??null,agent_variant_id:instance?.controls.agentVariants[0]?.id??null,default_reasoning_effort:null,system_prompt:'',group_id:null,archived_at:null};
+  return {id:'',handle:'',name:'',color:'#64748b',requested_model:model?.id??null,harness_instance_id:instance?.id??'',harness_type:instance?.type??'',model_id:model?.id??'',permission_profile_id:instance?.controls.permissionProfiles[0]?.id??null,agent_variant_id:instance?.controls.agentVariants[0]?.id??null,default_reasoning_effort:null,system_prompt:'',group_id:null,archived_at:null};
 };
 
 export const selectHarnessInstance = (draft: Persona, instance: HarnessInstance): Persona => {
@@ -58,7 +57,6 @@ export const selectHarnessModel = (draft: Persona, modelId: string, _instance?:H
 export const personaInputFromDraft = (draft: Persona): PersonaInput => ({
   handle: draft.handle.trim().replace(/^@/,'').toLowerCase(),
   name: draft.name,
-  role: draft.role,
   color: draft.color,
   requested_model: draft.model_id,
   harness_instance_id: draft.harness_instance_id,

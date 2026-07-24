@@ -44,7 +44,6 @@ export class PersonaRepository {
     handle: string;
     name: string;
     room_id?: string;
-    role?: string;
     color?: string;
     requested_model: string;
     harness_instance_id: string;
@@ -60,7 +59,7 @@ export class PersonaRepository {
       id = crypto.randomUUID(),
       vid = crypto.randomUUID();
     await this.database.transaction(async (tx) => {
-      await tx`INSERT INTO personas(id,handle,name,role,color,requested_model,effective_model,harness_instance_id,harness_type,model_id,permission_profile_id,agent_variant_id,default_reasoning_effort,current_version_id,group_id,created_at,updated_at) VALUES(${id},${input.handle},${input.name},${input.role ?? ""},${input.color ?? "#64748b"},${input.requested_model},NULL,${input.harness_instance_id},${input.harness_type},${input.model_id},${input.permission_profile_id},${input.agent_variant_id},${input.default_reasoning_effort},${vid},${input.group_id ?? null},${now},${now})`;
+      await tx`INSERT INTO personas(id,handle,name,color,requested_model,effective_model,harness_instance_id,harness_type,model_id,permission_profile_id,agent_variant_id,default_reasoning_effort,current_version_id,group_id,created_at,updated_at) VALUES(${id},${input.handle},${input.name},${input.color ?? "#64748b"},${input.requested_model},NULL,${input.harness_instance_id},${input.harness_type},${input.model_id},${input.permission_profile_id},${input.agent_variant_id},${input.default_reasoning_effort},${vid},${input.group_id ?? null},${now},${now})`;
       await tx`INSERT INTO persona_versions(id,persona_id,version,requested_model,system_prompt,created_at,harness_instance_id,harness_type,model_id,permission_profile_id,agent_variant_id,default_reasoning_effort) VALUES(${vid},${id},1,${input.requested_model},${input.system_prompt ?? ""},${now},${input.harness_instance_id},${input.harness_type},${input.model_id},${input.permission_profile_id},${input.agent_variant_id},${input.default_reasoning_effort})`;
       if (input.room_id)
         await tx`INSERT INTO room_participants(room_id,persona_id) VALUES(${input.room_id},${id})`;
@@ -72,7 +71,6 @@ export class PersonaRepository {
     input: Partial<{
       handle: string;
       name: string;
-      role: string;
       color: string;
       requested_model: string;
       harness_instance_id: string;
@@ -135,7 +133,7 @@ export class PersonaRepository {
       const [{ n }] =
         await tx`SELECT COALESCE(MAX(version),0)::int+1 n FROM persona_versions WHERE persona_id=${id}`;
       await tx`INSERT INTO persona_versions(id,persona_id,version,requested_model,system_prompt,created_at,harness_instance_id,harness_type,model_id,permission_profile_id,agent_variant_id,default_reasoning_effort) VALUES(${vid},${id},${n as number},${requestedModel},${input.system_prompt ?? prior.system_prompt},${now},${harnessInstanceId},${harnessType},${modelId},${permissionProfileId},${agentVariantId},${defaultReasoningEffort})`;
-      await tx`UPDATE personas SET handle=${input.handle?.toLowerCase() ?? old.handle},name=${input.name ?? old.name},role=${input.role ?? old.role},color=${input.color ?? old.color},requested_model=${requestedModel},harness_instance_id=${harnessInstanceId},harness_type=${harnessType},model_id=${modelId},permission_profile_id=${permissionProfileId},agent_variant_id=${agentVariantId},default_reasoning_effort=${defaultReasoningEffort},group_id=${input.group_id === undefined ? old.group_id : input.group_id},effective_model=NULL,current_version_id=${vid},updated_at=${now} WHERE id=${id}`;
+      await tx`UPDATE personas SET handle=${input.handle?.toLowerCase() ?? old.handle},name=${input.name ?? old.name},color=${input.color ?? old.color},requested_model=${requestedModel},harness_instance_id=${harnessInstanceId},harness_type=${harnessType},model_id=${modelId},permission_profile_id=${permissionProfileId},agent_variant_id=${agentVariantId},default_reasoning_effort=${defaultReasoningEffort},group_id=${input.group_id === undefined ? old.group_id : input.group_id},effective_model=NULL,current_version_id=${vid},updated_at=${now} WHERE id=${id}`;
       return true;
     });
     return updated ? this.find(id) : undefined;

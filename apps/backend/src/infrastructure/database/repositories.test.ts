@@ -31,7 +31,10 @@ describe("PostgreSQL repositories", () => {
         await p.database
           .sql`SELECT version FROM schema_migrations ORDER BY version`
       ).map((row) => row.version),
-    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]);
+    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]);
+    expect(
+      await p.database.sql`SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='personas' AND column_name='role'`,
+    ).toEqual([]);
     expect(
       await p.database.sql`SELECT to_regclass('hermes_session_mappings') name`,
     ).toEqual([{ name: null }]);
@@ -89,6 +92,7 @@ describe("PostgreSQL repositories", () => {
     await sql`INSERT INTO room_messages(id,room_id,text,targets,run_ids,created_at) VALUES('legacy-message','legacy-room','question',${sql.json(["legacy"])},${sql.json(["legacy-run"])},${now})`;
     await sql`INSERT INTO agent_runs(id,message_id,room_id,persona_id,persona_version_id,persona_handle,requested_model,status,created_at,updated_at) VALUES('legacy-run','legacy-message','legacy-room','legacy-persona','legacy-version','legacy','legacy-model','completed',${now},${now})`;
     await sql`INSERT INTO room_events(id,event_id,room_id,sequence,type,payload,created_at) VALUES('legacy-event','legacy-event','legacy-room',1,'run.created',${sql.json({ id: "legacy-run", messageId: "legacy-message", agent: "legacy", requestedModel: "legacy-model", status: "completed", text: "", tools: [] })},${now})`;
+    await sql`INSERT INTO room_events(id,event_id,room_id,sequence,type,payload,created_at) VALUES('legacy-participant-event','legacy-participant-event','legacy-room',2,'room.participant.updated',${sql.json({ persona: { id: "legacy-persona", handle: "legacy", name: "Legacy", role: "Legacy role" }, reasoning_effort_override: null })},${now})`;
     await sql.end();
     const repositories = await createRepositories(url);
     expect(
@@ -96,7 +100,18 @@ describe("PostgreSQL repositories", () => {
         await repositories.database
           .sql`SELECT version FROM schema_migrations ORDER BY version`
       ).map((row) => row.version),
-    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]);
+    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]);
+    expect(
+      await repositories.database.sql`SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='personas' AND column_name='role'`,
+    ).toEqual([]);
+    expect(
+      (
+        await repositories.database.sql`SELECT payload FROM room_events WHERE id='legacy-participant-event'`
+      )[0]?.payload,
+    ).toEqual({
+      persona: { id: "legacy-persona", handle: "legacy", name: "Legacy" },
+      reasoning_effort_override: null,
+    });
     expect((await repositories.database.sql`SELECT current_workspace_snapshot_id FROM rooms WHERE id='legacy-room'`)[0]?.current_workspace_snapshot_id).toBe('initial-legacy-room');
     expect(
       (

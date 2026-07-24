@@ -31,7 +31,9 @@ describe('RunExecutor', () => {
 
     expect(instructions).toContain('Architect (@architect)');
     expect(instructions).toContain('A mention of @architect addresses you');
-    expect(instructions).toContain('- @coder — Coder — Реализация');
+    expect(instructions).toContain('- @coder — Coder');
+    expect(instructions).not.toContain('Architect (@architect), role:');
+    expect(instructions).not.toContain('- @coder — Coder — Реализация');
     expect(instructions).toContain('always use the exact @handle');
     expect(instructions).toContain('Every image in the response must be stored in the room workspace');
     expect(instructions).toContain('Never embed an external image');

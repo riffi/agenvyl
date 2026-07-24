@@ -149,7 +149,6 @@ export type Persona = {
   id: string;
   handle: string;
   name: string;
-  role: string;
   color: string;
   requested_model: string | null;
   effective_model?: string | null;
@@ -208,7 +207,7 @@ export type StructuredQuestion={id:string;header:string;question:string;options?
 export type RunRequestResolution={resolution:string}|{answers:Record<string,string[]>};
 export type ResolveRunRequest = RunRequestResolution;
 export type ApprovalRequest = ResolveRunRequest;
-export type PersonaInput = Pick<Persona, 'handle' | 'name' | 'role' | 'color' | 'group_id'> & {
+export type PersonaInput = Pick<Persona, 'handle' | 'name' | 'color' | 'group_id'> & {
   requested_model?: string | null;
   harness_instance_id?: string;
   model_id?: string;

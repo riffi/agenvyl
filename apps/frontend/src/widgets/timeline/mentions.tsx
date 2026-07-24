@@ -46,7 +46,7 @@ export function MentionLink({handle,personas,onMentionPersona}:{handle:string;pe
     type="button"
     className={styles.mention}
     style={{'--mention-color':persona.color} as CSSProperties}
-    title={`Add @${persona.handle} to the message${persona.role?` · ${persona.role}`:''}`}
+    title={`Add @${persona.handle} to the message`}
     aria-label={`Add ${persona.name}, @${persona.handle}, to the message`}
     onClick={()=>onMentionPersona?.(persona.handle)}
   >{persona.name}</button>;

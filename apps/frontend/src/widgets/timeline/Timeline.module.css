@@ -160,7 +160,8 @@
   overflow: hidden;
   font-size: 10px;
   color: #94a3b8;
-  line-height: 1;
+  line-height: 1.2;
+  padding-bottom: 1px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -201,6 +202,9 @@
   flex: 0 0 auto;
   gap: 3px;
   align-items: center;
+}
+.run-header-actions svg {
+  display: block;
 }
 .run-actions {
   display: flex;
@@ -244,8 +248,8 @@
   color: var(--muted);
 }
 .status-icon svg {
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
   stroke-width: 2;
 }
 .status-icon.queued,
@@ -612,7 +616,7 @@
   width: auto;
   flex: 1;
 }
-.run-meta-details {
+.run-details {
   box-sizing: border-box;
   width: 28px;
   height: 28px;
@@ -622,14 +626,13 @@
   background: transparent;
   color: #8e99a8;
 }
-.run-meta-details:hover {
+.run-details:hover {
   background: #f1f4f7;
   color: #5f6c7e;
 }
-.run-meta-details svg {
-  width: 13px;
-  height: 13px;
-  transform: translateY(1px);
+.run-details svg {
+  width: 16px;
+  height: 16px;
 }
 .run-activity > summary {
   display: flex;

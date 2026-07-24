@@ -439,7 +439,7 @@ select option:disabled{color:var(--muted-2)}
       <!-- ---------- grouped list ---------- -->
       <section class="panel list-panel" ui-spec-block-id="persona_grouped_list" aria-label="Каталог персон">
         <div class="list-head">
-          <input id="persona_search" type="search" placeholder="Фильтр по имени или роли" aria-label="Фильтр персон" autocomplete="off">
+          <input id="persona_search" type="search" placeholder="Фильтр по имени или @handle" aria-label="Фильтр персон" autocomplete="off">
           <button class="mini-btn" id="add_group_btn" type="button">+ Группа</button>
         </div>
         <div class="inline-form" id="group_form" hidden>
@@ -513,10 +513,6 @@ select option:disabled{color:var(--muted-2)}
                     <input id="f_handle" maxlength="16" autocomplete="off" spellcheck="false">
                   </div>
                   <p class="field-msg" id="msg_handle" aria-live="polite"></p>
-                </div>
-                <div class="field">
-                  <label for="f_role">Роль</label>
-                  <input id="f_role" maxlength="60" autocomplete="off">
                 </div>
                 <div class="field">
                   <label for="f_group">Группа</label>
@@ -643,28 +639,28 @@ let groups = [
   {id:'g-edit', name:'Редактура'},
 ];
 let personas = [
-  {id:'p1', name:'Веста',  handle:'vesta', role:'Аналитик-исследователь',    group:'g-res',  color:'#e0a33e', archived:false, rooms:['r-design','r-weekly'],
+  {id:'p1', name:'Веста',  handle:'vesta', group:'g-res',  color:'#e0a33e', archived:false, rooms:['r-design','r-weekly'],
    prompt:'Ты исследуешь открытые источники, сравниваешь данные и сводишь находки в структурированные брифы. Всегда указывай источники и помечай утверждения с низкой уверенностью.',
    harness:'h-eu1', model:'claude-sonnet-4.5', mode:'stream'},
-  {id:'p2', name:'Квант',  handle:'kvant', role:'Аналитик данных и метрик',  group:'g-res',  color:'#5ba3f0', archived:false, rooms:['r-design'],
+  {id:'p2', name:'Квант',  handle:'kvant', group:'g-res',  color:'#5ba3f0', archived:false, rooms:['r-design'],
    prompt:'Анализируешь продуктовые метрики, строишь гипотезы и проверяешь их на данных. Отвечай сжато: таблицы, выводы, следующие шаги.',
    harness:'h-eu3', model:'gpt-5.2', mode:'stream'},
-  {id:'p3', name:'Ортон',  handle:'orton', role:'Backend-инженер',           group:'g-dev',  color:'#62c98f', archived:false, rooms:['r-backend'],
+  {id:'p3', name:'Ортон',  handle:'orton', group:'g-dev',  color:'#62c98f', archived:false, rooms:['r-backend'],
    prompt:'Ты backend-инженер. Ревьюешь архитектуру, предлагаешь решения на Go/PostgreSQL, подсвечиваешь риски и оцениваешь сложность.',
    harness:'h-us2', model:'claude-opus-4.1', mode:'batch'},
-  {id:'p4', name:'Модуль', handle:'modul', role:'Инфраструктура и CI',       group:'g-dev',  color:'#4fd0c3', archived:false, rooms:[],
+  {id:'p4', name:'Модуль', handle:'modul', group:'g-dev',  color:'#4fd0c3', archived:false, rooms:[],
    prompt:'Отвечаешь за инфраструктуру и CI/CD. Проверяешь манифесты, предлагаешь улучшения, предупреждаешь о рисках для продакшена.',
    harness:'h-eu1', model:'qwen3-max', mode:'batch'},
-  {id:'p5', name:'Лира',   handle:'lira',  role:'Редактор и фактчекер',      group:'g-edit', color:'#ef8fb0', archived:false, rooms:['r-design'],
+  {id:'p5', name:'Лира',   handle:'lira', group:'g-edit', color:'#ef8fb0', archived:false, rooms:['r-design'],
    prompt:'Редактируешь тексты, проверяешь факты и унифицируешь терминологию. Сохраняй авторский голос и объясняй правки.',
    harness:'h-eu3', model:'gemini-3-pro', mode:'review'},
-  {id:'p6', name:'Рея',    handle:'rhea',  role:'Продуктовый стратег',       group:null,     color:'#c78bf0', archived:false, rooms:[],
+  {id:'p6', name:'Рея',    handle:'rhea', group:null, color:'#c78bf0', archived:false, rooms:[],
    prompt:'Продуктовый стратег. Оцениваешь инициативы против дорожной карты и задаёшь уточняющие вопросы до выводов.',
    harness:'h-eu1', model:'claude-sonnet-4.5', mode:'stream'},
-  {id:'p7', name:'Голос',  handle:'golos', role:'Секретарь встреч',          group:'g-edit', color:'#a7c957', archived:true, rooms:[],
+  {id:'p7', name:'Голос',  handle:'golos', group:'g-edit', color:'#a7c957', archived:true, rooms:[],
    prompt:'Ведёшь протоколы встреч: повестка, решения, action items с ответственными.',
    harness:'h-eu1', model:'gpt-5.2', mode:'batch'},
-  {id:'p8', name:'Пилот',  handle:'pilot', role:'Ведущий релизных процессов', group:'g-dev', color:'#f0805a', archived:true, rooms:[],
+  {id:'p8', name:'Пилот',  handle:'pilot', group:'g-dev', color:'#f0805a', archived:true, rooms:[],
    prompt:'Координируешь релизный процесс: чек-листы, статусы, блокеры и откаты.',
    harness:'h-us2', model:'claude-sonnet-4.5', mode:'stream'},
 ];
@@ -955,7 +951,6 @@ function renderEditorState(){
   if (empty) return;
   $('f_name').value = draft.name;
   $('f_handle').value = draft.handle;
-  $('f_role').value = draft.role;
   $('f_prompt').value = draft.prompt;
   $('prompt_count').textContent = `${draft.prompt.length} / 4000`;
   buildGroupSelect(draft.group);
@@ -987,7 +982,7 @@ function attemptSelect(id){
 function doCreate(){
   mode = 'create'; selectedId = null; dirty = false;
   draft = {
-    name:'', handle:'', role:'', group:null,
+    name:'', handle:'', group:null,
     color: IDENTITY_COLORS[personas.length % IDENTITY_COLORS.length],
     prompt:'', harness:'h-eu1', model:MODELS[0], mode:'stream', archived:false, rooms:[]
   };
@@ -1038,7 +1033,6 @@ function afterDraft(field){
 }
 $('f_name').addEventListener('input', e => { draft.name = e.target.value; afterDraft('name'); });
 $('f_handle').addEventListener('input', e => { draft.handle = e.target.value.toLowerCase(); e.target.value = draft.handle; afterDraft('handle'); });
-$('f_role').addEventListener('input', e => { draft.role = e.target.value; afterDraft(); });
 $('f_group').addEventListener('change', e => { draft.group = e.target.value || null; afterDraft(); });
 $('f_prompt').addEventListener('input', e => {
   draft.prompt = e.target.value;
@@ -1061,7 +1055,7 @@ function personaRowHTML(p, i){
     <span class="avatar sm" style="--pc:${p.color}" aria-hidden="true">${esc((p.name[0]||'?').toUpperCase())}</span>
     <span class="p-main">
       <span class="p-name">${esc(p.name)}</span>
-      <span class="p-sub">@${esc(p.handle)} · ${esc(p.role || 'без роли')}</span>
+      <span class="p-sub">@${esc(p.handle)}</span>
     </span>
     <span class="p-side">
       ${p.archived ? '<span class="chip arch">архив</span>' : inRoom ? '<span class="chip room">в комнате</span>' : ''}
@@ -1089,7 +1083,7 @@ function movePersona(p, gid){
 }
 function renderList(){
   const q = $('persona_search').value.trim().toLowerCase();
-  const match = p => !q || p.name.toLowerCase().includes(q) || (p.role||'').toLowerCase().includes(q) || p.handle.includes(q);
+  const match = p => !q || p.name.toLowerCase().includes(q) || p.handle.includes(q);
 
   let idx = 0;
   let html = '';

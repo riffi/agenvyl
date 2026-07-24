@@ -41,7 +41,6 @@ export type CreatePersonaInput = {
   handle?: string;
   name?: string;
   room_id?: string;
-  role?: string;
   color?: string;
   system_prompt?: string;
   group_id?: string | null;

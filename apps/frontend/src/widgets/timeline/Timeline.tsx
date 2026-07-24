@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Archive, Ban, Brain, ChevronDown, ChevronUp, CircleCheck, CircleHelp, CircleX, Clock3, FolderCheck, Info, LoaderCircle, Paperclip, RotateCcw, Square, TriangleAlert, BadgeCheck } from 'lucide-react';
+import { Archive, Ban, Brain, Check, ChevronDown, ChevronUp, CircleCheck, CircleHelp, CircleX, Clock3, FolderCheck, Info, LoaderCircle, Paperclip, RotateCcw, Square, TriangleAlert, BadgeCheck } from 'lucide-react';
 import type {RoomPlanState,UpstreamStatus,WorkspaceAttachment,WorkspaceConflictChoice,WorkspaceConflictSide} from '@agenvyl/contracts';
 import {WorkspaceArtifactActions,type OpenWorkspaceArtifact,type WorkspaceTarget} from '../workspace-window';
 import {HarnessIcon,type HarnessCatalog} from '../../entities/harness';
@@ -40,7 +40,7 @@ function StatusIcon({status}:{status:Run['status']}) {
   const icon=activeStatuses.has(status)
     ? <LoaderCircle />
     : status==='completed'
-      ? <CircleCheck />
+      ? <Check />
       : status==='failed'
         ? <CircleX />
         : status==='cancelled'
@@ -74,7 +74,7 @@ function fullModelName(run:Run,persona:Persona,catalog:HarnessCatalog|undefined)
 }
 
 const unknownPersona = (handle: string): Persona => ({
-  id: '', handle, name: `@${handle}`, role: 'Agent unavailable', color: '#64748b', requested_model: null, harness_instance_id:'unknown',harness_type:'unknown',model_id:'unknown',permission_profile_id:null,agent_variant_id:null,default_reasoning_effort:null,group_id:null, archived_at: null,
+  id: '', handle, name: `@${handle}`, color: '#64748b', requested_model: null, harness_instance_id:'unknown',harness_type:'unknown',model_id:'unknown',permission_profile_id:null,agent_variant_id:null,default_reasoning_effort:null,group_id:null, archived_at: null,
 });
 
 export function UpstreamStatusNotice({status}:{status:UpstreamStatus}) {
@@ -167,10 +167,11 @@ function RunCard({
           </span>
           <span className={styles['run-header-actions']}>
             <StatusIcon status={run.status}/>
-            {(canCancel||canRetry)&&<span className={styles['run-actions']}>
+            <span className={styles['run-actions']}>
+              <IconButton className={styles['run-details']} onClick={select} title="Run details" aria-label={`Run details: ${persona.name}`}><Info/></IconButton>
               {canCancel&&<IconButton className={styles['stop-run']} onClick={cancel} title="Stop" aria-label={`Stop ${persona.name} response`}><Square/></IconButton>}
               {canRetry&&<IconButton className={styles['retry-run']} disabled={retrying} onClick={()=>void retryRun()} title={retrying?'Starting…':retryLabel} aria-label={`${retryLabel}: ${persona.name}`}>{retrying?<LoaderCircle className={styles['action-spinner']}/>:<RotateCcw/>}</IconButton>}
-            </span>}
+            </span>
           </span>
         </header>
         {run.upstreamStatus&&<UpstreamStatusNotice status={run.upstreamStatus}/>}
@@ -185,8 +186,8 @@ function RunCard({
         {run.error && <Alert tone="error">{run.error}</Alert>}
         {run.request&&!run.request.resolved&&<RunRequest key={`${run.id}:${run.request.prompt}:${run.request.questions?.map(question=>question.id).join(',')??''}`} request={run.request} resolve={resolve}/>}
         <RunFiles files={changedFiles} openWorkspace={openWorkspace}/>
-        <div className={styles['run-meta-row']}>
-          {hasActivity&&<RunActivity actionCount={run.tools.length} hasWorkspaceEvent={workspaceActivity}>
+        {hasActivity&&<div className={styles['run-meta-row']}>
+          <RunActivity actionCount={run.tools.length} hasWorkspaceEvent={workspaceActivity}>
             {run.workspaceResult?.publish_status==='published'&&publishedFileCount>0&&<div className={`${styles['workspace-state']} ${styles['workspace-state-success']}`} role="status" title="The agent’s captured files are now the current versions in this room."><FolderCheck aria-hidden="true"/><span>Changes applied to room workspace</span><small>· {publishedFileCount} {publishedFileCount===1?'file':'files'}</small></div>}
             {run.workspaceResult?.publish_status==='not_published'&&<div className={styles['workspace-state']} role="status" title="The captured files remain available from this response, but the room workspace was not changed."><Archive aria-hidden="true"/><span>Snapshot saved</span><small>· Room workspace unchanged</small></div>}
             {run.tools.length>0&&<section className={styles['tool-section']} aria-label="Tool calls">
@@ -195,9 +196,8 @@ function RunCard({
                 {run.tools.map(tool=><div key={tool.id}><span><strong>{tool.name}</strong><small>{tool.detail}</small></span><ToolStatusIcon status={tool.status}/></div>)}
               </div>
             </section>}
-          </RunActivity>}
-          <IconButton className={styles['run-meta-details']} onClick={select} title="Run details" aria-label={`Run details: ${persona.name}`}><Info/></IconButton>
-        </div>
+          </RunActivity>
+        </div>}
         {(attemptCount>1||(planModeEnabled&&planArtifact&&plan.current?.version_id===planArtifact.version_id))&&<div className={styles['run-footer']}>
           <span className={styles['run-footer-actions']}>
             {planModeEnabled&&planArtifact&&plan.current?.version_id===planArtifact.version_id&&<button type="button" data-plan-approvable="true" className={`${styles['footer-action']} ${plan.approved?.version_id===planArtifact.version_id?styles['approved-action']:''}`} onClick={()=>void approvePlan(planArtifact.version_id)}><BadgeCheck/><span>{plan.approved?.version_id===planArtifact.version_id?'Approved plan':'Approve plan'}</span></button>}

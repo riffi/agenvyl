@@ -5,7 +5,7 @@ export type DatabaseRow = Record<string, unknown>;
 
 export function toPersona(row: DatabaseRow): Persona {
   return {
-    id: text(row.id), handle: text(row.handle), name: text(row.name), role: text(row.role), color: text(row.color),
+    id: text(row.id), handle: text(row.handle), name: text(row.name), color: text(row.color),
     requested_model: nullableText(row.requested_model), effective_model: nullableText(row.effective_model),
     harness_instance_id:text(row.harness_instance_id),harness_type:text(row.harness_type),model_id:text(row.model_id),permission_profile_id:nullableText(row.permission_profile_id),agent_variant_id:nullableText(row.agent_variant_id),default_reasoning_effort:nullableText(row.default_reasoning_effort),
     current_version_id: text(row.current_version_id), group_id: nullableText(row.group_id),

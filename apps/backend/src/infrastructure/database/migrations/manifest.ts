@@ -20,4 +20,5 @@ export const migrations = [
   { version: 19, name: 'workspace_noop_cleanup', file: '019_workspace_noop_cleanup.sql' },
   { version: 20, name: 'workspace_slots', file: '020_workspace_slots.sql' },
   { version: 21, name: 'workspace_stat_cache', file: '021_workspace_stat_cache.sql' },
+  { version: 22, name: 'remove_persona_role', file: '022_remove_persona_role.sql' },
 ] as const;

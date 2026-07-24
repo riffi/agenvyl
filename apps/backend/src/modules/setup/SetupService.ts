@@ -9,9 +9,9 @@ import {HarnessMetadataCache,unavailableHarnessCache} from '../connector/Harness
 import {isAvailableStarterRoute,selectStarterAgentRoutes,type StarterAgentRoute,type StarterHarnessCatalog} from './starterAgentRoutes.js';
 
 const templates=[
-  {handle:'architect',name:'Architect',role:'Architecture',color:'#3b82f6',prompt:'Analyze the system, contracts, risks, and trade-offs before implementation.'},
-  {handle:'builder',name:'Builder',role:'Implementation',color:'#8b5cf6',prompt:'Turn the agreed plan into concrete, testable implementation.'},
-  {handle:'reviewer',name:'Reviewer',role:'Review',color:'#14b8a6',prompt:'Review the result for regressions, unsafe assumptions, and missing verification.'},
+  {handle:'architect',name:'Architect',color:'#3b82f6',prompt:'Analyze the system, contracts, risks, and trade-offs before implementation.'},
+  {handle:'builder',name:'Builder',color:'#8b5cf6',prompt:'Turn the agreed plan into concrete, testable implementation.'},
+  {handle:'reviewer',name:'Reviewer',color:'#14b8a6',prompt:'Review the result for regressions, unsafe assumptions, and missing verification.'},
 ] as const;
 
 export class SetupService{
@@ -88,7 +88,7 @@ export class SetupService{
       await tx`INSERT INTO rooms(id,title,created_at) VALUES(${roomId},${input.room_title.trim()},${now})`;
       const existing=await tx`SELECT id FROM personas WHERE archived_at IS NULL ORDER BY created_at`;
       if(starterRoutes.length&&!existing.length)for(const[templateIndex,template]of templates.entries()){const id=crypto.randomUUID(),versionId=crypto.randomUUID(),route=starterRoutes[templateIndex]!;
-        await tx`INSERT INTO personas(id,handle,name,role,color,requested_model,effective_model,harness_instance_id,harness_type,model_id,permission_profile_id,agent_variant_id,current_version_id,created_at,updated_at) VALUES(${id},${template.handle},${template.name},${template.role},${template.color},${route.model_id},NULL,${route.harness_instance_id},${route.harness_type},${route.model_id},${route.permission_profile_id},${route.agent_variant_id},${versionId},${now},${now})`;
+        await tx`INSERT INTO personas(id,handle,name,color,requested_model,effective_model,harness_instance_id,harness_type,model_id,permission_profile_id,agent_variant_id,current_version_id,created_at,updated_at) VALUES(${id},${template.handle},${template.name},${template.color},${route.model_id},NULL,${route.harness_instance_id},${route.harness_type},${route.model_id},${route.permission_profile_id},${route.agent_variant_id},${versionId},${now},${now})`;
         await tx`INSERT INTO persona_versions(id,persona_id,version,requested_model,system_prompt,created_at,harness_instance_id,harness_type,model_id,permission_profile_id,agent_variant_id) VALUES(${versionId},${id},1,${route.model_id},${template.prompt},${now},${route.harness_instance_id},${route.harness_type},${route.model_id},${route.permission_profile_id},${route.agent_variant_id})`;
         await tx`INSERT INTO room_participants(room_id,persona_id) VALUES(${roomId},${id})`;
       }

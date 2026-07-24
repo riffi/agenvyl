@@ -1403,6 +1403,30 @@ describe("persona lifecycle", () => {
       system_prompt: "hello",
       archived_at: null,
     });
+    expect(persona).not.toHaveProperty("role");
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/api/v1/personas",
+          payload: {
+            handle: "legacy_create",
+            name: "Legacy create",
+            role: "Legacy role",
+            requested_model: "sol",
+          },
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: "PUT",
+          url: `/api/v1/personas/${persona.id}`,
+          payload: { role: "Legacy role" },
+        })
+      ).statusCode,
+    ).toBe(400);
     expect(
       (
         await app.inject({

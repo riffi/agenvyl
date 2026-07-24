@@ -7,7 +7,7 @@ import type {Persona} from '../../entities/persona';
 import type {RoomGateway} from '../../features/room-session';
 import {Composer} from './Composer';
 
-const persona:Persona={id:'coder',handle:'coder',name:'Coder',role:'Implementation',color:'#64748b',requested_model:'anthropic/claude-sonnet',harness_instance_id:'local-opencode',harness_type:'opencode',model_id:'anthropic/claude-sonnet',permission_profile_id:null,agent_variant_id:null,default_reasoning_effort:null,group_id:null,archived_at:null};
+const persona:Persona={id:'coder',handle:'coder',name:'Coder',color:'#64748b',requested_model:'anthropic/claude-sonnet',harness_instance_id:'local-opencode',harness_type:'opencode',model_id:'anthropic/claude-sonnet',permission_profile_id:null,agent_variant_id:null,default_reasoning_effort:null,group_id:null,archived_at:null};
 const cache={state:'fresh' as const,refreshedAt:'2026-07-24T00:00:00.000Z',expiresAt:'2026-07-24T00:05:00.000Z'};
 const catalog:HarnessCatalog={connectorEpoch:'epoch',cache,instances:[{id:'local-opencode',type:'opencode',status:'healthy',capabilities:[],models:[{id:'anthropic/claude-sonnet',label:'Claude Sonnet'}],controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[],agentVariants:[]},catalogCache:{state:'fresh',refreshedAt:cache.refreshedAt}}]};
 const gateway:RoomGateway={mode:'fake',subscribe:vi.fn(()=>vi.fn()),send:vi.fn(),resolve:vi.fn(),cancel:vi.fn(),retry:vi.fn(),select:vi.fn(),dispose:vi.fn()};
@@ -16,7 +16,7 @@ const sentMessage={id:'message-1',text:'',createdAt:'2026-07-22T00:00:00.000Z',t
 afterEach(()=>{cleanup();vi.unstubAllGlobals()});
 
 describe('Composer agent list',()=>{
-  it('shows the model rather than the persona role in mention suggestions',()=>{
+  it('shows the model in mention suggestions',()=>{
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
     render(<Composer gateway={gateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()}/>);
     fireEvent.change(screen.getByPlaceholderText('Message… Use @handle or @all'),{target:{value:'@'}});

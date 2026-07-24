@@ -38,21 +38,23 @@ const planVersionRefSchema=objectSchema({entry_id:{type:'string'},version_id:{ty
 const roomPlanStateSchema=objectSchema({path:{type:'string',const:'plan.md'},current:{anyOf:[{type:'null'},planVersionRefSchema]},approved:{anyOf:[{type:'null'},planVersionRefSchema]}},['path','current','approved']);
 export const roomExecutionStateResponseSchema=objectSchema({plan:roomPlanStateSchema},['plan']);
 
-export const createPersonaBodySchema = objectSchema({
-  handle: { type: 'string' },
-  name: { type: 'string' },
-  room_id: { type: 'string' },
-  role: { type: 'string' },
-  color: { type: 'string' },
-  requested_model: nullableStringSchema,
-  harness_instance_id: { type: 'string' },
-  model_id: { type: 'string' },
-  permission_profile_id: nullableStringSchema,
-  agent_variant_id: nullableStringSchema,
-  default_reasoning_effort: nullableStringSchema,
-  system_prompt: { type: 'string' },
-  group_id: nullableStringSchema,
-});
+export const createPersonaBodySchema = {
+  ...objectSchema({
+    handle: { type: 'string' },
+    name: { type: 'string' },
+    room_id: { type: 'string' },
+    color: { type: 'string' },
+    requested_model: nullableStringSchema,
+    harness_instance_id: { type: 'string' },
+    model_id: { type: 'string' },
+    permission_profile_id: nullableStringSchema,
+    agent_variant_id: nullableStringSchema,
+    default_reasoning_effort: nullableStringSchema,
+    system_prompt: { type: 'string' },
+    group_id: nullableStringSchema,
+  }),
+  not: { required: ['role'] },
+} as const;
 
 export const groupBodySchema=objectSchema({name:{type:'string',maxLength:80}});
 export const moveGroupBodySchema=objectSchema({direction:{type:'string',enum:['up','down']}},['direction']);
@@ -62,6 +64,7 @@ export const updatePersonaBodySchema = {
   type: 'object',
   additionalProperties: true,
   properties: createPersonaBodySchema.properties,
+  not: { required: ['role'] },
 } as const;
 
 export const createMessageBodySchema = objectSchema({
@@ -91,12 +94,12 @@ export const personaGroupResponseSchema=objectSchema({
 },['id','name','position','created_at','updated_at']);
 
 export const personaResponseSchema=objectSchema({
-  id:{type:'string'},handle:{type:'string'},name:{type:'string'},role:{type:'string'},color:{type:'string'},
+  id:{type:'string'},handle:{type:'string'},name:{type:'string'},color:{type:'string'},
   requested_model:nullableStringSchema,effective_model:nullableStringSchema,
   harness_instance_id:{type:'string'},harness_type:{type:'string'},model_id:{type:'string'},permission_profile_id:nullableStringSchema,agent_variant_id:nullableStringSchema,default_reasoning_effort:nullableStringSchema,
   current_version_id:{type:'string'},system_prompt:{type:'string'},group_id:nullableStringSchema,
   created_at:{type:'string'},updated_at:{type:'string'},archived_at:nullableStringSchema,
-},['id','handle','name','role','color','requested_model','harness_instance_id','harness_type','model_id','permission_profile_id','agent_variant_id','default_reasoning_effort','group_id','archived_at']);
+},['id','handle','name','color','requested_model','harness_instance_id','harness_type','model_id','permission_profile_id','agent_variant_id','default_reasoning_effort','group_id','archived_at']);
 export const roomPersonaResponseSchema=objectSchema({persona:personaResponseSchema,reasoning_effort_override:nullableStringSchema},['persona','reasoning_effort_override']);
 export const participantListResponseSchema={type:'array',items:roomPersonaResponseSchema} as const;
 

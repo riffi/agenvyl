@@ -25,7 +25,6 @@ const unknownPersona = (handle: string): Persona => ({
   id: "",
   handle,
   name: `@${handle}`,
-  role: "Agent unavailable",
   color: "#64748b",
   requested_model: null,
   harness_instance_id:'unknown',harness_type:'unknown',model_id:'unknown',permission_profile_id:null,agent_variant_id:null,
