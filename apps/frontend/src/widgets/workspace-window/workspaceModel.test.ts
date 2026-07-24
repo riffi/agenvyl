@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { decodeWorkspaceBytes, detectWorkspaceEncoding } from './workspaceText';
-import { workspaceModesFor, workspaceRequestFromSearch, workspaceSearchWithRequest } from './workspaceModel';
+import { workspaceModesFor, workspaceRequestForTarget, workspaceRequestFromSearch, workspaceSearchWithRequest } from './workspaceModel';
 
 describe('workspace viewer model', () => {
   it('assigns rendered and source modes without trusting MIME alone', () => {
@@ -23,6 +23,18 @@ describe('workspace viewer model', () => {
       mode: 'source',
       treeVisible: false,
     });
+  });
+
+  it('opens a targeted file directly on compact screens', () => {
+    const target = { entryId: 'entry-1', versionId: 'version-2' };
+    expect(workspaceRequestForTarget(target, true)).toEqual({
+      origin: 'workspace',
+      target,
+      treeVisible: false,
+      followCurrent: false,
+    });
+    expect(workspaceRequestForTarget(target, false).treeVisible).toBe(true);
+    expect(workspaceRequestForTarget(undefined, true).treeVisible).toBe(true);
   });
 
   it('detects BOM, strict UTF-8 and supports manual Cyrillic decoding', () => {

@@ -129,4 +129,26 @@ describe('WorkspaceWindow', () => {
       treeVisible: false,
     }));
   });
+
+  it('shows a targeted file instead of the full-width tree on mobile', async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true })));
+    const latest = version('version-2', '2026-07-23T10:00:00.000Z');
+    vi.spyOn(roomsApi, 'workspace').mockResolvedValue({ path: '/room', current_snapshot_id: 'snapshot', materialization_status: 'ready', entries: [entry] });
+    vi.spyOn(roomsApi, 'versions').mockResolvedValue([latest]);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><WorkspaceWindow
+      request={{
+        origin: 'workspace',
+        target: { entryId: entry.id, versionId: latest.id },
+        treeVisible: false,
+      }}
+      roomId="room"
+      onClose={vi.fn()}
+      onRequestChange={vi.fn()}
+    /></QueryClientProvider>);
+
+    expect(screen.queryByRole('navigation', { name: 'Workspace files' })).toBeNull();
+    expect(await screen.findByText('page.html')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Show workspace files' })).toBeTruthy();
+  });
 });

@@ -42,6 +42,16 @@ export type OpenWorkspaceArtifact = (
   opener?: HTMLElement | null,
 ) => void;
 
+export const workspaceRequestForTarget = (
+  target?: WorkspaceTarget,
+  compact = isCompactWorkspace(),
+): WorkspaceOpenRequest => ({
+  origin: 'workspace',
+  target,
+  treeVisible: !target || !compact,
+  followCurrent: !target?.versionId,
+});
+
 export type WorkspaceRequestUpdate = {
   target?: WorkspaceTarget;
   mode?: WorkspaceViewMode;
@@ -144,3 +154,6 @@ export const workspaceSearchWithRequest = (current: URLSearchParams, request?: W
   if ('origin' in request) next.set('wsOrigin', request.origin);
   return next;
 };
+
+const isCompactWorkspace = () =>
+  typeof matchMedia === 'function' && matchMedia('(max-width: 899px)').matches;

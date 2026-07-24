@@ -12,7 +12,7 @@ import {AttachmentPicker,useRoomAttachments} from '../../features/send-message';
 import {useRuntimeFeatures} from '../../shared/features';
 import { FakeRoomGateway, HttpRoomGateway, type RoomGateway } from "../../features/room-session";
 import { Button, EmptyState } from "../../shared/ui";
-import { WorkspaceWindow, workspaceRequestFromSearch, workspaceSearchWithRequest, type OpenWorkspaceArtifact, type WorkspaceOpenRequest, type WorkspaceRequestUpdate, type WorkspaceTarget } from '../workspace-window';
+import { WorkspaceWindow, workspaceRequestForTarget, workspaceRequestFromSearch, workspaceSearchWithRequest, type OpenWorkspaceArtifact, type WorkspaceOpenRequest, type WorkspaceRequestUpdate, type WorkspaceTarget } from '../workspace-window';
 import { Composer, type ComposerHandle } from "../composer";
 import { PersonasScreen } from "../personas-screen";
 import { RoomHeader } from "../room-header";
@@ -175,7 +175,7 @@ export function WorkspaceApp({
     setWorkspaceTransient(request);
     setSearchParams(workspaceSearchWithRequest(searchParams,request),{replace:false});
   },[searchParams,setSearchParams]);
-  const openWorkspace=useCallback((target?:WorkspaceTarget)=>pushWorkspace({origin:'workspace',target,treeVisible:true,followCurrent:!target?.versionId}),[pushWorkspace]);
+  const openWorkspace=useCallback((target?:WorkspaceTarget)=>pushWorkspace(workspaceRequestForTarget(target)),[pushWorkspace]);
   const openArtifact=useCallback<OpenWorkspaceArtifact>((attachment,gallery,opener)=>{
     const candidates=gallery?.some(item=>item.version_id===attachment.version_id)?gallery:[attachment,...(gallery??[])];
     pushWorkspace({

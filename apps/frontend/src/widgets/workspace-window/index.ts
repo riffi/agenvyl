@@ -3,6 +3,7 @@ export { WorkspaceArtifactActions } from './WorkspaceArtifactActions';
 export {
   defaultWorkspaceMode,
   workspaceRequestFromSearch,
+  workspaceRequestForTarget,
   workspaceSearchWithRequest,
   type WorkspaceOpenRequest,
   type OpenWorkspaceArtifact,
