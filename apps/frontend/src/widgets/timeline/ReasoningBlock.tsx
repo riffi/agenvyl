@@ -1,4 +1,4 @@
-import {Brain} from 'lucide-react';
+import {Brain,ChevronDown} from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import styles from './Timeline.module.css';
@@ -6,7 +6,7 @@ import styles from './Timeline.module.css';
 export const ReasoningBlock=({text,harnessType}:{text:string;harnessType?:string})=>{
   const markdown=harnessType==='codex'?text.replaceAll('****','**\n\n**'):text;
   return <details className={styles.reasoning}>
-    <summary><Brain/>Reasoning</summary>
+    <summary><Brain className={styles['reasoning-icon']}/><span>Reasoning</span><ChevronDown className={styles['reasoning-chevron']}/></summary>
     <div className={styles.reasoningBody}>
       <Markdown
         remarkPlugins={[remarkGfm]}

@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Archive, Ban, Brain, ChevronDown, ChevronUp, CircleCheck, CircleHelp, CircleX, Clock3, File, FolderCheck, FoldVertical, Info, LoaderCircle, Paperclip, RotateCcw, Square, TriangleAlert, UnfoldVertical, Wrench, BadgeCheck } from 'lucide-react';
+import { Archive, Ban, Brain, ChevronDown, ChevronUp, CircleCheck, CircleHelp, CircleX, Clock3, FolderCheck, Info, LoaderCircle, Paperclip, RotateCcw, Square, TriangleAlert, BadgeCheck } from 'lucide-react';
 import type {RoomPlanState,UpstreamStatus,WorkspaceAttachment,WorkspaceConflictChoice,WorkspaceConflictSide} from '@agenvyl/contracts';
 import {WorkspaceArtifactActions,type OpenWorkspaceArtifact,type WorkspaceTarget} from '../workspace-window';
 import {HarnessIcon,type HarnessCatalog} from '../../entities/harness';
@@ -14,6 +14,8 @@ import { isLongAnswer, shouldUseSingleColumn } from './layout';
 import { MarkdownAnswer } from './MarkdownAnswer';
 import {MentionText} from './mentions';
 import {ReasoningBlock} from './ReasoningBlock';
+import {RunActivity} from './RunActivity';
+import {RunFiles} from './RunFiles';
 import {RunRequest} from './RunRequest';
 
 export { MarkdownAnswer } from './MarkdownAnswer';
@@ -49,6 +51,12 @@ function StatusIcon({status}:{status:Run['status']}) {
               ? <CircleHelp />
               : <Clock3 />;
   return <span className={`${styles['status-icon']} ${styles[status]} ${activeStatuses.has(status)?styles.spinning:''}`} role="img" aria-label={`Status: ${label}`} title={label}>{icon}</span>;
+}
+
+function ToolStatusIcon({status}:{status:Run['tools'][number]['status']}) {
+  const label=status==='completed'?'Completed':status==='progress'?'In progress':'Started';
+  const icon=status==='completed'?<CircleCheck/>:status==='progress'?<LoaderCircle/>:<Clock3/>;
+  return <span className={`${styles['tool-status']} ${styles[`tool-status-${status}`]}`} role="img" aria-label={`Tool status: ${label}`} title={label}>{icon}</span>;
 }
 
 function catalogModel(run:Run,catalog:HarnessCatalog|undefined){return catalog?.instances.find(instance=>instance.id===run.harnessInstanceId)?.models.find(model=>model.id===run.modelId)?.label;}
@@ -104,7 +112,6 @@ function RunCard({
   plan,
   approvePlan=async()=>{},
   openWorkspace,
-  openArtifact,
   planModeEnabled=true,
   roomId,
 }: {
@@ -127,17 +134,19 @@ function RunCard({
   plan:RoomPlanState;
   approvePlan?:(versionId:string)=>Promise<void>;
   openWorkspace:(target:WorkspaceTarget)=>void;
-  openArtifact:OpenWorkspaceArtifact;
   planModeEnabled?:boolean;
   roomId:string;
 }) {
-  const [retrying,setRetrying]=useState(false);const [retryError,setRetryError]=useState<string>();const [toolsOpen,setToolsOpen]=useState(false);
+  const [retrying,setRetrying]=useState(false);const [retryError,setRetryError]=useState<string>();
   const answer = run.text || (run.status === "queued" ? "Waiting for an available slot…" : "Analyzing…");
   const canCancel=['queued','streaming','waiting_approval','waiting_clarification'].includes(run.status);
   const retryLabel=run.status==='completed'?'Create another response':'Run again';
   const retryRun=async()=>{setRetrying(true);setRetryError(undefined);try{await retry()}catch(error){setRetryError(error instanceof Error?error.message:String(error))}finally{setRetrying(false)}};
   const planArtifact=run.artifacts?.find(item=>item.attribution==='exact'&&item.path==='plan.md'&&item.change!=='deleted');
   const publishedFileCount=run.artifacts?.filter(item=>item.attribution==='exact').length??0;
+  const changedFiles=run.artifacts?.filter(item=>item.attribution==='exact'&&!run.embeds?.some(embed=>embed.status==='resolved'&&embed.attachment?.version_id===item.version_id))??[];
+  const workspaceActivity=run.workspaceResult?.publish_status==='published'||run.workspaceResult?.publish_status==='not_published';
+  const hasActivity=Boolean(workspaceActivity||run.tools.length);
   return (
     <article
       className={`${styles['run-card']} ${styles[run.status]}`}
@@ -149,9 +158,9 @@ function RunCard({
           <span className={styles['run-identity']}>
             <span className={styles['run-name']}>
               <strong style={{ color: persona.color }}>{persona.name}</strong>
-              <HarnessIcon type={run.harnessType}/>
             </span>
             <span className={styles['model-meta']}>
+              <HarnessIcon type={run.harnessType}/>
               <small className={styles['model-label']} title={fullModelName(run,persona,harnessCatalog)}>{modelName(run,persona,harnessCatalog)}</small>
               <small className={styles['reasoning-level']} aria-label={`Reasoning effort: ${run.executionProfile.reasoningEffort??'Auto'}`} title={`Reasoning: ${run.executionProfile.reasoningEffort??'Auto'} · ${run.executionProfile.reasoningEffortSource.replaceAll('_',' ')}${run.executionProfile.reasoningEffortFallback?` · fallback from ${run.executionProfile.requestedReasoningEffort}`:''}`}><Brain/><span>{run.executionProfile.reasoningEffort??'Auto'}</span></small>
             </span>
@@ -164,30 +173,36 @@ function RunCard({
             </span>}
           </span>
         </header>
-        {run.reasoning&&<ReasoningBlock text={run.reasoning} harnessType={run.harnessType}/>}
         {run.upstreamStatus&&<UpstreamStatusNotice status={run.upstreamStatus}/>}
         {run.status==='finalizing'&&<div className={`${styles['workspace-state']} ${styles['workspace-state-progress']}`} role="status" aria-live="polite"><LoaderCircle aria-hidden="true"/><span>Finalizing files…</span></div>}
-        {run.workspaceResult?.publish_status==='published'&&publishedFileCount>0&&<div className={`${styles['workspace-state']} ${styles['workspace-state-success']}`} role="status" title="The agent’s captured files are now the current versions in this room."><FolderCheck aria-hidden="true"/><span>Changes applied to room workspace</span><small>· {publishedFileCount} {publishedFileCount===1?'file':'files'}</small></div>}
         {run.workspaceResult?.publish_status==='partially_published'&&<WorkspaceConflictPanel roomId={roomId} runId={run.id}/>}
-        {run.workspaceResult?.publish_status==='not_published'&&<div className={styles['workspace-state']} role="status" title="The captured files remain available from this response, but the room workspace was not changed."><Archive aria-hidden="true"/><span>Snapshot saved</span><small>· Room workspace unchanged</small></div>}
+        {run.reasoning&&<ReasoningBlock text={run.reasoning} harnessType={run.harnessType}/>}
         <div className={`${styles.answer} ${collapsed?styles['answer-collapsed']:''}`}>
           <MarkdownAnswer text={answer} run={run} personas={personas} onMentionPersona={onMentionPersona} openWorkspace={attachment=>openWorkspace({entryId:attachment.entry_id,versionId:attachment.version_id})}/>
           {run.status === "streaming" && <i className={styles.cursor} />}
         </div>
         {isLongAnswer(run.text)&&run.status==='completed'&&<button className={`${styles['answer-toggle']} ${collapsed?styles.expand:styles.collapse}`} type="button" onClick={toggleCollapsed} aria-expanded={!collapsed}>{collapsed?<><span>Expand response</span><ChevronDown/></>:<><span>Collapse response</span><ChevronUp/></>}</button>}
         {run.error && <Alert tone="error">{run.error}</Alert>}
-        {run.request&&<RunRequest key={`${run.id}:${run.request.prompt}:${run.request.questions?.map(question=>question.id).join(',')??''}`} request={run.request} resolve={resolve}/>}
-        {run.artifacts?.some(item=>item.attribution==='exact'&&!run.embeds?.some(embed=>embed.status==='resolved'&&embed.attachment?.version_id===item.version_id))&&<div className={styles.artifacts}>{run.artifacts.filter(item=>item.attribution==='exact'&&!run.embeds?.some(embed=>embed.status==='resolved'&&embed.attachment?.version_id===item.version_id)).map(item=><ArtifactCard key={item.version_id} attachment={item} detail={item.change==='created'?'Created':item.change==='updated'?'Updated':'Deleted'} gallery={run.artifacts} openArtifact={openArtifact} openWorkspace={openWorkspace}/>)}</div>}
-        <div className={styles['run-footer']}>
+        {run.request&&!run.request.resolved&&<RunRequest key={`${run.id}:${run.request.prompt}:${run.request.questions?.map(question=>question.id).join(',')??''}`} request={run.request} resolve={resolve}/>}
+        <RunFiles files={changedFiles} openWorkspace={openWorkspace}/>
+        <div className={styles['run-meta-row']}>
+          {hasActivity&&<RunActivity actionCount={run.tools.length} hasWorkspaceEvent={workspaceActivity}>
+            {run.workspaceResult?.publish_status==='published'&&publishedFileCount>0&&<div className={`${styles['workspace-state']} ${styles['workspace-state-success']}`} role="status" title="The agent’s captured files are now the current versions in this room."><FolderCheck aria-hidden="true"/><span>Changes applied to room workspace</span><small>· {publishedFileCount} {publishedFileCount===1?'file':'files'}</small></div>}
+            {run.workspaceResult?.publish_status==='not_published'&&<div className={styles['workspace-state']} role="status" title="The captured files remain available from this response, but the room workspace was not changed."><Archive aria-hidden="true"/><span>Snapshot saved</span><small>· Room workspace unchanged</small></div>}
+            {run.tools.length>0&&<section className={styles['tool-section']} aria-label="Tool calls">
+              <h4>Tool calls <span>{run.tools.length}</span></h4>
+              <div className={styles['tool-activity']}>
+                {run.tools.map(tool=><div key={tool.id}><span><strong>{tool.name}</strong><small>{tool.detail}</small></span><ToolStatusIcon status={tool.status}/></div>)}
+              </div>
+            </section>}
+          </RunActivity>}
+          <IconButton className={styles['run-meta-details']} onClick={select} title="Run details" aria-label={`Run details: ${persona.name}`}><Info/></IconButton>
+        </div>
+        {(attemptCount>1||(planModeEnabled&&planArtifact&&plan.current?.version_id===planArtifact.version_id))&&<div className={styles['run-footer']}>
           <span className={styles['run-footer-actions']}>
-            {run.tools.length>0&&<button type="button" className={styles['footer-action']} onClick={()=>setToolsOpen(open=>!open)} aria-expanded={toolsOpen} aria-controls={`run-tools-${run.id}`}><Wrench/><span>Actions</span><em>{run.tools.length}</em>{toolsOpen?<ChevronUp className={styles.disclosure}/>:<ChevronDown className={styles.disclosure}/>}</button>}
-            <button type="button" className={styles['footer-action']} onClick={select}><Info/><span>Run details</span></button>
             {planModeEnabled&&planArtifact&&plan.current?.version_id===planArtifact.version_id&&<button type="button" data-plan-approvable="true" className={`${styles['footer-action']} ${plan.approved?.version_id===planArtifact.version_id?styles['approved-action']:''}`} onClick={()=>void approvePlan(planArtifact.version_id)}><BadgeCheck/><span>{plan.approved?.version_id===planArtifact.version_id?'Approved plan':'Approve plan'}</span></button>}
           </span>
           {attemptCount>1&&<span className={styles['attempt-carousel']}><IconButton onClick={previousAttempt} disabled={attemptIndex===0} aria-label="Previous attempt">‹</IconButton><small>{attemptIndex+1} of {attemptCount}</small><IconButton onClick={nextAttempt} disabled={attemptIndex===attemptCount-1} aria-label="Next attempt">›</IconButton></span>}
-        </div>
-        {run.tools.length>0&&toolsOpen&&<div id={`run-tools-${run.id}`} className={styles['tool-activity']}>
-          {run.tools.map(tool=><div key={tool.id}><i className={tool.status}/><span><strong>{tool.name}</strong><small>{tool.detail}</small></span><em>{tool.status}</em></div>)}
         </div>}
         {retryError&&<Alert tone="error">{retryError}</Alert>}
       </div>
@@ -231,6 +246,7 @@ export function Timeline({
   const [attemptView,setAttemptView]=useState<Record<string,string>>({});
   const [expandedAnswers,setExpandedAnswers]=useState<Set<string>>(()=>new Set());
   const [collapsedAnswers,setCollapsedAnswers]=useState<Set<string>>(()=>new Set());
+  const [focusedResponseSlots,setFocusedResponseSlots]=useState<Record<string,string>>({});
   const streamedRunsRef=useRef(new Set<string>());
   const timelineRef=useRef<HTMLElement>(null);
   const prependAnchorRef=useRef<{height:number;top:number}|undefined>(undefined);
@@ -277,14 +293,17 @@ export function Timeline({
         const visibleGroups=groups.map(([slot,attemptIds])=>{const activeAttempt=[...attemptIds].reverse().map(id=>state.runs[id]).find((run:Run)=>['queued','streaming','finalizing','stopping','waiting_approval','waiting_clarification'].includes(run.status));const shownId=activeAttempt?.id??attemptView[slot]??state.selectedRuns[slot]??attemptIds.at(-1)!;const shownIndex=Math.max(0,attemptIds.indexOf(shownId));return{slot,attemptIds,activeAttempt,shownIndex,id:attemptIds[shownIndex]}});
         const visibleRuns=visibleGroups.flatMap(group=>state.runs[group.id]?[state.runs[group.id]]:[]);
         visibleRuns.forEach(run=>{if(run.status==='streaming')streamedRunsRef.current.add(run.id)});
-        const longRuns=visibleRuns.filter(run=>isLongAnswer(run.text)&&run.status==='completed');
         const isCollapsed=(run:Run)=>isLongAnswer(run.text)&&run.status==='completed'&&(collapsedAnswers.has(run.id)||(!expandedAnswers.has(run.id)&&!streamedRunsRef.current.has(run.id)));
-        const setLongRunsExpanded=(expanded:boolean)=>{setExpandedAnswers(current=>{const next=new Set(current);longRuns.forEach(run=>expanded?next.add(run.id):next.delete(run.id));return next});setCollapsedAnswers(current=>{const next=new Set(current);longRuns.forEach(run=>expanded?next.delete(run.id):next.add(run.id));return next})};
         const singleColumn=shouldUseSingleColumn(visibleRuns.map(run=>run.text));
+        const responseTabs=singleColumn&&visibleGroups.length>1;
+        const focusedSlot=focusedResponseSlots[m.id]&&visibleGroups.some(group=>group.slot===focusedResponseSlots[m.id])
+          ? focusedResponseSlots[m.id]
+          : visibleGroups.find(group=>group.activeAttempt)?.slot??visibleGroups[0]?.slot;
+        const displayedGroups=responseTabs?visibleGroups.filter(group=>group.slot===focusedSlot):visibleGroups;
         const imageAttachments=(m.attachments??[]).filter(item=>item.mime_type.startsWith('image/'));
         const fileAttachments=(m.attachments??[]).filter(item=>!item.mime_type.startsWith('image/'));
         return (
-        <section className={`${styles.round} ${longRuns.length?styles['has-answer-navigation']:''}`} data-timeline-layout key={m.id}>
+        <section className={`${styles.round} ${responseTabs?styles['has-answer-navigation']:''}`} data-timeline-layout key={m.id}>
           <div className={`${styles['user-message']} ${imageAttachments.length?styles['with-images']:''}`}>
             <p><MentionText text={m.text} personas={personas} onMentionPersona={onMentionPersona}/></p>
             {imageAttachments.length>0&&<div className={styles['image-attachments']} data-count={Math.min(imageAttachments.length,4)}>{imageAttachments.map(item=><MessageImage key={item.version_id} attachment={item} gallery={imageAttachments} openArtifact={openArtifact} openWorkspace={openWorkspace}/>)}</div>}
@@ -300,9 +319,9 @@ export function Timeline({
                 : "No agents invoked"}
             </small>
           </div>
-          {longRuns.length>0&&<nav className={styles['answer-navigation']} aria-label="Long responses in this round"><span>Responses:</span>{longRuns.map(run=><button type="button" key={run.id} onClick={()=>document.getElementById(`run-${run.id}`)?.scrollIntoView({behavior:'smooth',block:'start'})}>{byHandle.get(run.agent)?.name??`@${run.agent}`}</button>)}{longRuns.length>1&&<span className={styles['answer-navigation-actions']}><button type="button" aria-label="Expand all long responses" title="Expand all" onClick={()=>setLongRunsExpanded(true)}><UnfoldVertical/></button><button type="button" aria-label="Collapse all long responses" title="Collapse long responses" onClick={()=>setLongRunsExpanded(false)}><FoldVertical/></button></span>}</nav>}
+          {responseTabs&&<nav className={styles['answer-navigation']} aria-label="Agent responses in this round"><span>Responses</span>{visibleGroups.map(group=>{const response=state.runs[group.id];const responsePersona=byHandle.get(response.agent)??unknownPersona(response.agent);const selected=group.slot===focusedSlot;return <button type="button" key={group.slot} aria-pressed={selected} onClick={()=>setFocusedResponseSlots(current=>({...current,[m.id]:group.slot}))}><i style={{background:responsePersona.color}}/>{responsePersona.name}<StatusIcon status={response.status}/></button>})}</nav>}
           <div className={`${styles.runs} ${singleColumn?styles['runs-list']:styles['runs-grid']}`}>
-            {visibleGroups.map(
+            {displayedGroups.map(
               ({slot,attemptIds,activeAttempt,shownIndex,id}) => {
                 const showAttempt=async(index:number)=>{const nextId=attemptIds[index];setAttemptView(current=>({...current,[slot]:nextId}));if(messageIndex===state.messages.length-1&&state.runs[nextId].status==='completed'&&gateway.mode==='real')await gateway.select(nextId)};
                 const run=state.runs[id];
@@ -332,7 +351,6 @@ export function Timeline({
                     plan={plan}
                     approvePlan={approvePlan}
                     openWorkspace={openWorkspace}
-                    openArtifact={openArtifact}
                     planModeEnabled={planModeEnabled}
                     roomId={roomId}
                   />
@@ -345,13 +363,6 @@ export function Timeline({
     </main>;
 }
 function formatBytes(value:number){if(value<1024)return`${value} B`;if(value<1024*1024)return`${(value/1024).toFixed(1)} KB`;return`${(value/1024/1024).toFixed(1)} MB`;}
-
-function ArtifactCard({attachment,detail,gallery,openArtifact,openWorkspace}:{attachment:WorkspaceAttachment;detail:string;gallery?:WorkspaceAttachment[];openArtifact:OpenWorkspaceArtifact;openWorkspace:(target:WorkspaceTarget)=>void}){
-  return <span className={styles.artifactCard}>
-    <button type="button" className={styles.artifactPrimary} onClick={event=>openArtifact(attachment,gallery,event.currentTarget)}><File/><span><strong>{attachment.name}</strong><small>{detail}</small></span></button>
-    <WorkspaceArtifactActions attachment={attachment} openWorkspace={openWorkspace}/>
-  </span>;
-}
 
 function WorkspaceConflictPanel({roomId,runId}:{roomId:string;runId:string}){
   const [open,setOpen]=useState(false),[data,setData]=useState<Awaited<ReturnType<typeof roomsApi.workspaceConflicts>>>(),[choices,setChoices]=useState<Record<string,WorkspaceConflictChoice>>({}),[error,setError]=useState<string>(),[saving,setSaving]=useState(false);
