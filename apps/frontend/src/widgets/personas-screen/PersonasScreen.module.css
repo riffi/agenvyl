@@ -860,10 +860,6 @@
   border-bottom: 1px solid var(--border);
 }
 .mobile-menu { display:none; }
-.personas-screen > header > span {
-  display: flex;
-  flex-direction: column;
-}
 .personas-screen > header small {
   font-size: 10px;
   font-weight: 600;

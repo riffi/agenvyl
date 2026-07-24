@@ -38,6 +38,12 @@ describe('persona harness display',()=>{
     /></QueryClientProvider>);
 
     await waitFor(()=>expect(container.querySelector('[data-harness-size="md"][data-harness-type="hermes"]')).toBeTruthy());
+    expect(screen.queryByText('Archive')).toBeNull();
+    expect(screen.queryByText('Archived agent')).toBeNull();
+    expect(screen.queryByText(/active · \d+ archived/i)).toBeNull();
+    fireEvent.click(screen.getByRole('button',{name:'Show or hide archive'}));
+    expect(screen.getByText('Archive')).toBeTruthy();
+    expect(screen.getByText('Archived agent')).toBeTruthy();
     expect(screen.getAllByRole('img',{name:'Hermes'})).toHaveLength(3);
     expect(screen.getByRole('img',{name:'OpenCode'})).toBeTruthy();
     expect(screen.getAllByText('@active · sol')).toHaveLength(2);
@@ -62,10 +68,36 @@ describe('persona harness display',()=>{
       openMenu={vi.fn()}
       registerNavigationGuard={vi.fn()}
     /></QueryClientProvider>);
-    expect(screen.getByRole('alert').textContent).toContain('Showing the last known catalog');
+    expect(screen.getByRole('alert').textContent).toContain('Previously loaded models');
+    expect(screen.getByRole('alert').textContent).toContain('Click Refresh to try again');
     const button=screen.getByRole('button',{name:'Refresh harness models'});
     expect((button as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(button);
     expect(refresh).toHaveBeenCalledOnce();
+  });
+
+  it('uses a friendly harness name and an explicit recovery action for stale instances',()=>{
+    const client=new QueryClient({defaultOptions:{queries:{retry:false}}});
+    const staleClaude:HarnessCatalog['instances'][number]={id:'local-claude',type:'claude',status:'degraded',capabilities:[],models:[{id:'opus'}],controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]},catalogCache:{state:'stale',refreshedAt:cache.refreshedAt}};
+    render(<QueryClientProvider client={client}><PersonasScreen
+      personas={[active]}
+      harnessCatalog={{...catalog,instances:[staleClaude]}}
+      harnessRefreshing={false}
+      onRefreshHarness={vi.fn(async()=>undefined)}
+      groups={[]}
+      loading={false}
+      onChanged={vi.fn(async()=>undefined)}
+      real
+      roomId="demo-room"
+      roomPersonaIds={new Set()}
+      onSelectPersona={vi.fn()}
+      openMenu={vi.fn()}
+      registerNavigationGuard={vi.fn()}
+    /></QueryClientProvider>);
+    const warning=screen.getByRole('alert').textContent??'';
+    expect(warning).toContain('updated Claude models');
+    expect(warning).toContain('Click Refresh to try again');
+    expect(warning).not.toContain('local-claude');
+    expect(warning).not.toContain('catalog');
   });
 });

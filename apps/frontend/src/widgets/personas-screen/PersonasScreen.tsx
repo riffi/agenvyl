@@ -250,16 +250,15 @@ export function PersonasScreen({
     catch(e){setSaveError(e instanceof Error?e.message:String(e));}finally{setSaving(false);setLifecycleConfirmation(undefined)}
   };
   const requestLifecycle=(action:'archive'|'restore'|'delete')=>requestNavigation(action==='archive'?'archiving the agent':action==='restore'?'restoring the agent':'deleting the agent',()=>setLifecycleConfirmation(action));
-  const activePersonaCount=personas.filter(persona=>!persona.archived_at).length;
-  const archivedPersonaCount=personas.length-activePersonaCount;
   const normalizedHandle=form?.handle.trim().replace(/^@/,'').toLowerCase()??'';
   const staleInstances=harnessCatalog?.instances.filter(instance=>instance.catalogCache.state!=='fresh')??[];
+  const staleHarnessNames=[...new Set(staleInstances.map(instance=>harnessDisplayName(instance.type)))].join(', ');
   const cacheWarning=harnessCatalog?.cache.state==='refreshing'
-    ?'Refreshing harness models in the background. The last known catalog remains available.'
+    ?'Checking for updated models. You can keep using the models already shown.'
     :harnessCatalog?.cache.state==='stale'
-      ?`Harness refresh failed. Showing the last known catalog${cacheTime(harnessCatalog.cache.refreshedAt)}.`
+      ?`Couldn’t refresh available models. ${cachedModelsMessage(harnessCatalog.cache.refreshedAt)} Click Refresh to try again.`
       :staleInstances.length
-        ?`${staleInstances.map(instance=>instance.id).join(', ')} ${staleInstances.length===1?'is':'are'} using the last known catalog.`
+        ?`Couldn’t check for updated ${staleHarnessNames} models. Previously loaded models are still available. Click Refresh to try again.`
         :undefined;
   const handleIssue=normalizedHandle&&!/^[a-z0-9][a-z0-9_-]*$/.test(normalizedHandle)
     ?'Use lowercase Latin letters, digits, “_”, and “-” only.'
@@ -270,7 +269,7 @@ export function PersonasScreen({
     <section className={styles['personas-screen']}>
       <header ui-spec-block-id="persona_catalog_header">
         <button type="button" className={styles['mobile-menu']} aria-label="Open menu" onClick={openMenu}><Menu /></button>
-        <span className={styles['screen-title']}><strong><Users /> Agents</strong><small>{activePersonaCount} active · {archivedPersonaCount} archived</small></span>
+        <span className={styles['screen-title']}><strong><Users /> Agents</strong></span>
         <span className={styles['header-actions']}><Button type="button" variant="ghost" className={styles['refresh-catalog']} disabled={!real||harnessRefreshing} title="Refresh harness models" aria-label="Refresh harness models" icon={<RefreshCw className={harnessRefreshing?styles.spinning:''}/>} onClick={()=>void onRefreshHarness()}><span>Refresh</span></Button><Button type="button" variant="primary" className={styles['create-persona']} disabled={!real} onClick={startCreate}><Plus /><span>New agent</span></Button></span>
       </header>
       {cacheWarning&&<Alert tone="warning" className={styles['catalog-warning']}>{cacheWarning}</Alert>}
@@ -324,4 +323,5 @@ export function PersonasScreen({
   );
 }
 
-const cacheTime=(value:string|null)=>value?` from ${new Date(value).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`:'';
+const harnessDisplayName=(type:string)=>({antigravity:'Antigravity',claude:'Claude',codex:'Codex',hermes:'Hermes',opencode:'OpenCode'}[type]??type);
+const cachedModelsMessage=(value:string|null)=>`Previously loaded models${value?` from ${new Date(value).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`:''} are still available.`;
