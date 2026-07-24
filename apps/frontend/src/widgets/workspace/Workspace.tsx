@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { Menu, MessageCircle, Paperclip, Plus } from "lucide-react";
 import { harnessCatalogRefreshInterval, harnessKeys, harnessesApi, type HarnessCatalog } from '../../entities/harness';
 import { fakePersonas, personaKeys, personasApi, type Persona } from "../../entities/persona";
@@ -64,7 +64,6 @@ export function WorkspaceApp({
 }) {
   const{plan_mode:planModeEnabled}=useRuntimeFeatures();
   const [searchParams,setSearchParams]=useSearchParams();
-  const navigate=useNavigate();
   const fake=useMemo(()=>{const query=new URLSearchParams(location.search).get('gateway');return query==='fake'||(query!=='real'&&import.meta.env.VITE_GATEWAY_MODE==='fake')},[]);
   const queryClient=useQueryClient();
   const [demoRooms,setDemoRooms]=useState<Room[]>(fakeRooms);
@@ -113,7 +112,6 @@ export function WorkspaceApp({
   const attachments=useRoomAttachments(roomId);
   const [attachmentPicker,setAttachmentPicker]=useState(false);
   const [workspaceTransient,setWorkspaceTransient]=useState<WorkspaceOpenRequest>();
-  const workspaceOpenedByUiRef=useRef(false);
   const urlWorkspaceRequest=useMemo(()=>workspaceRequestFromSearch(searchParams),[searchParams]);
   const workspaceRequest=useMemo<WorkspaceOpenRequest|undefined>(()=>urlWorkspaceRequest?{
     ...urlWorkspaceRequest,
@@ -175,7 +173,6 @@ export function WorkspaceApp({
   const approvePlan=async(versionId:string)=>{const approved=state.executionState.plan.approved;if(approved&&approved.version_id!==versionId&&!confirm('Replace the approved plan version?'))return;if(!fake)await roomsApi.approvePlan(roomId,versionId)};
   const clearApprovedPlan=async()=>fake?state.executionState:roomsApi.clearApprovedPlan(roomId);
   const pushWorkspace=useCallback((request:WorkspaceOpenRequest)=>{
-    workspaceOpenedByUiRef.current=true;
     setWorkspaceTransient(request);
     setSearchParams(workspaceSearchWithRequest(searchParams,request),{replace:false});
   },[searchParams,setSearchParams]);
@@ -202,14 +199,7 @@ export function WorkspaceApp({
     setWorkspaceTransient(next);
     setSearchParams(workspaceSearchWithRequest(searchParams,next),{replace:true});
   },[searchParams,setSearchParams,workspaceRequest]);
-  const closeWorkspace=useCallback(()=>{
-    if(workspaceOpenedByUiRef.current){
-      workspaceOpenedByUiRef.current=false;
-      navigate(-1);
-      return;
-    }
-    setSearchParams(workspaceSearchWithRequest(searchParams),{replace:true});
-  },[navigate,searchParams,setSearchParams]);
+  const closeWorkspace=useCallback(()=>setSearchParams(workspaceSearchWithRequest(searchParams),{replace:true}),[searchParams,setSearchParams]);
   useEffect(()=>{if(!urlWorkspaceRequest)setWorkspaceTransient(undefined)},[urlWorkspaceRequest]);
   useEffect(()=>{if(!selected)return;const closeDrawer=(event:KeyboardEvent)=>{if(event.key==='Escape')setSelected(undefined)};addEventListener('keydown',closeDrawer);return()=>removeEventListener('keydown',closeDrawer)},[selected]);
   useEffect(()=>{if(workspaceRequest&&!fake)void queryClient.invalidateQueries({queryKey:['rooms',roomId,'workspace']})},[workspaceRequest,state.lastSequence,roomId,fake,queryClient]);
