@@ -1,7 +1,7 @@
 {
   "name": "@agenvyl/supervisor",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "license": "Apache-2.0",
   "type": "module",
   "bin": {
@@ -17,7 +17,7 @@
     "dist"
   ],
   "dependencies": {
-    "@agenvyl/runtime-config": "0.2.0",
+    "@agenvyl/runtime-config": "0.3.0",
     "@inkjs/ui": "2.0.0",
     "ink": "7.1.1",
     "react": "19.2.7"
