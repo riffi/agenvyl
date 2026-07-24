@@ -1,8 +1,14 @@
 .root{position:relative;display:inline-flex}
 .chip{display:inline-flex;align-items:center;gap:3px;min-height:27px;padding:3px 7px;border:1px solid #d8dee9;border-radius:999px;background:#f8fafc;color:#475569;font:600 11px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;cursor:pointer}
-.chip svg{width:12px;height:12px}
+.chip svg{width:12px;height:12px;flex:none}
 .chip:disabled{cursor:default;opacity:.72}
 .chip.overridden{border-color:#d39a35;background:#fff8e8;color:#8a5a08;box-shadow:inset 0 0 0 1px #f8e4b8}
+.chip.inline{min-height:25px;padding:2px 4px;border:0;border-radius:6px;background:transparent;box-shadow:none;color:#64748b;font-family:inherit;font-size:10px;font-weight:600}
+.chip.inline::before{content:"·";margin-right:1px;color:#cbd5e1;font-weight:800}
+.chip.inline:hover:not(:disabled){background:#e9eef5;color:#334155}
+.chip.inline:focus-visible{outline:2px solid #8da2fb;outline-offset:-1px}
+.chip.inline.overridden{border:0;background:transparent;box-shadow:none;color:#94620b}
+.chip.inline.overridden:hover:not(:disabled){background:#fff2cf;color:#7c4f06}
 .menu{position:fixed;z-index:10000;display:grid;width:210px;padding:7px;border:1px solid #dbe1ea;border-radius:12px;background:#fff;box-shadow:0 16px 40px #1e293b2e}
 .menu[data-placement="top"]{transform:translateY(-100%)}
 .heading{padding:5px 7px 7px;color:#64748b;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}

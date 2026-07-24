@@ -147,7 +147,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
             {targets.map((h) => {
               const p = byHandle.get(h)!;
               const participant=participantsByHandle.get(h);
-              return <span className={styles['target-chip']} key={h}><button title={`Remove @${h}`} onClick={() => setText(value=>removeMentionTarget(value,h,personas))}><i style={{ background: p.color }}>{p.name[0]}</i><span>{p.name}</span><X /></button>{participant&&<ReasoningEffortChip participant={participant} catalog={harnessCatalog} onChange={value=>updateParticipantReasoning(participant.persona.id,value)}/>}</span>;
+              return <span className={styles['target-chip']} role="group" aria-label={`Responder ${p.name}`} key={h}><span className={styles['target-identity']}><i style={{ background: p.color }}>{p.name[0]}</i><span>{p.name}</span></span>{participant&&<ReasoningEffortChip appearance="inline" participant={participant} catalog={harnessCatalog} onChange={value=>updateParticipantReasoning(participant.persona.id,value)}/>}<button type="button" className={styles['remove-target']} aria-label={`Remove @${h}`} title={`Remove @${h}`} onClick={() => setText(value=>removeMentionTarget(value,h,personas))}><X /></button></span>;
             })}
           </div>
           <div className={styles['target-preview']}>{targetExecutionPreview.map(item=><small key={item.handle}>@{item.handle}: {item.mode} · {item.effort}{item.fallback?' → fallback':''}</small>)}</div>

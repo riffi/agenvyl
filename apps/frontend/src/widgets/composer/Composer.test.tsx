@@ -99,6 +99,16 @@ describe('Composer agent list',()=>{
     expect(screen.getByRole('button',{name:'Send to 1 agent'})).toBeTruthy();
   });
 
+  it('groups a responder identity and its reasoning control into one chip',()=>{
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
+    render(<Composer gateway={gateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()}/>);
+    fireEvent.change(screen.getByPlaceholderText('Message… Use @handle or @all'),{target:{value:'@coder implement'}});
+    const responder=screen.getByRole('group',{name:'Responder Coder'});
+    expect(responder.textContent).toContain('Coder');
+    expect(responder.querySelector('[aria-label^="Reasoning effort:"]')).toBeTruthy();
+    expect(responder.querySelector('[aria-label="Remove @coder"]')).toBeTruthy();
+  });
+
   it('opens a ready composer attachment in the shared viewer',()=>{
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
     const openArtifact=vi.fn(),file={version_id:'version-notes',entry_id:'entry-notes',path:'notes.md',name:'notes.md',size:24,mime_type:'text/markdown',url:'/notes',preview_url:'/notes/preview'};
