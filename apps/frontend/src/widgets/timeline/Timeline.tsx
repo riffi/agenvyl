@@ -143,7 +143,7 @@ function RunCard({
       className={`${styles['run-card']} ${styles[run.status]}`}
       ui-spec-block-id="agent_response_card"
     >
-      <Avatar label={persona.name} color={persona.color} />
+      <Avatar className={styles['run-avatar']} label={persona.name} color={persona.color} />
       <div className={styles['run-body']}>
         <header className={styles['run-header']}>
           <span className={styles['run-identity']}>

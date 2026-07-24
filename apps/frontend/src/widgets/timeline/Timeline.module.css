@@ -728,6 +728,27 @@
   }
 .run-card {
     padding: 11px;
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    column-gap: 9px;
+    row-gap: 0;
+    align-items: start;
+  }
+  .run-avatar {
+    grid-row: 1;
+    grid-column: 1;
+  }
+  .run-body {
+    display: contents;
+  }
+  .run-header {
+    min-height: 34px;
+    grid-row: 1;
+    grid-column: 2;
+  }
+  .run-body > :not(.run-header) {
+    min-width: 0;
+    grid-column: 1 / -1;
   }
   .answer-navigation {
     gap: 7px;
