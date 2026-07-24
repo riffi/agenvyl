@@ -107,9 +107,25 @@ In the setup screen:
 4. name the first room; and
 5. finish setup.
 
+The setup screen also exposes safety-sensitive instance controls when they
+apply:
+
+- OpenCode can use an existing endpoint or a Connector-managed server;
+- Codex danger-full-access requires the exact `CODEX FULL ACCESS`
+  confirmation; and
+- Claude subscription OAuth requires the exact `CLAUDE OAUTH` confirmation.
+
+OpenCode external-directory roots are configured later through
+**Configure connectors** and are empty by default.
+
 When a harness is available, Agenvyl creates editable **Architect**,
 **Builder**, and **Reviewer** starter agents. Open **Agents** to change their
 models, instructions, and permission profiles.
+
+Harness and model discovery is cached for five minutes. If a refresh fails,
+setup or **Agents** may show the last successfully loaded catalog as stale.
+Select **Refresh** on **Agents** to retry; saved models remain usable while
+stale data is available.
 
 If the browser does not open, visit <http://127.0.0.1:8791>. If setup cannot
 find a tool, use its [harness guide](../harnesses/README.md).

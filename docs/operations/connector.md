@@ -27,7 +27,7 @@ The YAML contains only:
 - the loopback listen address;
 - allowed workspace roots;
 - non-secret harness instance definitions;
-- managed OpenCode state; and
+- managed OpenCode state and explicit external-directory roots; and
 - explicit AGY, Codex full-access, and Claude OAuth opt-ins.
 
 Unknown fields and invalid values are rejected. Tokens, passwords, executable
@@ -56,12 +56,20 @@ instances:
     type: opencode
     enabled: true
     managed: true
+    externalDirectoryRoots:
+      - /absolute/path/to/trusted-repository
 ```
 
 Every workspace root must already exist and be absolute. For each run,
 Connector resolves exactly one `<root>/<roomId>` and rejects traversal,
 absolute request paths, symlink escape, missing directories, and ambiguous
 roots.
+
+`externalDirectoryRoots` is an OpenCode-only allowlist for upstream
+external-directory permission requests. Each entry must be a concrete absolute
+path without traversal or wildcard segments. An empty list denies external
+access. Adding a directory through an Agenvyl approval persists the validated
+root in the Connector instance configuration.
 
 ## Harness environment reference
 
@@ -140,9 +148,11 @@ durable Connector cursor. Adapter diagnostics, tool summaries, and request text
 pass through common redaction and size limits before persistence or transport.
 
 AGY has no documented structured event or approval protocol, so its adapter
-publishes final text and terminal state only. OpenCode multi-select questions
-and external-directory permission requests fail closed. Other adapter-specific
-limits are documented in the [harness overview](../harnesses/README.md).
+publishes final text and terminal state only. OpenCode supports multi-select
+questions and validates external-directory permission requests against its
+instance allowlist; malformed or unsupported payloads fail closed. Other
+adapter-specific limits are documented in the
+[harness overview](../harnesses/README.md).
 
 ### Claude permission bridge lifecycle
 

@@ -71,6 +71,10 @@ not disable SmartScreen globally.
   by Connector. Its bearer tokens are scoped to one execution and revoked when
   that execution finishes. The endpoint is not exposed through Core and does
   not modify persistent Claude Code configuration.
+- OpenCode external-directory access is denied by default. An operator can
+  allow concrete absolute roots on an OpenCode instance, and a user can add a
+  validated root through an approval card. Treat every listed root as part of
+  that instance's trusted file boundary.
 - Harness processes run with the permissions of your operating-system user.
 - A room workspace is a shared working directory, **not a sandbox**.
 

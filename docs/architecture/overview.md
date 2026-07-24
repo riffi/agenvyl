@@ -249,6 +249,9 @@ Agenvyl is local-first, but local does not mean sandboxed:
   runtime. Connector also requires a token of at least 32 characters.
 - Connector validates room workspace paths and rejects traversal, absolute
   request paths, symlink escapes, missing targets, and ambiguous roots.
+- OpenCode external-directory requests use a separate, explicit per-instance
+  allowlist. The list is empty by default; adding a root expands the files that
+  OpenCode may request during a run.
 - Agent tools still run with the permissions of the operating-system user who
   started Agenvyl. A workspace is a shared working directory, **not a security
   boundary**.

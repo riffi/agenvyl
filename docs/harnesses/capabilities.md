@@ -26,7 +26,7 @@ provider, account, or upstream version implements it identically.
 | Plan workflow | ◐ Instruction-only Plan | ◐ Native with an upstream `plan` agent; otherwise instruction-only | ✅ Native Plan | ✅ Native Plan | ✅ Native Plan |
 | Work/edit workflow | ✅ Normal execution | ✅ Normal execution | ✅ Native Work | ✅ Native Work | ◐ Requires an `accept-edits` instance |
 | Reasoning effort control | — | ◐ Enabled model variants from the upstream catalog | ◐ Model-dependent levels | ◐ Model-dependent levels | — |
-| Permission profiles | — | — | ✅ Read only or workspace write; full access is opt-in | ✅ Ask before edits or accept edits | ◐ Plan-only or `accept-edits` instance ceiling |
+| Permission profiles | — | ✅ Standard or Auto-approve; Plan forces Standard | ✅ Read only or workspace write; full access is opt-in | ✅ Ask before edits or accept edits | ◐ Plan-only or `accept-edits` instance ceiling |
 | Agent variants | — | ◐ Supplied by the upstream agent catalog | — | — | — |
 
 Plan workflow appears only when Agenvyl's experimental Plan Mode is enabled.
@@ -35,6 +35,9 @@ variants. The dedicated `plan` agent is represented as Plan workflow instead
 of an agent variant. OpenCode model variants are shown as reasoning effort
 choices. A variant can bundle reasoning budget with other model settings;
 **Auto** sends no per-run variant and leaves the choice to OpenCode.
+OpenCode **Auto-approve** applies only to Work runs. External-directory access
+remains bounded by the instance allowlist, independently of the selected
+permission profile.
 
 ## Output and observability
 

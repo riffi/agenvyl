@@ -27,7 +27,19 @@ remain in the timeline. Plan creation is a one-message execution intent, while
 normal messages always run as Work. An explicit **Implement…** request snapshots
 the approved workspace version on every created run.
 
-For local development data, reset PostgreSQL before testing this protocol break:
+### Agent role removal
+
+Migration 022 removes the standalone persona `role` column. Agent identity is
+now defined by its name, handle, instructions, model, permissions, and harness
+route. Existing role text is intentionally discarded rather than copied into
+the system prompt, because silently converting a display field into executable
+instructions would change agent behavior.
+
+Back up PostgreSQL before upgrading a persistent installation if historical
+role values must be retained outside Agenvyl.
+
+For local development data, reset PostgreSQL before testing these migration
+breaks:
 
 ```bash
 docker compose down -v

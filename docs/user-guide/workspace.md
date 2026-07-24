@@ -152,8 +152,17 @@ When a run finishes, Agenvyl captures its result:
 - an incomplete capture is saved with the response but is not published.
 
 The response timeline shows **Changes applied to room workspace** when
-publication succeeds. If it shows **Partially published**, select
-**Review conflicts** and choose one result for every path:
+publication succeeds. Changed files appear directly below the agent response;
+select a file chip to open the exact captured version. The first four files are
+shown initially, with the remainder available through **+N more**.
+
+Tool calls and workspace events are grouped under the collapsible **Run
+activity** section so the answer remains easy to scan. These details do not
+change which captured file version or published snapshot the response points
+to.
+
+If the timeline shows **Partially published**, select **Review conflicts** and
+choose one result for every path:
 
 - **Keep current** preserves the room's current path;
 - **Accept agent** publishes the agent's candidate; or

@@ -70,14 +70,44 @@ supports text and reasoning streams, tools, manual approvals, structured
 clarifications with up to four questions including multi-select, usage, retries
 reported by the provider, and cancellation.
 
+Each OpenCode agent has one of two permission profiles:
+
+- **Standard** shows approval cards for ordinary OpenCode permission requests.
+- **Auto-approve** answers ordinary permission requests automatically during
+  Work runs. Plan runs always use **Standard**, even when the agent is
+  configured for **Auto-approve**.
+
+Auto-approve is not an unrestricted filesystem mode. External-directory access
+is still limited by the OpenCode instance's **Allowed external directories**
+setting.
+
 Enabled OpenCode model variants appear as reasoning effort choices in Agenvyl.
 The selected value is sent as a per-run OpenCode variant. **Auto** sends no
 override and uses the model, agent, or global OpenCode default. A variant may
 bundle reasoning budget with other settings such as text verbosity; the names
 and exact behavior come from the current upstream catalog.
 
-External-directory permission requests are rejected at the adapter boundary.
-Malformed or unsupported question payloads fail closed instead of being
+### External directories
+
+By default, the instance allowlist is empty and OpenCode cannot use a requested
+path outside the run workspace. Configure trusted absolute directory roots in
+**Configure connectors → OpenCode → Allowed external directories**.
+
+When OpenCode requests a valid external directory:
+
+- an unlisted directory produces an **Add directory and allow** approval;
+  accepting it persists that root on the OpenCode instance before allowing the
+  current request;
+- a listed directory produces an **Allow once** approval under **Standard**;
+  **Auto-approve** allows it once automatically during a Work run; and
+- denying the request leaves the instance allowlist unchanged.
+
+The approval card intentionally does not display the host path. Review the
+instance allowlist in Connector settings before granting access. Requests with
+malformed paths, traversal, wildcards, inconsistent roots, or unsupported
+payloads fail closed.
+
+Malformed or unsupported question payloads also fail closed instead of being
 answered implicitly.
 
 ## Verify and troubleshoot
