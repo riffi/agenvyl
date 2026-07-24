@@ -732,13 +732,15 @@ describe("harness catalog", () => {
       }),
       response = await app.inject("/api/v1/harnesses");
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({
+    expect(response.json()).toMatchObject({
       connectorEpoch: "epoch-1",
+      cache:{state:'fresh',refreshedAt:expect.any(String),expiresAt:expect.any(String)},
       instances: [
         {
           ...connectorContractFixtures.instances.instances[0],
           models: connectorContractFixtures.catalog.models,
           controls: connectorContractFixtures.catalog.controls,
+          catalogCache:{state:'fresh',refreshedAt:expect.any(String)},
         },
       ],
     });
@@ -746,6 +748,10 @@ describe("harness catalog", () => {
       "http://connector.test/v2/instances",
       "http://connector.test/v2/instances/local-hermes/catalog",
     ]);
+    expect((await app.inject("/api/v1/harnesses")).statusCode).toBe(200);
+    expect(request).toHaveBeenCalledTimes(2);
+    expect((await app.inject("/api/v1/harnesses?refresh=true")).statusCode).toBe(200);
+    expect(request).toHaveBeenCalledTimes(4);
     await app.close();
   });
 
@@ -1229,7 +1235,7 @@ describe("Runs API backend", () => {
       (await app.inject("/api/v1/personas/persona-architect")).json()
         .requested_model,
     ).toBe("sol");
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     await app.close();
   });
 
@@ -1564,6 +1570,48 @@ describe("persona lifecycle", () => {
     expect(response.statusCode).toBe(503);
     expect(response.json().error).toBe("connector_unavailable");
     await unavailable.close();
+  });
+  it("allows persona saves from a same-epoch stale catalog while the runtime is unavailable", async () => {
+    let runtimeUnavailable = false;
+    const baseFetch = personaCatalogFetch(catalog.data);
+    const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
+      if (
+        runtimeUnavailable &&
+        String(input).endsWith("/v2/instances")
+      )
+        return Response.json({
+          apiVersion: "v2",
+          connectorEpoch: "persona-catalog-epoch",
+          instances: [{
+            id: "local-hermes",
+            type: "hermes",
+            status: "unavailable",
+            capabilities: ["model_catalog"],
+          }],
+        });
+      return baseFetch(input, init);
+    });
+    const app = await buildApp({
+      databaseUrl: db(),
+      fetch: fetchMock,
+      distPath: "missing-dist",
+    });
+    expect((await app.inject("/api/v1/harnesses")).statusCode).toBe(200);
+    runtimeUnavailable = true;
+    const refreshed = await app.inject("/api/v1/harnesses?refresh=true");
+    expect(refreshed.statusCode, refreshed.body).toBe(200);
+    expect(refreshed.json().instances[0]).toMatchObject({
+      status: "unavailable",
+      models: [{ id: "sol" }],
+      catalogCache: { state: "stale" },
+    });
+    const saved = await app.inject({
+      method: "PUT",
+      url: "/api/v1/personas/persona-architect",
+      payload: { requested_model: "sol" },
+    });
+    expect(saved.statusCode, saved.body).toBe(200);
+    await app.close();
   });
   it("archives out of listings and invocation, then restores invocation", async () => {
     const app = await buildApp({

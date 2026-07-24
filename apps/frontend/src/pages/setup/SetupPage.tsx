@@ -22,6 +22,11 @@ export function SetupPage(){
     setClaudeOAuthConfirmation(initial.claudeOAuthConfirmed?'CLAUDE OAUTH':'');
     if(value.completed&&value.firstRoomId)navigate(`/rooms/${value.firstRoomId}`,{replace:true});
   }).catch(issue=>setError(message(issue)));},[configure,navigate]);
+  useEffect(()=>{
+    if(state?.discoveryCache.state!=='refreshing')return;
+    const timer=window.setInterval(()=>void apiRequest<SetupState>('/api/v1/setup').then(setState).catch(issue=>setError(message(issue))),2_000);
+    return()=>window.clearInterval(timer);
+  },[state?.discoveryCache.state]);
   const safe=useMemo(()=>state?.candidates.filter(candidate=>candidate.safeToSelect&&!candidate.requiresConfirmation).map(candidate=>candidate.type)??[],[state]);
   const claudeNeedsConfirmation=Boolean(state?.candidates.some(candidate=>candidate.type==='claude'&&candidate.requiresConfirmation==='claude_oauth'&&selected.includes('claude')));
   const toggle=(candidate:SetupHarnessCandidate)=>setSelected(value=>value.includes(candidate.type)?value.filter(item=>item!==candidate.type):[...value,candidate.type]);
@@ -34,7 +39,7 @@ export function SetupPage(){
     const instances:SetupHarnessInstance[]=(state?.candidates??[]).filter(candidate=>selected.includes(candidate.type)||(candidate.type==='antigravity'&&agy)).map(candidate=>instanceConfig(candidate,state?.instances.find(instance=>instance.type===candidate.type),options));
     await apiRequest('/api/v1/setup/harnesses',{method:'PUT',body:{instances}});
     if(configure&&state?.firstRoomId){navigate(`/rooms/${state.firstRoomId}`,{replace:true});return;}
-    const catalog=instances.length?await apiRequest<Catalog>('/api/v1/harnesses'):undefined;
+    const catalog=instances.length?await apiRequest<Catalog>('/api/v1/harnesses?refresh=true'):undefined;
     const first=catalog?.instances.find(instance=>instance.status!=='unavailable'&&instance.models.length);
     const route:CompleteSetupRequest['route']=first?{harness_instance_id:first.id,harness_type:first.type,model_id:first.models[0].id,permission_profile_id:first.controls.permissionProfiles[0]?.id??null,agent_variant_id:first.controls.agentVariants[0]?.id??null}:null;
     const result=await apiRequest<{roomId:string}>('/api/v1/setup/complete',{method:'POST',body:{locale:'en',workspace_root:state?.workspaceRoot??'',profile:{display_name:name,handle},room_title:roomTitle,route} satisfies CompleteSetupRequest});navigate(`/rooms/${result.roomId}`,{replace:true});
@@ -51,6 +56,7 @@ export function SetupPage(){
     </div>
     {state?.candidates.some(candidate=>candidate.type==='antigravity')&&<section className={styles.danger}><label className={styles.dangerChoice}><input type="checkbox" checked={agy} onChange={event=>setAgy(event.target.checked)}/><HarnessIcon type="antigravity" size="md"/><span><strong>AGY</strong> — separate subprocess with a dangerous permission flag</span></label>{agy&&<input value={agyConfirmation} onChange={event=>setAgyConfirmation(event.target.value)} placeholder="Type AGY" />}</section>}
     {!configure&&<section className={styles.grid}><label>Display name<input value={name} onChange={event=>setName(event.target.value)} required/></label><label>Handle<input value={handle} onChange={event=>setHandle(event.target.value)} pattern="[a-z0-9][a-z0-9_-]*" required/></label><label className={styles.wide}>Workspace root<input value={state?.workspaceRoot??''} readOnly/></label><label className={styles.wide}>First room<input value={roomTitle} onChange={event=>setRoomTitle(event.target.value)} required/></label></section>}
+    {state&&state.discoveryCache.state!=='fresh'&&<p className={styles.cacheWarning} role="status">Harness discovery is {state.discoveryCache.state}. Showing the last known candidates{cacheTime(state.discoveryCache.refreshedAt)}.</p>}
     {error&&<p className={styles.error} role="alert">{error}</p>}<button className={styles.primary} disabled={busy}>{busy?'Setting up…':configure?'Save connectors':'Create workspace'}</button><p className={styles.note}>You can continue without connectors and add them later.</p>
   </form></main>;
 }
@@ -71,3 +77,4 @@ export function initialConnectorSelection(state:SetupState){
 }
 export function instanceConfig(candidate:SetupHarnessCandidate,existing?:SetupState['instances'][number],options:SetupHarnessOptions={}):SetupHarnessInstance{return{id:`local-${candidate.type}`,type:candidate.type,enabled:true,...(candidate.endpoint&&candidate.type!=='codex'&&candidate.type!=='claude'?{endpoint:candidate.endpoint.url}:{}),...(candidate.type==='opencode'?{managed:options.openCodeManaged??existing?.managed??true,externalDirectoryRoots:existing?.externalDirectoryRoots??[]}:{}),...(candidate.type==='antigravity'?{permissionMode:'plan' as const}:{}),...(candidate.type==='codex'?{allowDangerFullAccess:options.codexDangerFullAccess??existing?.allowDangerFullAccess??false}:{}),...(candidate.type==='claude'?{allowSubscriptionOAuth:candidate.requiresConfirmation==='claude_oauth'&&(options.claudeOAuthConfirmed??existing?.allowSubscriptionOAuth??false)}:{})};}
 function message(value:unknown){return value instanceof Error?value.message:'Setup failed';}
+const cacheTime=(value:string|null)=>value?` from ${new Date(value).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`:'';

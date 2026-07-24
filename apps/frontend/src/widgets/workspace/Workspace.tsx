@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Menu, MessageCircle, Paperclip, Plus } from "lucide-react";
-import { harnessKeys, harnessesApi, type HarnessCatalog } from '../../entities/harness';
+import { harnessCatalogRefreshInterval, harnessKeys, harnessesApi, type HarnessCatalog } from '../../entities/harness';
 import { fakePersonas, personaKeys, personasApi, type Persona } from "../../entities/persona";
 import {personaGroupKeys,personaGroupsApi,type PersonaGroup} from '../../entities/persona-group';
 import { roomKeys, roomsApi, useRoomStream, type Room } from "../../entities/room";
@@ -41,7 +41,8 @@ const fakeModels = [
   { key: "deepseek", root: "deepseek/deepseek-r1", provider: "deepseek" },
 ];
 const fakeGroups:PersonaGroup[]=[{id:'fake-coding',name:'Engineering',position:0}];
-const fakeHarnessCatalog:HarnessCatalog={connectorEpoch:'fake',instances:[{id:'local-hermes',type:'hermes',status:'healthy',capabilities:['model_catalog','text_streaming','tools','approvals'],models:fakeModels.map(model=>({id:model.key,label:model.root})),controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]}}]};
+const fakeCache={state:'fresh' as const,refreshedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+5*60_000).toISOString()};
+const fakeHarnessCatalog:HarnessCatalog={connectorEpoch:'fake',cache:fakeCache,instances:[{id:'local-hermes',type:'hermes',status:'healthy',capabilities:['model_catalog','text_streaming','tools','approvals'],models:fakeModels.map(model=>({id:model.key,label:model.root})),controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]},catalogCache:{state:'fresh',refreshedAt:fakeCache.refreshedAt}}]};
 const fakeUserProfile:LocalUserProfile={id:'local-user',displayName:'User',handle:'user',createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()};
 
 export function WorkspaceApp({
@@ -82,7 +83,15 @@ export function WorkspaceApp({
   const roomPersonasQuery=useQuery({queryKey:personaKeys.byRoom(roomId),queryFn:({signal})=>roomsApi.participants(roomId,signal),enabled:!fake&&Boolean(roomId)});
   const personaCatalogQuery=useQuery({queryKey:personaKeys.catalog(),queryFn:({signal})=>personasApi.list({includeArchived:true,signal}),enabled:!fake});
   const personaGroupsQuery=useQuery({queryKey:personaGroupKeys.all,queryFn:({signal})=>personaGroupsApi.list(signal),enabled:!fake});
-  const harnessCatalogQuery=useQuery({queryKey:harnessKeys.catalog,queryFn:({signal})=>harnessesApi.catalog(signal),enabled:!fake});
+  const harnessCatalogQuery=useQuery({
+    queryKey:harnessKeys.catalog,
+    queryFn:({signal})=>harnessesApi.catalog(signal),
+    enabled:!fake,
+    staleTime:5*60_000,
+    gcTime:15*60_000,
+    refetchOnWindowFocus:false,
+    refetchInterval:query=>harnessCatalogRefreshInterval(query.state.data),
+  });
   const userProfileQuery=useQuery({queryKey:userProfileKey,queryFn:({signal})=>userProfileApi.get(signal),enabled:!fake});
   const rooms=fake?demoRooms:roomsQuery.data??[];
   const queriedRoomPersonas:RoomPersona[]=fake?demoPersonas.map(persona=>({persona,reasoning_effort_override:null})):roomPersonasQuery.data??[];
@@ -98,6 +107,8 @@ export function WorkspaceApp({
   const [menu, setMenu] = useState(false),
     [creatingRoom,setCreatingRoom]=useState(false),
     [managingAgents,setManagingAgents]=useState(false),
+    [refreshingHarness,setRefreshingHarness]=useState(false),
+    [refreshHarnessError,setRefreshHarnessError]=useState<string>(),
     [selected, setSelected] = useState<string>();
   const attachments=useRoomAttachments(roomId);
   const [attachmentPicker,setAttachmentPicker]=useState(false);
@@ -117,6 +128,16 @@ export function WorkspaceApp({
   const invalidateRooms=()=>queryClient.invalidateQueries({queryKey:roomKeys.all});
   const invalidatePersonas=()=>queryClient.invalidateQueries({queryKey:personaKeys.all});
   const invalidateGroups=()=>queryClient.invalidateQueries({queryKey:personaGroupKeys.all});
+  const refreshHarnessCatalog=async()=>{
+    if(fake)return;
+    setRefreshingHarness(true);setRefreshHarnessError(undefined);
+    try{
+      const next=await harnessesApi.catalog(undefined,true);
+      queryClient.setQueryData(harnessKeys.catalog,next);
+    }catch(issue){
+      setRefreshHarnessError(issue instanceof Error?issue.message:String(issue));
+    }finally{setRefreshingHarness(false);}
+  };
   useEffect(()=>{if(!fake&&view==='chat'&&roomsQuery.data?.length&&!roomsQuery.data.some(room=>room.id===roomId))navigateToRoom(roomsQuery.data[0].id,{replace:true})},[fake,view,roomId,roomsQuery.data,navigateToRoom]);
   useEffect(()=>{setAttachmentPicker(false);setDraggingFiles(false);dragDepth.current=0},[roomId]);
   useEffect(() => () => gateway.dispose(), [gateway]);
@@ -238,7 +259,9 @@ export function WorkspaceApp({
         </>:<div className={styles['empty-chat']}><div className={styles['empty-mobile-header']}><button type="button" aria-label="Open menu" onClick={()=>setMenu(true)}><Menu /></button><strong>agenvyl</strong></div><EmptyState icon={<MessageCircle />} title="No rooms" description="Create a room to start a conversation with agents." action={<Button variant="primary" icon={<Plus />} onClick={()=>setCreatingRoom(true)}>Create room</Button>} /></div>):<PersonasScreen
           personas={personaCatalog}
           harnessCatalog={harnessCatalog}
-          harnessError={harnessError}
+          harnessError={refreshHarnessError??harnessError}
+          harnessRefreshing={refreshingHarness||harnessCatalog?.cache.state==='refreshing'}
+          onRefreshHarness={refreshHarnessCatalog}
           groups={groups}
           loading={catalogLoading}
           error={catalogError}

@@ -125,11 +125,13 @@ const connectorCatalogModelSchema=objectSchema({id:{type:'string'},label:{type:'
 const connectorCatalogOptionSchema=objectSchema({id:{type:'string'},label:{type:'string'}},['id']);
 const connectorExecutionControlsSchema=objectSchema({nativeWorkflowModes:{type:'array',items:workflowModeSchema},permissionProfiles:{type:'array',items:connectorCatalogOptionSchema},agentVariants:{type:'array',items:connectorCatalogOptionSchema}},['nativeWorkflowModes','permissionProfiles','agentVariants']);
 const connectorErrorSchema=objectSchema({code:{type:'string'},message:{type:'string'}},['code','message']);
+const harnessCacheMetadataSchema=objectSchema({state:{type:'string',enum:['fresh','refreshing','stale']},refreshedAt:nullableStringSchema,expiresAt:nullableStringSchema,error:connectorErrorSchema},['state','refreshedAt','expiresAt']);
+const harnessInstanceCacheMetadataSchema=objectSchema({state:{type:'string',enum:['fresh','stale','unavailable']},refreshedAt:nullableStringSchema,error:connectorErrorSchema},['state','refreshedAt']);
 const harnessInstanceCatalogSchema=objectSchema({
   id:{type:'string'},type:{type:'string'},status:{type:'string',enum:['healthy','degraded','unavailable']},capabilities:{type:'array',items:{type:'string'}},error:connectorErrorSchema,
-  models:{type:'array',items:connectorCatalogModelSchema},controls:connectorExecutionControlsSchema,
-},['id','type','status','capabilities','models','controls']);
-export const harnessCatalogResponseSchema=objectSchema({connectorEpoch:{type:'string'},instances:{type:'array',items:harnessInstanceCatalogSchema}},['connectorEpoch','instances']);
+  models:{type:'array',items:connectorCatalogModelSchema},controls:connectorExecutionControlsSchema,catalogCache:harnessInstanceCacheMetadataSchema,
+},['id','type','status','capabilities','models','controls','catalogCache']);
+export const harnessCatalogResponseSchema=objectSchema({connectorEpoch:{type:'string'},instances:{type:'array',items:harnessInstanceCatalogSchema},cache:harnessCacheMetadataSchema},['connectorEpoch','instances','cache']);
 export const personaListResponseSchema={type:'array',items:personaResponseSchema} as const;
 export const personaGroupListResponseSchema={type:'array',items:personaGroupResponseSchema} as const;
 

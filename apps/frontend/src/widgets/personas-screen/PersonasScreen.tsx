@@ -1,7 +1,7 @@
 import { type CSSProperties, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Bot, Check, ChevronDown, ChevronRight, Menu, Plus, Users } from 'lucide-react';
+import { Bot, Check, ChevronDown, ChevronRight, Menu, Plus, RefreshCw, Users } from 'lucide-react';
 import {HarnessIcon,personaModelName,type HarnessCatalog,type HarnessCatalogItem,type HarnessInstance} from '../../entities/harness';
 import type {PersonaGroup} from '../../entities/persona-group';
 import { personaKeys, personasApi, type Persona } from '../../entities/persona';
@@ -87,7 +87,7 @@ function HarnessInstancePicker({instances,value,onChange}:{instances:HarnessInst
       </button>
       {open&&createPortal(<div ref={menuRef} className={styles['model-picker-menu']} role="listbox" aria-label="Available harness instances" style={{top:position.top,left:position.left,width:position.width,maxHeight:position.maxHeight}}>
         <header><strong>Available harnesses</strong><small>{instances.length}</small></header>
-        <section><div>{instances.map(instance=><button key={instance.id} type="button" role="option" disabled={instance.status==='unavailable'} className={instance.id===value?styles.selected:''} aria-selected={instance.id===value} onClick={()=>{onChange(instance);setOpen(false);triggerRef.current?.focus()}}>
+        <section><div>{instances.map(instance=><button key={instance.id} type="button" role="option" disabled={instance.status==='unavailable'&&instance.catalogCache.state!=='stale'} className={instance.id===value?styles.selected:''} aria-selected={instance.id===value} onClick={()=>{onChange(instance);setOpen(false);triggerRef.current?.focus()}}>
           <HarnessIcon type={instance.type}/><span><strong>{instance.id}</strong><small>{instance.type} · {instance.status}</small></span>
           {instance.id===value?<Check className={styles['model-picker-check']} aria-hidden="true"/>:<ChevronRight className={styles['model-picker-option-chevron']} aria-hidden="true"/>}
         </button>)}</div></section>
@@ -99,7 +99,7 @@ function HarnessInstancePicker({instances,value,onChange}:{instances:HarnessInst
 export function HarnessRouteFields({form,catalog,error,onChange}:{form:Persona;catalog?:HarnessCatalog;error?:string;onChange:(next:Persona)=>void}) {
   const discovered=catalog?.instances??[];
   const selectedInstance=discovered.find(instance=>instance.id===form.harness_instance_id);
-  const visibleInstances=form.harness_instance_id&&!selectedInstance?[...discovered,{id:form.harness_instance_id,type:form.harness_type,status:'unavailable' as const,capabilities:[],models:[],controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]}}]:discovered;
+  const visibleInstances=form.harness_instance_id&&!selectedInstance?[...discovered,{id:form.harness_instance_id,type:form.harness_type,status:'unavailable' as const,capabilities:[],models:[],controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]},catalogCache:{state:'unavailable' as const,refreshedAt:null}}]:discovered;
   const visibleModels=selectedInstance?.models??(form.model_id?[{id:form.model_id,label:`${form.model_id} (saved)`}]:[]);
   const selectedModel=visibleModels.find(model=>model.id===form.model_id);
   const reasoningEfforts=selectedModel?.reasoningEfforts??[];
@@ -129,6 +129,8 @@ export function PersonasScreen({
   personas,
   harnessCatalog,
   harnessError,
+  harnessRefreshing,
+  onRefreshHarness,
   groups,
   loading,
   error,
@@ -144,6 +146,8 @@ export function PersonasScreen({
   personas: Persona[];
   harnessCatalog?: HarnessCatalog;
   harnessError?: string;
+  harnessRefreshing:boolean;
+  onRefreshHarness:()=>Promise<void>;
   groups:PersonaGroup[];
   loading: boolean;
   error?: string;
@@ -193,7 +197,7 @@ export function PersonasScreen({
     if(!/^[a-z0-9][a-z0-9_-]*$/.test(handle)){setSaveError('Handle must start with a letter or digit and contain only a-z, 0-9, _, or -.');return false;}
     if (!form.name.trim()) {setSaveError('Enter an agent name.');return false;}
     const instance=harnessCatalog?.instances.find(item=>item.id===form.harness_instance_id);
-    if (!instance || instance.status==='unavailable') {
+    if (!instance || (instance.status==='unavailable'&&instance.catalogCache.state!=='stale')) {
       setSaveError('The selected harness is currently unavailable. Refresh the catalog or choose another instance.');
       return false;
     }
@@ -249,6 +253,14 @@ export function PersonasScreen({
   const activePersonaCount=personas.filter(persona=>!persona.archived_at).length;
   const archivedPersonaCount=personas.length-activePersonaCount;
   const normalizedHandle=form?.handle.trim().replace(/^@/,'').toLowerCase()??'';
+  const staleInstances=harnessCatalog?.instances.filter(instance=>instance.catalogCache.state!=='fresh')??[];
+  const cacheWarning=harnessCatalog?.cache.state==='refreshing'
+    ?'Refreshing harness models in the background. The last known catalog remains available.'
+    :harnessCatalog?.cache.state==='stale'
+      ?`Harness refresh failed. Showing the last known catalog${cacheTime(harnessCatalog.cache.refreshedAt)}.`
+      :staleInstances.length
+        ?`${staleInstances.map(instance=>instance.id).join(', ')} ${staleInstances.length===1?'is':'are'} using the last known catalog.`
+        :undefined;
   const handleIssue=normalizedHandle&&!/^[a-z0-9][a-z0-9_-]*$/.test(normalizedHandle)
     ?'Use lowercase Latin letters, digits, “_”, and “-” only.'
     :normalizedHandle&&personas.some(persona=>persona.id!==form?.id&&persona.handle.toLowerCase()===normalizedHandle)
@@ -259,8 +271,9 @@ export function PersonasScreen({
       <header ui-spec-block-id="persona_catalog_header">
         <button type="button" className={styles['mobile-menu']} aria-label="Open menu" onClick={openMenu}><Menu /></button>
         <span className={styles['screen-title']}><strong><Users /> Agents</strong><small>{activePersonaCount} active · {archivedPersonaCount} archived</small></span>
-        <Button type="button" variant="primary" className={styles['create-persona']} disabled={!real} onClick={startCreate}><Plus /><span>New agent</span></Button>
+        <span className={styles['header-actions']}><Button type="button" variant="ghost" className={styles['refresh-catalog']} disabled={!real||harnessRefreshing} title="Refresh harness models" aria-label="Refresh harness models" icon={<RefreshCw className={harnessRefreshing?styles.spinning:''}/>} onClick={()=>void onRefreshHarness()}><span>Refresh</span></Button><Button type="button" variant="primary" className={styles['create-persona']} disabled={!real} onClick={startCreate}><Plus /><span>New agent</span></Button></span>
       </header>
+      {cacheWarning&&<Alert tone="warning" className={styles['catalog-warning']}>{cacheWarning}</Alert>}
       <div className={styles['personas-content']}>
         {loading && <div className={styles['loading-state']}><Spinner label="Loading agents and models…" /></div>}
         {error && <Alert tone="error">{error}</Alert>}
@@ -310,3 +323,5 @@ export function PersonasScreen({
     </section>
   );
 }
+
+const cacheTime=(value:string|null)=>value?` from ${new Date(value).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`:'';

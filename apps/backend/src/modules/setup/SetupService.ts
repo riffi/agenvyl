@@ -1,8 +1,11 @@
 import type {CompleteSetupRequest,ConfigureSetupHarnessesRequest,HarnessSettingsState,SetupState} from '@agenvyl/contracts';
 import {isConfigureConnectorInstancesRequest} from '@agenvyl/connector-contract';
+import type {FastifyBaseLogger} from 'fastify';
 import type {Database} from '../../infrastructure/database/Database.js';
 import type {HttpConnectorClient} from '../../integrations/connector/HttpConnectorClient.js';
 import {AppError} from '../../shared/errors/AppError.js';
+import type {HarnessCatalogService} from '../connector/HarnessCatalogService.js';
+import {HarnessMetadataCache,unavailableHarnessCache} from '../connector/HarnessMetadataCache.js';
 import {isAvailableStarterRoute,selectStarterAgentRoutes,type StarterAgentRoute,type StarterHarnessCatalog} from './starterAgentRoutes.js';
 
 const templates=[
@@ -12,18 +15,35 @@ const templates=[
 ] as const;
 
 export class SetupService{
-  constructor(private readonly database:Database,private readonly connector:HttpConnectorClient,private readonly workspaceRoot:string){}
+  private readonly discoveryCache:HarnessMetadataCache<Awaited<ReturnType<HttpConnectorClient['discover']>>>;
+  private readonly now:()=>number;
+  private readonly logger?:Pick<FastifyBaseLogger,'info'|'warn'>;
+  constructor(
+    private readonly database:Database,
+    private readonly connector:HttpConnectorClient,
+    private readonly workspaceRoot:string,
+    private readonly catalogCache:Pick<HarnessCatalogService,'invalidate'>,
+    options:{ttlMs?:number;retryMs?:number;now?:()=>number;logger?:Pick<FastifyBaseLogger,'info'|'warn'>}={},
+  ){
+    this.now=options.now??Date.now;
+    this.logger=options.logger;
+    this.discoveryCache=new HarnessMetadataCache({...options,error:{code:'discovery_unavailable',message:'Harness discovery refresh failed'}});
+  }
   async state():Promise<SetupState>{
     const[row]=await this.database.sql`SELECT completed_at,locale,first_room_id FROM installation_state WHERE id=true`;
-    const [discovery,instances,configuration]=await Promise.all([this.connector.discover().catch(()=>({apiVersion:'v2' as const,candidates:[]})),this.connector.instances().catch(()=>({apiVersion:'v2' as const,connectorEpoch:'',instances:[]})),this.connector.configuration().catch(()=>({apiVersion:'v2' as const,instances:[]}))]);
+    const [discovery,instances,configuration]=await Promise.all([
+      this.discovery().catch(()=>({value:{apiVersion:'v2' as const,candidates:[]},cache:unavailableHarnessCache({code:'discovery_unavailable',message:'Harness discovery is unavailable'})})),
+      this.connector.instances().catch(()=>({apiVersion:'v2' as const,connectorEpoch:'',instances:[]})),
+      this.connector.configuration().catch(()=>({apiVersion:'v2' as const,instances:[]})),
+    ]);
     const configured=new Map(configuration.instances.map(instance=>[instance.id,instance]));
-    return{completed:Boolean(row.completed_at),locale:row.locale==='ru'?'ru':'en',workspaceRoot:this.workspaceRoot,...(row.first_room_id?{firstRoomId:String(row.first_room_id)}:{}),instances:instances.instances.map(instance=>({id:instance.id,type:instance.type,status:instance.status,...(instance.managed!==undefined?{managed:instance.managed}:{}),...(configured.get(instance.id)?.externalDirectoryRoots!==undefined?{externalDirectoryRoots:configured.get(instance.id)?.externalDirectoryRoots}:{}),...(configured.get(instance.id)?.allowDangerFullAccess!==undefined?{allowDangerFullAccess:configured.get(instance.id)?.allowDangerFullAccess}:{}),...(configured.get(instance.id)?.allowSubscriptionOAuth!==undefined?{allowSubscriptionOAuth:configured.get(instance.id)?.allowSubscriptionOAuth}:{})})),candidates:discovery.candidates};
+    return{completed:Boolean(row.completed_at),locale:row.locale==='ru'?'ru':'en',workspaceRoot:this.workspaceRoot,...(row.first_room_id?{firstRoomId:String(row.first_room_id)}:{}),instances:instances.instances.map(instance=>({id:instance.id,type:instance.type,status:instance.status,...(instance.managed!==undefined?{managed:instance.managed}:{}),...(configured.get(instance.id)?.externalDirectoryRoots!==undefined?{externalDirectoryRoots:configured.get(instance.id)?.externalDirectoryRoots}:{}),...(configured.get(instance.id)?.allowDangerFullAccess!==undefined?{allowDangerFullAccess:configured.get(instance.id)?.allowDangerFullAccess}:{}),...(configured.get(instance.id)?.allowSubscriptionOAuth!==undefined?{allowSubscriptionOAuth:configured.get(instance.id)?.allowSubscriptionOAuth}:{})})),candidates:discovery.value.candidates,discoveryCache:discovery.cache};
   }
-  async harnessSettings():Promise<HarnessSettingsState>{
+  async harnessSettings(options:{forceRefresh?:boolean}={}):Promise<HarnessSettingsState>{
     const connectorState=Promise.all([
       this.connector.configuration(),
       this.connector.instances(),
-      this.connector.discover(),
+      this.discovery(options.forceRefresh),
     ]).catch(()=>{
       throw new AppError('connector_unavailable',503,'Connector settings are unavailable');
     });
@@ -32,7 +52,7 @@ export class SetupService{
       this.database.sql`SELECT id,name,handle,harness_instance_id,archived_at FROM personas ORDER BY archived_at NULLS FIRST,name`,
     ]);
     const runtimeById=new Map(runtime.instances.map(instance=>[instance.id,instance]));
-    return{connectorEpoch:runtime.connectorEpoch,candidates:discovery.candidates,instances:configuration.instances.map(instance=>{
+    return{connectorEpoch:runtime.connectorEpoch,candidates:discovery.value.candidates,discoveryCache:discovery.cache,instances:configuration.instances.map(instance=>{
       const current=runtimeById.get(instance.id);
       const personas=personaRows.filter(row=>String(row.harness_instance_id)===instance.id).map(row=>({id:String(row.id),name:String(row.name),handle:String(row.handle),archived:Boolean(row.archived_at)}));
       return{...instance,status:instance.enabled?(current?.status??'unavailable'):'disabled',capabilities:current?.capabilities??[],...(current?.error?{error:current.error}:{}),personas};
@@ -51,7 +71,10 @@ export class SetupService{
     }
     const restricted=current.instances.filter(instance=>instance.type==='codex'&&instance.allowDangerFullAccess&&!nextById.get(instance.id)?.allowDangerFullAccess).map(instance=>instance.id);
     if(restricted.length){const personas=await this.database.sql`SELECT id,name,handle,harness_instance_id,permission_profile_id,archived_at FROM personas WHERE harness_instance_id=ANY(${restricted}) AND permission_profile_id='danger-full-access' ORDER BY archived_at NULLS FIRST,name`;if(personas.length)throw new AppError('codex_danger_mode_in_use',409,'Reassign agents using danger-full-access before disabling full access',{instances:restricted,personas:personas.map(row=>({id:String(row.id),name:String(row.name),handle:String(row.handle),permission_profile_id:String(row.permission_profile_id),archived:Boolean(row.archived_at)}))});}
-    return this.connector.configureInstances(input);
+    const configured=await this.connector.configureInstances(input);
+    this.catalogCache.invalidate();
+    this.discoveryCache.invalidate();
+    return configured;
   }
   async complete(input:CompleteSetupRequest){
     validate(input);
@@ -85,6 +108,19 @@ export class SetupService{
       if(!preferredSource||!isAvailableStarterRoute(preferred,preferredSource))throw new Error('route');
       return selectStarterAgentRoutes(preferred,sources,templates.length);
     }catch{throw new AppError('setup_route_unavailable',400,'Selected harness route is unavailable');}
+  }
+  private discovery(forceRefresh=false){
+    return this.discoveryCache.read(async()=>{
+      const startedAt=this.now();
+      try{
+        const value=await this.connector.discover();
+        this.logger?.info({durationMs:this.now()-startedAt,candidates:value.candidates.length},'Harness discovery refresh completed');
+        return value;
+      }catch(error){
+        this.logger?.warn({durationMs:this.now()-startedAt,err:error},'Harness discovery refresh failed; stale data will be used when available');
+        throw error;
+      }
+    },forceRefresh);
   }
 }
 

@@ -3,7 +3,7 @@ import { personasApi } from './persona/api';
 import { roomsApi } from './room/api';
 import { runsApi } from './run/api';
 import {personaGroupsApi} from './persona-group/api';
-import {harnessesApi} from './harness/api';
+import {harnessCatalogRefreshInterval,harnessesApi} from './harness/api';
 import {userProfileApi} from './user-profile';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -44,11 +44,24 @@ describe('entity APIs', () => {
   });
 
   it('loads the aggregated harness catalog through the typed gateway', async () => {
-    const catalog={connectorEpoch:'epoch-1',instances:[{id:'local-hermes',type:'hermes',status:'healthy',capabilities:['model_catalog'],models:[{id:'sol',label:'Sonnet'}],controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]}}]};
-    const fetchMock=vi.fn<typeof fetch>().mockResolvedValue(Response.json(catalog));
+    const catalog={connectorEpoch:'epoch-1',cache:{state:'fresh',refreshedAt:'2026-07-24T00:00:00.000Z',expiresAt:'2026-07-24T00:05:00.000Z'},instances:[{id:'local-hermes',type:'hermes',status:'healthy',capabilities:['model_catalog'],models:[{id:'sol',label:'Sonnet'}],controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]},catalogCache:{state:'fresh',refreshedAt:'2026-07-24T00:00:00.000Z'}}]};
+    const fetchMock=vi.fn<typeof fetch>().mockImplementation(async()=>Response.json(catalog));
     vi.stubGlobal('fetch',fetchMock);
     await expect(harnessesApi.catalog()).resolves.toEqual(catalog);
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/harnesses',expect.any(Object));
+    await harnessesApi.catalog(undefined,true);
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/harnesses?refresh=true',expect.any(Object));
+  });
+
+  it('polls Core only while a catalog refresh is in progress',()=>{
+    const catalog=(state:'fresh'|'refreshing'|'stale')=>({
+      connectorEpoch:'epoch',
+      instances:[],
+      cache:{state,refreshedAt:null,expiresAt:null},
+    });
+    expect(harnessCatalogRefreshInterval(catalog('refreshing'))).toBe(2_000);
+    expect(harnessCatalogRefreshInterval(catalog('fresh'))).toBe(false);
+    expect(harnessCatalogRefreshInterval(catalog('stale'))).toBe(false);
   });
 
   it('loads and saves local user profile settings through the typed gateway',async()=>{

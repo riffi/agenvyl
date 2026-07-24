@@ -12,6 +12,7 @@ type HarnessCatalog = {
       id: string;
       type: string;
       status: string;
+      catalogCache: { state: "fresh" | "stale" | "unavailable" };
       models: Array<{ id: string; reasoningEfforts?: string[] }>;
       controls: {
         permissionProfiles: Array<{ id: string }>;
@@ -282,7 +283,10 @@ export class PersonasService {
         "Unknown harness instance",
         { harnessInstanceId: instanceId },
       );
-    if (instance.status !== "healthy")
+    if (
+      instance.status !== "healthy" &&
+      instance.catalogCache.state !== "stale"
+    )
       throw new AppError(
         "harness_unavailable",
         409,

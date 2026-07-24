@@ -65,13 +65,14 @@ export type LocalUserProfile = { id: string; displayName: string; handle: string
 export type UpdateLocalUserProfileRequest = { display_name: string; handle: string };
 export type HarnessType='hermes'|'opencode'|'antigravity'|'codex'|'claude';
 export type HarnessAuthentication={authenticated:boolean;kind:'api'|'cloud'|'subscription_oauth'|'none'|'unknown'};
+export type HarnessCacheMetadata={state:'fresh'|'refreshing'|'stale';refreshedAt:string|null;expiresAt:string|null;error?:{code:string;message:string}};
 export type SetupHarnessCandidate={type:HarnessType;label:string;cli:{found:boolean;command:string;version?:string;compatible?:boolean};endpoint?:{url:string;reachable:boolean};safeToSelect:boolean;supportsManagedServer:boolean;auth?:HarnessAuthentication;requiresConfirmation?:'claude_oauth';warning?:string};
-export type SetupState={completed:boolean;locale:'en'|'ru';workspaceRoot:string;firstRoomId?:string;instances:Array<{id:string;type:string;status:string;managed?:boolean;externalDirectoryRoots?:string[];allowDangerFullAccess?:boolean;allowSubscriptionOAuth?:boolean}>;candidates:SetupHarnessCandidate[]};
+export type SetupState={completed:boolean;locale:'en'|'ru';workspaceRoot:string;firstRoomId?:string;instances:Array<{id:string;type:string;status:string;managed?:boolean;externalDirectoryRoots?:string[];allowDangerFullAccess?:boolean;allowSubscriptionOAuth?:boolean}>;candidates:SetupHarnessCandidate[];discoveryCache:HarnessCacheMetadata};
 export type SetupHarnessInstance={id:string;type:HarnessType;enabled:boolean;endpoint?:string;managed?:boolean;externalDirectoryRoots?:string[];permissionMode?:'plan'|'accept-edits';allowDangerFullAccess?:boolean;allowSubscriptionOAuth?:boolean};
 export type ConfigureSetupHarnessesRequest={instances:SetupHarnessInstance[]};
 export type HarnessSettingsPersona={id:string;name:string;handle:string;archived:boolean};
 export type HarnessSettingsInstance=SetupHarnessInstance&{status:'healthy'|'degraded'|'unavailable'|'disabled';capabilities:string[];error?:{code:string;message:string};personas:HarnessSettingsPersona[]};
-export type HarnessSettingsState={connectorEpoch:string;instances:HarnessSettingsInstance[];candidates:SetupHarnessCandidate[]};
+export type HarnessSettingsState={connectorEpoch:string;instances:HarnessSettingsInstance[];candidates:SetupHarnessCandidate[];discoveryCache:HarnessCacheMetadata};
 export type CompleteSetupRequest={locale:'en'|'ru';workspace_root:string;profile:{display_name:string;handle:string};room_title:string;route:{harness_instance_id:string;harness_type:string;model_id:string;permission_profile_id:string|null;agent_variant_id:string|null}|null};
 export type CompleteSetupResult={roomId:string};
 

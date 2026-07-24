@@ -22,7 +22,7 @@ export async function createAppContainer(config: AppConfig, fetchImplementation?
   const eventBus = new RoomEventBus();
   const events = new RoomEventService(roomEvents,eventBus);
   const connector=new HttpConnectorClient(config.connectorUrl,config.connectorToken,fetchImplementation);
-  const harnessCatalogService=new HarnessCatalogService(connector);
+  const harnessCatalogService=new HarnessCatalogService(connector,{logger});
   const connectorRuns=new ConnectorRunAdapter(connector);
   const activeRuns = new ActiveRunRegistry();
   const roomWorkspace=new RoomWorkspaceService(rooms,workspace,events,activeRuns,config.workspaceRoot,config.workspaceAgentRoot,config.workspaceMaxFileBytes,config.planModeEnabled,workspaceSnapshots,logger,{
@@ -54,7 +54,7 @@ export async function createAppContainer(config: AppConfig, fetchImplementation?
     runsService:new RunsService({runs,events,activeRuns,executor:runExecutor,planModeEnabled:config.planModeEnabled}),
     harnessCatalogService,
     roomWorkspace,
-    setupService:new SetupService(database,connector,config.workspaceRoot),
+    setupService:new SetupService(database,connector,config.workspaceRoot,harnessCatalogService,{logger}),
   };
 }
 

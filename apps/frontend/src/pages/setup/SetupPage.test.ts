@@ -5,6 +5,7 @@ import type {SetupHarnessCandidate,SetupState} from '@agenvyl/contracts';
 import {Candidate,initialConnectorSelection,instanceConfig} from './SetupPage';
 
 const candidate:SetupHarnessCandidate={type:'opencode',label:'OpenCode',cli:{found:true,command:'opencode',version:'1.17.20'},endpoint:{url:'http://127.0.0.1:4096',reachable:true},safeToSelect:true,supportsManagedServer:true};
+const discoveryCache={state:'fresh' as const,refreshedAt:'2026-07-24T00:00:00.000Z',expiresAt:'2026-07-24T00:05:00.000Z'};
 
 describe('setup harness configuration',()=>{
   it('shows the harness icon in a connector option',()=>{
@@ -15,7 +16,7 @@ describe('setup harness configuration',()=>{
   });
 
   it('does not preselect unavailable configured connectors during first setup',()=>{
-    const state:SetupState={completed:false,locale:'en',workspaceRoot:'C:/workspaces',instances:[
+    const state:SetupState={completed:false,locale:'en',workspaceRoot:'C:/workspaces',discoveryCache,instances:[
       {id:'local-hermes',type:'hermes',status:'healthy'},
       {id:'local-opencode',type:'opencode',status:'healthy',managed:true},
       {id:'local-antigravity',type:'antigravity',status:'healthy'},
@@ -29,7 +30,7 @@ describe('setup harness configuration',()=>{
   });
 
   it('preserves configured selections after setup so unavailable connectors can be disabled explicitly',()=>{
-    const state:SetupState={completed:true,locale:'en',workspaceRoot:'C:/workspaces',instances:[{id:'local-hermes',type:'hermes',status:'unavailable'},{id:'local-antigravity',type:'antigravity',status:'healthy'}],candidates:[]};
+    const state:SetupState={completed:true,locale:'en',workspaceRoot:'C:/workspaces',discoveryCache,instances:[{id:'local-hermes',type:'hermes',status:'unavailable'},{id:'local-antigravity',type:'antigravity',status:'healthy'}],candidates:[]};
     expect(initialConnectorSelection(state)).toEqual({selected:['hermes'],agy:true,openCodeManaged:true,codexDangerFullAccess:false,claudeOAuthConfirmed:false});
   });
 

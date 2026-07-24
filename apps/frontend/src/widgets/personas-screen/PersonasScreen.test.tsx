@@ -7,9 +7,10 @@ import type {HarnessCatalog} from '../../entities/harness';
 import type {Persona} from '../../entities/persona';
 import {HarnessRouteFields,PersonaInstructionFields} from './PersonasScreen';
 
-const catalog:HarnessCatalog={connectorEpoch:'epoch-1',instances:[
-  {id:'local-hermes',type:'hermes',status:'healthy',capabilities:['model_catalog'],models:[{id:'sol',label:'Sonnet'}],controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]}},
-  {id:'local-opencode',type:'opencode',status:'healthy',capabilities:['model_catalog'],models:[{id:'gpt-5',label:'GPT-5'}],controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[{id:'standard',label:'Standard'},{id:'auto-approve',label:'Auto-approve'}],agentVariants:[{id:'build',label:'Build'},{id:'plan',label:'Plan'}]}},
+const cache={state:'fresh' as const,refreshedAt:'2026-07-24T00:00:00.000Z',expiresAt:'2026-07-24T00:05:00.000Z'};
+const catalog:HarnessCatalog={connectorEpoch:'epoch-1',cache,instances:[
+  {id:'local-hermes',type:'hermes',status:'healthy',capabilities:['model_catalog'],models:[{id:'sol',label:'Sonnet'}],controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]},catalogCache:{state:'fresh',refreshedAt:cache.refreshedAt}},
+  {id:'local-opencode',type:'opencode',status:'healthy',capabilities:['model_catalog'],models:[{id:'gpt-5',label:'GPT-5'}],controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[{id:'standard',label:'Standard'},{id:'auto-approve',label:'Auto-approve'}],agentVariants:[{id:'build',label:'Build'},{id:'plan',label:'Plan'}]},catalogCache:{state:'fresh',refreshedAt:cache.refreshedAt}},
 ]};
 const persona=(patch:Partial<Persona>={}):Persona=>({id:'persona-1',handle:'coder',name:'Coder',role:'Code',color:'#64748b',requested_model:'sol',harness_instance_id:'local-hermes',harness_type:'hermes',model_id:'sol',permission_profile_id:null,agent_variant_id:null,default_reasoning_effort:null,group_id:null,archived_at:null,...patch});
 
@@ -54,7 +55,7 @@ describe('persona harness route fields',()=>{
   });
 
   it('shows AGY permissions without exposing room workflow state',()=>{
-    const agyCatalog:HarnessCatalog={connectorEpoch:'agy',instances:[{id:'local-antigravity',type:'antigravity',status:'healthy',capabilities:['model_catalog'],models:[{id:'gemini'}],controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[{id:'accept-edits',label:'Accept edits'}],agentVariants:[]}}]};
+    const agyCatalog:HarnessCatalog={connectorEpoch:'agy',cache,instances:[{id:'local-antigravity',type:'antigravity',status:'healthy',capabilities:['model_catalog'],models:[{id:'gemini'}],controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[{id:'accept-edits',label:'Accept edits'}],agentVariants:[]},catalogCache:{state:'fresh',refreshedAt:cache.refreshedAt}}]};
     const html=renderToStaticMarkup(<HarnessRouteFields form={persona({harness_instance_id:'local-antigravity',harness_type:'antigravity',model_id:'gemini',requested_model:'gemini',permission_profile_id:'accept-edits'})} catalog={agyCatalog} onChange={vi.fn()}/>);
     expect(html).toContain('Permissions');
     expect(html).not.toContain('Harness mode');
@@ -67,5 +68,16 @@ describe('persona harness route fields',()=>{
     expect(html).toContain('<strong>local-hermes</strong>');
     expect(html).toContain('<small>hermes · unavailable</small>');
     expect(html).toContain('sol (saved)');
+  });
+
+  it('keeps a same-epoch stale catalog selectable while the runtime is unavailable',()=>{
+    const staleCatalog:HarnessCatalog={...catalog,instances:[{
+      ...catalog.instances[0],
+      status:'unavailable',
+      catalogCache:{state:'stale',refreshedAt:cache.refreshedAt,error:{code:'catalog_unavailable',message:'Refresh failed'}},
+    }]};
+    render(<HarnessRouteFields form={persona()} catalog={staleCatalog} onChange={vi.fn()}/>);
+    fireEvent.click(screen.getByRole('button',{name:'Harness instance'}));
+    expect((screen.getByRole('option',{name:/local-hermes/}) as HTMLButtonElement).disabled).toBe(false);
   });
 });

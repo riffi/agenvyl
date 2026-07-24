@@ -1,18 +1,21 @@
 // @vitest-environment jsdom
 
 import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
-import {render,screen,waitFor} from '@testing-library/react';
-import {describe,expect,it,vi} from 'vitest';
+import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {afterEach,describe,expect,it,vi} from 'vitest';
 import type {HarnessCatalog} from '../../entities/harness';
 import type {Persona} from '../../entities/persona';
 import {PersonasScreen} from './PersonasScreen';
 
 const active:Persona={id:'active',handle:'active',name:'Active agent',role:'Code',color:'#64748b',requested_model:'sol',harness_instance_id:'local-hermes',harness_type:'hermes',model_id:'sol',permission_profile_id:null,agent_variant_id:null,default_reasoning_effort:null,group_id:null,archived_at:null};
 const archived:Persona={...active,id:'archived',handle:'archived',name:'Archived agent',harness_instance_id:'local-opencode',harness_type:'opencode',archived_at:'2026-07-20T00:00:00.000Z'};
-const catalog:HarnessCatalog={connectorEpoch:'epoch',instances:[
-  {id:'local-hermes',type:'hermes',status:'healthy',capabilities:[],models:[{id:'sol'}],controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]}},
-  {id:'local-opencode',type:'opencode',status:'healthy',capabilities:[],models:[{id:'sol'}],controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[],agentVariants:[]}},
+const cache={state:'fresh' as const,refreshedAt:'2026-07-24T00:00:00.000Z',expiresAt:'2026-07-24T00:05:00.000Z'};
+const catalog:HarnessCatalog={connectorEpoch:'epoch',cache,instances:[
+  {id:'local-hermes',type:'hermes',status:'healthy',capabilities:[],models:[{id:'sol'}],controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]},catalogCache:{state:'fresh',refreshedAt:cache.refreshedAt}},
+  {id:'local-opencode',type:'opencode',status:'healthy',capabilities:[],models:[{id:'sol'}],controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[],agentVariants:[]},catalogCache:{state:'fresh',refreshedAt:cache.refreshedAt}},
 ]};
+
+afterEach(cleanup);
 
 describe('persona harness display',()=>{
   it('shows current harnesses in active and archived rows and the editor header',async()=>{
@@ -20,6 +23,8 @@ describe('persona harness display',()=>{
     const {container}=render(<QueryClientProvider client={client}><PersonasScreen
       personas={[active,archived]}
       harnessCatalog={catalog}
+      harnessRefreshing={false}
+      onRefreshHarness={vi.fn(async()=>undefined)}
       groups={[]}
       loading={false}
       onChanged={vi.fn(async()=>undefined)}
@@ -38,5 +43,29 @@ describe('persona harness display',()=>{
     expect(screen.getAllByText('@active · sol')).toHaveLength(2);
     expect(screen.queryByText('@active · Code')).toBeNull();
     expect(screen.getByText('@archived · sol')).toBeTruthy();
+  });
+
+  it('shows stale data without blocking an explicit refresh',()=>{
+    const client=new QueryClient({defaultOptions:{queries:{retry:false}}}),refresh=vi.fn(async()=>undefined);
+    render(<QueryClientProvider client={client}><PersonasScreen
+      personas={[active]}
+      harnessCatalog={{...catalog,cache:{...catalog.cache,state:'stale',error:{code:'connector_unavailable',message:'Refresh failed'}}}}
+      harnessRefreshing={false}
+      onRefreshHarness={refresh}
+      groups={[]}
+      loading={false}
+      onChanged={vi.fn(async()=>undefined)}
+      real
+      roomId="demo-room"
+      roomPersonaIds={new Set()}
+      onSelectPersona={vi.fn()}
+      openMenu={vi.fn()}
+      registerNavigationGuard={vi.fn()}
+    /></QueryClientProvider>);
+    expect(screen.getByRole('alert').textContent).toContain('Showing the last known catalog');
+    const button=screen.getByRole('button',{name:'Refresh harness models'});
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(button);
+    expect(refresh).toHaveBeenCalledOnce();
   });
 });

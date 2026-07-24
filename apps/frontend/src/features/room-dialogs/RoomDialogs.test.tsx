@@ -8,7 +8,8 @@ import {CreateRoomDialog,RoomAgentManager} from './RoomDialogs';
 
 const hermes:Persona={id:'hermes',handle:'hermes',name:'Hermes agent',role:'Code',color:'#64748b',requested_model:'sol',harness_instance_id:'local-hermes',harness_type:'hermes',model_id:'sol',permission_profile_id:null,agent_variant_id:null,default_reasoning_effort:null,group_id:null,archived_at:null};
 const openCode:Persona={...hermes,id:'opencode',handle:'opencode',name:'OpenCode agent',harness_instance_id:'local-opencode',harness_type:'opencode'};
-const catalog:HarnessCatalog={connectorEpoch:'epoch',instances:[{id:'local-opencode',type:'opencode',status:'healthy',capabilities:[],models:[{id:'sol',reasoningEfforts:['low','high'],defaultReasoningEffort:'low'}],controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]}}]};
+const cache={state:'fresh' as const,refreshedAt:'2026-07-24T00:00:00.000Z',expiresAt:'2026-07-24T00:05:00.000Z'};
+const catalog:HarnessCatalog={connectorEpoch:'epoch',cache,instances:[{id:'local-opencode',type:'opencode',status:'healthy',capabilities:[],models:[{id:'sol',reasoningEfforts:['low','high'],defaultReasoningEffort:'low'}],controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]},catalogCache:{state:'fresh',refreshedAt:cache.refreshedAt}}]};
 
 afterEach(cleanup);
 
