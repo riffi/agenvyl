@@ -30,9 +30,41 @@ describe('Codex connector adapter',()=>{
     try{
       const client=new FakeAppServer(),adapter=new CodexConnectorAdapter({client,stopGraceMs:25}),execution=await adapter.start(input()),iterator=adapter.events(execution)[Symbol.asyncIterator]();
       await adapter.stop(execution);await vi.advanceTimersByTimeAsync(25);
-      expect(client.close).toHaveBeenCalledTimes(1);
+      expect(client.close).toHaveBeenCalledTimes(2);
       expect(await iterator.next()).toMatchObject({value:{type:'execution.cancelled'}});
     }finally{vi.useRealTimers();}
+  });
+  it('isolates concurrent executions and emits terminal only after its process tree closes',async()=>{
+    const catalog=new FakeAppServer(),firstClient=new FakeAppServer(),secondClient=new FakeAppServer(),clients=[catalog,firstClient,secondClient];
+    let releaseSecond:()=>void=()=>{};
+    secondClient.close.mockImplementation(()=>new Promise<void>(resolve=>{releaseSecond=resolve;}));
+    const adapter=new CodexConnectorAdapter({clientFactory:()=>clients.shift()!});
+    const first=await adapter.start(input('one')),second=await adapter.start(input('two')),firstIterator=adapter.events(first)[Symbol.asyncIterator](),secondIterator=adapter.events(second)[Symbol.asyncIterator]();
+    const secondTerminal=secondIterator.next();let delivered=false;void secondTerminal.then(()=>{delivered=true;});
+    secondClient.emit({method:'turn/completed',params:{threadId:'thread-1',turn:{id:'turn-1',status:'completed'}}});
+    await vi.waitFor(()=>expect(secondClient.close).toHaveBeenCalledTimes(1));
+    expect(delivered).toBe(false);
+    expect(firstClient.close).not.toHaveBeenCalled();
+    expect(await adapter.inspect(first)).toEqual({status:'running'});
+    releaseSecond();
+    expect(await secondTerminal).toMatchObject({value:{type:'execution.completed'}});
+    firstClient.emit({method:'turn/completed',params:{threadId:'thread-1',turn:{id:'turn-1',status:'completed'}}});
+    expect(await firstIterator.next()).toMatchObject({value:{type:'execution.completed'}});
+    expect(firstClient.close).toHaveBeenCalledTimes(1);
+  });
+  it('closes an execution app-server when turn startup fails',async()=>{
+    const catalog=new FakeAppServer(),executionClient=new FakeAppServer(),adapter=new CodexConnectorAdapter({clientFactory:()=>catalog.close.mock.calls.length?executionClient:catalog});
+    const request=executionClient.request.bind(executionClient);
+    executionClient.request=vi.fn(async(method:string,params:unknown)=>method==='turn/start'?Promise.reject(new Error('turn failed')):request(method,params));
+    await expect(adapter.start(input())).rejects.toThrow('turn failed');
+    expect(executionClient.close).toHaveBeenCalledTimes(1);
+  });
+  it('closes the execution app-server before reporting a failed turn',async()=>{
+    const catalog=new FakeAppServer(),executionClient=new FakeAppServer(),clients=[catalog,executionClient],adapter=new CodexConnectorAdapter({clientFactory:()=>clients.shift()!});
+    const execution=await adapter.start(input()),iterator=adapter.events(execution)[Symbol.asyncIterator]();
+    executionClient.emit({method:'turn/completed',params:{threadId:'thread-1',turn:{id:'turn-1',status:'failed',error:{message:'broken'}}}});
+    expect(await iterator.next()).toMatchObject({value:{type:'execution.failed',payload:{error:{code:'codex_turn_failed',message:'broken'}}}});
+    expect(executionClient.close).toHaveBeenCalledTimes(1);
   });
   it('exposes bounded redacted parameters for Codex tool items',async()=>{const client=new FakeAppServer(),adapter=new CodexConnectorAdapter({client});const execution=await adapter.start(input()),iterator=adapter.events(execution)[Symbol.asyncIterator]();
     client.emit({method:'item/started',params:{threadId:'thread-1',turnId:'turn-1',item:{id:'command',type:'commandExecution',command:'npm test',cwd:'C:/workspace/room'}}});

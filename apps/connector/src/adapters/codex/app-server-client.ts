@@ -47,11 +47,16 @@ export class CodexAppServerClient implements CodexAppServerPort{
   async close(){
     const child=this.child;
     this.child=undefined;this.startPromise=undefined;
+    const error=new Error('Codex app-server closed');
+    for(const pending of this.pending.values())pending.reject(error);
+    this.pending.clear();
     if(!child||child.exitCode!==null)return;
     const closed=new Promise<void>(resolve=>child.once('close',()=>resolve()));
     stopProcessTree(child);
-    await Promise.race([closed,new Promise<void>(resolve=>setTimeout(resolve,2_000))]);
-    if(child.exitCode===null)killProcessTree(child);
+    await waitForClose(closed,2_000);
+    if(child.exitCode!==null)return;
+    killProcessTree(child);
+    await waitForClose(closed,2_000);
   }
 
   private async open(){
@@ -117,6 +122,11 @@ const rpcError=(value:unknown)=>isRecord(value)&&typeof value.message==='string'
 const isRecord=(value:unknown):value is Record<string,unknown>=>Boolean(value&&typeof value==='object'&&!Array.isArray(value));
 const stopProcessTree=(child:RunningChild)=>signalProcessTree(child,'SIGTERM');
 const killProcessTree=(child:RunningChild)=>signalProcessTree(child,'SIGKILL');
+const waitForClose=async(closed:Promise<void>,timeoutMs:number)=>{
+  let timer:ReturnType<typeof setTimeout>|undefined;
+  try{await Promise.race([closed,new Promise<void>(resolve=>{timer=setTimeout(resolve,timeoutMs);})]);}
+  finally{if(timer)clearTimeout(timer);}
+};
 const signalProcessTree=(child:RunningChild,signal:NodeJS.Signals)=>{
   if(!child.pid)return;
   if(process.platform==='win32'){spawnSync('taskkill.exe',['/PID',String(child.pid),'/T',...(signal==='SIGKILL'?['/F']:[])],{stdio:'ignore',windowsHide:true});return;}

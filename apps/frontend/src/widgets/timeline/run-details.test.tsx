@@ -47,6 +47,14 @@ describe('Timeline run details', () => {
     expect(screen.queryByText('Work · max')).toBeNull();
   });
 
+  it('keeps a no-op workspace result visually neutral',()=>{
+    const noopRun:Run={...run,workspaceResult:{base_snapshot_id:'base',result_snapshot_id:'base',capture_status:'complete',publish_status:'noop',conflict_count:0,errors:[]}};
+    const state={...initialState,hydrated:true,messages:[{id:'message-1',text:'@coder answer',createdAt:'2026-07-20T12:00:00.000Z',targets:['coder' as const],runIds:['run-1'],author:{profileId:'local-user',displayName:'User',handle:'user'},addressedToAll:false}],runs:{'run-1':noopRun},runOrder:['run-1']};
+    render(<Timeline state={state} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()}/>);
+    expect(screen.queryByText('Changes applied to room workspace')).toBeNull();
+    expect(screen.queryByText('Snapshot saved')).toBeNull();
+  });
+
   it('routes agent artifacts and message attachments through the immutable artifact viewer', () => {
     const file:WorkspaceAttachment={version_id:'version-synopsis',entry_id:'entry-synopsis',path:'prvaya-popytka-synopsis.md',name:'prvaya-popytka-synopsis.md',size:8287,mime_type:'text/markdown',url:'/version-synopsis',preview_url:'/version-synopsis/preview'};
     const artifactRun:Run={...run,artifacts:[{...file,change:'created',attribution:'exact'}],workspaceResult:{base_snapshot_id:'base',result_snapshot_id:'result',published_snapshot_id:'published',capture_status:'complete',publish_status:'published',conflict_count:0,errors:[]}};

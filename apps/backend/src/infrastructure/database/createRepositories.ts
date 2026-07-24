@@ -7,6 +7,7 @@ import {PersonaGroupRepository} from '../../modules/persona-groups/personaGroups
 import { Database } from './Database.js';
 import {WorkspaceRepository} from '../../modules/workspace/workspace.repository.js';
 import {WorkspaceSnapshotRepository} from '../../modules/workspace/workspaceSnapshots.repository.js';
+import {WorkspaceSlotRepository} from '../../modules/workspace/workspaceSlots.repository.js';
 import {UserProfileRepository} from '../../modules/user-profile/userProfile.repository.js';
 
 export async function createRepositories(databaseUrl:string,options:{legacySeed?:boolean}={}){
@@ -14,7 +15,7 @@ export async function createRepositories(databaseUrl:string,options:{legacySeed?
   if(options.legacySeed??process.env.NODE_ENV==='test'){const{seedLegacyTestDatabase}=await import('../../test/legacySeed.js');await seedLegacyTestDatabase(database);}
   const personas=new PersonaRepository(database);
   const roomEvents=new RoomEventRepository(database);
-  const workspace=new WorkspaceRepository(database),workspaceSnapshots=new WorkspaceSnapshotRepository(database),rooms=new RoomRepository(database,personas,workspace,roomEvents);
+  const workspace=new WorkspaceRepository(database),workspaceSnapshots=new WorkspaceSnapshotRepository(database),workspaceSlots=new WorkspaceSlotRepository(database),rooms=new RoomRepository(database,personas,workspace,roomEvents);
   const userProfile=new UserProfileRepository(database);
-  return{database,personas,userProfile,personaGroups:new PersonaGroupRepository(database),rooms,messages:new MessageRepository(database,personas,userProfile,roomEvents,workspace),runs:new RunRepository(database,roomEvents),roomEvents,workspace,workspaceSnapshots};
+  return{database,personas,userProfile,personaGroups:new PersonaGroupRepository(database),rooms,messages:new MessageRepository(database,personas,userProfile,roomEvents,workspace),runs:new RunRepository(database,roomEvents),roomEvents,workspace,workspaceSnapshots,workspaceSlots};
 }

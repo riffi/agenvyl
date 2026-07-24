@@ -13,10 +13,19 @@ import type {ResolveWorkspaceConflictsRequest,RunEmbed,RunWorkspaceResult,Update
 import {extractWorkspaceImageReferences} from './workspaceEmbeds.js';
 import {assertPlanModeEnabled} from '../features/planMode.js';
 import type {WorkspaceSnapshotRepository} from './workspaceSnapshots.repository.js';
-import {diffSnapshots,type SnapshotEntry} from './workspaceSnapshots.js';
+import {diffSnapshots,entryMap,manifestHash,sameEntry,type SnapshotEntry} from './workspaceSnapshots.js';
 import {RunWorkspaceCleanup} from './RunWorkspaceCleanup.js';
+import type {WorkspaceOptimizationMode} from '../../app/config.js';
+import {contentHash,exactEntriesEqual,fingerprintMatches,probeStatCapability,scanWorkspaceTree,stableReadWorkspaceFile,toStatFingerprint,workspaceContentManifest} from './workspaceCapture.js';
+import type {WorkspaceSlotRepository,WorkspaceSlotLease,WorkspaceStatFingerprint} from './workspaceSlots.repository.js';
+import {LegacyRunWorkspaceDriver,WarmSlotWorkspaceDriver,type RunWorkspaceDriverPath} from './runWorkspaceDrivers.js';
 
 type WorkspaceLogger={info:(context:Record<string,unknown>,message:string)=>void;warn:(context:Record<string,unknown>,message:string)=>void};
+type WorkspaceOptimizationOptions={noopMode:WorkspaceOptimizationMode;warmSlotsMode:WorkspaceOptimizationMode;statCacheMode:WorkspaceOptimizationMode;slotLeaseMs:number};
+type PreparedRunPath=RunWorkspaceDriverPath&{lease?:WorkspaceSlotLease};
+type CaptureResult={entries:SnapshotEntry[];errors:WorkspaceCaptureError[];fingerprints:WorkspaceStatFingerprint[];scannedFiles:number;hashedFiles:number;hashedBytes:number;cacheHits:number;cacheState:'valid'|'invalid'|'unsupported';capabilityKey?:string;cacheMismatch:boolean;verifiedGeneration?:number};
+
+const defaultOptimizationOptions:WorkspaceOptimizationOptions={noopMode:'off',warmSlotsMode:'off',statCacheMode:'off',slotLeaseMs:20*60_000};
 
 export class RoomWorkspaceService{
   private watchers=new Map<string,FSWatcher>();
@@ -24,11 +33,28 @@ export class RoomWorkspaceService{
   private reconciling=new Map<string,Promise<void>>();
   private materializing=new Set<string>();
   private roomMutations=new Map<string,Promise<void>>();
+  private preparedRuns=new Map<string,PreparedRunPath>();
+  private statCapabilities=new Map<string,{supported:boolean;capabilityKey:string}>();
   private readonly runCleanup:RunWorkspaceCleanup;
-  constructor(private readonly rooms:RoomRepository,private readonly repository:WorkspaceRepository,private readonly events:RoomEventService,private readonly activeRuns:ActiveRunRegistry,private readonly root:string,private readonly agentRoot:string,readonly maxFileBytes:number,private readonly planModeEnabled?:boolean,private readonly snapshots?:WorkspaceSnapshotRepository,private readonly logger?:WorkspaceLogger){
+  private readonly optimization:WorkspaceOptimizationOptions;
+  private readonly legacyDriver:LegacyRunWorkspaceDriver;
+  private readonly warmDriver:WarmSlotWorkspaceDriver;
+  constructor(private readonly rooms:RoomRepository,private readonly repository:WorkspaceRepository,private readonly events:RoomEventService,private readonly activeRuns:ActiveRunRegistry,private readonly root:string,private readonly agentRoot:string,readonly maxFileBytes:number,private readonly planModeEnabled?:boolean,private readonly snapshots?:WorkspaceSnapshotRepository,private readonly logger?:WorkspaceLogger,optimization:Partial<WorkspaceOptimizationOptions>={},private readonly slots?:WorkspaceSlotRepository){
+    this.optimization={...defaultOptimizationOptions,...optimization};
+    this.legacyDriver=new LegacyRunWorkspaceDriver(root,agentRoot);
+    this.warmDriver=new WarmSlotWorkspaceDriver(root,agentRoot);
     this.runCleanup=new RunWorkspaceCleanup(
       async task=>rm(path.join(this.roomPath(task.roomId),'.agenvyl','runs',task.runId),{recursive:true,force:true,maxRetries:5,retryDelay:100}),
       logger,
+      undefined,
+      {
+        complete:async task=>{await this.snapshots?.markCleanupComplete(task.runId)},
+        deferred:async(task,error,_attempt,delay)=>{
+          if(!this.snapshots)return'retry';
+          const cleanupStatus=await this.snapshots.markCleanupDeferred(task.runId,error instanceof Error?error.message:String(error),new Date(Date.now()+delay).toISOString());
+          return cleanupStatus==='quarantined'?'quarantine':'retry';
+        },
+      },
     );
   }
 
@@ -38,45 +64,84 @@ export class RoomWorkspaceService{
   agentObjectPath(sha:string){return path.join(path.resolve(this.agentRoot),'.versions',sha.slice(0,2),sha);}
   runRelativePath(runId:string){return`.agenvyl/runs/${runId}/workspace`;}
   runPath(roomId:string,runId:string){return path.join(this.roomPath(roomId),'.agenvyl','runs',runId,'workspace');}
+  slotPath(roomId:string,lease:Pick<WorkspaceSlotLease,'personaId'|'slotIndex'>){return path.join(this.roomPath(roomId),'.agenvyl','agents',lease.personaId,'slots',String(lease.slotIndex),'workspace');}
 
   async ensure(roomId:string){await this.assertRoom(roomId);const directory=this.roomPath(roomId);await mkdir(directory,{recursive:true});this.startWatcher(roomId,directory);return directory;}
   async list(roomId:string,includeDeleted=false){await this.ensure(roomId);await this.reconcile(roomId);const current=await this.snapshots?.current(roomId);return{path:this.agentRoomPath(roomId),current_snapshot_id:current?.id??'',materialization_status:current?.materializationStatus??'ready' as const,entries:await this.repository.list(roomId,includeDeleted)};}
-  async recover(){if(!this.snapshots)return;const started=Date.now(),materializations=await this.snapshots.materializationsToRecover(),worktrees=await this.snapshots.capturedWorktrees();for(const item of materializations)await this.materializeSnapshot(item.roomId,item.snapshotId).catch(()=>{});let removed=0,deferred=0;for(const item of worktrees){if(await this.cleanupRunDirectory(item.roomId,item.runId,'recovery'))removed++;else deferred++;}this.logger?.info({metric:'workspace.recovery',durationMs:Date.now()-started,materializations:materializations.length,orphanWorktreesRemoved:removed,orphanWorktreesDeferred:deferred},'Workspace recovery completed');}
+  async recover(){
+    if(!this.snapshots)return;
+    const started=Date.now(),materializations=await this.snapshots.materializationsToRecover();
+    for(const item of materializations)await this.materializeSnapshot(item.roomId,item.snapshotId).catch(()=>{});
+    let restoredSlots=0;
+    for(const slot of await this.slots?.recoverableQuarantines()??[]){
+      const target=this.slotPath(slot.roomId,slot);
+      try{await rm(target,{recursive:true,force:true,maxRetries:5,retryDelay:100});await mkdir(target,{recursive:true});if(await this.slots!.restoreQuarantine(slot.id))restoredSlots++}catch{}
+    }
+    this.logger?.info({metric:'workspace.recovery',durationMs:Date.now()-started,materializations:materializations.length,restoredSlots},'Workspace materialization recovery completed');
+  }
+
+  async recoverRuns(){
+    if(!this.snapshots)return;
+    const started=Date.now();
+    for(const item of await this.snapshots.abandonedCaptures())await this.finalizeRun(item.roomId,item.runId,item.status).catch(()=>{});
+    let removed=0,deferred=0;
+    for(const item of await this.snapshots.pendingCleanup()){
+      if(item.driver==='warm'||await this.slots?.leaseForRun(item.runId)){await this.finishRunWorkspace(item.roomId,item.runId,item.resultSnapshotId??item.baseSnapshotId,item.captureStatus==='complete');continue}
+      if(await this.cleanupRunDirectory(item.roomId,item.runId,'recovery'))removed++;else deferred++;
+    }
+    this.logger?.info({metric:'workspace.run_recovery',durationMs:Date.now()-started,removed,deferred},'Workspace run recovery completed');
+  }
 
   async prepareRun(roomId:string,runId:string){
     const started=Date.now();
     if(!this.snapshots){await this.ensure(roomId);return{relativePath:'.',absolutePath:this.agentRoomPath(roomId)};}
     const roomDirectory=await this.ensure(roomId);
     await this.ensureManagedRunRoot(roomId,roomDirectory);
-    const result=await this.snapshots.prepareRun(roomId,runId),target=this.runPath(roomId,runId);
-    await rm(target,{recursive:true,force:true});await mkdir(target,{recursive:true});
+    const result=await this.snapshots.prepareRun(roomId,runId),baselineEntries=await this.snapshots.entries(result.base_snapshot_id);
+    let prepared:PreparedRunPath|undefined;
     try{
-      const baselineEntries=await this.snapshots.entries(result.base_snapshot_id);
-      for(const entry of baselineEntries){
-        const destination=path.join(target,...entry.path.split('/'));
-        if(entry.kind==='directory'){await mkdir(destination,{recursive:true});continue;}
-        const version=entry.versionId?await this.repository.version(roomId,entry.versionId):undefined;
-        if(!version)throw new Error(`Workspace version for ${entry.path} is unavailable`);
-        await mkdir(path.dirname(destination),{recursive:true});
-        await copyFile(this.objectPath(version.sha256),destination,constants.COPYFILE_FICLONE);
+      if(this.optimization.warmSlotsMode!=='off'&&this.slots){
+        await this.retryQuarantinedSlots();
+        const lease=await this.slots.acquire(roomId,runId,this.optimization.slotLeaseMs,this.optimization.warmSlotsMode==='on');
+        if(lease){
+          const slotTarget=this.slotPath(roomId,lease);
+          const prior=lease.materializedSnapshotId?await this.snapshots.entries(lease.materializedSnapshotId):[];
+          const slotStats=await this.materializeRunTarget(roomId,slotTarget,prior,baselineEntries);
+          if(!await this.slots.markRunning(runId,lease.generation,result.base_snapshot_id))throw new Error('Warm slot lease changed during preparation');
+          if(this.optimization.warmSlotsMode==='on'){
+            prepared={...this.warmDriver.path(roomId,runId,lease),lease};
+            this.logger?.info({metric:'workspace.prepare',roomId,runId,driver:'warm',durationMs:Date.now()-started,...slotStats},'Warm run workspace prepared');
+          }else this.logger?.info({metric:'workspace.warm_slots.shadow',roomId,runId,durationMs:Date.now()-started,...slotStats},'Shadow warm slot prepared');
+        }else this.logger?.warn({metric:'workspace.slot_fallback',roomId,runId,reason:'pool_exhausted'},'Warm slot unavailable; using legacy run workspace');
       }
+      if(!prepared){
+        const legacy=this.legacyDriver.path(roomId,runId),target=legacy.root,stats=await this.materializeRunTarget(roomId,target,[],baselineEntries,true),lease=await this.slots?.leaseForRun(runId);
+        prepared={...legacy,...(lease?{lease}:{})};
+        await this.slots?.markLegacy(runId);
+        if(prepared.lease&&this.optimization.warmSlotsMode==='shadow')await this.compareShadowTrees(roomId,runId,target,this.slotPath(roomId,prepared.lease),'prepare');
+        this.logger?.info({metric:'workspace.prepare',roomId,runId,driver:'legacy',durationMs:Date.now()-started,...stats},'Run workspace prepared');
+      }
+      this.preparedRuns.set(runId,prepared);
       await this.snapshots.markReady(runId);
-      this.logger?.info({metric:'workspace.prepare',roomId,runId,durationMs:Date.now()-started,entryCount:baselineEntries.length},'Run workspace prepared');
-      return{relativePath:this.runRelativePath(runId),absolutePath:path.join(this.agentRoomPath(roomId),'.agenvyl','runs',runId,'workspace')};
+      return{relativePath:prepared.relativePath,absolutePath:prepared.absolutePath};
     }catch(error){
       await this.snapshots.markFailed(runId,{path:'',code:'read_failed'});
-      await rm(path.dirname(target),{recursive:true,force:true});
       this.logger?.warn({metric:'workspace.prepare',roomId,runId,durationMs:Date.now()-started,error:error instanceof Error?error.message:String(error)},'Run workspace preparation failed');
       throw new AppError('workspace_prepare_failed',500,'Could not prepare the isolated run workspace');
     }
   }
   runWorkspaceResult(runId:string){return this.snapshots?.result(runId);}
+  async cleanupFinalizedRun(roomId:string,runId:string){
+    const result=await this.snapshots?.result(runId);
+    if(!result)return;
+    await this.finishRunWorkspace(roomId,runId,result.result_snapshot_id??result.base_snapshot_id,result.capture_status==='complete');
+  }
 
   async writeRunPlan(roomId:string,runId:string,content:string){
     const data=Buffer.from(content,'utf8');
     if(!content.trim())throw new AppError('empty_plan',400,'Plan content is required');
     if(data.length>this.maxFileBytes)throw new AppError('file_too_large',413,`Plan must not exceed ${Math.floor(this.maxFileBytes/1024/1024)} MB`);
-    const target=path.join(this.runPath(roomId,runId),'plan.md');await mkdir(path.dirname(target),{recursive:true});await writeFile(target,data);
+    const target=path.join((await this.preparedRunPath(roomId,runId)).root,'plan.md');await mkdir(path.dirname(target),{recursive:true});await writeFile(target,data);
   }
 
   async finalizeRun(roomId:string,runId:string,status:'completed'|'failed'|'cancelled'):Promise<RunWorkspaceResult|undefined>{
@@ -84,18 +149,20 @@ export class RoomWorkspaceService{
     if(!this.snapshots){await this.settleRun(roomId);return undefined;}
     const existing=await this.snapshots.result(runId);
     if(!existing)return undefined;
-    if(existing.capture_status==='failed')return existing;
+    if(existing.capture_status==='failed'){await this.finishRunWorkspace(roomId,runId,existing.base_snapshot_id,false).catch(()=>{});return existing}
     if(existing.result_snapshot_id){
       let resumed=existing;
       const baseEntries=await this.snapshots.entries(existing.base_snapshot_id),resultEntries=await this.snapshots.entries(existing.result_snapshot_id),changes=diffSnapshots(baseEntries,resultEntries).flatMap(change=>{const versionId=change.next?.versionId??change.prior?.versionId;return versionId?[{versionId,change:change.change}]:[]});
       await this.snapshots.replaceRunArtifacts(runId,changes);
       if(status==='completed'&&existing.capture_status==='complete'&&existing.publish_status==='pending'){
-        resumed=await this.withPublication(roomId,async()=>{const before=(await this.snapshots!.current(roomId))?.id,published=await this.snapshots!.publishRun(roomId,runId);if(published.published_snapshot_id){await this.materializeSnapshot(roomId,published.published_snapshot_id).catch(()=>{});if(before)await this.emitPublishedChanges(roomId,before,published.published_snapshot_id)}return published});
+        resumed=await this.withPublication(roomId,async()=>{const publishStarted=Date.now(),before=(await this.snapshots!.current(roomId))?.id,published=await this.snapshots!.publishRun(roomId,runId);if(published.published_snapshot_id){await this.materializeSnapshot(roomId,published.published_snapshot_id).catch(()=>{});if(before)await this.emitPublishedChanges(roomId,before,published.published_snapshot_id)}this.logger?.info({metric:'workspace.publish',roomId,runId,durationMs:Date.now()-publishStarted,publishStatus:published.publish_status,conflicts:published.conflict_count,recovered:true},'Recovered run workspace published');return published});
       }else if(status!=='completed'&&existing.publish_status==='pending'){
         await this.snapshots.markNotPublished(runId);resumed=(await this.snapshots.result(runId))!;
       }
       if(status==='completed'&&resumed.published_snapshot_id&&existing.publish_status!=='pending')await this.withPublication(roomId,()=>this.materializeSnapshot(roomId,resumed.published_snapshot_id!).catch(()=>{}));
-      await this.cleanupRunDirectory(roomId,runId,'finalization');
+      await this.finishRunWorkspace(roomId,runId,existing.result_snapshot_id,resumed.capture_status==='complete').catch(error=>{
+        this.logger?.warn({metric:'workspace.cleanup',roomId,runId,error:error instanceof Error?error.message:String(error)},'Recovered finalized workspace cleanup was deferred');
+      });
       await this.events.emit(roomId,'run.workspace.finalized',{runId,workspaceResult:resumed}).catch(()=>{});
       if(resumed.publish_status==='published'||resumed.publish_status==='partially_published')await this.events.emit(roomId,'run.workspace.publish.updated',{runId,workspaceResult:resumed}).catch(()=>{});
       this.logger?.info({metric:'workspace.capture',roomId,runId,durationMs:Date.now()-started,captureStatus:resumed.capture_status,publishStatus:resumed.publish_status,conflicts:resumed.conflict_count,recovered:true},'Run workspace finalization resumed');
@@ -104,42 +171,55 @@ export class RoomWorkspaceService{
     await this.snapshots.markFinalizing(runId);
     const base=await this.snapshots.entries(existing.base_snapshot_id),baseVersions=new Map<string,Awaited<ReturnType<WorkspaceRepository['version']>>>();
     for(const entry of base)if(entry.versionId)baseVersions.set(entry.path,await this.repository.version(roomId,entry.versionId));
-    const scanned=await scanRunTree(this.runPath(roomId,runId),this.maxFileBytes),entries:SnapshotEntry[]=[],errors=[...scanned.errors];
+    const prepared=await this.preparedRunPath(roomId,runId);
     try{
-      for(const item of scanned.entries){
-        if(item.kind==='directory'){entries.push({path:item.path,kind:'directory'});continue;}
-        const data=await stableRead(path.join(this.runPath(roomId,runId),...item.path.split('/'))).catch(()=>undefined);
-        if(!data){errors.push({path:item.path,code:'unstable'});continue;}
-        if(data.length>this.maxFileBytes){errors.push({path:item.path,code:'oversize'});continue;}
-        const sha=hash(data),prior=baseVersions.get(item.path);
-        if(prior?.sha256===sha){entries.push({path:item.path,kind:'file',versionId:prior.id});continue;}
-        await this.storeObject(sha,data);
-        const version=await this.repository.saveDetachedVersion({roomId,path:item.path,size:data.length,mimeType:mimeFor(item.path,data),sha256:sha,runId});
-        entries.push({path:item.path,kind:'file',versionId:version.id});
+      const captured=await this.captureRunTree(roomId,runId,prepared,baseVersions);
+      const completeness=captured.errors.length?'incomplete' as const:'complete' as const;
+      const [baseManifest]=await Promise.all([this.snapshots.manifest(existing.base_snapshot_id)]);
+      const noopByHash=completeness==='complete'&&baseManifest===manifestHash(captured.entries);
+      const entriesEqual=completeness==='complete'&&exactEntriesEqual(base,captured.entries);
+      const noopByEntries=noopByHash&&entriesEqual;
+      if(this.optimization.noopMode==='shadow')this.logger?.info({
+        metric:'workspace.noop.shadow',roomId,runId,predictedNoop:noopByHash,entriesEqual,
+        mismatch:noopByHash!==entriesEqual,
+      },'Workspace no-op shadow comparison completed');
+      let resultSnapshotId:string,result:RunWorkspaceResult;
+      if(this.optimization.noopMode==='on'&&noopByEntries){
+        result=await this.snapshots.completeRunNoop(runId,existing.base_snapshot_id);
+        resultSnapshotId=existing.base_snapshot_id;
+      }else{
+        resultSnapshotId=await this.snapshots.saveRunSnapshot({roomId,runId,baseSnapshotId:existing.base_snapshot_id,entries:captured.entries,completeness,errors:captured.errors});
+        result=(await this.snapshots.result(runId))!;
       }
-      const completeness=errors.length?'incomplete' as const:'complete' as const,resultSnapshotId=await this.snapshots.saveRunSnapshot({roomId,runId,baseSnapshotId:existing.base_snapshot_id,entries,completeness,errors});
       const resultEntries=await this.snapshots.entries(resultSnapshotId),changes=diffSnapshots(base,resultEntries).flatMap(change=>{
         const versionId=change.next?.versionId??change.prior?.versionId;
         return versionId?[{versionId,change:change.change}]:[];
       });
       await this.snapshots.replaceRunArtifacts(runId,changes);
-      let result=(await this.snapshots.result(runId))!;
-      if(status==='completed'&&completeness==='complete'){
-        result=await this.withPublication(roomId,async()=>{const before=(await this.snapshots!.current(roomId))?.id,published=await this.snapshots!.publishRun(roomId,runId);if(published.published_snapshot_id){await this.materializeSnapshot(roomId,published.published_snapshot_id).catch(()=>{});if(before)await this.emitPublishedChanges(roomId,before,published.published_snapshot_id)}return published});
-      }else await this.snapshots.markNotPublished(runId);
+      result=(await this.snapshots.result(runId))!;
+      if(status==='completed'&&completeness==='complete'&&result.publish_status==='pending'){
+        result=await this.withPublication(roomId,async()=>{const publishStarted=Date.now(),before=(await this.snapshots!.current(roomId))?.id,published=await this.snapshots!.publishRun(roomId,runId);if(published.published_snapshot_id){await this.materializeSnapshot(roomId,published.published_snapshot_id).catch(()=>{});if(before)await this.emitPublishedChanges(roomId,before,published.published_snapshot_id)}this.logger?.info({metric:'workspace.publish',roomId,runId,durationMs:Date.now()-publishStarted,publishStatus:published.publish_status,conflicts:published.conflict_count},'Run workspace published');return published});
+      }else if(result.publish_status==='pending')await this.snapshots.markNotPublished(runId);
       result=(await this.snapshots.result(runId))!;
       for(const change of changes){
         const version=await this.repository.version(roomId,change.versionId);if(!version)continue;
         const snapshotId=change.change==='deleted'?existing.base_snapshot_id:resultSnapshotId;
-        await this.events.emit(roomId,'artifact.created',{runId,artifact:{version_id:version.id,...(version.entry_id?{entry_id:version.entry_id}:{}),snapshot_id:snapshotId,path:version.path,name:path.basename(version.path),size:version.size,mime_type:version.mime_type,url:`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace/versions/${encodeURIComponent(version.id)}`,preview_url:`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace/snapshots/${encodeURIComponent(snapshotId)}/preview/${version.path.split('/').map(encodeURIComponent).join('/')}`,change:change.change,attribution:'exact'}}).catch(()=>{});
+          await this.events.emit(roomId,'artifact.created',{runId,artifact:{version_id:version.id,...(version.entry_id?{entry_id:version.entry_id}:{}),snapshot_id:snapshotId,path:version.path,name:path.basename(version.path),size:version.size,mime_type:version.mime_type,url:`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace/versions/${encodeURIComponent(version.id)}`,preview_url:`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace/snapshots/${encodeURIComponent(snapshotId)}/preview/${version.path.split('/').map(encodeURIComponent).join('/')}`,change:change.change,attribution:'exact'}}).catch(()=>{});
       }
-      await this.cleanupRunDirectory(roomId,runId,'finalization');
+      await this.persistSlotCache(runId,prepared,captured,completeness).catch(async error=>{
+        if(prepared.lease)await this.slots?.invalidateCache(runId,prepared.lease.generation).catch(()=>{});
+        this.logger?.warn({metric:'workspace.stat_cache',roomId,runId,error:error instanceof Error?error.message:String(error)},'Workspace stat cache update failed');
+      });
+      await this.finishRunWorkspace(roomId,runId,resultSnapshotId,completeness==='complete').catch(error=>{
+        this.logger?.warn({metric:'workspace.cleanup',roomId,runId,error:error instanceof Error?error.message:String(error)},'Finalized workspace cleanup was deferred');
+      });
       await this.events.emit(roomId,'run.workspace.finalized',{runId,workspaceResult:result}).catch(()=>{});
       if(result.publish_status==='published'||result.publish_status==='partially_published')await this.events.emit(roomId,'run.workspace.publish.updated',{runId,workspaceResult:result}).catch(()=>{});
-      this.logger?.info({metric:'workspace.capture',roomId,runId,durationMs:Date.now()-started,captureStatus:result.capture_status,publishStatus:result.publish_status,conflicts:result.conflict_count,errorCount:result.errors.length},'Run workspace finalized');
+      this.logger?.info({metric:'workspace.capture',roomId,runId,durationMs:Date.now()-started,captureStatus:result.capture_status,publishStatus:result.publish_status,conflicts:result.conflict_count,errorCount:result.errors.length,changedPaths:changes.length,scannedFiles:captured.scannedFiles,hashedFiles:captured.hashedFiles,hashedBytes:captured.hashedBytes,cacheHits:captured.cacheHits,workspaceNoop:result.publish_status==='noop',snapshotRowsCreated:result.publish_status==='noop'?0:1,snapshotEntriesCreated:result.publish_status==='noop'?0:captured.entries.length},'Run workspace finalized');
       return result;
     }catch(error){
       await this.snapshots.markFailed(runId,{path:'',code:'read_failed'});
+      await this.finishRunWorkspace(roomId,runId,existing.base_snapshot_id,false);
       this.logger?.warn({metric:'workspace.capture',roomId,runId,durationMs:Date.now()-started,error:error instanceof Error?error.message:String(error)},'Run workspace finalization failed');
       throw error;
     }
@@ -213,6 +293,164 @@ export class RoomWorkspaceService{
   purgeCandidates(roomId:string){return this.repository.roomHashes(roomId);}
   async purgeFiles(roomId:string,hashes:string[]){this.watchers.get(roomId)?.close();this.watchers.delete(roomId);await rm(this.roomPath(roomId),{recursive:true,force:true});for(const sha of hashes)if(!await this.repository.hashExists(sha))await rm(this.objectPath(sha),{force:true});}
   close(){for(const watcher of this.watchers.values())watcher.close();for(const timer of this.timers.values())clearTimeout(timer);this.runCleanup.close();this.watchers.clear();this.timers.clear();}
+  renewRunWorkspaceLease(runId:string,executionDeadlineAt:string){return this.slots?.renew(runId,new Date(new Date(executionDeadlineAt).getTime()+5*60_000).toISOString())}
+
+  private async preparedRunPath(roomId:string,runId:string):Promise<PreparedRunPath>{
+    const prepared=this.preparedRuns.get(runId);
+    if(prepared)return prepared;
+    const lease=await this.slots?.leaseForRun(runId);
+    if(lease&&this.optimization.warmSlotsMode==='on'){
+      return{...this.warmDriver.path(roomId,runId,lease),lease};
+    }
+    return{...this.legacyDriver.path(roomId,runId),...(lease?{lease}:{})};
+  }
+
+  private async materializeRunTarget(roomId:string,target:string,priorEntries:SnapshotEntry[],desiredEntries:SnapshotEntry[],reset=false){
+    if(reset)await rm(target,{recursive:true,force:true});
+    const roomRoot=this.roomPath(roomId),targetRelative=path.relative(roomRoot,target).split(path.sep).join('/');
+    containedPath(roomRoot,targetRelative);
+    await assertNoSymlinkParents(roomRoot,targetRelative,true);
+    await mkdir(target,{recursive:true});
+    await assertNoSymlinkParents(roomRoot,targetRelative,true);
+    const prior=entryMap(priorEntries),desired=entryMap(desiredEntries);
+    const disk=new Map((await listMaterializedPaths(target)).map(item=>[item.path,item.kind]));
+    const unsafe=[...disk].filter(([itemPath,kind])=>desired.get(itemPath)?.kind!==kind).map(([itemPath])=>itemPath).sort((a,b)=>b.length-a.length);
+    for(const itemPath of unsafe){await assertNoSymlinkParents(target,itemPath);await rm(containedPath(target,itemPath),{recursive:true,force:true});disk.delete(itemPath)}
+    const removals=[...prior].filter(([itemPath,value])=>!sameEntry(value,desired.get(itemPath))).map(([itemPath])=>itemPath).sort((a,b)=>b.length-a.length);
+    for(const itemPath of removals){await assertNoSymlinkParents(target,itemPath);await rm(containedPath(target,itemPath),{recursive:true,force:true});disk.delete(itemPath)}
+    let copiedFiles=0,copiedBytes=0;
+    for(const entry of desiredEntries){
+      const destination=containedPath(target,entry.path),previous=prior.get(entry.path);
+      if(sameEntry(previous,{kind:entry.kind,...(entry.versionId?{versionId:entry.versionId}:{})})&&disk.get(entry.path)===entry.kind)continue;
+      await assertNoSymlinkParents(target,entry.path);
+      if(entry.kind==='directory'){await mkdir(destination,{recursive:true});await assertNoSymlinkParents(target,entry.path,true);continue}
+      const version=entry.versionId?await this.repository.version(roomId,entry.versionId):undefined;
+      if(!version)throw new Error(`Workspace version for ${entry.path} is unavailable`);
+      await mkdir(path.dirname(destination),{recursive:true});
+      const temporary=`${destination}.prepare-${crypto.randomUUID()}`;
+      await copyFile(this.objectPath(version.sha256),temporary,constants.COPYFILE_FICLONE);
+      await rename(temporary,destination).catch(async error=>{
+        await rm(destination,{recursive:true,force:true});
+        await rename(temporary,destination).catch(async()=>{await rm(temporary,{force:true});throw error});
+      });
+      copiedFiles++;copiedBytes+=version.size;
+    }
+    return{copiedFiles,copiedBytes,entryCount:desiredEntries.length};
+  }
+
+  private async captureRunTree(roomId:string,runId:string,prepared:PreparedRunPath,baseVersions:Map<string,Awaited<ReturnType<WorkspaceRepository['version']>>>):Promise<CaptureResult>{
+    const scanned=await scanWorkspaceTree(prepared.root,this.maxFileBytes),entries:SnapshotEntry[]=[],errors=[...scanned.errors],fingerprints:WorkspaceStatFingerprint[]=[];
+    const lease=prepared.driver==='warm'?prepared.lease:undefined;
+    const capability=lease&&this.optimization.statCacheMode!=='off'?await this.statCapability(path.dirname(prepared.root)):undefined;
+    const cache=lease&&this.optimization.statCacheMode!=='off'?await this.slots?.cacheForRun(runId):undefined;
+    const cacheTrusted=Boolean(capability?.supported&&cache?.state==='valid'&&cache.capabilityKey===capability.capabilityKey);
+    const forceVerification=Boolean(lease&&lease.generation%100===0);
+    const fullVerification=this.optimization.statCacheMode==='shadow'||!cacheTrusted||forceVerification;
+    let hashedFiles=0,hashedBytes=0,cacheHits=0,cacheMismatch=false;
+    for(const item of scanned.entries){
+      if(item.kind==='directory'){entries.push({path:item.path,kind:'directory'});continue}
+      if(!item.stat){errors.push({path:item.path,code:'read_failed'});continue}
+      const cached=cache?.entries.get(item.path);
+      const predicted=Boolean(cacheTrusted&&cached&&fingerprintMatches(cached,item.stat,cache?.fenceMtimeNs));
+      if(predicted&&this.optimization.statCacheMode==='on'&&!forceVerification){
+        entries.push({path:item.path,kind:'file',versionId:cached!.versionId});
+        fingerprints.push(toStatFingerprint(item.path,cached!.versionId,item.stat));
+        cacheHits++;
+        continue;
+      }
+      const read=await stableReadWorkspaceFile(containedPath(prepared.root,item.path)).catch(()=>undefined);
+      if(!read){errors.push({path:item.path,code:'unstable'});continue}
+      if(read.data.length>this.maxFileBytes){errors.push({path:item.path,code:'oversize'});continue}
+      hashedFiles++;hashedBytes+=read.data.length;
+      const sha=contentHash(read.data),prior=baseVersions.get(item.path);
+      let versionId:string;
+      if(prior?.sha256===sha)versionId=prior.id;
+      else{
+        await this.storeObject(sha,read.data);
+        versionId=(await this.repository.saveDetachedVersion({roomId,path:item.path,size:read.data.length,mimeType:mimeFor(item.path,read.data),sha256:sha,runId})).id;
+      }
+      if(predicted){
+        const predictedVersion=await this.repository.version(roomId,cached!.versionId);
+        if(predictedVersion?.sha256!==sha)cacheMismatch=true;
+      }
+      entries.push({path:item.path,kind:'file',versionId});
+      fingerprints.push(toStatFingerprint(item.path,versionId,read.stat));
+    }
+    if(cacheMismatch&&lease)await this.slots?.invalidateCache(runId,lease.generation);
+    return{
+      entries,errors,fingerprints,scannedFiles:scanned.scannedFiles,hashedFiles,hashedBytes,cacheHits,cacheMismatch,
+      cacheState:capability?.supported?'valid':'unsupported',...(capability?{capabilityKey:capability.capabilityKey}:{}),
+      ...(lease?{verifiedGeneration:fullVerification?lease.generation:cache?.verifiedGeneration}:{}),
+    };
+  }
+
+  private async statCapability(slotRoot:string){
+    const key=path.resolve(slotRoot),known=this.statCapabilities.get(key);
+    if(known)return known;
+    const capability=await probeStatCapability(slotRoot);
+    this.statCapabilities.set(key,capability);
+    return capability;
+  }
+
+  private async retryQuarantinedSlots(){
+    if(!this.slots)return;
+    for(const slot of await this.slots.recoverableQuarantines()){
+      try{
+        const target=this.slotPath(slot.roomId,slot);
+        await rm(target,{recursive:true,force:true,maxRetries:2,retryDelay:50});
+        await mkdir(target,{recursive:true});
+        await this.slots.restoreQuarantine(slot.id);
+      }catch{}
+    }
+  }
+
+  private async persistSlotCache(runId:string,prepared:PreparedRunPath,captured:CaptureResult,completeness:'complete'|'incomplete'){
+    const lease=prepared.driver==='warm'?prepared.lease:undefined;
+    if(!lease||!this.slots)return;
+    if(this.optimization.statCacheMode==='off'||completeness!=='complete'||captured.cacheMismatch){
+      await this.slots.invalidateCache(runId,lease.generation,captured.cacheState==='unsupported'?'unsupported':'invalid');
+      return;
+    }
+    const fence=path.join(path.dirname(prepared.root),'.stat-fence');
+    await writeFile(fence,`${lease.generation}\n`);
+    const fenceStat=await lstat(fence,{bigint:true});
+    await this.slots.saveCache(runId,lease.generation,{
+      state:captured.cacheState,capabilityKey:captured.capabilityKey,fenceMtimeNs:fenceStat.mtimeNs.toString(),
+      verifiedGeneration:captured.verifiedGeneration,entries:captured.fingerprints,
+    });
+  }
+
+  private async finishRunWorkspace(roomId:string,runId:string,resultSnapshotId:string,healthy:boolean){
+    if(!await this.snapshots?.runIsTerminal(runId))return;
+    const prepared=await this.preparedRunPath(roomId,runId),lease=prepared.lease??await this.slots?.leaseForRun(runId);
+    try{
+      if(lease&&this.slots){
+        if(healthy){
+          if(this.optimization.warmSlotsMode==='shadow'){
+            const desired=await this.snapshots!.entries(resultSnapshotId),prior=lease.materializedSnapshotId?await this.snapshots!.entries(lease.materializedSnapshotId):[];
+            await this.materializeRunTarget(roomId,this.slotPath(roomId,lease),prior,desired);
+            await this.compareShadowTrees(roomId,runId,prepared.root,this.slotPath(roomId,lease),'release');
+          }
+          const released=await this.slots.release(runId,lease.generation,resultSnapshotId);
+          if(!released)this.logger?.warn({metric:'workspace.slot_release',roomId,runId,generation:lease.generation,stale:true},'Stale workspace slot release ignored');
+        }else{
+          const quarantined=await this.slots.quarantine(runId,lease.generation,'capture_failed_or_incomplete');
+          this.logger?.warn({metric:'workspace.quarantine',roomId,runId,generation:lease.generation,quarantined,phase:'finalization'},'Warm workspace slot quarantined');
+        }
+      }
+      if(prepared.driver==='legacy'){
+        await this.cleanupRunDirectory(roomId,runId,'finalization');
+      }else await this.snapshots?.markCleanupComplete(runId);
+    }finally{this.preparedRuns.delete(runId)}
+  }
+
+  private async compareShadowTrees(roomId:string,runId:string,authoritativeRoot:string,shadowRoot:string,transition:'prepare'|'release'){
+    const [authoritative,shadow]=await Promise.all([workspaceContentManifest(authoritativeRoot,this.maxFileBytes),workspaceContentManifest(shadowRoot,this.maxFileBytes)]);
+    const mismatch=authoritative.manifest!==shadow.manifest||authoritative.errors.length>0||shadow.errors.length>0;
+    const context={metric:'workspace.warm_slots.shadow',roomId,runId,transition,mismatch,authoritativeErrors:authoritative.errors.length,shadowErrors:shadow.errors.length,files:authoritative.files,bytes:authoritative.bytes};
+    if(mismatch)this.logger?.warn(context,'Warm slot shadow manifest gate failed');
+    else this.logger?.info(context,'Warm slot shadow manifest matched');
+  }
 
   private async cleanupRunDirectory(roomId:string,runId:string,phase:'recovery'|'finalization'){
     return this.runCleanup.removeOrDefer({roomId,runId,phase});
@@ -274,10 +512,13 @@ export class RoomWorkspaceService{
   private ensureManagedRunRoot(roomId:string,roomDirectory:string){
     return this.withRoomMutation(roomId,async()=>{
       const internal=path.join(roomDirectory,'.agenvyl'),marker=path.join(internal,'.managed');
-      const internalEntry=await stat(internal).catch(()=>undefined);
-      if(internalEntry&&(!internalEntry.isDirectory()||!await stat(marker).then(item=>item.isFile()).catch(()=>false)))throw new AppError('workspace_reserved_path_conflict',409,'The room already contains the reserved .agenvyl path');
+      const internalEntry=await lstat(internal).catch(()=>undefined);
+      if(internalEntry&&(!internalEntry.isDirectory()||internalEntry.isSymbolicLink()||!await lstat(marker).then(item=>item.isFile()&&!item.isSymbolicLink()).catch(()=>false)))throw new AppError('workspace_reserved_path_conflict',409,'The room already contains the reserved .agenvyl path');
       await mkdir(internal,{recursive:true});
-      await writeFile(marker,'Agenvyl managed workspace. Do not edit.\n',{flag:'a'});
+      await writeFile(marker,'Agenvyl managed workspace. Do not edit.\n',{flag:'wx'}).catch(error=>{
+        if((error as NodeJS.ErrnoException).code!=='EEXIST')throw error;
+        return lstat(marker).then(item=>{if(!item.isFile()||item.isSymbolicLink())throw new AppError('workspace_reserved_path_conflict',409,'The managed workspace marker is not a regular file')});
+      });
     });
   }
   private async emitPublishedChanges(roomId:string,beforeSnapshotId:string,afterSnapshotId:string){
@@ -298,27 +539,31 @@ export class RoomWorkspaceService{
 }
 
 async function walk(root:string,prefix=''):Promise<Array<{path:string;kind:'file'|'directory';size:number;updatedAt:string}>>{const result:Array<{path:string;kind:'file'|'directory';size:number;updatedAt:string}>=[];for(const entry of await readdir(path.join(root,prefix),{withFileTypes:true})){if(entry.name==='.agenvyl'||entry.name==='.hermes'||entry.name==='.versions'||entry.isSymbolicLink())continue;const relative=prefix?`${prefix}/${entry.name}`:entry.name,details=await stat(path.join(root,relative));if(entry.isDirectory()){result.push({path:relative,kind:'directory',size:0,updatedAt:details.mtime.toISOString()});result.push(...await walk(root,relative));}else if(entry.isFile())result.push({path:relative,kind:'file',size:details.size,updatedAt:details.mtime.toISOString()});}return result;}
-async function scanRunTree(root:string,maxBytes:number,prefix=''):Promise<{entries:Array<{path:string;kind:'file'|'directory'}>;errors:WorkspaceCaptureError[]}>{
-  const entries:Array<{path:string;kind:'file'|'directory'}>=[],errors:WorkspaceCaptureError[]=[];
-  for(const dirent of await readdir(path.join(root,prefix),{withFileTypes:true})){
-    const relative=prefix?`${prefix}/${dirent.name}`:dirent.name,target=path.join(root,...relative.split('/')),details=await lstat(target);
-    if(!prefix&&dirent.name==='.agenvyl'){errors.push({path:relative,code:'reserved'});continue;}
-    if(details.isSymbolicLink()){errors.push({path:relative,code:'symlink'});continue;}
-    if(details.isDirectory()){entries.push({path:relative,kind:'directory'});const nested=await scanRunTree(root,maxBytes,relative);entries.push(...nested.entries);errors.push(...nested.errors);continue;}
-    if(!details.isFile())continue;
-    if(details.size>maxBytes){errors.push({path:relative,code:'oversize'});continue;}
-    entries.push({path:relative,kind:'file'});
+async function listMaterializedPaths(root:string,prefix=''):Promise<Array<{path:string;kind:'file'|'directory'|'symlink'}>>{
+  const result:Array<{path:string;kind:'file'|'directory'|'symlink'}>=[];
+  for(const entry of await readdir(path.join(root,prefix),{withFileTypes:true})){
+    const relative=prefix?`${prefix}/${entry.name}`:entry.name,details=await lstat(containedPath(root,relative));
+    if(details.isSymbolicLink()){result.push({path:relative,kind:'symlink'});continue}
+    if(details.isDirectory()){result.push({path:relative,kind:'directory'});result.push(...await listMaterializedPaths(root,relative));continue}
+    if(details.isFile())result.push({path:relative,kind:'file'});
   }
-  return{entries,errors};
+  return result;
 }
-async function stableRead(filePath:string){
-  for(let attempt=0;attempt<3;attempt++){
-    const before=await stat(filePath),data=await readFile(filePath),after=await stat(filePath);
-    if(before.size===after.size&&before.mtimeMs===after.mtimeMs)return data;
+async function assertNoSymlinkParents(root:string,relative:string,includeLeaf=false){
+  const parts=relative.split('/').filter(Boolean),limit=includeLeaf?parts.length:Math.max(0,parts.length-1);
+  let current=path.resolve(root);
+  for(let index=0;index<limit;index++){
+    current=path.join(current,parts[index]!);
+    const details=await lstat(current).catch(error=>{
+      if((error as NodeJS.ErrnoException).code==='ENOENT')return undefined;
+      throw error;
+    });
+    if(!details)return;
+    if(details.isSymbolicLink()||!details.isDirectory())throw new Error('Workspace materialization encountered an unsafe path component');
   }
-  throw new Error('File changed while workspace snapshot was captured');
 }
 function safeRelative(value:string){const normalized=value.normalize('NFC').trim().replaceAll('\\','/').replace(/^\/+|\/+$/g,'');if(!normalized||normalized==='.'||normalized==='..'||normalized.split('/').some(part=>!part||part==='.'||part==='..'||part.includes('\0'))||path.posix.normalize(normalized)!==normalized)throw new AppError('invalid_file_name',400,'Invalid file path');return normalized;}
+function containedPath(root:string,relative:string){const target=path.resolve(root,...relative.split('/')),base=path.resolve(root);if(target!==base&&!target.startsWith(`${base}${path.sep}`))throw new Error('Workspace path escaped its allowed root');return target;}
 function assertPublicPath(value:string){if(value==='.agenvyl'||value.startsWith('.agenvyl/'))throw new AppError('workspace_reserved_path',400,'.agenvyl is reserved for isolated run workspaces');}
 function decodeHeaderName(value:string){try{return decodeURIComponent(value);}catch{throw new AppError('invalid_file_name',400,'Invalid file name');}}
 async function availableName(root:string,relative:string){const parsed=path.posix.parse(relative);for(let index=2;index<10_000;index++){const candidate=path.posix.join(parsed.dir,`${parsed.name} (${index})${parsed.ext}`);if(!await stat(path.join(root,candidate)).then(()=>true).catch(()=>false))return candidate;}throw new AppError('file_exists',409,'Could not find an available name');}

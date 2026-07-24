@@ -6,7 +6,7 @@ import {registerPersonaGroupRoutes} from '../modules/persona-groups/personaGroup
 import { registerRoomEventsWebSocket } from '../infrastructure/realtime/roomEventsWebSocket.js';
 import { registerRoomRoutes } from '../modules/rooms/rooms.routes.js';
 import { registerRunRoutes } from '../modules/runs/runs.routes.js';
-import { resolveAppConfig } from './config.js';
+import { resolveAppConfig,type WorkspaceOptimizationMode } from './config.js';
 import { createAppContainer } from './container.js';
 import { registerErrorHandler } from './plugins/errorHandler.js';
 import { registerHealthRoutes } from './plugins/health.js';
@@ -17,7 +17,7 @@ import {registerUserProfileRoutes} from '../modules/user-profile/userProfile.rou
 import {registerSetupRoutes} from '../modules/setup/setup.routes.js';
 import {registerFeatureRoutes} from '../modules/features/features.routes.js';
 
-export type AppOptions = { databaseUrl?: string; connectorUrl?:string; connectorToken?:string; fetch?: typeof fetch; distPath?: string; runConcurrency?: number; runTimeoutMs?:number; shutdownTimeoutMs?: number; websocketMaxBufferedBytes?: number; workspaceRoot?:string; workspaceAgentRoot?:string; workspaceMaxFileBytes?:number; planModeEnabled?:boolean; previewOrigin?:string; logger?:boolean;legacySeed?:boolean };
+export type AppOptions = { databaseUrl?: string; connectorUrl?:string; connectorToken?:string; fetch?: typeof fetch; distPath?: string; runConcurrency?: number; runTimeoutMs?:number; shutdownTimeoutMs?: number; websocketMaxBufferedBytes?: number; workspaceRoot?:string; workspaceAgentRoot?:string; workspaceMaxFileBytes?:number; workspaceNoopMode?:WorkspaceOptimizationMode;workspaceWarmSlotsMode?:WorkspaceOptimizationMode;workspaceStatCacheMode?:WorkspaceOptimizationMode;planModeEnabled?:boolean; previewOrigin?:string; logger?:boolean;legacySeed?:boolean };
 
 export async function buildApp(options: AppOptions = {}) {
   const config = resolveAppConfig({
@@ -32,6 +32,9 @@ export async function buildApp(options: AppOptions = {}) {
     workspaceRoot:options.workspaceRoot,
     workspaceAgentRoot:options.workspaceAgentRoot,
     workspaceMaxFileBytes:options.workspaceMaxFileBytes,
+    workspaceNoopMode:options.workspaceNoopMode,
+    workspaceWarmSlotsMode:options.workspaceWarmSlotsMode,
+    workspaceStatCacheMode:options.workspaceStatCacheMode,
     planModeEnabled:options.planModeEnabled,
     previewOrigin:options.previewOrigin,
   });

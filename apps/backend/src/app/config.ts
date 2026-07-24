@@ -1,5 +1,7 @@
 import { resolveAgenvylPaths } from '@agenvyl/runtime-config';
 
+export type WorkspaceOptimizationMode='off'|'shadow'|'on';
+
 export type AppConfig = {
   databaseUrl: string;
   connectorUrl: string;
@@ -12,6 +14,9 @@ export type AppConfig = {
   workspaceRoot: string;
   workspaceAgentRoot: string;
   workspaceMaxFileBytes: number;
+  workspaceNoopMode: WorkspaceOptimizationMode;
+  workspaceWarmSlotsMode: WorkspaceOptimizationMode;
+  workspaceStatCacheMode: WorkspaceOptimizationMode;
   planModeEnabled: boolean;
   previewOrigin: string;
 };
@@ -25,6 +30,10 @@ export function resolveAppConfig(overrides: AppConfigOverrides = {}): AppConfig 
   if(process.env.AGENVYL_EXECUTION_BACKEND!==undefined)throw new Error('AGENVYL_EXECUTION_BACKEND is no longer supported; Core always uses Connector');
   if (Boolean(connectorUrl) !== Boolean(connectorToken)) throw new Error('AGENVYL_CONNECTOR_URL and AGENVYL_CONNECTOR_TOKEN must be configured together');
   if(!connectorUrl||!connectorToken)throw new Error('Core requires AGENVYL_CONNECTOR_URL and AGENVYL_CONNECTOR_TOKEN');
+  const workspaceNoopMode=optimizationMode(overrides.workspaceNoopMode??process.env.AGENVYL_WORKSPACE_NOOP_MODE,'AGENVYL_WORKSPACE_NOOP_MODE');
+  const workspaceWarmSlotsMode=optimizationMode(overrides.workspaceWarmSlotsMode??process.env.AGENVYL_WORKSPACE_WARM_SLOTS_MODE,'AGENVYL_WORKSPACE_WARM_SLOTS_MODE');
+  const workspaceStatCacheMode=optimizationMode(overrides.workspaceStatCacheMode??process.env.AGENVYL_WORKSPACE_STAT_CACHE_MODE,'AGENVYL_WORKSPACE_STAT_CACHE_MODE');
+  if(workspaceStatCacheMode!=='off'&&workspaceWarmSlotsMode!=='on')throw new Error('AGENVYL_WORKSPACE_STAT_CACHE_MODE requires AGENVYL_WORKSPACE_WARM_SLOTS_MODE=on');
   return {
     databaseUrl:
       overrides.databaseUrl ??
@@ -40,6 +49,9 @@ export function resolveAppConfig(overrides: AppConfigOverrides = {}): AppConfig 
     workspaceRoot: overrides.workspaceRoot ?? process.env.AGENVYL_WORKSPACE_ROOT ?? paths.workspaces,
     workspaceAgentRoot: overrides.workspaceAgentRoot ?? process.env.AGENVYL_WORKSPACE_AGENT_ROOT ?? overrides.workspaceRoot ?? process.env.AGENVYL_WORKSPACE_ROOT ?? paths.workspaces,
     workspaceMaxFileBytes: positiveInteger(overrides.workspaceMaxFileBytes ?? process.env.AGENVYL_WORKSPACE_MAX_FILE_BYTES, 50*1024*1024),
+    workspaceNoopMode,
+    workspaceWarmSlotsMode,
+    workspaceStatCacheMode,
     planModeEnabled: overrides.planModeEnabled ?? featureFlag(process.env.AGENVYL_FEATURE_PLAN_MODE, 'AGENVYL_FEATURE_PLAN_MODE'),
     previewOrigin: overrides.previewOrigin ?? process.env.AGENVYL_PREVIEW_ORIGIN ?? `http://127.0.0.1:${positiveInteger(process.env.AGENVYL_PREVIEW_PORT,8792)}`,
   };
@@ -57,4 +69,11 @@ function featureFlag(value: unknown, name: string) {
   if(normalized==='true')return true;
   if(normalized==='false')return false;
   throw new Error(`${name} must be true or false`);
+}
+
+function optimizationMode(value:unknown,name:string):WorkspaceOptimizationMode{
+  if(value===undefined)return'off';
+  const normalized=String(value).trim().toLowerCase();
+  if(normalized==='off'||normalized==='shadow'||normalized==='on')return normalized;
+  throw new Error(`${name} must be off, shadow, or on`);
 }

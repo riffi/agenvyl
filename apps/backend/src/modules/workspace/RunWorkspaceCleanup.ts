@@ -9,6 +9,11 @@ type WorkspaceCleanupLogger={
   warn:(context:Record<string,unknown>,message:string)=>void;
 };
 
+type WorkspaceCleanupObserver={
+  complete?:(task:RunWorkspaceCleanupTask)=>Promise<void>;
+  deferred?:(task:RunWorkspaceCleanupTask,error:unknown,attempt:number,delayMs:number)=>Promise<'retry'|'quarantine'>;
+};
+
 const defaultRetryDelays=[1_000,3_000,10_000,30_000,60_000];
 
 export class RunWorkspaceCleanup{
@@ -19,6 +24,7 @@ export class RunWorkspaceCleanup{
     private readonly remove:(task:RunWorkspaceCleanupTask)=>Promise<void>,
     private readonly logger?:WorkspaceCleanupLogger,
     private readonly retryDelays=defaultRetryDelays,
+    private readonly observer?:WorkspaceCleanupObserver,
   ){
     if(!retryDelays.length)throw new Error('Workspace cleanup requires at least one retry delay');
   }
@@ -29,9 +35,10 @@ export class RunWorkspaceCleanup{
     if(this.pending.has(key))return false;
     try{
       await this.remove(task);
+      await this.observer?.complete?.(task).catch(()=>{});
       return true;
     }catch(error){
-      this.schedule(task,0,error);
+      await this.schedule(task,0,error);
       return false;
     }
   }
@@ -42,10 +49,11 @@ export class RunWorkspaceCleanup{
     this.pending.clear();
   }
 
-  private schedule(task:RunWorkspaceCleanupTask,attempt:number,error:unknown){
+  private async schedule(task:RunWorkspaceCleanupTask,attempt:number,error:unknown){
     const key=taskKey(task);
     if(this.closed){this.pending.delete(key);return;}
     const delay=this.retryDelays[Math.min(attempt,this.retryDelays.length-1)]!;
+    const decision=await this.observer?.deferred?.(task,error,attempt+1,delay).catch(()=>'retry' as const)??'retry';
     this.logger?.warn({
       metric:'workspace.cleanup',
       roomId:task.roomId,
@@ -53,8 +61,13 @@ export class RunWorkspaceCleanup{
       phase:task.phase,
       retryAttempt:attempt+1,
       retryInMs:delay,
+      outcome:decision,
       error:error instanceof Error?error.message:String(error),
     },'Run workspace cleanup deferred');
+    if(decision==='quarantine'){
+      this.pending.delete(key);
+      return;
+    }
     const timer=setTimeout(()=>{
       this.pending.set(key,undefined);
       void this.retry(task,attempt+1);
@@ -67,6 +80,7 @@ export class RunWorkspaceCleanup{
     try{
       await this.remove(task);
       this.pending.delete(taskKey(task));
+      await this.observer?.complete?.(task).catch(()=>{});
       this.logger?.info({
         metric:'workspace.cleanup',
         roomId:task.roomId,
@@ -75,7 +89,7 @@ export class RunWorkspaceCleanup{
         retryAttempts:attempt,
       },'Deferred run workspace cleanup completed');
     }catch(error){
-      this.schedule(task,attempt,error);
+      await this.schedule(task,attempt,error);
     }
   }
 }

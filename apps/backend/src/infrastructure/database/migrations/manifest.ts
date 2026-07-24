@@ -17,4 +17,7 @@ export const migrations = [
   { version: 16, name: 'persona_reasoning_effort', file: '016_persona_reasoning_effort.sql' },
   { version: 17, name: 'remove_room_reasoning_effort', file: '017_remove_room_reasoning_effort.sql' },
   { version: 18, name: 'workspace_snapshots', file: '018_workspace_snapshots.sql' },
+  { version: 19, name: 'workspace_noop_cleanup', file: '019_workspace_noop_cleanup.sql' },
+  { version: 20, name: 'workspace_slots', file: '020_workspace_slots.sql' },
+  { version: 21, name: 'workspace_stat_cache', file: '021_workspace_stat_cache.sql' },
 ] as const;

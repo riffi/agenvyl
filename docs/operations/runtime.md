@@ -100,7 +100,7 @@ different absolute paths.
 Before a run starts, Core:
 
 1. records the room's current published snapshot as the run's base;
-2. creates a managed worktree below
+2. acquires an eligible warm slot or creates a managed worktree below
    `.agenvyl/runs/<run-id>/workspace`;
 3. materializes the base snapshot into that worktree; and
 4. passes the corresponding agent-visible path to Connector.
@@ -130,6 +130,63 @@ tree and cleans up the run worktree. Startup recovery retries pending
 materializations and cleanup of captured orphan worktrees. The top-level
 `.agenvyl` path is reserved; a pre-existing unmanaged path causes run
 preparation to fail closed instead of overwriting user data.
+
+### Workspace lifecycle optimization modes
+
+Three independent startup settings control the optimized lifecycle:
+
+- `AGENVYL_WORKSPACE_NOOP_MODE`
+- `AGENVYL_WORKSPACE_WARM_SLOTS_MODE`
+- `AGENVYL_WORKSPACE_STAT_CACHE_MODE`
+
+Each accepts only `off`, `shadow`, or `on` and defaults to `off`. Invalid values
+fail startup. Stat cache `shadow` or `on` requires warm slots to be `on`.
+Changing any mode requires a Core restart. Database migrations and already
+created snapshots or slots remain compatible when a mode is switched back to
+`off`.
+
+No-op mode compares a complete captured manifest with the immutable base
+snapshot. In `shadow`, Core records the prediction but retains the legacy
+save/publish flow. In `on`, an exact match completes with
+`publish_status=noop`, points `result_snapshot_id` at the base snapshot, and
+does not create snapshot, entry, artifact, conflict, publication, or live
+materialization work. This is a neutral UI state rather than a publication
+success notice. Any capture error disables the fast path.
+
+Warm slots keep at most two workspaces per room/persona under
+`.agenvyl/agents/<persona-id>/slots/<0|1>/workspace`. Ownership and generation
+fences are durable in PostgreSQL. If both slots are unavailable, the run uses
+the legacy per-run worktree. `shadow` prepares and validates a slot while the
+legacy worktree remains authoritative; `on` passes the slot path to Connector.
+Incomplete or unsafe captures quarantine the affected slot, while legacy
+fallback keeps runs available. A slot lease follows the execution deadline
+plus a five-minute grace period, but an expired lease never overrides a
+non-terminal run owner.
+
+Stat cache always traverses the directory tree, so creates, deletes, and
+renames remain visible. On a filesystem that passes the identity, ctime, and
+timestamp capability probe, `on` can reuse a file version only when all saved
+stat fingerprint fields match and the entry is outside the racy fence window.
+`shadow` predicts reuse but hashes every file. Every hundredth slot generation
+also performs a full verification. A mismatch invalidates the slot cache and
+the current capture uses the actual SHA-256.
+
+Cleanup is recorded separately from the terminal capture/publish result.
+Deletion failures use durable retry metadata and stop frequent retries after
+24 hours by entering `quarantined`; they do not rewrite a successfully saved
+workspace result. Startup recovery runs in this order: pending live
+materializations, Connector/non-terminal run reconciliation, then abandoned
+capture finalization and pending cleanup. A workspace belonging to a
+non-terminal run is never removed solely because its lease or process state is
+stale.
+
+Workspace lifecycle structured logs include prepare, capture, publish and
+materialization durations; copied, scanned and hashed files/bytes; changed
+paths; snapshot row/entry counts; no-op and legacy fallback decisions; stat
+cache hits; cleanup; and quarantine outcomes. Promotion from `shadow` to `on`
+should require zero manifest/content mismatches across representative runs and
+no p95 bootstrap regression above five percent before changing packaged
+defaults.
 
 Arbitrary files up to `AGENVYL_WORKSPACE_MAX_FILE_BYTES` (50 MiB by default)
 can be uploaded; the same limit applies to versions captured from run or

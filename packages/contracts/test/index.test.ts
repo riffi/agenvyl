@@ -16,6 +16,7 @@ describe('room event contract', () => {
     expect(isServerRoomEvent({id:'event-5',sequence:5,type:'run.upstream_status',payload:{runId:'run-1',state:'retrying',reason:'rate_limited',retryable:true,attempt:2,retryAt:'2026-07-20T12:00:00.000Z'}})).toBe(true);
     expect(isServerRoomEvent({id:'event-6',sequence:6,type:'run.upstream_status',payload:{runId:'run-1',state:'waiting_upstream',reason:'awaiting_response',retryable:true}})).toBe(true);
     expect(isServerRoomEvent({id:'event-7',sequence:7,type:'room.plan.approval.updated',payload:{approved:{entry_id:'entry-1',version_id:'version-1'}}})).toBe(true);
+    expect(isServerRoomEvent({id:'event-8',sequence:8,type:'run.workspace.finalized',payload:{runId:'run-1',workspaceResult:{base_snapshot_id:'base',result_snapshot_id:'base',capture_status:'complete',publish_status:'noop',conflict_count:0,errors:[]}}})).toBe(true);
   });
 
   it('rejects unknown and malformed events', () => {

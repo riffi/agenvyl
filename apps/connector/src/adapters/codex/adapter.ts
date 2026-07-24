@@ -8,33 +8,35 @@ import {buildCodexCatalog,parseCodexPermission} from './mode-catalog.js';
 type RpcId=string|number;
 type PendingRequest={rpcId:RpcId;method:string};
 type ExecutionState={
-  id:string;threadId:string;turnId?:string;status:ExecutionStatus;queue:EventQueue;pending:Map<string,PendingRequest>;itemText:Map<string,number>;reasoningIndexes:Map<string,number>;forceStopTimer?:ReturnType<typeof setTimeout>;
+  id:string;threadId:string;turnId?:string;status:ExecutionStatus;queue:EventQueue;client:CodexAppServerPort;pending:Map<string,PendingRequest>;itemText:Map<string,number>;reasoningIndexes:Map<string,number>;forceStopTimer?:ReturnType<typeof setTimeout>;settling?:Promise<void>;unsubscribeMessage:()=>void;unsubscribeExit:()=>void;
 };
 
-export type CodexAdapterOptions={command?:string;env?:NodeJS.ProcessEnv;allowDangerFullAccess?:boolean;client?:CodexAppServerPort;stopGraceMs?:number};
+export type CodexAdapterOptions={command?:string;env?:NodeJS.ProcessEnv;allowDangerFullAccess?:boolean;client?:CodexAppServerPort;clientFactory?:()=>CodexAppServerPort;stopGraceMs?:number};
 
 export class CodexConnectorAdapter implements ConnectorAdapter{
   readonly type='codex';
   readonly capabilities:ConnectorAdapter['capabilities']=['model_catalog','execution_profiles','text_streaming','reasoning','tools','approvals','clarifications','usage'];
-  private readonly client:CodexAppServerPort;
+  private readonly clientFactory:()=>CodexAppServerPort;
   private readonly allowDangerFullAccess:boolean;
   private readonly stopGraceMs:number;
+  private readonly clients=new Set<CodexAppServerPort>();
   private readonly executions=new Map<string,ExecutionState>();
-  private readonly byThread=new Map<string,ExecutionState>();
   private supportedModels=new Map<string,Set<string>>();
 
   constructor(options:CodexAdapterOptions={}){
-    this.client=options.client??new CodexAppServerClient(options.command?.trim()||'codex',options.env);
+    if(options.client&&options.clientFactory)throw new Error('Codex adapter accepts either client or clientFactory, not both');
+    const command=options.command?.trim()||'codex';
+    this.clientFactory=options.clientFactory??(options.client?()=>options.client!:()=>new CodexAppServerClient(command,options.env));
     this.allowDangerFullAccess=Boolean(options.allowDangerFullAccess);
     this.stopGraceMs=Math.max(0,options.stopGraceMs??3_000);
-    this.client.onMessage(message=>this.onMessage(message));
-    this.client.onExit(error=>this.onExit(error));
   }
 
   async catalog(){
-    const values:unknown[]=[];let cursor:string|undefined;
-    for(let page=0;page<20;page++){const response=record(await this.client.request('model/list',{includeHidden:false,...(cursor?{cursor}:{})}));if(!response||!Array.isArray(response.data))throw new Error('Codex model catalog response is invalid');values.push(...response.data);if(values.length>1_000)throw new Error('Codex model catalog is too large');if(response.nextCursor===null||response.nextCursor===undefined)break;if(typeof response.nextCursor!=='string'||!response.nextCursor||response.nextCursor===cursor)throw new Error('Codex model catalog cursor is invalid');cursor=response.nextCursor;if(page===19)throw new Error('Codex model catalog pagination limit exceeded');}
-    const catalog=buildCodexCatalog(values,this.allowDangerFullAccess);this.supportedModels=new Map(catalog.models.map(model=>[model.id,new Set(model.reasoningEfforts)]));return catalog;
+    const client=this.createClient(),values:unknown[]=[];let cursor:string|undefined;
+    try{
+      for(let page=0;page<20;page++){const response=record(await client.request('model/list',{includeHidden:false,...(cursor?{cursor}:{})}));if(!response||!Array.isArray(response.data))throw new Error('Codex model catalog response is invalid');values.push(...response.data);if(values.length>1_000)throw new Error('Codex model catalog is too large');if(response.nextCursor===null||response.nextCursor===undefined)break;if(typeof response.nextCursor!=='string'||!response.nextCursor||response.nextCursor===cursor)throw new Error('Codex model catalog cursor is invalid');cursor=response.nextCursor;if(page===19)throw new Error('Codex model catalog pagination limit exceeded');}
+      const catalog=buildCodexCatalog(values,this.allowDangerFullAccess);this.supportedModels=new Map(catalog.models.map(model=>[model.id,new Set(model.reasoningEfforts)]));return catalog;
+    }finally{await this.closeClient(client)}
   }
 
   async start(request:AdapterStartExecutionRequest):Promise<AdapterExecution>{
@@ -43,23 +45,28 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
     const efforts=this.supportedModels.get(request.modelId);if(!efforts)throw new Error('Codex model is not supported');
     const profile=request.executionProfile;if(profile.reasoningEffort&&!efforts.has(profile.reasoningEffort))throw new Error('Codex reasoning effort is not supported');
     const configuredSandbox=parseCodexPermission(profile.permissionProfileId,this.allowDangerFullAccess),sandbox=profile.workflowMode==='plan'?'read-only':configuredSandbox;
-    const threadResponse=record(await this.client.request('thread/start',{
-      model:request.modelId,cwd:request.workspace.absolutePath,
-      sandbox,approvalPolicy:sandbox==='danger-full-access'?'never':'on-request',ephemeral:true,
-      developerInstructions:codexContext(request),
-    }));
-    const thread=record(threadResponse?.thread),threadId=typeof thread?.id==='string'?thread.id:undefined;
-    if(!threadId)throw new Error('Codex thread/start response is invalid');
-    const state:ExecutionState={id:request.executionId,threadId,status:'running',queue:new EventQueue(),pending:new Map(),itemText:new Map(),reasoningIndexes:new Map()};
-    this.executions.set(request.executionId,state);this.byThread.set(threadId,state);
+    const client=this.createClient();
+    let state:ExecutionState|undefined;
     try{
+      const threadResponse=record(await client.request('thread/start',{
+        model:request.modelId,cwd:request.workspace.absolutePath,
+        sandbox,approvalPolicy:sandbox==='danger-full-access'?'never':'on-request',ephemeral:true,
+        developerInstructions:codexContext(request),
+      }));
+      const thread=record(threadResponse?.thread),threadId=typeof thread?.id==='string'?thread.id:undefined;
+      if(!threadId)throw new Error('Codex thread/start response is invalid');
+      const queue=new EventQueue();
+      state={id:request.executionId,threadId,status:'running',queue,client,pending:new Map(),itemText:new Map(),reasoningIndexes:new Map(),unsubscribeMessage:()=>{},unsubscribeExit:()=>{}};
+      state.unsubscribeMessage=client.onMessage(message=>this.onMessage(state!,message));
+      state.unsubscribeExit=client.onExit(error=>this.onExit(state!,error));
+      this.executions.set(request.executionId,state);
       const collaborationMode={mode:profile.workflowMode==='plan'?'plan':'default',settings:{model:request.modelId,reasoning_effort:profile.reasoningEffort,developer_instructions:null}};
-      const turnResponse=record(await this.client.request('turn/start',{threadId,input:[{type:'text',text:request.input.message,text_elements:[]}],summary:'auto',collaborationMode}));
+      const turnResponse=record(await client.request('turn/start',{threadId,input:[{type:'text',text:request.input.message,text_elements:[]}],summary:'auto',collaborationMode}));
       const turn=record(turnResponse?.turn),turnId=typeof turn?.id==='string'?turn.id:undefined;
       if(!turnId)throw new Error('Codex turn/start response is invalid');
       state.turnId=turnId;
       return{upstreamId:request.executionId};
-    }catch(error){this.remove(state);throw error;}
+    }catch(error){if(state)this.remove(state);await this.closeClient(client);throw error;}
   }
 
   async inspect(execution:AdapterExecution){return{status:this.require(execution.upstreamId).status};}
@@ -70,10 +77,10 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
     if(!pending)throw new Error('Codex request is no longer pending');
     if(pending.method==='item/tool/requestUserInput'){
       if(typeof answer==='string'||!('answers'in answer))throw new Error('Codex clarification requires structured answers');
-      this.client.respond(pending.rpcId,{answers:Object.fromEntries(Object.entries(answer.answers).map(([id,answers])=>[id,{answers}]))});
+      state.client.respond(pending.rpcId,{answers:Object.fromEntries(Object.entries(answer.answers).map(([id,answers])=>[id,{answers}]))});
     }else{
       const resolution=typeof answer==='string'?answer:'resolution'in answer?answer.resolution:undefined;if(!resolution)throw new Error('Codex approval requires a resolution');
-      this.client.respond(pending.rpcId,{decision:approvalDecision(resolution)});
+      state.client.respond(pending.rpcId,{decision:approvalDecision(resolution)});
     }
     state.pending.delete(request.id);
     return{outcome:'answered' as const};
@@ -83,16 +90,18 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
     const state=this.require(execution.upstreamId);
     if(!state.turnId||isTerminal(state.status))return;
     state.status='stopping';
-    await this.client.request('turn/interrupt',{threadId:state.threadId,turnId:state.turnId});
+    await state.client.request('turn/interrupt',{threadId:state.threadId,turnId:state.turnId});
     this.armForcedStop(state);
   }
 
-  close(){return this.client.close();}
+  async close(){
+    await Promise.allSettled([...this.executions.values()].map(state=>this.settle(state,'cancelled')));
+    await Promise.allSettled([...this.clients].map(client=>this.closeClient(client)));
+  }
 
-  private onMessage(message:AppServerMessage){
+  private onMessage(state:ExecutionState,message:AppServerMessage){
     const params=record(message.params),threadId=typeof params?.threadId==='string'?params.threadId:undefined;
-    if(!threadId||!params)return;
-    const state=this.byThread.get(threadId);if(!state)return;
+    if(!threadId||threadId!==state.threadId||!params)return;
     if(message.id!==undefined&&message.method){this.onServerRequest(state,message.id,message.method,params);return;}
     if(!message.method)return;
     this.onNotification(state,message.method,params);
@@ -113,7 +122,7 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
   }
 
   private rejectServerRequest(state:ExecutionState,rpcId:RpcId,message:string){
-    this.client.respondError(rpcId,-32601,message);this.fail(state,'codex_unsupported_request',message);
+    state.client.respondError(rpcId,-32601,message);this.fail(state,'codex_unsupported_request',message);
   }
 
   private onNotification(state:ExecutionState,method:string,params:Record<string,unknown>){
@@ -154,13 +163,12 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
   }
   private completeTurn(state:ExecutionState,value:unknown){
     const turn=record(value),status=turn?.status;
-    if(status==='completed'){state.status='completed';state.queue.push({type:'execution.completed',payload:{}});}
-    else if(status==='interrupted'){state.status='cancelled';state.queue.push({type:'execution.cancelled',payload:{}});}
+    if(status==='completed'){void this.settle(state,'completed');}
+    else if(status==='interrupted'){void this.settle(state,'cancelled');}
     else{this.fail(state,'codex_turn_failed',redactConnectorText(String(record(turn?.error)?.message??'Codex turn failed'),500));return;}
-    state.queue.end();this.remove(state,false);
   }
-  private fail(state:ExecutionState,code:string,message:string){if(isTerminal(state.status))return;state.status='failed';state.queue.push({type:'execution.failed',payload:{error:{code,message}}});state.queue.end();this.remove(state,false);}
-  private onExit(error:Error){for(const state of [...this.executions.values()])this.fail(state,'codex_app_server_exited',redactConnectorText(error.message,500));}
+  private fail(state:ExecutionState,code:string,message:string){if(isTerminal(state.status)||state.settling)return;void this.settle(state,'failed',{code,message});}
+  private onExit(state:ExecutionState,error:Error){if(state.settling||this.executions.get(state.id)!==state)return;this.fail(state,'codex_app_server_exited',redactConnectorText(error.message,500));}
   private armForcedStop(state:ExecutionState){
     if(state.forceStopTimer)clearTimeout(state.forceStopTimer);
     state.forceStopTimer=setTimeout(()=>void this.forceStop(state),this.stopGraceMs);
@@ -168,11 +176,25 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
   private async forceStop(state:ExecutionState){
     state.forceStopTimer=undefined;
     if(this.executions.get(state.id)!==state||state.status!=='stopping')return;
-    if(this.executions.size>1){this.armForcedStop(state);return;}
-    state.status='cancelled';state.queue.push({type:'execution.cancelled',payload:{}});state.queue.end();this.remove(state,false);
-    await this.client.close();
+    await this.settle(state,'cancelled');
   }
-  private remove(state:ExecutionState,end=true){if(state.forceStopTimer)clearTimeout(state.forceStopTimer);state.forceStopTimer=undefined;this.executions.delete(state.id);this.byThread.delete(state.threadId);if(end)state.queue.end();}
+  private settle(state:ExecutionState,status:'completed'|'failed'|'cancelled',error?:{code:string;message:string}){
+    if(state.settling)return state.settling;
+    state.status=status;
+    state.settling=this.finish(state,status,error);
+    return state.settling;
+  }
+  private async finish(state:ExecutionState,status:'completed'|'failed'|'cancelled',error?:{code:string;message:string}){
+    await this.closeClient(state.client);
+    if(this.executions.get(state.id)!==state)return;
+    if(status==='completed')state.queue.push({type:'execution.completed',payload:{}});
+    else if(status==='cancelled')state.queue.push({type:'execution.cancelled',payload:{}});
+    else state.queue.push({type:'execution.failed',payload:{error:error??{code:'codex_failed',message:'Codex execution failed'}}});
+    state.queue.end();this.remove(state,false);
+  }
+  private createClient(){const client=this.clientFactory();this.clients.add(client);return client;}
+  private async closeClient(client:CodexAppServerPort){try{await client.close();}finally{this.clients.delete(client)}}
+  private remove(state:ExecutionState,end=true){if(state.forceStopTimer)clearTimeout(state.forceStopTimer);state.forceStopTimer=undefined;state.unsubscribeMessage();state.unsubscribeExit();this.executions.delete(state.id);if(end)state.queue.end();}
   private require(id:string){const state=this.executions.get(id);if(!state)throw new Error('Codex execution is not active');return state;}
 }
 

@@ -18,18 +18,24 @@ import {UserProfileService} from '../modules/user-profile/userProfile.service.js
 import {SetupService} from '../modules/setup/SetupService.js';
 
 export async function createAppContainer(config: AppConfig, fetchImplementation?: typeof fetch,logger?:FastifyBaseLogger,legacySeed?:boolean) {
-  const {database,personas,userProfile,personaGroups,rooms,roomEvents,messages,runs,workspace,workspaceSnapshots}=await createRepositories(config.databaseUrl,{legacySeed:legacySeed??process.env.NODE_ENV==='test'});
+  const {database,personas,userProfile,personaGroups,rooms,roomEvents,messages,runs,workspace,workspaceSnapshots,workspaceSlots}=await createRepositories(config.databaseUrl,{legacySeed:legacySeed??process.env.NODE_ENV==='test'});
   const eventBus = new RoomEventBus();
   const events = new RoomEventService(roomEvents,eventBus);
   const connector=new HttpConnectorClient(config.connectorUrl,config.connectorToken,fetchImplementation);
   const harnessCatalogService=new HarnessCatalogService(connector);
   const connectorRuns=new ConnectorRunAdapter(connector);
   const activeRuns = new ActiveRunRegistry();
-  const roomWorkspace=new RoomWorkspaceService(rooms,workspace,events,activeRuns,config.workspaceRoot,config.workspaceAgentRoot,config.workspaceMaxFileBytes,config.planModeEnabled,workspaceSnapshots,logger);
+  const roomWorkspace=new RoomWorkspaceService(rooms,workspace,events,activeRuns,config.workspaceRoot,config.workspaceAgentRoot,config.workspaceMaxFileBytes,config.planModeEnabled,workspaceSnapshots,logger,{
+    noopMode:config.workspaceNoopMode,
+    warmSlotsMode:config.workspaceWarmSlotsMode,
+    statCacheMode:config.workspaceStatCacheMode,
+    slotLeaseMs:config.runTimeoutMs+5*60_000,
+  },workspaceSlots);
 
   const runExecutor=new RunExecutor({ personas, runs, events, runGateway:connectorRuns, runEvents:connectorRuns, connectorExecution:connectorRuns,activeRuns,concurrency:config.runConcurrency,runTimeoutMs:config.runTimeoutMs,logger,roomWorkspace,messages,connector,planModeEnabled:config.planModeEnabled });
   await roomWorkspace.recover();
   await runExecutor.reconcilePersistedRuns();
+  await roomWorkspace.recoverRuns();
   return {
     database,
     personas,

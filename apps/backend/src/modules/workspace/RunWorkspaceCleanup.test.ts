@@ -60,4 +60,19 @@ describe('RunWorkspaceCleanup',()=>{
       vi.useRealTimers();
     }
   });
+
+  it('stops scheduling retries after durable quarantine',async()=>{
+    vi.useFakeTimers();
+    const remove=vi.fn().mockRejectedValue(new Error('busy')),deferred=vi.fn().mockResolvedValue('quarantine' as const);
+    const cleanup=new RunWorkspaceCleanup(remove,undefined,[10],{deferred});
+    try{
+      await expect(cleanup.removeOrDefer({roomId:'room-1',runId:'run-1',phase:'recovery'})).resolves.toBe(false);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(remove).toHaveBeenCalledTimes(1);
+      expect(deferred).toHaveBeenCalledWith(expect.objectContaining({runId:'run-1'}),expect.any(Error),1,10);
+    }finally{
+      cleanup.close();
+      vi.useRealTimers();
+    }
+  });
 });

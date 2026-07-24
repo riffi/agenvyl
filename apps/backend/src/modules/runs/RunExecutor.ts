@@ -120,6 +120,7 @@ export class RunExecutor {
     try{
       run.executionDeadlineAt??=await this.dependencies.runs.ensureExecutionDeadline(run.id,this.runTimeoutMs);
       if(!run.executionDeadlineAt)throw new Error('Could not restore execution deadline');
+      await this.dependencies.roomWorkspace?.renewRunWorkspaceLease(run.id,run.executionDeadlineAt);
       if(new Date(run.executionDeadlineAt).getTime()<=Date.now()){await this.timeout(run);return;}
       this.armDeadline(run);
       if(run.terminal)return;
@@ -156,6 +157,7 @@ export class RunExecutor {
       }
       try{await this.dependencies.roomWorkspace?.finalizeRun(persisted.room_id,persisted.id,'cancelled')}catch{/* cancellation remains durable even if capture fails */}
       await events.emit(persisted.room_id, 'run.status', { runId: persisted.id, status: 'cancelled' });
+      try{await this.dependencies.roomWorkspace?.cleanupFinalizedRun(persisted.room_id,persisted.id)}catch{/* durable cleanup recovery will retry */}
       return {
         status: 'cancelled',
         adapter: 'persisted_run_recovery',
@@ -291,7 +293,7 @@ export class RunExecutor {
       if(handle.checkpoint)await runs.bindConnectorExecution(run.id,handle.checkpoint,{harnessType:run.harnessType});
       else await runs.setUpstream(run.id, upstreamRunId);
 
-      if(handle.checkpoint){run.executionDeadlineAt=await runs.ensureExecutionDeadline(run.id,this.runTimeoutMs);if(!run.executionDeadlineAt)throw new Error('Could not persist execution deadline');this.armDeadline(run);if(run.terminal)return;}
+      if(handle.checkpoint){run.executionDeadlineAt=await runs.ensureExecutionDeadline(run.id,this.runTimeoutMs);if(!run.executionDeadlineAt)throw new Error('Could not persist execution deadline');await this.dependencies.roomWorkspace?.renewRunWorkspaceLease(run.id,run.executionDeadlineAt);this.armDeadline(run);if(run.terminal)return;}
 
       if (run.stopping){await this.stopUpstream(run);}
       else{await events.emit(run.roomId, 'run.status', { runId, status: 'streaming' });run.status='streaming';}
@@ -329,7 +331,7 @@ export class RunExecutor {
       for(const event of accepted.events)this.dependencies.events.publishPersisted(accepted.roomId!,event);
       if(!mapping.terminal){
         const deadline=await this.dependencies.runs.refreshExecutionDeadline(run.id,this.runTimeoutMs);
-        if(deadline){run.executionDeadlineAt=deadline;this.armDeadline(run);}
+        if(deadline){run.executionDeadlineAt=deadline;await this.dependencies.roomWorkspace?.renewRunWorkspaceLease(run.id,deadline);this.armDeadline(run);}
       }
     }else for(const event of mappedEvents)await this.dependencies.events.emit(run.roomId,event.type,event.payload);
     if(mapping.status)run.status=mapping.status;
@@ -374,6 +376,7 @@ export class RunExecutor {
     if(this.dependencies.roomWorkspace){try{const embeds=await this.dependencies.roomWorkspace.resolveRunEmbeds(run.roomId,run.id,responseText);await events.emit(run.roomId,'run.embeds',{runId:run.id,embeds})}catch{/* an embed rendering failure must not strand a durably finalized run */}}
     if(run.connectorExecutionId){const finished=await runs.finishNonTerminal(run.id,status,error,errorCode);if(!finished){activeRuns.remove(run.id);this.stopTasks.delete(run.id);return;}events.publishPersisted(finished.roomId,finished.event);}
     else await events.emit(run.roomId,'run.status',{runId:run.id,status,...(error?{error}:{}),...(errorCode?{errorCode}:{})});
+    if(this.dependencies.roomWorkspace){try{await this.dependencies.roomWorkspace.cleanupFinalizedRun(run.roomId,run.id)}catch{/* durable cleanup recovery will retry */}}
     if (status === 'completed') {
       const slotId = await runs.selectCompletedAttempt(run.id);
       if (slotId) {

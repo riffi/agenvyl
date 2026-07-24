@@ -133,7 +133,7 @@ export type RunWorkspaceResult={
   result_snapshot_id?:string;
   published_snapshot_id?:string;
   capture_status:'preparing'|'ready'|'finalizing'|'complete'|'incomplete'|'failed';
-  publish_status:'pending'|'published'|'partially_published'|'not_published'|'failed';
+  publish_status:'pending'|'published'|'partially_published'|'not_published'|'noop'|'failed';
   conflict_count:number;
   errors:WorkspaceCaptureError[];
 };
@@ -299,7 +299,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 function isTokenUsage(value:unknown):value is TokenUsage{if(!isRecord(value)||!tokenCount(value.inputTokens)||!tokenCount(value.outputTokens))return false;return['totalTokens','reasoningTokens','cacheReadTokens','cacheWriteTokens'].every(key=>value[key]===undefined||tokenCount(value[key]));}
-function isRunWorkspaceResult(value:unknown):value is RunWorkspaceResult{if(!isRecord(value)||typeof value.base_snapshot_id!=='string'||typeof value.capture_status!=='string'||typeof value.publish_status!=='string'||!Number.isSafeInteger(value.conflict_count)||!Array.isArray(value.errors))return false;return['preparing','ready','finalizing','complete','incomplete','failed'].includes(value.capture_status)&&['pending','published','partially_published','not_published','failed'].includes(value.publish_status);}
+function isRunWorkspaceResult(value:unknown):value is RunWorkspaceResult{if(!isRecord(value)||typeof value.base_snapshot_id!=='string'||typeof value.capture_status!=='string'||typeof value.publish_status!=='string'||!Number.isSafeInteger(value.conflict_count)||!Array.isArray(value.errors))return false;return['preparing','ready','finalizing','complete','incomplete','failed'].includes(value.capture_status)&&['pending','published','partially_published','not_published','noop','failed'].includes(value.publish_status);}
 function isPlanVersionRef(value:unknown):value is PlanVersionRef{return isRecord(value)&&strings(value,'entry_id','version_id');}
 function isRunExecutionProfile(value:unknown):value is RunExecutionProfileSnapshot{return isRecord(value)&&(value.workflowMode==='plan'||value.workflowMode==='work')&&(value.requestedReasoningEffort===null||typeof value.requestedReasoningEffort==='string')&&(value.reasoningEffort===null||typeof value.reasoningEffort==='string')&&typeof value.reasoningEffortFallback==='boolean'&&['room_override','persona_default','model_default','auto'].includes(String(value.reasoningEffortSource))&&(value.planEnforcement===null||value.planEnforcement==='native'||value.planEnforcement==='instruction_only')&&(value.permissionProfileId===null||typeof value.permissionProfileId==='string')&&(value.agentVariantId===null||typeof value.agentVariantId==='string')&&(value.implementationPlanVersionId===null||typeof value.implementationPlanVersionId==='string');}
 function isRoomPersona(value:Record<string,unknown>):boolean{return isRecord(value.persona)&&typeof value.persona.id==='string'&&(value.reasoning_effort_override===null||typeof value.reasoning_effort_override==='string');}
