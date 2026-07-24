@@ -66,8 +66,8 @@ export type UpdateLocalUserProfileRequest = { display_name: string; handle: stri
 export type HarnessType='hermes'|'opencode'|'antigravity'|'codex'|'claude';
 export type HarnessAuthentication={authenticated:boolean;kind:'api'|'cloud'|'subscription_oauth'|'none'|'unknown'};
 export type SetupHarnessCandidate={type:HarnessType;label:string;cli:{found:boolean;command:string;version?:string;compatible?:boolean};endpoint?:{url:string;reachable:boolean};safeToSelect:boolean;supportsManagedServer:boolean;auth?:HarnessAuthentication;requiresConfirmation?:'claude_oauth';warning?:string};
-export type SetupState={completed:boolean;locale:'en'|'ru';workspaceRoot:string;firstRoomId?:string;instances:Array<{id:string;type:string;status:string;managed?:boolean;allowDangerFullAccess?:boolean;allowSubscriptionOAuth?:boolean}>;candidates:SetupHarnessCandidate[]};
-export type SetupHarnessInstance={id:string;type:HarnessType;enabled:boolean;endpoint?:string;managed?:boolean;permissionMode?:'plan'|'accept-edits';allowDangerFullAccess?:boolean;allowSubscriptionOAuth?:boolean};
+export type SetupState={completed:boolean;locale:'en'|'ru';workspaceRoot:string;firstRoomId?:string;instances:Array<{id:string;type:string;status:string;managed?:boolean;externalDirectoryRoots?:string[];allowDangerFullAccess?:boolean;allowSubscriptionOAuth?:boolean}>;candidates:SetupHarnessCandidate[]};
+export type SetupHarnessInstance={id:string;type:HarnessType;enabled:boolean;endpoint?:string;managed?:boolean;externalDirectoryRoots?:string[];permissionMode?:'plan'|'accept-edits';allowDangerFullAccess?:boolean;allowSubscriptionOAuth?:boolean};
 export type ConfigureSetupHarnessesRequest={instances:SetupHarnessInstance[]};
 export type HarnessSettingsPersona={id:string;name:string;handle:string;archived:boolean};
 export type HarnessSettingsInstance=SetupHarnessInstance&{status:'healthy'|'degraded'|'unavailable'|'disabled';capabilities:string[];error?:{code:string;message:string};personas:HarnessSettingsPersona[]};
@@ -94,7 +94,7 @@ export type Run = {
   retryOfRunId?: string;
   responseSlotId?: string;
   attemptNumber?: number;
-  request?: { kind: 'approval' | 'clarification'; prompt: string; choices?: string[]; questions?: StructuredQuestion[]; autoResolutionMs?:number; resolved?: string };
+  request?: { kind: 'approval' | 'clarification'; prompt: string;directory?:string;choices?: string[]; questions?: StructuredQuestion[]; autoResolutionMs?:number; resolved?: string };
   error?: string;
   errorCode?: string;
   artifacts?: RunArtifact[];
@@ -236,7 +236,7 @@ export type ServerRoomEvent =
   | Envelope<'run.upstream_status', { runId: string } & UpstreamStatusEvent>
   | Envelope<'run.usage', {runId:string;usage:TokenUsage}>
   | Envelope<'tool.updated', { runId: string; tool: ToolActivity }>
-  | Envelope<'request.created', { runId: string; kind: 'approval' | 'clarification'; prompt: string; choices?: string[];questions?:StructuredQuestion[];autoResolutionMs?:number }>
+  | Envelope<'request.created', { runId: string; kind: 'approval' | 'clarification'; prompt: string;directory?:string;choices?: string[];questions?:StructuredQuestion[];autoResolutionMs?:number }>
   | Envelope<'request.resolved', { runId: string; resolution: string }>
   | Envelope<'run.selected', { responseSlotId: string; runId: string }>
   | Envelope<'room.participant.updated', RoomPersona>
@@ -282,7 +282,7 @@ export function isServerRoomEvent(value: unknown): value is ServerRoomEvent {
     case 'run.upstream_status': return typeof payload.runId === 'string' && isUpstreamStatusEvent(payload);
     case 'run.usage': return typeof payload.runId==='string'&&isTokenUsage(payload.usage);
     case 'tool.updated': return typeof payload.runId === 'string' && isRecord(payload.tool) && strings(payload.tool, 'id', 'name', 'detail', 'status') && (payload.tool.input === undefined || typeof payload.tool.input === 'string') && toolStatuses.has(payload.tool.status as ToolActivity['status']);
-    case 'request.created': return strings(payload, 'runId', 'kind', 'prompt') && (payload.kind === 'approval' || payload.kind === 'clarification') && (payload.choices===undefined||(Array.isArray(payload.choices)&&payload.choices.every(choice=>typeof choice==='string'))) && (payload.questions===undefined||isStructuredQuestions(payload.questions)) && (payload.autoResolutionMs===undefined||Number.isSafeInteger(payload.autoResolutionMs));
+    case 'request.created': return strings(payload, 'runId', 'kind', 'prompt') && (payload.kind === 'approval' || payload.kind === 'clarification') && (payload.directory===undefined||typeof payload.directory==='string') && (payload.choices===undefined||(Array.isArray(payload.choices)&&payload.choices.every(choice=>typeof choice==='string'))) && (payload.questions===undefined||isStructuredQuestions(payload.questions)) && (payload.autoResolutionMs===undefined||Number.isSafeInteger(payload.autoResolutionMs));
     case 'request.resolved': return strings(payload, 'runId', 'resolution');
     case 'run.selected': return strings(payload, 'responseSlotId', 'runId');
     case 'room.participant.updated': return isRoomPersona(payload);

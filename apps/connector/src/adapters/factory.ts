@@ -7,7 +7,10 @@ import { CodexConnectorAdapter } from './codex/adapter.js';
 import { ClaudeConnectorAdapter } from './claude/adapter.js';
 import type {ClaudePermissionBridgePort} from './claude/permission-bridge.js';
 
-export function buildConfiguredAdapters(config: ConnectorConfig, env: NodeJS.ProcessEnv = process.env, request: typeof fetch = fetch, options:{claudePermissionBridge?:ClaudePermissionBridgePort}={}) {
+export function buildConfiguredAdapters(config: ConnectorConfig, env: NodeJS.ProcessEnv = process.env, request: typeof fetch = fetch, options:{
+  claudePermissionBridge?:ClaudePermissionBridgePort;
+  grantOpenCodeExternalDirectoryRoot?:(instanceId:string,root:string)=>Promise<void>;
+}={}) {
   const adapters = new Map<string, ConnectorAdapter>();
   const hermesInstances = config.instances.filter(instance => instance.enabled && instance.type === 'hermes');
   for (const instance of hermesInstances) {
@@ -25,6 +28,10 @@ export function buildConfiguredAdapters(config: ConnectorConfig, env: NodeJS.Pro
       password: env.AGENVYL_CONNECTOR_OPENCODE_PASSWORD,
       request,
       catalogDirectory: env.AGENVYL_CONNECTOR_OPENCODE_CATALOG_DIRECTORY,
+      externalDirectoryRoots:instance.externalDirectoryRoots,
+      grantExternalDirectoryRoot:options.grantOpenCodeExternalDirectoryRoot
+        ? root=>options.grantOpenCodeExternalDirectoryRoot!(instance.id,root)
+        : undefined,
     }));
   }
   const antigravityInstances = config.instances.filter(instance => instance.enabled && instance.type === 'antigravity');

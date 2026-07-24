@@ -3,7 +3,7 @@ import { isAbsolute } from 'node:path';
 import { parse, stringify } from 'yaml';
 import { resolveAgenvylPaths } from '@agenvyl/runtime-config';
 
-export type ConnectorInstanceConfig = { id: string; type: 'hermes'|'opencode'|'antigravity'|'codex'|'claude'; enabled: boolean; endpoint?:string; managed?:boolean; permissionMode?:'plan'|'accept-edits';allowDangerFullAccess?:boolean;allowSubscriptionOAuth?:boolean };
+export type ConnectorInstanceConfig = { id: string; type: 'hermes'|'opencode'|'antigravity'|'codex'|'claude'; enabled: boolean; endpoint?:string; managed?:boolean; externalDirectoryRoots?:string[];permissionMode?:'plan'|'accept-edits';allowDangerFullAccess?:boolean;allowSubscriptionOAuth?:boolean };
 export type ConnectorConfig = {
   version: 1;
   listen: { host: string; port: number };
@@ -44,6 +44,19 @@ export async function saveConnectorInstances(config:ConnectorConfig,instances:Co
   finally{await rm(temporary,{force:true});await rm(backup,{force:true});}
 }
 
+export async function addOpenCodeExternalDirectoryRoot(config:ConnectorConfig,instanceId:string,root:string){
+  const instance=config.instances.find(candidate=>candidate.id===instanceId&&candidate.type==='opencode');
+  if(!instance)throw new Error('OpenCode instance is unavailable for external-directory authorization');
+  if((instance.externalDirectoryRoots??[]).some(candidate=>portablePathKey(candidate)===portablePathKey(root)))return false;
+  const instances=config.instances.map(candidate=>candidate.id===instanceId
+    ?{...candidate,externalDirectoryRoots:[...(candidate.externalDirectoryRoots??[]),root]}
+    :candidate);
+  parseInstances(instances);
+  await saveConnectorInstances(config,instances);
+  config.instances=instances;
+  return true;
+}
+
 function parseListen(value: unknown) {
   if (value === undefined) return { host: '127.0.0.1', port: 4310 };
   if (!isRecord(value)) throw new Error('listen must be an object');
@@ -60,7 +73,7 @@ function parseInstances(value: unknown): ConnectorInstanceConfig[] {
   const seen = new Set<string>();
   return value.map((item, index) => {
     if (!isRecord(item)) throw new Error(`instances[${index}] must be an object`);
-    exactKeys(item, ['id', 'type', 'enabled','endpoint','managed','permissionMode','allowDangerFullAccess','allowSubscriptionOAuth'], `instances[${index}]`);
+    exactKeys(item, ['id', 'type', 'enabled','endpoint','managed','externalDirectoryRoots','permissionMode','allowDangerFullAccess','allowSubscriptionOAuth'], `instances[${index}]`);
     if (typeof item.id !== 'string' || !/^[a-z0-9][a-z0-9_-]*$/.test(item.id)) throw new Error(`instances[${index}].id is invalid`);
     if (seen.has(item.id)) throw new Error(`Duplicate Connector instance id: ${item.id}`);
     seen.add(item.id);
@@ -68,14 +81,32 @@ function parseInstances(value: unknown): ConnectorInstanceConfig[] {
     if (item.enabled !== undefined && typeof item.enabled !== 'boolean') throw new Error(`instances[${index}].enabled must be boolean`);
     if(item.endpoint!==undefined&&!safeEndpoint(item.endpoint))throw new Error(`instances[${index}].endpoint is invalid`);
     if(item.managed!==undefined&&(item.type!=='opencode'||typeof item.managed!=='boolean'))throw new Error(`instances[${index}].managed is invalid`);
+    const externalDirectoryRoots=parseExternalDirectoryRoots(item.externalDirectoryRoots,index,item.type);
     if(item.permissionMode!==undefined&&(item.type!=='antigravity'||(item.permissionMode!=='plan'&&item.permissionMode!=='accept-edits')))throw new Error(`instances[${index}].permissionMode is invalid`);
     if(item.allowDangerFullAccess!==undefined&&(item.type!=='codex'||typeof item.allowDangerFullAccess!=='boolean'))throw new Error(`instances[${index}].allowDangerFullAccess is invalid`);
     if(item.allowSubscriptionOAuth!==undefined&&(item.type!=='claude'||typeof item.allowSubscriptionOAuth!=='boolean'))throw new Error(`instances[${index}].allowSubscriptionOAuth is invalid`);
     if(item.type==='codex'&&item.endpoint!==undefined)throw new Error(`instances[${index}].endpoint is invalid for Codex`);
     if(item.type==='claude'&&item.endpoint!==undefined)throw new Error(`instances[${index}].endpoint is invalid for Claude`);
-    return { id: item.id, type: item.type, enabled: item.enabled ?? true, ...(item.endpoint?{endpoint:String(item.endpoint)}:{}), ...(item.managed!==undefined?{managed:item.managed}:{}), ...(item.permissionMode?{permissionMode:item.permissionMode}:{}),...(item.allowDangerFullAccess!==undefined?{allowDangerFullAccess:item.allowDangerFullAccess}:{}),...(item.allowSubscriptionOAuth!==undefined?{allowSubscriptionOAuth:item.allowSubscriptionOAuth}:{}) };
+    return { id: item.id, type: item.type, enabled: item.enabled ?? true, ...(item.endpoint?{endpoint:String(item.endpoint)}:{}), ...(item.managed!==undefined?{managed:item.managed}:{}), ...(externalDirectoryRoots?{externalDirectoryRoots}:{}),...(item.permissionMode?{permissionMode:item.permissionMode}:{}),...(item.allowDangerFullAccess!==undefined?{allowDangerFullAccess:item.allowDangerFullAccess}:{}),...(item.allowSubscriptionOAuth!==undefined?{allowSubscriptionOAuth:item.allowSubscriptionOAuth}:{}) };
   });
 }
+
+function parseExternalDirectoryRoots(value:unknown,index:number,type:unknown){
+  if(value===undefined)return undefined;
+  if(type!=='opencode'||!Array.isArray(value))throw new Error(`instances[${index}].externalDirectoryRoots is invalid`);
+  const roots=value.map((root,rootIndex)=>{
+    if(typeof root!=='string'||!root.trim()||!portableAbsolutePath(root)||hasWildcard(root)||hasControl(root)||hasTraversal(root)||(root.includes('/')&&root.includes('\\')))throw new Error(`instances[${index}].externalDirectoryRoots[${rootIndex}] is invalid`);
+    return root.trim();
+  });
+  if(new Set(roots.map(portablePathKey)).size!==roots.length)throw new Error(`instances[${index}].externalDirectoryRoots contains duplicate paths`);
+  return roots;
+}
+
+function portableAbsolutePath(value:string){return value.startsWith('/')||/^[A-Za-z]:[\\/]/.test(value)||/^\\\\[^\\]+\\[^\\]+/.test(value);}
+function portablePathKey(value:string){return /^[A-Za-z]:[\\/]|^\\\\/.test(value)?value.replaceAll('/','\\').replace(/[\\]+$/,'').toLowerCase():value.replace(/\/+$/,'');}
+function hasWildcard(value:string){return /[*?\[\]{}]/.test(value);}
+function hasControl(value:string){return /[\0-\x1f\x7f]/.test(value);}
+function hasTraversal(value:string){return value.split(/[\\/]/).some(segment=>segment==='..');}
 
 function parseWorkspaces(value: unknown, defaultRoot: string) {
   if (value === undefined) return { roots: [defaultRoot] };

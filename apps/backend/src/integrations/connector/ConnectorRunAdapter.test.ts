@@ -37,6 +37,16 @@ describe('ConnectorRunAdapter',()=>{
     await expect(adapter.stop('run-1')).resolves.toEqual({executionId:'run-1',connectorEpoch:'epoch-1',cursor:3});
   });
 
+  it('maps a generic UI approval to the offered external-directory grant',async()=>{
+    const pending={id:'request-directory',kind:'approval' as const,prompt:'Add C:\\work?',choices:['allow_directory','deny']},execution={...connectorContractFixtures.execution,cursor:3,pendingRequests:[pending]};
+    const client=clientFixture(execution,[]),adapter=new ConnectorRunAdapter(client);
+    vi.mocked(client.resolve).mockResolvedValue({execution:{...execution,pendingRequests:[]},request:pending});
+    await adapter.createRun(input());
+
+    await adapter.approve('run-1','approved');
+    expect(client.resolve).toHaveBeenCalledWith('run-1','request-directory','allow_directory');
+  });
+
   it('resolves an active clarification without approval normalization',async()=>{
     const pending={id:'question-1',kind:'clarification' as const,prompt:'Which format?',choices:['PNG','SVG']},execution={...connectorContractFixtures.execution,cursor:3,pendingRequests:[pending]};
     const client=clientFixture(execution,[]),resolved={...execution,cursor:4,pendingRequests:[]};
@@ -52,15 +62,25 @@ describe('ConnectorRunAdapter',()=>{
   });
 
   it('does not advance a control checkpoint past an SSE mapping still being accepted',async()=>{
-    const pending={id:'request-race',kind:'approval' as const,prompt:'Allow?',choices:['once','deny']},execution={...connectorContractFixtures.execution,cursor:2,pendingRequests:[]};
+    const pending={id:'request-race',kind:'approval' as const,prompt:'Add this directory?',directory:'C:\\work',choices:['allow_directory','deny']},execution={...connectorContractFixtures.execution,cursor:2,pendingRequests:[]};
     const client=clientFixture(execution,[]),adapter=new ConnectorRunAdapter(client);
     vi.mocked(client.events).mockImplementation(async function*(){yield event(3,'request.opened',{request:pending});});
     vi.mocked(client.resolve).mockResolvedValue({execution:{...execution,cursor:5,pendingRequests:[]},request:{...pending,resolution:{outcome:'answered',value:'once'}}});
     await adapter.createRun(input());
     const stream=adapter.stream('run-1','local-run',new AbortController().signal)[Symbol.asyncIterator]();
-    await expect(stream.next()).resolves.toMatchObject({value:{checkpoint:{cursor:3}}});
-    await expect(adapter.approve('run-1','once')).resolves.toMatchObject({cursor:2});
+    await expect(stream.next()).resolves.toMatchObject({value:{events:[{type:'request.created',payload:{directory:'C:\\work'}}],checkpoint:{cursor:3}}});
+    await expect(adapter.approve('run-1','allow_directory')).resolves.toMatchObject({cursor:2});
     await stream.return?.();
+  });
+
+  it('preserves a classified Connector failure code in the terminal mapping',async()=>{
+    const execution={...connectorContractFixtures.execution,cursor:1,pendingRequests:[]};
+    const streamed=[event(2,'execution.failed',{error:{code:'external_directory_denied',message:'External access denied'}})];
+    const adapter=new ConnectorRunAdapter(clientFixture(execution,streamed));
+    await adapter.createRun(input());
+
+    const mappings=[];for await(const mapping of adapter.stream('run-1','local-run',new AbortController().signal))mappings.push(mapping);
+    expect(mappings).toEqual([{events:[],terminal:{status:'failed',error:'External access denied',errorCode:'external_directory_denied'},checkpoint:{executionId:'run-1',connectorEpoch:'epoch-1',cursor:2}}]);
   });
 });
 

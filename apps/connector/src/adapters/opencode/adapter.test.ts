@@ -23,7 +23,7 @@ describe('OpenCodeConnectorAdapter', () => {
     expect(adapter.capabilities).toEqual(['model_catalog', 'execution_profiles', 'text_streaming', 'reasoning', 'tools', 'approvals', 'clarifications', 'usage']);
     await expect(adapter.catalog()).resolves.toEqual({
       models: [{ id: 'anthropic/claude-sonnet', label: 'Anthropic/Claude Sonnet', reasoningEfforts: ['high', 'max'] }],
-      controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[],agentVariants:[{id:'build',label:'build'}]},
+      controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[{id:'standard',label:'Standard'},{id:'auto-approve',label:'Auto-approve'}],agentVariants:[{id:'build',label:'build'}]},
     });
     expect(client.providers).toHaveBeenCalledWith('/workspace/catalog');
     expect(client.agents).toHaveBeenCalledWith('/workspace/catalog');
@@ -58,7 +58,7 @@ describe('OpenCodeConnectorAdapter', () => {
 
   it('deletes a completed session and disposes its OpenCode instance before reporting completion',async()=>{
     const calls:string[]=[],client=fixtureClient(calls);
-    client.subscribe=vi.fn(async()=>{calls.push('subscribe');return events([{type:'session.idle',properties:{sessionID:'session-1'}}]);});
+    client.subscribe=vi.fn(async()=>{calls.push('subscribe');return events([...completedTurn(),{type:'session.idle',properties:{sessionID:'session-1'}}]);});
     client.deleteSession=vi.fn(async()=>{calls.push('delete');});
     client.disposeInstance=vi.fn(async()=>{calls.push('dispose');});
     const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client});
@@ -129,6 +129,7 @@ describe('OpenCodeConnectorAdapter', () => {
       { type: 'message.part.delta', properties: { sessionID: 'session-1', partID: 'reasoning-1', field: 'text', delta: 'private' } },
       { type: 'message.part.delta', properties: { sessionID: 'session-1', partID: 'text-1', field: 'text', delta: 'Hello' } },
       { type: 'vendor.raw', properties: { sessionID: 'session-1', token: 'do-not-leak' } },
+      ...assistantFinished(),
       { type: 'session.status', properties: { sessionID: 'session-1', status: { type: 'idle' } } },
     ]));
     const adapter = new OpenCodeConnectorAdapter({ baseUrl: 'http://localhost:4096', client });
@@ -151,6 +152,7 @@ describe('OpenCodeConnectorAdapter', () => {
       {type:'message.updated',properties:{info:{...first,tokens:{input:12,output:5,reasoning:2,cache:{read:4,write:1}}}}},
       {type:'message.updated',properties:{info:{id:'assistant-2',sessionID:'session-1',role:'assistant',tokens:{total:11,input:8,output:2,reasoning:1,cache:{read:0,write:0}}}}},
       {type:'message.updated',properties:{info:{id:'user-1',sessionID:'session-1',role:'user'}}},
+      ...completedTurn(),
       {type:'session.idle',properties:{sessionID:'session-1'}},
     ]));
     const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client}),normalized=await collect(adapter.events(await adapter.start(startRequest())));
@@ -204,6 +206,7 @@ describe('OpenCodeConnectorAdapter', () => {
       { type: 'message.part.updated', properties: { sessionID: 'session-1', part: { type: 'tool', callID: 'call-1', tool: 'bash', state: { status: 'running', title: 'Run /srv/private/script.sh', input: { token: 'secret' }, metadata: { token: 'secret' }, time: { start: 1 } } } } },
       { type: 'message.part.updated', properties: { sessionID: 'session-1', part: { type: 'tool', callID: 'call-1', tool: 'bash', state: { status: 'completed', title: 'Command finished', input: { token: 'secret' }, output: 'secret output', metadata: { token: 'secret' }, time: { start: 1, end: 2 } } } } },
       { type: 'message.part.updated', properties: { sessionID: 'session-1', part: { type: 'tool', callID: 'call-2', tool: 'edit', state: { status: 'error', input: { token: 'secret' }, error: 'secret failure', time: { start: 1, end: 2 } } } } },
+      ...completedTurn(),
       { type: 'session.idle', properties: { sessionID: 'session-1' } },
     ]));
     const adapter = new OpenCodeConnectorAdapter({ baseUrl: 'http://localhost:4096', client });
@@ -230,6 +233,7 @@ describe('OpenCodeConnectorAdapter', () => {
       : { id: 'native-request-1', sessionID: 'session-1', action: 'bash', resources: ['git status'], metadata: { token: 'secret' }, save: ['git status'] };
     client.subscribe = vi.fn().mockResolvedValue(events([
       { type: eventType, properties },
+      ...completedTurn(),
       { type: 'session.idle', properties: { sessionID: 'session-1' } },
     ]));
     const adapter = new OpenCodeConnectorAdapter({ baseUrl: 'http://localhost:4096', client });
@@ -253,7 +257,7 @@ describe('OpenCodeConnectorAdapter', () => {
   it.each([
     ['permission.asked', 'legacy'],
     ['permission.v2.asked', 'v2'],
-  ] as const)('rejects %s external-directory access without opening a user approval', async (eventType, version) => {
+  ] as const)('rejects malformed %s external-directory access without opening a user approval and fails an unrecovered turn', async (eventType, version) => {
     const client = fixtureClient();
     const properties = eventType === 'permission.asked'
       ? { id: 'native-request-1', sessionID: 'session-1', permission: 'external_directory', patterns: ['/tmp/file.jpg'], metadata: {}, always: [] }
@@ -266,11 +270,169 @@ describe('OpenCodeConnectorAdapter', () => {
     const execution = await adapter.start(startRequest());
 
     await expect(collect(adapter.events(execution))).resolves.toEqual([
-      { type: 'execution.completed', payload: {} },
+      { type: 'execution.failed', payload: { error: { code: 'external_directory_denied', message: expect.stringContaining('external-directory allowlist') } } },
     ]);
     expect(client.replyPermission).toHaveBeenCalledWith({
       sessionID: 'session-1', requestID: 'native-request-1', directory: '/srv/workspaces/room-1/subdir', reply: 'reject', version,
     });
+  });
+
+  it.each(['standard','auto-approve'] as const)('asks to add a valid outside directory in %s and persists it before replying once',async permissionProfileId=>{
+    const client=fixtureClient(),grantExternalDirectoryRoot=vi.fn().mockResolvedValue(undefined);
+    client.subscribe=vi.fn().mockResolvedValue(events([
+      externalPermission('C:\\work\\joke.txt','C:\\work'),
+      ...completedTurn(),
+      {type:'session.idle',properties:{sessionID:'session-1'}},
+    ]));
+    const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client,externalDirectoryRoots:[],grantExternalDirectoryRoot});
+    const executionProfile={...startRequest().executionProfile,permissionProfileId};
+    const execution=await adapter.start({...startRequest(),executionProfile}),iterator=adapter.events(execution)[Symbol.asyncIterator](),opened=await iterator.next();
+
+    expect(opened.value).toEqual({type:'request.opened',payload:{request:{
+      id:expect.stringMatching(/^req-/),
+      kind:'approval',
+      prompt:'Add this directory to allowed external directories and allow this request?',
+      directory:'C:\\work',
+      choices:['allow_directory','deny'],
+    }}});
+    expect(client.replyPermission).not.toHaveBeenCalled();
+    if(!opened.value||opened.value.type!=='request.opened')throw new Error('Expected approval request');
+    await expect(adapter.resolveRequest(execution,opened.value.payload.request,'allow_directory')).resolves.toEqual({outcome:'answered'});
+    expect(grantExternalDirectoryRoot).toHaveBeenCalledWith('C:\\work');
+    expect(client.replyPermission).toHaveBeenCalledWith(expect.objectContaining({requestID:'native-external',reply:'once'}));
+    await expect(iterator.next()).resolves.toMatchObject({value:{type:'execution.completed'}});
+  });
+
+  it('offers only once or deny for an allowlisted external directory without exposing the host path',async()=>{
+    const client=fixtureClient();
+    client.subscribe=vi.fn().mockResolvedValue(events([
+      externalPermission('/srv/shared/assets/image.png','/srv/shared/assets'),
+      ...completedTurn(),
+      {type:'session.idle',properties:{sessionID:'session-1'}},
+    ]));
+    const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client,externalDirectoryRoots:['/srv/shared']});
+    const execution=await adapter.start(startRequest()),iterator=adapter.events(execution)[Symbol.asyncIterator](),opened=await iterator.next();
+
+    expect(opened.value).toEqual({type:'request.opened',payload:{request:{id:expect.stringMatching(/^req-/),kind:'approval',prompt:'Allow OpenCode to access a configured external directory?',choices:['once','deny']}}});
+    expect(JSON.stringify(opened.value)).not.toContain('/srv/shared');
+    if(!opened.value||opened.value.type!=='request.opened')throw new Error('Expected approval request');
+    await expect(adapter.resolveRequest(execution,opened.value.payload.request,'always')).rejects.toThrow('not an offered choice');
+    await expect(adapter.resolveRequest(execution,opened.value.payload.request,'once')).resolves.toEqual({outcome:'answered'});
+    expect(client.replyPermission).toHaveBeenCalledWith(expect.objectContaining({requestID:'native-external',reply:'once'}));
+    await expect(iterator.next()).resolves.toMatchObject({value:{type:'execution.completed'}});
+  });
+
+  it('auto-approves ordinary and allowlisted external permissions once during Work',async()=>{
+    const client=fixtureClient();
+    client.subscribe=vi.fn().mockResolvedValue(events([
+      {type:'permission.v2.asked',properties:{id:'native-bash',sessionID:'session-1',action:'bash',resources:['git status'],metadata:{}}},
+      externalPermission('/srv/shared/file.txt','/srv/shared'),
+      ...completedTurn(),
+      {type:'session.idle',properties:{sessionID:'session-1'}},
+    ]));
+    const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client,externalDirectoryRoots:['/srv/shared']});
+    const executionProfile={...startRequest().executionProfile,permissionProfileId:'auto-approve'};
+
+    await expect(collect(adapter.events(await adapter.start({...startRequest(),executionProfile})))).resolves.toEqual([{type:'execution.completed',payload:{}}]);
+    expect(client.replyPermission).toHaveBeenNthCalledWith(1,expect.objectContaining({requestID:'native-bash',reply:'once'}));
+    expect(client.replyPermission).toHaveBeenNthCalledWith(2,expect.objectContaining({requestID:'native-external',reply:'once'}));
+  });
+
+  it('forces Standard approvals in Plan even when the persona selects Auto-approve',async()=>{
+    const client=fixtureClient();
+    client.agents=vi.fn().mockResolvedValue([{name:'build',mode:'primary'},{name:'plan',mode:'primary'}]);
+    client.subscribe=vi.fn().mockResolvedValue(events([
+      {type:'permission.v2.asked',properties:{id:'native-bash',sessionID:'session-1',action:'bash',resources:['git status'],metadata:{}}},
+    ]));
+    const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client});
+    const executionProfile={...startRequest().executionProfile,workflowMode:'plan' as const,permissionProfileId:'auto-approve',agentVariantId:null,planEnforcement:'native' as const};
+    const execution=await adapter.start({...startRequest(),executionProfile});
+    const iterator=adapter.events(execution)[Symbol.asyncIterator]();
+
+    await expect(iterator.next()).resolves.toMatchObject({value:{type:'request.opened',payload:{request:{kind:'approval'}}}});
+    expect(client.replyPermission).not.toHaveBeenCalled();
+    await iterator.return?.();
+  });
+
+  it('does not auto-answer clarifications in Auto-approve',async()=>{
+    const client=fixtureClient();
+    client.subscribe=vi.fn().mockResolvedValue(events([
+      {type:'question.v2.asked',properties:{id:'native-question',sessionID:'session-1',questions:[{question:'Which format?',options:[{label:'PNG'}]}]}},
+    ]));
+    const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client});
+    const executionProfile={...startRequest().executionProfile,permissionProfileId:'auto-approve'};
+    const iterator=adapter.events(await adapter.start({...startRequest(),executionProfile}))[Symbol.asyncIterator]();
+
+    await expect(iterator.next()).resolves.toMatchObject({value:{type:'request.opened',payload:{request:{kind:'clarification'}}}});
+    expect(client.replyQuestion).not.toHaveBeenCalled();
+    await iterator.return?.();
+  });
+
+  it('completes after an external denial only when a new finished assistant answer follows it',async()=>{
+    const client=fixtureClient();
+    client.subscribe=vi.fn().mockResolvedValue(events([
+      externalPermission('/outside/secrets.txt','/outside'),
+      ...completedTurn('I could not access that path, so here is a safe alternative.'),
+      {type:'session.idle',properties:{sessionID:'session-1'}},
+    ]));
+    const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client,externalDirectoryRoots:[]});
+    const execution=await adapter.start(startRequest()),iterator=adapter.events(execution)[Symbol.asyncIterator](),opened=await iterator.next();
+    if(!opened.value||opened.value.type!=='request.opened')throw new Error('Expected approval request');
+    await adapter.resolveRequest(execution,opened.value.payload.request,'deny');
+
+    await expect(collectIterator(iterator)).resolves.toEqual([{type:'execution.completed',payload:{}}]);
+    expect(client.replyPermission).toHaveBeenCalledWith(expect.objectContaining({reply:'reject'}));
+  });
+
+  it('does not mistake a repeated preamble part after denial for a new final answer',async()=>{
+    const client=fixtureClient();
+    const preamble={type:'message.part.updated',properties:{sessionID:'session-1',part:{id:'text-preamble',type:'text',text:'Checking external file. '}}};
+    client.subscribe=vi.fn().mockResolvedValue(events([
+      preamble,
+      externalPermission('/outside/secrets.txt','/outside'),
+      preamble,
+      ...assistantFinished(),
+      {type:'session.idle',properties:{sessionID:'session-1'}},
+    ]));
+    const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client});
+    const execution=await adapter.start(startRequest()),iterator=adapter.events(execution)[Symbol.asyncIterator]();
+    const opened=await iterator.next();
+    if(!opened.value||opened.value.type!=='request.opened')throw new Error('Expected approval request');
+    await adapter.resolveRequest(execution,opened.value.payload.request,'deny');
+
+    expect((await collectIterator(iterator)).at(-1)).toMatchObject({type:'execution.failed',payload:{error:{code:'external_directory_denied'}}});
+  });
+
+  it.each([
+    ['a completed tool without later text',[
+      {type:'message.part.updated',properties:{sessionID:'session-1',part:{type:'tool',callID:'call-1',tool:'read',state:{status:'completed'}}}},
+    ]],
+    ['a still-running tool',[
+      {type:'message.part.updated',properties:{sessionID:'session-1',part:{type:'tool',callID:'call-1',tool:'read',state:{status:'running'}}}},
+    ]],
+    ['a tool-calls finish',[
+      ...completedTurn(),
+      ...assistantFinished('tool-calls'),
+    ]],
+  ] as const)('classifies idle after %s as an incomplete turn',async(_label,turnEvents)=>{
+    const client=fixtureClient();
+    client.subscribe=vi.fn().mockResolvedValue(events([...turnEvents,{type:'session.idle',properties:{sessionID:'session-1'}}]));
+    const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client});
+    const normalized=await collect(adapter.events(await adapter.start(startRequest())));
+
+    expect(normalized.at(-1)).toEqual({type:'execution.failed',payload:{error:{code:'opencode_incomplete_turn',message:'OpenCode became idle before producing a complete final response'}}});
+  });
+
+  it('classifies a length finish as truncated output',async()=>{
+    const client=fixtureClient();
+    client.subscribe=vi.fn().mockResolvedValue(events([
+      {type:'message.part.updated',properties:{sessionID:'session-1',part:{id:'text-final',type:'text',text:'Partial answer'}}},
+      ...assistantFinished('length'),
+      {type:'session.idle',properties:{sessionID:'session-1'}},
+    ]));
+    const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client});
+
+    expect((await collect(adapter.events(await adapter.start(startRequest())))).at(-1)).toEqual({type:'execution.failed',payload:{error:{code:'opencode_output_truncated',message:'OpenCode stopped because the model output was truncated'}}});
   });
 
   it('maps denial to reject and refuses stale or foreign approval requests', async () => {
@@ -352,7 +514,7 @@ describe('OpenCodeConnectorAdapter', () => {
 
   it('does not turn a successful execution into a failure when upstream cleanup times out',async()=>{
     const client=fixtureClient();
-    client.subscribe=vi.fn().mockResolvedValue(events([{type:'session.idle',properties:{sessionID:'session-1'}}]));
+    client.subscribe=vi.fn().mockResolvedValue(events([...completedTurn(),{type:'session.idle',properties:{sessionID:'session-1'}}]));
     client.deleteSession=vi.fn(()=>new Promise<void>(()=>undefined));
     const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client,cleanupTimeoutMs:5});
 
@@ -367,6 +529,7 @@ describe('OpenCodeConnectorAdapter', () => {
     const client = fixtureClient();
     client.subscribe = vi.fn().mockResolvedValue(events([
       { type: eventType, properties: { id: 'native-question-1', sessionID: 'session-1', questions: [{ question: 'Which format?', header: 'Format', options: [{ label: 'PNG', description: 'Raster' }, { label: 'SVG', description: 'Vector' }], custom: true }] } },
+      ...completedTurn(),
       { type: 'session.idle', properties: { sessionID: 'session-1' } },
     ]));
     const adapter = new OpenCodeConnectorAdapter({ baseUrl: 'http://localhost:4096', client });
@@ -384,6 +547,7 @@ describe('OpenCodeConnectorAdapter', () => {
   it('round-trips batched and multi-select questions as structured answers',async()=>{
     const client=fixtureClient();client.subscribe=vi.fn().mockResolvedValue(events([
       {type:'question.asked',properties:{id:'native-question-1',sessionID:'session-1',questions:[{question:'Pick several',header:'Formats',options:[{label:'PNG'},{label:'SVG'}],multiple:true},{question:'Theme?',header:'Theme',options:[{label:'Nature',description:'Outdoors'}],custom:true}]}},
+      ...completedTurn(),
       {type:'session.idle',properties:{sessionID:'session-1'}},
     ]));
     const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client}),execution=await adapter.start(startRequest()),iterator=adapter.events(execution)[Symbol.asyncIterator](),opened=await iterator.next();
@@ -441,3 +605,13 @@ function fixtureClient(calls: string[] = []): OpenCodeClientPort {
 
 async function* events(values: unknown[]) { yield* values; }
 async function collect<T>(source: AsyncIterable<T>) { const values: T[] = []; for await (const value of source) values.push(value); return values; }
+async function collectIterator<T>(iterator:AsyncIterator<T>){const values:T[]=[];while(true){const next=await iterator.next();if(next.done)return values;values.push(next.value);}}
+function assistantFinished(reason='stop'){return[{type:'message.updated',properties:{info:{id:'assistant-final',sessionID:'session-1',role:'assistant',finish:reason}}}];}
+function completedTurn(text='Done'){return[
+  {type:'message.part.updated',properties:{sessionID:'session-1',part:{id:'text-final',type:'text',text}}},
+  ...assistantFinished(),
+];}
+function externalPermission(filepath:string,parentDir:string){return{
+  type:'permission.v2.asked',
+  properties:{id:'native-external',sessionID:'session-1',action:'external_directory',resources:[`${filepath}${filepath.includes('\\')?'\\':'/'}**`],metadata:{filepath,parentDir}},
+};}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { connectorContractFixtures, isConnectorCatalog, isConnectorCommandResult, isConnectorExecutionEvent, isConnectorHealth, isConnectorInstanceList, isConnectorRequestCommandResult, isExecutionSnapshot, isResolveConnectorRequest, isStartExecutionRequest } from '../src/index.js';
+import { connectorContractFixtures, isConfigureConnectorInstancesRequest, isConnectorCatalog, isConnectorCommandResult, isConnectorExecutionEvent, isConnectorHealth, isConnectorInstanceList, isConnectorRequestCommandResult, isExecutionSnapshot, isResolveConnectorRequest, isStartExecutionRequest } from '../src/index.js';
 
 describe('Connector v1 contract fixtures', () => {
   it('keeps health, discovery, execution and events runtime-valid', () => {
@@ -41,5 +41,17 @@ describe('Connector v1 contract fixtures', () => {
     expect(isConnectorInstanceList({...connectorContractFixtures.instances,instances:[{...instance,type:'opencode',managed:true}]})).toBe(true);
     expect(isConnectorInstanceList({...connectorContractFixtures.instances,instances:[{...instance,type:'opencode',managed:'yes'}]})).toBe(false);
     expect(isConnectorInstanceList({...connectorContractFixtures.instances,instances:[{...instance,type:'hermes',managed:true}]})).toBe(false);
+  });
+
+  it('accepts only concrete absolute external-directory roots on OpenCode instances',()=>{
+    const request=(externalDirectoryRoots:string[])=>({instances:[{id:'local-opencode',type:'opencode',enabled:true,externalDirectoryRoots}]});
+    expect(isConfigureConnectorInstancesRequest(request(['/srv/shared','C:\\Shared']))).toBe(true);
+    expect(isConfigureConnectorInstancesRequest(request([]))).toBe(true);
+    expect(isConfigureConnectorInstancesRequest(request(['../shared']))).toBe(false);
+    expect(isConfigureConnectorInstancesRequest(request(['/srv/*']))).toBe(false);
+    expect(isConfigureConnectorInstancesRequest(request(['/srv/shared/../secret']))).toBe(false);
+    expect(isConfigureConnectorInstancesRequest(request(['C:\\Shared/mixed']))).toBe(false);
+    expect(isConfigureConnectorInstancesRequest(request(['/srv/shared','/srv/shared/']))).toBe(false);
+    expect(isConfigureConnectorInstancesRequest({instances:[{id:'local-hermes',type:'hermes',enabled:true,externalDirectoryRoots:[]}]})).toBe(false);
   });
 });

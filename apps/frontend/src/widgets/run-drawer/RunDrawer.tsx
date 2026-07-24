@@ -98,7 +98,7 @@ export function RunDrawer({run,persona,harnessCatalog,close}:{run?:Run;persona?:
 
         {run.request&&<section className={styles['request-card']}>
           {run.request.kind==='approval'?<TriangleAlert/>:<CircleHelp/>}
-          <span><strong>{run.request.kind==='approval'?'Approval requested':'Clarification requested'}</strong><p>{run.request.prompt}</p>{run.request.resolved&&<small>Response received: {run.request.resolved}</small>}</span>
+          <span><strong>{run.request.kind==='approval'?'Approval requested':'Clarification requested'}</strong><p>{run.request.prompt}</p>{run.request.directory&&<code>{run.request.directory}</code>}{run.request.resolved&&<small>Response received: {run.request.resolved}</small>}</span>
         </section>}
 
         <section className={styles.activity}>

@@ -43,7 +43,7 @@ export class ConnectorRunAdapter implements RunGateway,RunEventStream,RunRecover
     const state=this.executions.get(executionId);
     const request=[...(state?.pendingRequests.values()??[])].find(candidate=>candidate.kind==='approval');
     if(!request)throw new Error('Connector has no active approval request for this execution');
-    const result=await this.connector.resolve(executionId,request.id,normalizeApproval(choice));
+    const result=await this.connector.resolve(executionId,request.id,normalizeApproval(choice,request.choices));
     return this.controlCheckpoint(result.execution);
   }
 
@@ -83,7 +83,7 @@ export class ConnectorRunAdapter implements RunGateway,RunEventStream,RunRecover
 
 function checkpoint(execution:ExecutionSnapshot):RunCheckpoint{return{executionId:execution.executionId,connectorEpoch:execution.connectorEpoch,cursor:execution.cursor};}
 
-function normalizeApproval(choice:ApprovalChoice){return choice==='approved'?'once':choice==='denied'?'deny':choice;}
+function normalizeApproval(choice:ApprovalChoice,choices?:string[]){return choice==='approved'?(choices?.includes('allow_directory')?'allow_directory':'once'):choice==='denied'?'deny':choice;}
 
 function mapConnectorEvent(localRunId:string,event:ConnectorExecutionEvent):RunEventMapping{
   switch(event.type){
@@ -95,10 +95,10 @@ function mapConnectorEvent(localRunId:string,event:ConnectorExecutionEvent):RunE
     case'output.reasoning.delta':return{events:[{type:'run.reasoning.delta',payload:{runId:localRunId,text:event.payload.text}}]};
     case'usage.updated':return{events:[{type:'run.usage',payload:{runId:localRunId,usage:event.payload.usage}}]};
     case'tool.started':case'tool.updated':case'tool.completed':return{events:[{type:'tool.updated',payload:{runId:localRunId,tool:{id:event.payload.toolId,name:event.payload.name,detail:event.payload.safeSummary,...(event.payload.safeInput===undefined?{}:{input:event.payload.safeInput}),status:event.type==='tool.started'?'started':event.type==='tool.completed'?'completed':'progress'}}}]};
-    case'request.opened':return{events:[{type:'request.created',payload:{runId:localRunId,requestId:event.payload.request.id,kind:event.payload.request.kind,prompt:event.payload.request.prompt,...(event.payload.request.choices?{choices:event.payload.request.choices}:{}),...(event.payload.request.questions?{questions:event.payload.request.questions}:{}),...(event.payload.request.autoResolutionMs?{autoResolutionMs:event.payload.request.autoResolutionMs}:{})}}],status:event.payload.request.kind==='approval'?'waiting_approval':'waiting_clarification'};
+    case'request.opened':return{events:[{type:'request.created',payload:{runId:localRunId,requestId:event.payload.request.id,kind:event.payload.request.kind,prompt:event.payload.request.prompt,...(event.payload.request.directory?{directory:event.payload.request.directory}:{}),...(event.payload.request.choices?{choices:event.payload.request.choices}:{}),...(event.payload.request.questions?{questions:event.payload.request.questions}:{}),...(event.payload.request.autoResolutionMs?{autoResolutionMs:event.payload.request.autoResolutionMs}:{})}}],status:event.payload.request.kind==='approval'?'waiting_approval':'waiting_clarification'};
     case'request.resolved':return{events:[{type:'request.resolved',payload:{runId:localRunId,requestId:event.payload.requestId,resolution:event.payload.outcome}}]};
     case'execution.completed':return{events:[],terminal:{status:'completed'}};
     case'execution.cancelled':return{events:[],terminal:{status:'cancelled'}};
-    case'execution.failed':return{events:[],terminal:{status:'failed',error:event.payload.error.message}};
+    case'execution.failed':return{events:[],terminal:{status:'failed',error:event.payload.error.message,errorCode:event.payload.error.code}};
   }
 }

@@ -22,11 +22,11 @@ describe('buildConfiguredAdapters', () => {
 
   it('loads enabled OpenCode instances only when the server endpoint is configured', () => {
     const value = config();
-    value.instances = [{ id: 'local-opencode', type: 'opencode', enabled: true }];
+    value.instances = [{ id: 'local-opencode', type: 'opencode', enabled: true,externalDirectoryRoots:['/srv/shared'] }];
     expect(buildConfiguredAdapters(value, {})).toHaveLength(0);
     const adapters = buildConfiguredAdapters(value, { AGENVYL_CONNECTOR_OPENCODE_URL: 'http://127.0.0.1:4096' });
     expect([...adapters.keys()]).toEqual(['local-opencode']);
-    expect(adapters.get('local-opencode')).toMatchObject({ type: 'opencode', capabilities: ['model_catalog', 'execution_profiles', 'text_streaming', 'reasoning', 'tools', 'approvals', 'clarifications', 'usage'] });
+    expect(adapters.get('local-opencode')).toMatchObject({ type: 'opencode',externalDirectoryRoots:['/srv/shared'], capabilities: ['model_catalog', 'execution_profiles', 'text_streaming', 'reasoning', 'tools', 'approvals', 'clarifications', 'usage'] });
   });
 
   it('loads Antigravity only behind the persisted explicit permission mode', () => {

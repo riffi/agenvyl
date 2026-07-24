@@ -327,7 +327,7 @@ export class RunExecutor {
     const mappedEvents:MappedRunEvent[]=[...(mapping.status&&mapping.status!==run.status?[{type:'run.status' as const,payload:{runId:run.id,status:mapping.status}}]:[]),...mapping.events];
     if(mapping.checkpoint){
       const accepted=await this.dependencies.runs.acceptConnectorTransition(run.id,mapping.checkpoint,mappedEvents);
-      if(!accepted.accepted){if(mapping.terminal)await this.terminal(run,mapping.terminal.status,mapping.terminal.error);return;}
+      if(!accepted.accepted){if(mapping.terminal)await this.terminal(run,mapping.terminal.status,mapping.terminal.error,mapping.terminal.errorCode);return;}
       for(const event of accepted.events)this.dependencies.events.publishPersisted(accepted.roomId!,event);
       if(!mapping.terminal){
         const deadline=await this.dependencies.runs.refreshExecutionDeadline(run.id,this.runTimeoutMs);
@@ -336,7 +336,7 @@ export class RunExecutor {
     }else for(const event of mappedEvents)await this.dependencies.events.emit(run.roomId,event.type,event.payload);
     if(mapping.status)run.status=mapping.status;
     for(const event of mapping.events){if(event.type==='run.delta')run.responseText=(run.responseText??'')+String(event.payload.text??'');if(event.type==='request.created')run.waitingFor=event.payload.kind as'approval'|'clarification';if(event.type==='request.resolved')run.waitingFor=undefined;}
-    if(mapping.terminal)await this.terminal(run,mapping.terminal.status,mapping.terminal.error);
+    if(mapping.terminal)await this.terminal(run,mapping.terminal.status,mapping.terminal.error,mapping.terminal.errorCode);
   }
 
   private async terminal(
@@ -429,7 +429,7 @@ function connectorRecoveryMessage(code:ConnectorLifecycleErrorCode,error:unknown
 function delay(ms:number){return new Promise<void>(resolve=>setTimeout(resolve,ms));}
 
 function isApprovalChoice(choice: string | undefined): choice is ApprovalChoice {
-  return ['approved', 'denied', 'once', 'session', 'always', 'deny'].includes(choice ?? '');
+  return ['approved', 'denied', 'once', 'session', 'always', 'deny','allow_directory'].includes(choice ?? '');
 }
 
 function containsForeignRole(text: string, ownHandle: string | undefined) {

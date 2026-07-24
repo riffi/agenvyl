@@ -15,7 +15,10 @@ export const RunRequest = ({ request, resolve }: { request:RequestSnapshot; reso
   const activeQuestion=questions[activeIndex];
 
   if(request.resolved)return <RequestFrame request={request}><small>Response: {request.resolved}</small></RequestFrame>;
-  if(request.kind==='approval')return <RequestFrame request={request}><div><Button variant="primary" size="sm" onClick={()=>resolve('approved')}>Allow</Button><Button size="sm" onClick={()=>resolve('denied')}>Deny</Button></div></RequestFrame>;
+  if(request.kind==='approval'){
+    const choices=request.choices?.length?request.choices:['approved','denied'];
+    return <RequestFrame request={request}><div>{choices.map((choice,index)=><Button key={choice} variant={index===0?'primary':undefined} size="sm" onClick={()=>resolve(choice)}>{approvalLabel(choice)}</Button>)}</div></RequestFrame>;
+  }
   if(activeQuestion)return <RequestFrame request={request}><form className={styles['request-questions']} onSubmit={event=>{event.preventDefault();const payload=questionAnswers(questions,answers,otherAnswers);if(Object.values(payload).every(values=>values.length>0))resolve({answers:payload});}}>
     <div className={styles['request-progress']} aria-label={`Question ${activeIndex+1} of ${questions.length}`}>
       <span>Question {activeIndex+1} of {questions.length}</span>
@@ -36,6 +39,7 @@ export const RunRequest = ({ request, resolve }: { request:RequestSnapshot; reso
 const RequestFrame = ({request,children}:{request:RequestSnapshot;children:React.ReactNode}) => <div className={`${styles.request} ${styles[request.kind]??''}`}>
   <strong>{request.kind==='approval'?<><TriangleAlert/> Action approval</>:<><CircleHelp/> Agent clarification</>}</strong>
   <p>{request.prompt}</p>
+  {request.directory&&<p><code>{request.directory}</code></p>}
   {children}
 </div>;
 
@@ -50,3 +54,4 @@ const QuestionStep = ({question,answers,otherAnswers,setAnswers,setOtherAnswers}
 
 const hasAnswer = (question:StructuredQuestion,answers:Record<string,string[]>,otherAnswers:Record<string,string>) => Boolean(answers[question.id]?.length||otherAnswers[question.id]?.trim());
 const questionAnswers = (questions:StructuredQuestion[],answers:Record<string,string[]>,otherAnswers:Record<string,string>) => Object.fromEntries(questions.map(question=>{const other=otherAnswers[question.id]?.trim();return[question.id,[...(answers[question.id]??[]),...(other?[other]:[])]];}));
+const approvalLabel=(choice:string)=>choice==='allow_directory'?'Add directory and allow':choice==='once'||choice==='approved'?'Allow once':choice==='always'||choice==='session'?'Allow for session':choice==='deny'||choice==='denied'?'Deny':choice;

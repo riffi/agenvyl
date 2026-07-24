@@ -13,6 +13,16 @@ const request:NonNullable<Run['request']>={kind:'clarification',prompt:'OpenCode
 ]};
 
 describe('RunRequest structured clarification carousel',()=>{
+  it('renders external-directory approval choices with user-facing labels',async()=>{
+    const user=userEvent.setup(),resolve=vi.fn();
+    render(<RunRequest request={{kind:'approval',prompt:'Add this directory?',directory:'C:\\work',choices:['allow_directory','deny']}} resolve={resolve}/>);
+
+    expect(screen.getByText('C:\\work')).toBeTruthy();
+    await user.click(screen.getByRole('button',{name:'Add directory and allow'}));
+    expect(resolve).toHaveBeenCalledWith('allow_directory');
+    expect(screen.getByRole('button',{name:'Deny'})).toBeTruthy();
+  });
+
   it('shows one question at a time, preserves answers and submits the complete payload',async()=>{
     const user=userEvent.setup(),resolve=vi.fn();
     render(<RunRequest request={request} resolve={resolve}/>);

@@ -38,6 +38,55 @@ describe.sequential('Core -> Connector -> OpenCode-compatible black-box gate', (
     } finally { await sql.end(); }
   }, 20_000);
 
+  it('fails an unrecovered external-directory denial, preserves the preamble only as diagnostics, and classifies retry again',async()=>{
+    const runtime=await startRuntime(cleanups);
+    const sourceId=await createRun(runtime.coreUrl,'[opencode:external-denial]');
+    const sourceApproval=await waitForRun(runtime.coreUrl,sourceId,run=>run.status==='waiting_approval');
+    expect(sourceApproval.request).toMatchObject({kind:'approval',choices:['allow_directory','deny']});
+    await resolveApproval(runtime.coreUrl,sourceId,'denied');
+    const failed=await waitForRun(runtime.coreUrl,sourceId,run=>run.status==='failed');
+    expect(failed).toMatchObject({text:'Checking external file. ',errorCode:'external_directory_denied'});
+
+    const retry=await fetch(`${runtime.coreUrl}/api/v1/runs/${sourceId}/retry`,{method:'POST'});
+    expect(retry.status,await retry.clone().text()).toBe(202);
+    const{run_id:retryId}=await retry.json() as{run_id:string};
+    await waitForRun(runtime.coreUrl,retryId,run=>run.status==='waiting_approval');
+    await resolveApproval(runtime.coreUrl,retryId,'denied');
+    const retried=await waitForRun(runtime.coreUrl,retryId,run=>run.status==='failed');
+    expect(retried).toMatchObject({text:'Checking external file. ',errorCode:'external_directory_denied'});
+    expect(runtime.fixture.permissionReplies.filter(item=>item.reply==='reject')).toHaveLength(2);
+
+    const sql=connectTestDatabase(runtime.databaseUrl);
+    try{
+      const attempts=await sql`SELECT status,error_code,text FROM agent_runs WHERE id=ANY(${[sourceId,retryId]}) ORDER BY created_at,id`;
+      expect(attempts).toEqual([
+        {status:'failed',error_code:'external_directory_denied',text:'Checking external file. '},
+        {status:'failed',error_code:'external_directory_denied',text:'Checking external file. '},
+      ]);
+      const[selected]=await sql`SELECT selected_run_id FROM response_slots WHERE id=(SELECT response_slot_id FROM agent_runs WHERE id=${sourceId})`;
+      expect(selected.selected_run_id).toBeNull();
+    }finally{await sql.end();}
+    await expectSingleTerminal(runtime.databaseUrl,[sourceId,retryId]);
+  },20_000);
+
+  it('adds a valid outside directory from the approval dialog and resumes the run',async()=>{
+    const runtime=await startRuntime(cleanups);
+    const runId=await createRun(runtime.coreUrl,'[opencode:external-grant]');
+    const waiting=await waitForRun(runtime.coreUrl,runId,run=>run.status==='waiting_approval');
+    expect(waiting.request).toMatchObject({
+      kind:'approval',
+      choices:['allow_directory','deny'],
+      prompt:'Add this directory to allowed external directories and allow this request?',
+      directory:'/private',
+    });
+
+    await resolveApproval(runtime.coreUrl,runId,'allow_directory');
+    expect(await waitForRun(runtime.coreUrl,runId,run=>run.status==='completed')).toMatchObject({text:'Checking external file. external write complete'});
+    expect(runtime.externalDirectoryRoots).toEqual(['/private']);
+    expect(runtime.fixture.permissionReplies).toContainEqual({requestId:expect.stringContaining('permission-'),reply:'once'});
+    await expectSingleTerminal(runtime.databaseUrl,[runId]);
+  },20_000);
+
   it('aborts active and approval-waiting sessions with one terminal state', async () => {
     const runtime = await startRuntime(cleanups);
 
@@ -169,7 +218,7 @@ type TimelineRun = {
   harnessInstanceId: string;
   harnessType: string;
   modelId: string;
-  request?: { kind: string; choices?: string[]; resolved?: string };
+  request?: { kind: string;prompt?:string;directory?:string;choices?: string[]; resolved?: string };
   error?: string;
   errorCode?: string;
 };
@@ -191,10 +240,15 @@ async function startRuntime(cleanups: Array<() => Promise<void>>, runTimeoutMs?:
     token: connectorToken,
   };
   const connectorEpoch = `opencode-e2e-${randomUUID()}`;
+  const externalDirectoryRoots:string[]=[];
   const connector = buildConnectorApp(connectorConfig, {
     logger: false,
     connectorEpoch,
-    adapters: new Map([['local-opencode', new OpenCodeConnectorAdapter({ baseUrl: fixtureUrl })]]),
+    adapters: new Map([['local-opencode', new OpenCodeConnectorAdapter({
+      baseUrl:fixtureUrl,
+      externalDirectoryRoots,
+      grantExternalDirectoryRoot:async root=>{if(!externalDirectoryRoots.includes(root))externalDirectoryRoots.push(root);},
+    })]]),
   });
   const connectorUrl = await listen(connector);
   cleanups.push(() => connector.close());
@@ -211,7 +265,7 @@ async function startRuntime(cleanups: Array<() => Promise<void>>, runTimeoutMs?:
   await configureArchitect(database.url);
   return {
     get coreUrl() { return core.url; },
-    databaseUrl: database.url, fixture, connectorEpoch,
+    databaseUrl: database.url, fixture, connectorEpoch,externalDirectoryRoots,
     async restartCore() { await core.app.close(); core = await startCore(); },
   };
 }
@@ -239,6 +293,15 @@ async function cancelRun(coreUrl: string, runId: string) {
   const response = await fetch(`${coreUrl}/api/v1/runs/${runId}/cancel`, { method: 'POST' });
   expect(response.status, await response.clone().text()).toBe(200);
   expect(await response.json()).toMatchObject({ status: 'stopping' });
+}
+
+async function resolveApproval(coreUrl:string,runId:string,resolution:string){
+  const response=await fetch(`${coreUrl}/api/v1/runs/${runId}/approval`,{
+    method:'POST',
+    headers:{'content-type':'application/json'},
+    body:JSON.stringify({resolution}),
+  });
+  expect(response.status,await response.clone().text()).toBe(200);
 }
 
 async function waitForRun(coreUrl: string, runId: string, predicate: (run: TimelineRun) => boolean) {
@@ -346,11 +409,15 @@ class OpenCodeFixture {
       } else if (text.includes('[opencode:retry]')) {
         const delta = attempt === 1 ? 'retry-first-attempt' : 'retry-completed';
         pushPart(session,'text',delta);
-        if (attempt > 1) { session.status = 'idle'; session.queue.push({ type: 'session.idle', properties: { sessionID: session.id } }); }
+        if (attempt > 1) { finishAssistant(session);session.status = 'idle'; session.queue.push({ type: 'session.idle', properties: { sessionID: session.id } }); }
+      } else if(text.includes('[opencode:external-denial]')||text.includes('[opencode:external-grant]')){
+        pushPart(session,'text','Checking external file. ');
+        session.queue.push({type:'permission.asked',properties:{id:`permission-${session.id}`,sessionID:session.id,permission:'external_directory',patterns:['/private/secrets.txt/**'],metadata:{filepath:'/private/secrets.txt',parentDir:'/private'},always:[]}});
       } else if (text.includes('[opencode:reasoning]')) {
         session.queue.push({type:'message.updated',properties:{info:{id:`assistant-${session.id}`,sessionID:session.id,role:'assistant',tokens:{total:155,input:120,output:30,reasoning:5,cache:{read:40,write:2}}}}});
         pushPart(session,'reasoning','private analysis');
         pushPart(session,'text','public answer');
+        finishAssistant(session);
         session.status='idle';
         session.queue.push({type:'session.idle',properties:{sessionID:session.id}});
       } else {
@@ -363,8 +430,21 @@ class OpenCodeFixture {
       this.permissionReplies.push({ requestId: request.params.requestId, reply: request.body?.reply ?? '' });
       const session = [...this.sessions.values()].find(candidate => `permission-${candidate.id}` === request.params.requestId);
       if (!session) return false;
+      if(session.scenario?.includes('[opencode:external-denial]')){
+        session.status='idle';
+        session.queue.push({type:'session.idle',properties:{sessionID:session.id}});
+        return true;
+      }
+      if(session.scenario?.includes('[opencode:external-grant]')){
+        pushPart(session,'text','external write complete');
+        finishAssistant(session);
+        session.status='idle';
+        session.queue.push({type:'session.idle',properties:{sessionID:session.id}});
+        return true;
+      }
       session.queue.push(toolEvent(session.id, 'completed'));
       pushPart(session,'text','after-restart');
+      finishAssistant(session);
       session.status = 'idle';
       session.queue.push({ type: 'session.idle', properties: { sessionID: session.id } });
       return true;
@@ -374,6 +454,7 @@ class OpenCodeFixture {
       const session = [...this.sessions.values()].find(candidate => `question-${candidate.id}` === request.params.requestId);
       if (!session) return false;
       pushPart(session,'text','clarification-answer-received');
+      finishAssistant(session);
       session.status = 'idle';
       session.queue.push({ type: 'session.idle', properties: { sessionID: session.id } });
       return true;
@@ -386,6 +467,11 @@ class OpenCodeFixture {
       session.queue.close();
       return true;
     });
+    this.app.delete<{Params:{id:string}}>('/session/:id',async request=>{
+      this.sessions.delete(request.params.id);
+      return true;
+    });
+    this.app.post('/instance/dispose',async()=>true);
   }
 }
 
@@ -397,6 +483,10 @@ function pushPart(session:FixtureSession,type:'text'|'reasoning',delta:string) {
   const partID=`${type}-part`;
   session.queue.push({type:'message.part.updated',properties:{sessionID:session.id,part:{id:partID,type}}});
   session.queue.push({type:'message.part.delta',properties:{sessionID:session.id,partID,field:'text',delta}});
+}
+
+function finishAssistant(session:FixtureSession,finish='stop'){
+  session.queue.push({type:'message.updated',properties:{info:{id:`assistant-${session.id}`,sessionID:session.id,role:'assistant',finish}}});
 }
 
 class AsyncEventQueue implements AsyncIterable<string> {

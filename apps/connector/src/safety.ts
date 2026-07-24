@@ -80,11 +80,18 @@ function sanitizeRequest(request: ConnectorRequestSnapshot): ConnectorRequestSna
     id: safeIdentifier(request.id, 'request'),
     kind: request.kind,
     prompt: redactConnectorText(request.prompt) || 'Upstream requests user input',
+    ...(safeExternalDirectory(request.directory)?{directory:safeExternalDirectory(request.directory)}:{}),
     ...(request.choices ? { choices: request.choices.slice(0, 32).map(choice => redactConnectorText(choice, 200)).filter(Boolean) } : {}),
     ...(request.questions ? { questions: request.questions.slice(0,4).map(question=>({id:safeIdentifier(question.id,'question'),header:redactConnectorText(question.header,128)||'Question',question:redactConnectorText(question.question,2_000)||'Agent requests input',isOther:question.isOther,isSecret:question.isSecret,...(question.multiSelect===undefined?{}:{multiSelect:question.multiSelect}),...(question.options?{options:question.options.slice(0,10).map(option=>({label:redactConnectorText(option.label,300)||'Option',...(option.description?{description:redactConnectorText(option.description,500)}:{})}))}:{})})) } : {}),
     ...(request.autoResolutionMs===undefined?{}:{autoResolutionMs:request.autoResolutionMs}),
     ...(request.resolution ? { resolution: { outcome: request.resolution.outcome, ...(request.resolution.value === undefined ? {} : { value: redactConnectorText(request.resolution.value, 2_000) }) } } : {}),
   };
+}
+
+function safeExternalDirectory(value:unknown){
+  if(typeof value!=='string'||value!==value.trim()||!value||/[*?\[\]{}\0-\x1f\x7f]/.test(value)||value.split(/[\\/]/).includes('..')||(value.includes('/')&&value.includes('\\')))return;
+  if(!value.startsWith('/')&&!/^[A-Za-z]:\\/.test(value)&&!/^\\\\[^\\]+\\[^\\]+/.test(value))return;
+  return value;
 }
 
 function safeIdentifier(value: string, fallback: string) {

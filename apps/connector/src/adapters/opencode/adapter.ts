@@ -6,6 +6,12 @@ import type { ExecutionStatus, TokenUsage } from '@agenvyl/connector-contract';
 import type { UpstreamStatus, UpstreamStatusReason } from '@agenvyl/connector-contract';
 import type { AdapterExecution, AdapterExecutionEvent, AdapterStartExecutionRequest, ConnectorAdapter } from '../../adapter.js';
 import { redactConnectorText } from '../../safety.js';
+import {
+  assessExternalDirectoryRequest,
+  openCodePermissionProfiles,
+  parseOpenCodePermissionProfile,
+  type OpenCodePermissionProfile,
+} from './external-directory-policy.js';
 import { enabledModelVariants, type OpenCodeCatalogModel } from './model-variants.js';
 
 type CatalogProvider = {
@@ -39,10 +45,32 @@ export type OpenCodeAdapterOptions = {
   client?: OpenCodeClientPort;
   catalogDirectory?: string;
   cleanupTimeoutMs?: number;
+  externalDirectoryRoots?:string[];
+  grantExternalDirectoryRoot?:(root:string)=>Promise<void>;
 };
 
-type ActiveSession = { directory: string; controller: AbortController; stream: AsyncIterable<unknown>; consumed: boolean; partTypes: Map<string, string>; usageByMessage: Map<string,TokenUsage>; lastUsage?:TokenUsage; cleanup?:Promise<void> };
-type PendingPermission = { upstreamId: string; nativeRequestId: string; directory: string; version: 'legacy' | 'v2' };
+type ActiveSession = {
+  directory:string;
+  permissionProfile:OpenCodePermissionProfile;
+  controller:AbortController;
+  stream:AsyncIterable<unknown>;
+  consumed:boolean;
+  partTypes:Map<string,string>;
+  eligibleTextParts:Set<string>;
+  textByPart:Map<string,string>;
+  toolStates:Map<string,string>;
+  pendingTools:Set<string>;
+  usageByMessage:Map<string,TokenUsage>;
+  hasText:boolean;
+  needsFinalText:boolean;
+  postBoundaryText:boolean;
+  externalDirectoryDenied:boolean;
+  assistantCompleted:boolean;
+  lastFinish?:string;
+  lastUsage?:TokenUsage;
+  cleanup?:Promise<void>;
+};
+type PendingPermission = { upstreamId: string; nativeRequestId: string; directory: string; version: 'legacy' | 'v2';externalDirectory:boolean;externalDirectoryRoot?:string };
 type PendingQuestion = { upstreamId: string; nativeRequestId: string; directory: string; version: QuestionVersion; questionIds:string[] };
 
 export class OpenCodeConnectorAdapter implements ConnectorAdapter {
@@ -51,6 +79,8 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
   private readonly client: OpenCodeClientPort;
   private readonly catalogDirectory: string | undefined;
   private readonly cleanupTimeoutMs:number;
+  private readonly externalDirectoryRoots:string[];
+  private readonly grantExternalDirectoryRoot?:(root:string)=>Promise<void>;
   private readonly sessions = new Map<string, ActiveSession>();
   private readonly directoryUsers=new Map<string,number>();
   private readonly directoryDisposals=new Map<string,Promise<void>>();
@@ -65,6 +95,8 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
     this.client = options.client ?? sdkClient(baseUrl, options.request ?? fetch, options.username, options.password);
     this.catalogDirectory = options.catalogDirectory || undefined;
     this.cleanupTimeoutMs=options.cleanupTimeoutMs??3_000;
+    this.externalDirectoryRoots=[...(options.externalDirectoryRoots??[])];
+    this.grantExternalDirectoryRoot=options.grantExternalDirectoryRoot;
     if(!Number.isSafeInteger(this.cleanupTimeoutMs)||this.cleanupTimeoutMs<1)throw new Error('OpenCode cleanup timeout must be a positive integer');
   }
 
@@ -95,13 +127,13 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
     this.supportedModelVariants=supportedModelVariants;
     this.catalogLoaded=true;
     const nativeWorkflowModes:Array<'plan'|'work'>=[];if(this.agentNames.has('plan'))nativeWorkflowModes.push('plan');if(this.agentNames.has('build'))nativeWorkflowModes.push('work');
-    return { models, controls:{nativeWorkflowModes,permissionProfiles:[],agentVariants:variants} };
+    return { models, controls:{nativeWorkflowModes,permissionProfiles:openCodePermissionProfiles.map(profile=>({...profile})),agentVariants:variants} };
   }
 
   async start(request: AdapterStartExecutionRequest): Promise<AdapterExecution> {
     const model = parseModel(request.modelId);
     if(!this.catalogLoaded)await this.catalog();
-    const profile=request.executionProfile,native=profile.workflowMode==='plan'&&this.agentNames.has('plan')?'plan':undefined;
+    const profile=request.executionProfile,permissionProfile=parseOpenCodePermissionProfile(profile.permissionProfileId),native=profile.workflowMode==='plan'&&this.agentNames.has('plan')?'plan':undefined;
     const mode = native??profile.agentVariantId??undefined;
     if(mode&&!this.agentNames.has(mode))throw new Error('OpenCode agent variant is not supported');
     const variant=profile.reasoningEffort??undefined;
@@ -117,7 +149,24 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
         model: { id: model.modelID, providerID: model.providerID },
       });
       const stream = await this.client.subscribe(directory, controller.signal);
-      active={directory,controller,stream,consumed:false,partTypes:new Map(),usageByMessage:new Map()};
+      active={
+        directory,
+        permissionProfile:profile.workflowMode==='plan'?'standard':permissionProfile,
+        controller,
+        stream,
+        consumed:false,
+        partTypes:new Map(),
+        eligibleTextParts:new Set(),
+        textByPart:new Map(),
+        toolStates:new Map(),
+        pendingTools:new Set(),
+        usageByMessage:new Map(),
+        hasText:false,
+        needsFinalText:false,
+        postBoundaryText:false,
+        externalDirectoryDenied:false,
+        assistantCompleted:false,
+      };
       this.sessions.set(session.id,active);
       await this.client.prompt({
         sessionID: session.id,
@@ -162,6 +211,7 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
         }
         if (nativeStatus?.type === 'busy') continue;
         if(event.type==='message.updated'){
+          rememberAssistantMessage(active,event);
           const usage=normalizeMessageUsage(active,event);
           if(usage)yield{type:'usage.updated' as const,payload:{usage}};
           continue;
@@ -171,6 +221,7 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
           const partType = typeof properties?.partID === 'string' ? active.partTypes.get(properties.partID) : undefined;
           if (properties?.field === 'text' && typeof properties.delta === 'string' && properties.delta) {
             if (partType === 'text' || partType === 'reasoning') {
+              if(partType==='text'&&typeof properties.partID==='string'&&active.eligibleTextParts.has(properties.partID))rememberTextDelta(active,properties.partID,properties.delta);
               yield { type: partType === 'text' ? 'output.text.delta' as const : 'output.reasoning.delta' as const, payload: { text: properties.delta } };
             }
           }
@@ -178,6 +229,8 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
         }
         if (event.type === 'message.part.updated') {
           rememberPartType(active, event);
+          rememberAssistantPart(active,event);
+          rememberToolLifecycle(active,event);
           const tool = normalizeToolEvent(event);
           if (tool) yield tool;
           continue;
@@ -190,12 +243,50 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
             return;
           }
           if (permission.externalDirectory) {
+            const assessment=assessExternalDirectoryRequest(asRecord(event.properties)??{},this.externalDirectoryRoots);
+            if(assessment.status==='malformed'){
+              await this.client.replyPermission({
+                sessionID:execution.upstreamId,
+                requestID:permission.pending.nativeRequestId,
+                directory:permission.pending.directory,
+                reply:'reject',
+                version:permission.pending.version,
+              });
+              rememberBoundary(active,true);
+              continue;
+            }
+            if(assessment.status==='outside_allowlist'){
+              const pending={...permission.pending,externalDirectoryRoot:assessment.requestedRoot};
+              this.pendingPermissions.set(permission.request.id,pending);
+              yield{type:'request.opened' as const,payload:{request:{
+                ...permission.request,
+                prompt:'Add this directory to allowed external directories and allow this request?',
+                directory:assessment.requestedRoot,
+                choices:['allow_directory','deny'],
+              }}};
+              continue;
+            }
+            if(active.permissionProfile==='standard'){
+              this.pendingPermissions.set(permission.request.id,permission.pending);
+              yield {type:'request.opened' as const,payload:{request:{...permission.request,prompt:'Allow OpenCode to access a configured external directory?',choices:['once','deny']}}};
+              continue;
+            }
             await this.client.replyPermission({
               sessionID: execution.upstreamId,
               requestID: permission.pending.nativeRequestId,
               directory: permission.pending.directory,
-              reply: 'reject',
+              reply:'once',
               version: permission.pending.version,
+            });
+            continue;
+          }
+          if(active.permissionProfile==='auto-approve'){
+            await this.client.replyPermission({
+              sessionID:execution.upstreamId,
+              requestID:permission.pending.nativeRequestId,
+              directory:permission.pending.directory,
+              reply:'once',
+              version:permission.pending.version,
             });
             continue;
           }
@@ -221,7 +312,7 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
         }
         if (event.type === 'session.idle' || isIdleStatus(event)) {
           await this.cleanupSession(execution.upstreamId,active,false).catch(()=>undefined);
-          yield { type: 'execution.completed' as const, payload: {} };
+          yield completionEvent(active);
           return;
         }
       }
@@ -253,10 +344,20 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
     const pending = this.pendingPermissions.get(request.id);
     if (!pending || pending.upstreamId !== execution.upstreamId) throw new Error('OpenCode approval request is not pending');
     if (!resolution) throw new Error('OpenCode approval requires a legacy resolution');
-    const reply = normalizeApprovalReply(resolution);
-    if (request.choices?.length && !request.choices.includes(reply === 'reject' ? 'deny' : reply)) throw new Error('OpenCode approval resolution is not an offered choice');
+    const addingExternalDirectory=resolution==='allow_directory'&&Boolean(pending.externalDirectoryRoot);
+    const reply=addingExternalDirectory?'once':normalizeApprovalReply(resolution);
+    const offered=addingExternalDirectory?'allow_directory':reply==='reject'?'deny':reply;
+    if (request.choices?.length && !request.choices.includes(offered)) throw new Error('OpenCode approval resolution is not an offered choice');
+    if(addingExternalDirectory&&pending.externalDirectoryRoot){
+      await this.grantExternalDirectoryRoot?.(pending.externalDirectoryRoot);
+      if(!this.externalDirectoryRoots.includes(pending.externalDirectoryRoot))this.externalDirectoryRoots.push(pending.externalDirectoryRoot);
+    }
     await this.client.replyPermission({ sessionID: execution.upstreamId, requestID: pending.nativeRequestId, directory: pending.directory, reply, version: pending.version });
     this.pendingPermissions.delete(request.id);
+    if(reply==='reject'){
+      const active=this.sessions.get(execution.upstreamId);
+      if(active)rememberBoundary(active,pending.externalDirectory);
+    }
     return { outcome: reply === 'reject' ? 'declined' as const : 'answered' as const };
   }
 
@@ -306,8 +407,80 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
 
 function rememberPartType(active: ActiveSession, event: Record<string, unknown>) {
   const properties = asRecord(event.properties), part = asRecord(properties?.part);
-  if (typeof part?.id === 'string' && typeof part.type === 'string') active.partTypes.set(part.id, part.type);
+  if (typeof part?.id !== 'string' || typeof part.type !== 'string') return;
+  active.partTypes.set(part.id, part.type);
+  if(part.type==='text'&&part.synthetic!==true&&part.ignored!==true)active.eligibleTextParts.add(part.id);
+  else{active.eligibleTextParts.delete(part.id);active.textByPart.delete(part.id);}
 }
+
+function rememberAssistantMessage(active:ActiveSession,event:Record<string,unknown>){
+  const properties=asRecord(event.properties),info=asRecord(properties?.info);
+  if(info?.role!=='assistant')return;
+  if(typeof info.finish==='string'&&info.finish.trim()){
+    active.lastFinish=info.finish.trim().toLowerCase();
+    active.assistantCompleted=true;
+  }
+}
+
+function rememberAssistantPart(active:ActiveSession,event:Record<string,unknown>){
+  const properties=asRecord(event.properties),part=asRecord(properties?.part);
+  if(part?.type==='text'&&part.synthetic!==true&&part.ignored!==true&&typeof part.text==='string'&&typeof part.id==='string'){
+    const previous=active.textByPart.get(part.id);
+    active.textByPart.set(part.id,part.text);
+    if(previous!==part.text)rememberText(active,part.text);
+  }
+  if(part?.type==='step-finish'&&typeof part.reason==='string'&&part.reason.trim()){
+    active.lastFinish=part.reason.trim().toLowerCase();
+    active.assistantCompleted=true;
+  }
+}
+
+function rememberText(active:ActiveSession,text:string){
+  if(!text.trim())return;
+  active.hasText=true;
+  if(active.needsFinalText)active.postBoundaryText=true;
+}
+
+function rememberTextDelta(active:ActiveSession,partId:string,delta:string){
+  active.textByPart.set(partId,(active.textByPart.get(partId)??'')+delta);
+  rememberText(active,delta);
+}
+
+function rememberToolLifecycle(active:ActiveSession,event:Record<string,unknown>){
+  const properties=asRecord(event.properties),part=asRecord(properties?.part),state=asRecord(part?.state);
+  if(part?.type!=='tool'||typeof state?.status!=='string')return;
+  const toolId=typeof part.callID==='string'&&part.callID?part.callID:typeof part.id==='string'&&part.id?part.id:undefined;
+  if(!toolId)return;
+  const previous=active.toolStates.get(toolId);
+  active.toolStates.set(toolId,state.status);
+  if(state.status==='pending'||state.status==='running'){
+    active.pendingTools.add(toolId);
+    return;
+  }
+  if(state.status!=='completed'&&state.status!=='error')return;
+  active.pendingTools.delete(toolId);
+  if(previous!==state.status)rememberBoundary(active,false);
+}
+
+function rememberBoundary(active:ActiveSession,externalDirectoryDenied:boolean){
+  active.needsFinalText=true;
+  active.postBoundaryText=false;
+  active.assistantCompleted=false;
+  active.lastFinish=undefined;
+  if(externalDirectoryDenied)active.externalDirectoryDenied=true;
+}
+
+function completionEvent(active:ActiveSession):AdapterExecutionEvent{
+  const finish=active.lastFinish;
+  if(finish==='length')return failed('opencode_output_truncated','OpenCode stopped because the model output was truncated');
+  const invalidFinish=!finish||['tool-calls','content-filter','error'].includes(finish);
+  const missingFinalText=!active.hasText||(active.needsFinalText&&!active.postBoundaryText);
+  if(!active.pendingTools.size&&active.assistantCompleted&&!invalidFinish&&!missingFinalText)return{type:'execution.completed',payload:{}};
+  if(active.externalDirectoryDenied)return failed('external_directory_denied','OpenCode could not complete the response because required files are outside the configured external-directory allowlist or access was denied');
+  return failed('opencode_incomplete_turn','OpenCode became idle before producing a complete final response');
+}
+
+function failed(code:string,message:string):AdapterExecutionEvent{return{type:'execution.failed',payload:{error:{code,message}}};}
 
 function sdkClient(baseUrl: string, request: typeof fetch, username?: string, password?: string): OpenCodeClientPort {
   const client = createOpencodeClient({ baseUrl, fetch: authenticatedFetch(request, username, password) });
@@ -495,10 +668,11 @@ function normalizePermission(event: Record<string, unknown>, upstreamId: string,
     : [];
   const prompt = patterns.length ? `Allow OpenCode ${label}: ${patterns.join(', ')}?` : `Allow OpenCode ${label}?`;
   const requestId = `req-${createHash('sha256').update(`${upstreamId}:approval:${properties.id}`).digest('hex').slice(0, 32)}`;
+  const externalDirectory=action==='external_directory';
   return {
     request: { id: requestId, kind: 'approval' as const, prompt, choices: ['once', 'always', 'deny'] },
-    pending: { upstreamId, nativeRequestId: properties.id, directory, version },
-    externalDirectory: action === 'external_directory',
+    pending: { upstreamId, nativeRequestId: properties.id, directory, version,externalDirectory },
+    externalDirectory,
   };
 }
 

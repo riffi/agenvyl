@@ -42,6 +42,11 @@ describe('Connector safety boundary', () => {
     expect(request.payload.request.prompt.length).toBe(2_000);
     expect(request.payload.request.choices).toHaveLength(32);
 
+    expect(sanitizeAdapterEvent({type:'request.opened',payload:{request:{id:'request-directory',kind:'approval',prompt:'Add directory?',directory:'C:\\work',choices:['allow_directory','deny']}}})).toMatchObject({
+      payload:{request:{directory:'C:\\work'}},
+    });
+    expect(sanitizeAdapterEvent({type:'request.opened',payload:{request:{id:'request-directory',kind:'approval',prompt:'Add directory?',directory:'C:\\work\\..\\secret',choices:['allow_directory','deny']}}})).not.toHaveProperty('payload.request.directory');
+
     expect(sanitizeAdapterEvent({ type: 'execution.failed', payload: { error: { code: 'INVALID CODE', message: 'Bearer secret-token-value' } } })).toEqual({
       type: 'execution.failed', payload: { error: { code: 'adapter_execution_failed', message: 'Bearer [REDACTED]' } },
     });

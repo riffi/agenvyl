@@ -9,7 +9,7 @@ import {HarnessRouteFields,PersonaInstructionFields} from './PersonasScreen';
 
 const catalog:HarnessCatalog={connectorEpoch:'epoch-1',instances:[
   {id:'local-hermes',type:'hermes',status:'healthy',capabilities:['model_catalog'],models:[{id:'sol',label:'Sonnet'}],controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]}},
-  {id:'local-opencode',type:'opencode',status:'healthy',capabilities:['model_catalog'],models:[{id:'gpt-5',label:'GPT-5'}],controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[],agentVariants:[{id:'build',label:'Build'},{id:'plan',label:'Plan'}]}},
+  {id:'local-opencode',type:'opencode',status:'healthy',capabilities:['model_catalog'],models:[{id:'gpt-5',label:'GPT-5'}],controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[{id:'standard',label:'Standard'},{id:'auto-approve',label:'Auto-approve'}],agentVariants:[{id:'build',label:'Build'},{id:'plan',label:'Plan'}]}},
 ]};
 const persona=(patch:Partial<Persona>={}):Persona=>({id:'persona-1',handle:'coder',name:'Coder',role:'Code',color:'#64748b',requested_model:'sol',harness_instance_id:'local-hermes',harness_type:'hermes',model_id:'sol',permission_profile_id:null,agent_variant_id:null,default_reasoning_effort:null,group_id:null,archived_at:null,...patch});
 
@@ -45,6 +45,12 @@ describe('persona harness route fields',()=>{
     expect(html).toContain('Agent variant');
     expect(html).toContain('Build');
     expect(html).toContain('Plan');
+  });
+
+  it('warns when an OpenCode persona selects Auto-approve',()=>{
+    const html=renderToStaticMarkup(<HarnessRouteFields form={persona({requested_model:'gpt-5',harness_instance_id:'local-opencode',harness_type:'opencode',model_id:'gpt-5',permission_profile_id:'auto-approve'})} catalog={catalog} onChange={vi.fn()}/>);
+    expect(html).toContain('Auto-approve confirms every OpenCode permission');
+    expect(html).toContain('External paths remain limited');
   });
 
   it('shows AGY permissions without exposing room workflow state',()=>{

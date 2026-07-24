@@ -5,8 +5,8 @@ import { startSupervisor } from './runtime.js';
 
 export type HarnessType = 'hermes' | 'opencode' | 'antigravity' | 'codex' | 'claude';
 export type SetupCandidate = { type: HarnessType; label: string; cli: { found: boolean; version?: string }; endpoint?: { url: string; reachable: boolean }; safeToSelect: boolean; supportsManagedServer?: boolean; auth?:{authenticated:boolean;kind:'api'|'cloud'|'subscription_oauth'|'none'|'unknown'};requiresConfirmation?:'claude_oauth';warning?: string };
-export type SetupInstance = { id: string; type: HarnessType; enabled: boolean; endpoint?: string; managed?: boolean; permissionMode?: 'plan' | 'accept-edits';allowDangerFullAccess?:boolean;allowSubscriptionOAuth?:boolean };
-export type SetupState = { completed: boolean; firstRoomId?: string; candidates: SetupCandidate[]; instances: Array<{ id: string; type: string; status: string; managed?: boolean;allowDangerFullAccess?:boolean;allowSubscriptionOAuth?:boolean }> };
+export type SetupInstance = { id: string; type: HarnessType; enabled: boolean; endpoint?: string; managed?: boolean; externalDirectoryRoots?:string[];permissionMode?: 'plan' | 'accept-edits';allowDangerFullAccess?:boolean;allowSubscriptionOAuth?:boolean };
+export type SetupState = { completed: boolean; firstRoomId?: string; candidates: SetupCandidate[]; instances: Array<{ id: string; type: string; status: string; managed?: boolean;externalDirectoryRoots?:string[];allowDangerFullAccess?:boolean;allowSubscriptionOAuth?:boolean }> };
 
 export async function runSetup(config: SupervisorConfig, cliPath: string, options: { all?: boolean; openBrowser?: boolean } = {}) {
   await startSupervisor(config, cliPath);
@@ -44,7 +44,7 @@ export function mergeConnectorSelection(state: SetupState, selected: HarnessType
       type: candidate.type,
       enabled,
       ...(candidate.endpoint ? { endpoint: candidate.endpoint.url } : {}),
-      ...(candidate.type === 'opencode' ? { managed: current?.managed ?? true } : {}),
+      ...(candidate.type === 'opencode' ? { managed: current?.managed ?? true,externalDirectoryRoots:current?.externalDirectoryRoots??[] } : {}),
       ...(candidate.type === 'antigravity' && enabled && agyConfirmed ? { permissionMode: 'plan' as const } : {}),
       ...(candidate.type === 'codex'?{allowDangerFullAccess:current?.allowDangerFullAccess??false}:{}),
       ...(candidate.type === 'claude'?{allowSubscriptionOAuth:candidate.requiresConfirmation==='claude_oauth'&&enabled?(current?.allowSubscriptionOAuth===true||claudeOAuthConfirmed):false}:{}),

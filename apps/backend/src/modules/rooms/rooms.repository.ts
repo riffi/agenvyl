@@ -141,6 +141,7 @@ export class RoomRepository {
             extra.request = {
               kind: payload.kind,
               prompt: typeof payload.prompt === "string" ? payload.prompt : "",
+              ...(typeof payload.directory==="string"?{directory:payload.directory}:{}),
               ...(choices.length ? { choices } : {}),
               ...(questions.length ? { questions } : {}),
               ...(autoResolutionMs !== undefined ? { autoResolutionMs } : {}),

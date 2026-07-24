@@ -79,6 +79,7 @@ export type ConnectorInstanceConfiguration = {
   enabled: boolean;
   endpoint?: string;
   managed?: boolean;
+  externalDirectoryRoots?: string[];
   permissionMode?: 'plan' | 'accept-edits';
   allowDangerFullAccess?: boolean;
   allowSubscriptionOAuth?: boolean;
@@ -148,6 +149,7 @@ export type ConnectorRequestSnapshot = {
   id: string;
   kind: ConnectorRequestKind;
   prompt: string;
+  directory?:string;
   choices?: string[];
   questions?: ConnectorQuestion[];
   autoResolutionMs?: number;
@@ -287,11 +289,13 @@ export function isConfigureConnectorInstancesRequest(value: unknown): value is C
     return harnessTypes.has(String(instance.type)) && typeof instance.enabled === 'boolean'
       && (instance.endpoint === undefined || safeEndpoint(instance.endpoint))
       && (instance.managed === undefined || typeof instance.managed === 'boolean')
+      && (instance.externalDirectoryRoots === undefined || validExternalDirectoryRoots(instance.externalDirectoryRoots))
       && (instance.permissionMode === undefined || instance.permissionMode === 'plan' || instance.permissionMode === 'accept-edits')
       && (instance.allowDangerFullAccess === undefined || typeof instance.allowDangerFullAccess === 'boolean')
       && (instance.allowSubscriptionOAuth === undefined || typeof instance.allowSubscriptionOAuth === 'boolean')
       && (instance.type === 'antigravity' || instance.permissionMode === undefined)
       && (instance.type === 'opencode' || instance.managed === undefined)
+      && (instance.type === 'opencode' || instance.externalDirectoryRoots === undefined)
       && (instance.type !== 'codex' || instance.endpoint === undefined)
       && (instance.type !== 'claude' || instance.endpoint === undefined)
       && (instance.type === 'codex' || instance.allowDangerFullAccess === undefined)
@@ -383,6 +387,7 @@ function isTokenUsage(value:unknown):value is TokenUsage{
 }
 function isRequest(value: unknown): value is ConnectorRequestSnapshot {
   if (!isRecord(value) || !strings(value, 'id', 'kind', 'prompt') || (value.kind !== 'approval' && value.kind !== 'clarification')) return false;
+  if(value.directory!==undefined&&typeof value.directory!=='string')return false;
   if (value.choices !== undefined && (!Array.isArray(value.choices) || value.choices.some(choice => typeof choice !== 'string'))) return false;
   if(value.questions!==undefined&&(!Array.isArray(value.questions)||value.questions.length<1||value.questions.length>4||!value.questions.every(isQuestion)))return false;
   if(value.autoResolutionMs!==undefined&&(!Number.isSafeInteger(value.autoResolutionMs)||Number(value.autoResolutionMs)<0))return false;
@@ -395,3 +400,13 @@ function integers(value: Record<string, unknown>, ...keys: string[]) { return ke
 function nonNegativeInteger(value:unknown){return Number.isSafeInteger(value)&&Number(value)>=0;}
 function isIsoDate(value: unknown) { return typeof value === 'string' && Number.isFinite(Date.parse(value)); }
 function safeEndpoint(value: unknown) { try { const url = new URL(String(value)); return (url.protocol === 'http:' || url.protocol === 'https:') && !url.username && !url.password && !url.search && !url.hash; } catch { return false; } }
+function validExternalDirectoryRoots(value:unknown){
+  if(!Array.isArray(value))return false;
+  const roots:string[]=[];
+  for(const item of value){
+    if(typeof item!=='string'||item!==item.trim()||!item||/[*?\[\]{}\0-\x1f\x7f]/.test(item)||item.split(/[\\/]/).includes('..')||(item.includes('/')&&item.includes('\\')))return false;
+    if(!item.startsWith('/')&&!/^[A-Za-z]:[\\/]/.test(item)&&!/^\\\\[^\\]+\\[^\\]+/.test(item))return false;
+    roots.push(item);
+  }
+  return new Set(roots.map(root=>/^[A-Za-z]:[\\/]|^\\\\/.test(root)?root.replaceAll('/','\\').replace(/[\\]+$/,'').toLowerCase():root.replace(/\/+$/,''))).size===roots.length;
+}

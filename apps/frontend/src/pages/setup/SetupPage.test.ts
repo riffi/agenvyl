@@ -34,13 +34,13 @@ describe('setup harness configuration',()=>{
   });
 
   it('preserves managed OpenCode ownership after terminal setup made its endpoint reachable',()=>{
-    expect(instanceConfig(candidate,{id:'local-opencode',type:'opencode',status:'healthy',managed:true})).toEqual({id:'local-opencode',type:'opencode',enabled:true,endpoint:'http://127.0.0.1:4096',managed:true});
+    expect(instanceConfig(candidate,{id:'local-opencode',type:'opencode',status:'healthy',managed:true,externalDirectoryRoots:['C:\\Shared']})).toEqual({id:'local-opencode',type:'opencode',enabled:true,endpoint:'http://127.0.0.1:4096',managed:true,externalDirectoryRoots:['C:\\Shared']});
   });
   it('enables managed OpenCode by default even when an endpoint is already reachable',()=>{
-    expect(instanceConfig(candidate)).toEqual({id:'local-opencode',type:'opencode',enabled:true,endpoint:'http://127.0.0.1:4096',managed:true});
+    expect(instanceConfig(candidate)).toEqual({id:'local-opencode',type:'opencode',enabled:true,endpoint:'http://127.0.0.1:4096',managed:true,externalDirectoryRoots:[]});
   });
   it('preserves an explicit OpenCode managed-server opt-out',()=>{
-    expect(instanceConfig(candidate,{id:'local-opencode',type:'opencode',status:'healthy',managed:false})).toEqual({id:'local-opencode',type:'opencode',enabled:true,endpoint:'http://127.0.0.1:4096',managed:false});
+    expect(instanceConfig(candidate,{id:'local-opencode',type:'opencode',status:'healthy',managed:false})).toEqual({id:'local-opencode',type:'opencode',enabled:true,endpoint:'http://127.0.0.1:4096',managed:false,externalDirectoryRoots:[]});
   });
   it('persists explicit Codex and Claude confirmations separately from credentials',()=>{
     const codex:SetupHarnessCandidate={type:'codex',label:'Codex',cli:{found:true,command:'codex',version:'0.145.0',compatible:true},safeToSelect:true,supportsManagedServer:false};

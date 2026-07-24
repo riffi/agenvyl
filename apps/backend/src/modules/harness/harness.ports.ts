@@ -1,4 +1,4 @@
-export type ApprovalChoice = 'once' | 'session' | 'always' | 'deny' | 'approved' | 'denied';
+export type ApprovalChoice = 'once' | 'session' | 'always' | 'deny' | 'approved' | 'denied'|'allow_directory';
 
 export type StartRunInput = {
   executionId: string;
@@ -15,7 +15,7 @@ export type StartRunInput = {
 
 export type RunCheckpoint = { executionId: string; connectorEpoch: string; cursor: number };
 export type RunHandle = { id: string; checkpoint?: RunCheckpoint };
-export type ReattachRunInput={checkpoint:RunCheckpoint;pendingRequests:Array<{id:string;kind:'approval'|'clarification';prompt:string;choices?:string[];questions?:import('@agenvyl/contracts').StructuredQuestion[];autoResolutionMs?:number}>};
+export type ReattachRunInput={checkpoint:RunCheckpoint;pendingRequests:Array<{id:string;kind:'approval'|'clarification';prompt:string;directory?:string;choices?:string[];questions?:import('@agenvyl/contracts').StructuredQuestion[];autoResolutionMs?:number}>};
 
 export type MappedRunEvent = {
   type: 'run.status' | 'run.upstream_status' | 'run.delta' | 'run.reasoning.delta' | 'run.usage' | 'tool.updated' | 'request.created' | 'request.resolved';
@@ -24,7 +24,7 @@ export type MappedRunEvent = {
 
 export type RunEventMapping = {
   events: MappedRunEvent[];
-  terminal?: { status: 'completed' | 'failed' | 'cancelled'; error?: string };
+  terminal?: { status: 'completed' | 'failed' | 'cancelled'; error?: string;errorCode?:string };
   status?: 'streaming' | 'waiting_approval'|'waiting_clarification';
   checkpoint?: RunCheckpoint;
 };

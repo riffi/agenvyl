@@ -275,6 +275,19 @@ describe('RunExecutor', () => {
     await executor.shutdown();await database.close();
   });
 
+  it('persists a classified Connector terminal error in the database and run.status',async()=>{
+    const snapshot={...connectorContractFixtures.execution,cursor:2,pendingRequests:[]};
+    const streamed=[connectorEvent(3,'output.text.delta',{text:'Checking the requested file. '}),connectorEvent(4,'execution.failed',{error:{code:'external_directory_denied',message:'External directory access was denied'}})];
+    const connector=executionClient(snapshot,async function*(){yield*streamed;}),transport=new ConnectorRunAdapter(connector);
+    const{executor,events,registry,database,personas,messages}=await fixture(vi.fn<typeof fetch>(),4,connector,transport);
+    const persona=(await personas.find('persona-architect'))!,round=await messages.createRound('demo-room','read external file',[persona],profiles([persona])),runId=round.runs[0].id;
+    registry.add(run(runId,round.message.id));executor.start(runId,'read external file');await vi.waitFor(()=>expect(registry.get(runId)).toBeUndefined());
+
+    expect((await database.sql`SELECT status,text,error,error_code FROM agent_runs WHERE id=${runId}`)[0]).toEqual({status:'failed',text:'Checking the requested file. ',error:'External directory access was denied',error_code:'external_directory_denied'});
+    expect((await events.replay('demo-room',0)).filter(event=>event.type==='run.status'&&(event.payload as{runId?:string}).runId===runId).at(-1)?.payload).toMatchObject({status:'failed',errorCode:'external_directory_denied'});
+    await executor.shutdown();await database.close();
+  });
+
   it('refreshes the durable inactivity deadline after accepted Connector activity',async()=>{
     let releaseActivity!:()=>void,releaseCompletion!:()=>void;
     const activity=new Promise<void>(resolve=>{releaseActivity=resolve;}),completion=new Promise<void>(resolve=>{releaseCompletion=resolve;});
