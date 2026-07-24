@@ -2,6 +2,9 @@ import { isConnectorCatalog, isConnectorCommandResult, isConnectorConfigurationR
 import type { ConnectorExecutionClient, ConnectorLifecycleErrorCode } from '../../modules/connector/connector.ports.js';
 import {parseSse} from '../../infrastructure/http/parseSse.js';
 
+const DEFAULT_REQUEST_TIMEOUT_MS=3_000;
+const METADATA_REQUEST_TIMEOUT_MS=30_000;
+
 export class ConnectorClientError extends Error {
   constructor(readonly code: ConnectorLifecycleErrorCode, message: string, readonly status?: number) {
     super(message);
@@ -41,12 +44,12 @@ export class HttpConnectorClient implements ConnectorExecutionClient {
   }
 
   async catalog(instanceId:string):Promise<ConnectorCatalog>{
-    const value=await this.get(`/v2/instances/${encodeURIComponent(instanceId)}/catalog`,'discovery');
+    const value=await this.get(`/v2/instances/${encodeURIComponent(instanceId)}/catalog`,'discovery',METADATA_REQUEST_TIMEOUT_MS);
     if(!isConnectorCatalog(value))throw new ConnectorClientError('connector_invalid_response','Connector returned an invalid catalog response');
     return value;
   }
 
-  async discover():Promise<ConnectorDiscovery>{const value=await this.get('/v2/discovery','discovery');if(!isConnectorDiscovery(value))throw invalidResponse('Connector returned invalid discovery');return value;}
+  async discover():Promise<ConnectorDiscovery>{const value=await this.get('/v2/discovery','discovery',METADATA_REQUEST_TIMEOUT_MS);if(!isConnectorDiscovery(value))throw invalidResponse('Connector returned invalid discovery');return value;}
   async configuration():Promise<ConnectorConfigurationResult>{const value=await this.get('/v2/configuration','discovery');if(!isConnectorConfigurationResult(value))throw invalidResponse('Connector returned invalid configuration');return value;}
   async configureInstances(input:ConfigureConnectorInstancesRequest):Promise<ConnectorConfigurationResult>{const value=await this.json('/v2/instances','PUT',input,'discovery',15_000);if(!isRecord(value)||value.apiVersion!=='v2'||!Array.isArray(value.instances))throw invalidResponse('Connector returned invalid configuration');return value as ConnectorConfigurationResult;}
 
@@ -85,11 +88,11 @@ export class HttpConnectorClient implements ConnectorExecutionClient {
     }catch(error){if(options.signal.aborted)throw error;if(error instanceof ConnectorClientError)throw error;throw new ConnectorClientError('connector_unavailable','Connector event stream failed');}
   }
 
-  private async get(path: string, resource: 'health' | 'execution'|'discovery') {
-    return this.json(path,'GET',undefined,resource);
+  private async get(path: string, resource: 'health' | 'execution'|'discovery',timeoutMs=DEFAULT_REQUEST_TIMEOUT_MS) {
+    return this.json(path,'GET',undefined,resource,timeoutMs);
   }
 
-  private async json(path:string,method:'GET'|'POST'|'PUT',body:unknown,resource:'health'|'execution'|'discovery',timeoutMs=3_000){
+  private async json(path:string,method:'GET'|'POST'|'PUT',body:unknown,resource:'health'|'execution'|'discovery',timeoutMs=DEFAULT_REQUEST_TIMEOUT_MS){
     let response: Response;
     try {
       response = await this.request(`${this.baseUrl}${path}`, {

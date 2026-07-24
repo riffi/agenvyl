@@ -3,6 +3,14 @@ import {buildApp} from '../../app/buildApp.js';
 import {connectTestDatabase,testDatabaseUrl} from '../../testDatabase.js';
 
 describe('setup API',()=>{
+  it('reports unavailable Connector settings as a service outage',async()=>{
+    const app=await buildApp({databaseUrl:testDatabaseUrl('setup_connector_unavailable'),connectorUrl:'http://connector.test',connectorToken:'x'.repeat(32),fetch:vi.fn<typeof fetch>().mockRejectedValue(new Error('offline')),distPath:'missing-dist',legacySeed:false,logger:false});
+    const response=await app.inject('/api/v1/harness-settings');
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual({error:'connector_unavailable',message:'Connector settings are unavailable'});
+    await app.close();
+  });
+
   it('bootstraps a fresh zero-harness installation atomically and idempotently',async()=>{
     const request=vi.fn<typeof fetch>(async url=>{const path=new URL(String(url)).pathname;if(path==='/v2/discovery')return Response.json({apiVersion:'v2',candidates:[]});if(path==='/v2/instances')return Response.json({apiVersion:'v2',connectorEpoch:'epoch',instances:[]});if(path==='/v2/configuration')return Response.json({apiVersion:'v2',instances:[]});return new Response('{}',{status:404});});
     const databaseUrl=testDatabaseUrl('setup_api'),app=await buildApp({databaseUrl,connectorUrl:'http://connector.test',connectorToken:'x'.repeat(32),fetch:request,distPath:'missing-dist',legacySeed:false,logger:false});

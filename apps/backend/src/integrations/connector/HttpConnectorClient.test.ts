@@ -27,6 +27,21 @@ describe('HttpConnectorClient', () => {
     ]);
   });
 
+  it('allows metadata probes to exceed the default request timeout',async()=>{
+    const timeout=vi.spyOn(AbortSignal,'timeout');
+    const request=vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({apiVersion:'v2',candidates:[]}))
+      .mockResolvedValueOnce(Response.json(connectorContractFixtures.catalog));
+    const client=new HttpConnectorClient('http://connector.test','x'.repeat(32),request);
+
+    try{
+      await expect(client.discover()).resolves.toEqual({apiVersion:'v2',candidates:[]});
+      await expect(client.catalog('local-hermes')).resolves.toEqual(connectorContractFixtures.catalog);
+      expect(timeout).toHaveBeenNthCalledWith(1,30_000);
+      expect(timeout).toHaveBeenNthCalledWith(2,30_000);
+    }finally{timeout.mockRestore();}
+  });
+
   it('maps missing executions and malformed payloads to safe errors', async () => {
     const token = 'secret-token-'.padEnd(32, 'x');
     const missing = new HttpConnectorClient('http://connector.test', token, vi.fn<typeof fetch>().mockResolvedValue(Response.json({apiVersion:'v2',error:'execution_not_found',message:`leak ${token}`},{status:404})));

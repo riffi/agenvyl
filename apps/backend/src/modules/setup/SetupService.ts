@@ -20,10 +20,15 @@ export class SetupService{
     return{completed:Boolean(row.completed_at),locale:row.locale==='ru'?'ru':'en',workspaceRoot:this.workspaceRoot,...(row.first_room_id?{firstRoomId:String(row.first_room_id)}:{}),instances:instances.instances.map(instance=>({id:instance.id,type:instance.type,status:instance.status,...(instance.managed!==undefined?{managed:instance.managed}:{}),...(configured.get(instance.id)?.allowDangerFullAccess!==undefined?{allowDangerFullAccess:configured.get(instance.id)?.allowDangerFullAccess}:{}),...(configured.get(instance.id)?.allowSubscriptionOAuth!==undefined?{allowSubscriptionOAuth:configured.get(instance.id)?.allowSubscriptionOAuth}:{})})),candidates:discovery.candidates};
   }
   async harnessSettings():Promise<HarnessSettingsState>{
-    const[configuration,runtime,discovery,personaRows]=await Promise.all([
+    const connectorState=Promise.all([
       this.connector.configuration(),
       this.connector.instances(),
       this.connector.discover(),
+    ]).catch(()=>{
+      throw new AppError('connector_unavailable',503,'Connector settings are unavailable');
+    });
+    const[[configuration,runtime,discovery],personaRows]=await Promise.all([
+      connectorState,
       this.database.sql`SELECT id,name,handle,harness_instance_id,archived_at FROM personas ORDER BY archived_at NULLS FIRST,name`,
     ]);
     const runtimeById=new Map(runtime.instances.map(instance=>[instance.id,instance]));
