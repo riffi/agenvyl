@@ -2,7 +2,7 @@ import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {describe,expect,it} from 'vitest';
 import type {SetupHarnessCandidate,SetupState} from '@agenvyl/contracts';
-import {Candidate,initialConnectorSelection,instanceConfig} from './SetupPage';
+import {Candidate,ConnectorOptions,initialConnectorSelection,instanceConfig} from './SetupPage';
 
 const candidate:SetupHarnessCandidate={type:'opencode',label:'OpenCode',cli:{found:true,command:'opencode',version:'1.17.20'},endpoint:{url:'http://127.0.0.1:4096',reachable:true},safeToSelect:true,supportsManagedServer:true};
 const discoveryCache={state:'fresh' as const,refreshedAt:'2026-07-24T00:00:00.000Z',expiresAt:'2026-07-24T00:05:00.000Z'};
@@ -13,6 +13,27 @@ describe('setup harness configuration',()=>{
     expect(html).toContain('aria-label="OpenCode"');
     expect(html).toContain('data-harness-type="opencode"');
     expect(html).toContain('data-harness-size="md"');
+  });
+
+  it('renders selected runtime settings in a separate compact options section',()=>{
+    const html=renderToStaticMarkup(createElement(ConnectorOptions,{
+      selected:['opencode','codex'],
+      openCodeManaged:true,
+      setOpenCodeManaged:()=>undefined,
+      codexDangerFullAccess:false,
+      setCodexDangerFullAccess:()=>undefined,
+      codexConfirmation:'',
+      setCodexConfirmation:()=>undefined,
+      claudeNeedsConfirmation:false,
+      claudeOAuthConfirmation:'',
+      setClaudeOAuthConfirmation:()=>undefined,
+    }));
+    expect(html).toContain('id="connector-options-title"');
+    expect(html).toContain('Settings for the runtimes selected above.');
+    expect(html).toContain('<em>OpenCode</em>');
+    expect(html).toContain('<em>Codex</em>');
+    expect(html.match(/type="checkbox"/g)).toHaveLength(2);
+    expect(html).not.toContain('data-harness-type');
   });
 
   it('does not preselect unavailable configured connectors during first setup',()=>{
