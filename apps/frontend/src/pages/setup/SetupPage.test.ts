@@ -2,12 +2,17 @@ import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {describe,expect,it} from 'vitest';
 import type {SetupHarnessCandidate,SetupState} from '@agenvyl/contracts';
-import {Candidate,ConnectorOptions,initialConnectorSelection,instanceConfig,mergeSetupHarnessSelection} from './SetupPage';
+import {Candidate,ConnectorOptions,initialConnectorSelection,instanceConfig,isSetupPreview,mergeSetupHarnessSelection} from './SetupPage';
 
 const candidate:SetupHarnessCandidate={type:'opencode',label:'OpenCode',cli:{found:true,command:'opencode',version:'1.17.20'},endpoint:{url:'http://127.0.0.1:4096',reachable:true},safeToSelect:true,supportsManagedServer:true};
 const discoveryCache={state:'fresh' as const,refreshedAt:'2026-07-24T00:00:00.000Z',expiresAt:'2026-07-24T00:05:00.000Z'};
 
 describe('setup harness configuration',()=>{
+  it('enables setup preview only for an explicit development URL',()=>{
+    expect(isSetupPreview('?preview=1',true)).toBe(true);
+    expect(isSetupPreview('?preview=1',false)).toBe(false);
+    expect(isSetupPreview('?preview=0',true)).toBe(false);
+  });
   it('shows the harness icon in a connector option',()=>{
     const html=renderToStaticMarkup(createElement(Candidate,{candidate,checked:false,onChange:()=>undefined}));
     expect(html).toContain('aria-label="OpenCode"');
@@ -18,6 +23,9 @@ describe('setup harness configuration',()=>{
   it('renders selected runtime settings in a separate compact options section',()=>{
     const html=renderToStaticMarkup(createElement(ConnectorOptions,{
       selected:['opencode','codex'],
+      agy:false,
+      agyConfirmation:'',
+      setAgyConfirmation:()=>undefined,
       openCodeManaged:true,
       setOpenCodeManaged:()=>undefined,
       claudeNeedsConfirmation:false,
@@ -30,6 +38,26 @@ describe('setup harness configuration',()=>{
     expect(html).not.toContain('<em>Codex</em>');
     expect(html.match(/type="checkbox"/g)).toHaveLength(1);
     expect(html).not.toContain('data-harness-type');
+  });
+
+  it('renders AGY and Claude confirmation phrases in the same options list',()=>{
+    const html=renderToStaticMarkup(createElement(ConnectorOptions,{
+      selected:[],
+      agy:true,
+      agyConfirmation:'AGY',
+      setAgyConfirmation:()=>undefined,
+      openCodeManaged:true,
+      setOpenCodeManaged:()=>undefined,
+      claudeNeedsConfirmation:true,
+      claudeOAuthConfirmation:'CLAUDE OAUTH',
+      setClaudeOAuthConfirmation:()=>undefined,
+    }));
+    expect(html).toContain('Confirm dangerous permission mode');
+    expect(html).toContain('<em>AGY</em>');
+    expect(html).toContain('placeholder="Type AGY"');
+    expect(html).toContain('Confirm subscription OAuth');
+    expect(html).toContain('<em>Claude</em>');
+    expect(html).toContain('placeholder="Type CLAUDE OAUTH"');
   });
 
   it('does not preselect unavailable configured connectors during first setup',()=>{

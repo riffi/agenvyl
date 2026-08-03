@@ -4,6 +4,9 @@
 .card h2{font-size:18px}
 .card p{color:var(--muted);line-height:1.5}
 .eyebrow{color:var(--primary)!important;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+.previewBanner{margin:0;padding:12px 14px;border:1px dashed #60a5fa;border-radius:10px;background:#eff6ff;color:#1e3a8a!important;display:grid;grid-template-columns:auto 1fr;gap:10px 14px;align-items:baseline;font-size:13px}
+.previewBanner strong{font-size:11px;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
+.previewBanner span{line-height:1.45}
 .locale{float:right;display:flex;gap:4px}
 .locale button,.link{border:0;background:transparent;color:var(--primary);cursor:pointer;padding:6px 8px}
 .locale button[aria-pressed=true]{background:#eef2ff;border-radius:8px;font-weight:700}
@@ -40,7 +43,7 @@
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .grid label{display:grid;gap:7px;font-size:14px;font-weight:600}
 .wide{grid-column:1/-1}
-.grid input,.danger input[type=text],.danger input:not([type]){border:1px solid var(--border);border-radius:9px;padding:11px 12px;font:inherit}
+.grid input{border:1px solid var(--border);border-radius:9px;padding:11px 12px;font:inherit}
 .primary{border:0;border-radius:10px;padding:13px 18px;background:var(--primary);color:white;font:inherit;font-weight:700;cursor:pointer}
 .primary:disabled{opacity:.6}
 .error{color:#b91c1c!important;background:#fef2f2;padding:10px 12px;border-radius:9px}
@@ -54,4 +57,5 @@
   .settingChoice,.requiredSetting{grid-template-columns:16px minmax(0,1fr)}
   .settingChoice em,.requiredSetting em{grid-column:2}
   .confirmation{grid-template-columns:1fr;padding-left:25px}
+  .previewBanner{grid-template-columns:1fr;gap:4px}
 }
