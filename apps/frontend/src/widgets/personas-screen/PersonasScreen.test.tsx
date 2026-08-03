@@ -5,7 +5,7 @@ import {renderToStaticMarkup} from 'react-dom/server';
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import type {HarnessCatalog} from '../../entities/harness';
 import type {Persona} from '../../entities/persona';
-import {DangerFullAccessDialog} from './DangerFullAccessDialog';
+import {DangerousPermissionDialog} from './DangerousPermissionDialog';
 import {HarnessRouteFields,PersonaInstructionFields} from './PersonasScreen';
 
 const cache={state:'fresh' as const,refreshedAt:'2026-07-24T00:00:00.000Z',expiresAt:'2026-07-24T00:05:00.000Z'};
@@ -70,11 +70,13 @@ describe('persona harness route fields',()=>{
   });
 
   it('shows AGY permissions without exposing room workflow state',()=>{
-    const agyCatalog:HarnessCatalog={connectorEpoch:'agy',cache,instances:[{id:'local-antigravity',type:'antigravity',status:'healthy',capabilities:['model_catalog'],models:[{id:'gemini'}],controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[{id:'accept-edits',label:'Accept edits'}],agentVariants:[]},catalogCache:{state:'fresh',refreshedAt:cache.refreshedAt}}]};
+    const agyCatalog:HarnessCatalog={connectorEpoch:'agy',cache,instances:[{id:'local-antigravity',type:'antigravity',status:'healthy',capabilities:['model_catalog'],models:[{id:'gemini'}],controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[{id:'plan',label:'Plan only'},{id:'accept-edits',label:'Accept edits'}],agentVariants:[]},catalogCache:{state:'fresh',refreshedAt:cache.refreshedAt}}]};
     const html=renderToStaticMarkup(<HarnessRouteFields form={persona({harness_instance_id:'local-antigravity',harness_type:'antigravity',model_id:'gemini',requested_model:'gemini',permission_profile_id:'accept-edits'})} catalog={agyCatalog} onChange={vi.fn()}/>);
     expect(html).toContain('Permissions');
     expect(html).not.toContain('Harness mode');
+    expect(html).toContain('Plan only');
     expect(html).toContain('Accept edits');
+    expect(html).toContain('AGY modify files without per-action approvals');
   });
 
   it('keeps a saved route visible when discovery is unavailable',()=>{
@@ -97,14 +99,21 @@ describe('persona harness route fields',()=>{
   });
 });
 
-describe('Codex Full access confirmation',()=>{
-  it('requires an explicit danger action and supports cancellation',()=>{
+describe('dangerous permission confirmation',()=>{
+  it('requires an explicit danger action for Codex and supports cancellation',()=>{
     const onCancel=vi.fn(),onConfirm=vi.fn();
-    render(<DangerFullAccessDialog open onCancel={onCancel} onConfirm={onConfirm}/>);
+    render(<DangerousPermissionDialog permission="codex-full-access" onCancel={onCancel} onConfirm={onConfirm}/>);
     expect(screen.getByRole('dialog',{name:'Enable full access?'})).toBeTruthy();
     fireEvent.click(screen.getByRole('button',{name:'Cancel'}));
     expect(onCancel).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole('button',{name:'Enable full access'}));
     expect(onConfirm).toHaveBeenCalledOnce();
+  });
+
+  it('explains that AGY Accept edits cannot request per-action approval',()=>{
+    render(<DangerousPermissionDialog permission="agy-accept-edits" onCancel={vi.fn()} onConfirm={vi.fn()}/>);
+    expect(screen.getByRole('dialog',{name:'Allow AGY to edit files?'})).toBeTruthy();
+    expect(screen.getByText(/cannot ask for per-action approval/)).toBeTruthy();
+    expect(screen.getByRole('button',{name:'Allow edits'})).toBeTruthy();
   });
 });

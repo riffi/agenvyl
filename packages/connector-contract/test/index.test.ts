@@ -62,6 +62,7 @@ describe('Connector v1 contract fixtures', () => {
 
   it('rejects removed and unknown instance configuration fields',()=>{
     expect(isConfigureConnectorInstancesRequest({instances:[{id:'local-codex',type:'codex',enabled:true,allowDangerFullAccess:true}]})).toBe(false);
+    expect(isConfigureConnectorInstancesRequest({instances:[{id:'local-antigravity',type:'antigravity',enabled:true,permissionMode:'plan'}]})).toBe(false);
     expect(isConfigureConnectorInstancesRequest({instances:[{id:'local-codex',type:'codex',enabled:true,unknown:true}]})).toBe(false);
   });
 });

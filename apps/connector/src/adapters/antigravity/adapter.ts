@@ -17,7 +17,6 @@ export type AntigravityAdapterOptions = {
   stopGraceMs?: number;
   maxPromptBytes?: number;
   maxOutputBytes?: number;
-  permissionMode?:'plan'|'accept-edits';
 };
 
 type ProcessResult = {
@@ -49,7 +48,6 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
   private readonly stopGraceMs: number;
   private readonly maxPromptBytes: number;
   private readonly maxOutputBytes: number;
-  private readonly permissionMode:'plan'|'accept-edits';
   private readonly executions = new Map<string, ActiveExecution>();
   private versionCheck?: Promise<void>;
   private resolvedCommand?: Promise<string>;
@@ -65,7 +63,6 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
     this.stopGraceMs = positiveInteger(options.stopGraceMs, 2_000, 'stopGraceMs');
     this.maxPromptBytes = positiveInteger(options.maxPromptBytes, 120 * 1_024, 'maxPromptBytes');
     this.maxOutputBytes = positiveInteger(options.maxOutputBytes, 1_024 * 1_024, 'maxOutputBytes');
-    this.permissionMode=options.permissionMode??'plan';
   }
 
   async catalog() {
@@ -81,12 +78,13 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
     const seen = new Set<string>();
     const models = result.stdout.split(/\r?\n/).map(value => value.trim()).filter(value => value && !seen.has(value) && seen.add(value)).map(id => ({ id, label: id }));
     if (!models.length) throw new Error('Antigravity model catalog returned no models');
-    return { models, controls:{nativeWorkflowModes:this.permissionMode==='accept-edits'?['plan','work']:['plan'],permissionProfiles:[{id:this.permissionMode,label:this.permissionMode==='accept-edits'?'Accept edits':'Plan-only instance'}],agentVariants:[]} };
+    return { models, controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[{id:'plan',label:'Plan only'},{id:'accept-edits',label:'Accept edits'}],agentVariants:[]} };
   }
 
   async start(request: AdapterStartExecutionRequest): Promise<AdapterExecution> {
     if (this.executions.has(request.executionId)) throw new Error('Antigravity execution already exists');
-    const mode=request.executionProfile.workflowMode==='plan'?'plan':this.permissionMode;
+    const configuredMode=parseAntigravityPermission(request.executionProfile.permissionProfileId);
+    const mode=request.executionProfile.workflowMode==='plan'?'plan':configuredMode;
     const prompt = antigravityPrompt(request);
     if (Buffer.byteLength(prompt, 'utf8') > this.maxPromptBytes) throw new Error('Antigravity prompt exceeds the configured 120 KiB argv boundary');
     const args = [
@@ -210,6 +208,11 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
 export function shouldDetachAntigravityProcess(platform: NodeJS.Platform) {
   return platform !== 'win32';
 }
+
+export const parseAntigravityPermission=(value:string|null):'plan'|'accept-edits'=>{
+  if(value!=='plan'&&value!=='accept-edits')throw new Error('Antigravity permission profile is invalid');
+  return value;
+};
 
 export function antigravityPrompt(request: AdapterStartExecutionRequest) {
   return [

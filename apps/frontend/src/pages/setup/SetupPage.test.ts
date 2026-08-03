@@ -95,6 +95,12 @@ describe('setup harness configuration',()=>{
     expect(instanceConfig(claude,undefined,{claudeOAuthConfirmed:true})).toEqual({id:'local-claude',type:'claude',enabled:true,allowSubscriptionOAuth:true});
   });
 
+  it('adds explicitly confirmed AGY without storing a connector permission mode',()=>{
+    const agy:SetupHarnessCandidate={type:'antigravity',label:'AGY',cli:{found:true,command:'agy',version:'1.1.6',compatible:true},safeToSelect:false,supportsManagedServer:false};
+    const state:SetupState={completed:false,locale:'en',workspaceRoot:'C:/workspaces',discoveryCache,candidates:[agy],instances:[]};
+    expect(mergeSetupHarnessSelection(state,[],true)).toEqual([{id:'local-antigravity',type:'antigravity',enabled:true}]);
+  });
+
   it('preserves custom ids, missing discovery entries, and multiple instances',()=>{
     const state:SetupState={completed:false,locale:'en',workspaceRoot:'C:/workspaces',discoveryCache,candidates:[candidate],instances:[
       {id:'custom-hermes',type:'hermes',enabled:true,endpoint:'http://127.0.0.1:9000',status:'unavailable'},

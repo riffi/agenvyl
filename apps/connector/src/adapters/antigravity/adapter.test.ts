@@ -15,7 +15,7 @@ describe('AntigravityConnectorAdapter', () => {
     expect(shouldDetachAntigravityProcess('darwin')).toBe(true);
   });
 
-  it('discovers exact models and exposes the instance permission ceiling', async () => {
+  it('discovers exact models and exposes per-agent permission profiles', async () => {
     const fixture = await fakeAgy();
     const adapter = fixture.adapter({ env: { FAKE_AGY_VERSION: '1.1.3', FAKE_AGY_MODELS: 'Gemini 3.5 Flash (High)\nClaude Sonnet 4.6 (Thinking)\nGemini 3.5 Flash (High)\n' } });
     await expect(adapter.catalog()).resolves.toEqual({
@@ -23,7 +23,7 @@ describe('AntigravityConnectorAdapter', () => {
         { id: 'Gemini 3.5 Flash (High)', label: 'Gemini 3.5 Flash (High)' },
         { id: 'Claude Sonnet 4.6 (Thinking)', label: 'Claude Sonnet 4.6 (Thinking)' },
       ],
-      controls:{nativeWorkflowModes:['plan'],permissionProfiles:[{id:'plan',label:'Plan-only instance'}],agentVariants:[]},
+      controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[{id:'plan',label:'Plan only'},{id:'accept-edits',label:'Accept edits'}],agentVariants:[]},
     });
     const old = fixture.adapter({ env: { FAKE_AGY_VERSION: '1.1.2' } });
     await expect(old.catalog()).rejects.toThrow('1.1.3 or newer');
@@ -41,7 +41,7 @@ describe('AntigravityConnectorAdapter', () => {
   it('runs one fresh process with exact routing, cwd, auto-update guard and deterministic flattened context', async () => {
     const fixture = await fakeAgy();
     const capturePath = join(fixture.directory, 'capture.json');
-    const adapter = fixture.adapter({ env: { FAKE_AGY_CAPTURE: capturePath, FAKE_AGY_OUTPUT: 'Final answer\n' }, printTimeoutMs: 42_000,permissionMode:'accept-edits' });
+    const adapter = fixture.adapter({ env: { FAKE_AGY_CAPTURE: capturePath, FAKE_AGY_OUTPUT: 'Final answer\n' }, printTimeoutMs: 42_000 });
     const request = execution(fixture.directory);
     const handle = await adapter.start(request);
     expect(handle).toEqual({ upstreamId: request.executionId });
@@ -57,16 +57,26 @@ describe('AntigravityConnectorAdapter', () => {
     expect(JSON.parse(capture.args[8]!.split('\n')[1]!)).toMatchObject({ systemInstruction: 'Act as coder.', conversationHistory: [{ role: 'user', content: 'Earlier' }], currentUserMessage: 'Implement it.' });
   });
 
+  it('forces Plan workflow to read-only even for an Accept edits persona',async()=>{
+    const fixture=await fakeAgy(),capturePath=join(fixture.directory,'plan-capture.json');
+    const adapter=fixture.adapter({env:{FAKE_AGY_CAPTURE:capturePath}});
+    const request={...execution(fixture.directory),executionProfile:{...execution(fixture.directory).executionProfile,workflowMode:'plan' as const}};
+    const handle=await adapter.start(request);await collect(adapter.events(handle));
+    const capture=JSON.parse(await readFile(capturePath,'utf8')) as {args:string[]};
+    expect(capture.args.slice(0,3)).toEqual(['--dangerously-skip-permissions','--mode','plan']);
+  });
+
   it('fails closed for unsupported modes, oversized prompts, empty output and non-zero exits', async () => {
     const fixture = await fakeAgy();
-    const adapter = fixture.adapter({ env: {}, maxPromptBytes: 300,permissionMode:'accept-edits' });
+    const adapter = fixture.adapter({ env: {}, maxPromptBytes: 300 });
+    await expect(adapter.start({...execution(fixture.directory),executionId:'invalid-mode',executionProfile:{...execution(fixture.directory).executionProfile,permissionProfileId:'unknown'}})).rejects.toThrow('permission profile is invalid');
     await expect(adapter.start({ ...execution(fixture.directory), executionId: 'large', input: { systemPrompt: '', history: [], message: 'x'.repeat(400) } })).rejects.toThrow('argv boundary');
 
-    const empty = fixture.adapter({ env: { FAKE_AGY_OUTPUT: '' },permissionMode:'accept-edits' });
+    const empty = fixture.adapter({ env: { FAKE_AGY_OUTPUT: '' } });
     const emptyHandle = await empty.start({ ...execution(fixture.directory), executionId: 'empty' });
     await expect(collect(empty.events(emptyHandle))).resolves.toEqual([{ type: 'execution.failed', payload: { error: { code: 'agy_empty_output', message: expect.any(String) } } }]);
 
-    const failed = fixture.adapter({ env: { FAKE_AGY_EXIT: '7', FAKE_AGY_STDERR: 'token=secret-value failed' },permissionMode:'accept-edits' });
+    const failed = fixture.adapter({ env: { FAKE_AGY_EXIT: '7', FAKE_AGY_STDERR: 'token=secret-value failed' } });
     const failedHandle = await failed.start({ ...execution(fixture.directory), executionId: 'failed' });
     await expect(collect(failed.events(failedHandle))).resolves.toEqual([{ type: 'execution.failed', payload: { error: { code: 'agy_execution_failed', message: 'token=[REDACTED] failed' } } }]);
   });
@@ -74,7 +84,7 @@ describe('AntigravityConnectorAdapter', () => {
   it('terminates a stubborn process tree and reports cancellation', async () => {
     const fixture = await fakeAgy();
     const capturePath = join(fixture.directory, 'capture.json');
-    const adapter = fixture.adapter({ env: { FAKE_AGY_CAPTURE: capturePath, FAKE_AGY_BEHAVIOR: 'hang' }, stopGraceMs: 25,permissionMode:'accept-edits' });
+    const adapter = fixture.adapter({ env: { FAKE_AGY_CAPTURE: capturePath, FAKE_AGY_BEHAVIOR: 'hang' }, stopGraceMs: 25 });
     const handle = await adapter.start({ ...execution(fixture.directory), executionId: 'cancelled' });
     await waitForFile(capturePath);
     const eventsPromise = collect(adapter.events(handle));

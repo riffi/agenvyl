@@ -63,7 +63,6 @@ export class SetupService{
   }
   async configure(input:ConfigureSetupHarnessesRequest){
     if(!isConfigureConnectorInstancesRequest(input))throw new AppError('invalid_setup_harnesses',400,'Harness selection is invalid');
-    if(input.instances.some(instance=>instance.type==='antigravity'&&instance.enabled&&!instance.permissionMode))throw new AppError('agy_confirmation_required',400,'AGY requires an explicit permission mode');
     const current=await this.connector.configuration();
     const nextById=new Map(input.instances.map(instance=>[instance.id,instance]));
     const changed=current.instances.filter(instance=>!nextById.has(instance.id)||nextById.get(instance.id)?.type!==instance.type);
@@ -79,7 +78,6 @@ export class SetupService{
   }
   async testHarness(input:TestHarnessInstanceRequest):Promise<TestHarnessInstanceResult>{
     if(!isTestConnectorInstanceRequest(input))throw new AppError('invalid_harness_instance',400,'Harness instance is invalid');
-    if(input.instance.type==='antigravity'&&!input.instance.permissionMode)throw new AppError('agy_confirmation_required',400,'AGY requires an explicit permission mode');
     try{
       const{apiVersion:_apiVersion,...result}=await this.connector.testInstance(input);
       return result;

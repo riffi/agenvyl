@@ -18,7 +18,7 @@ describe('setup API',()=>{
     const databaseUrl=testDatabaseUrl('setup_api'),app=await buildApp({databaseUrl,connectorUrl:'http://connector.test',connectorToken:'x'.repeat(32),fetch:request,distPath:'missing-dist',legacySeed:false,logger:false});
     const setup=(await app.inject('/api/v1/setup')).json();expect(setup).toMatchObject({completed:false,instances:[],candidates:[],workspaceRoot:expect.any(String)});
     const tested=await app.inject({method:'POST',url:'/api/v1/harness-settings/test',payload:{instance:{id:'local-hermes',type:'hermes',enabled:false}}});expect(tested.statusCode).toBe(200);expect(tested.json()).toMatchObject({instanceId:'local-hermes',status:'healthy'});
-    expect((await app.inject({method:'PUT',url:'/api/v1/setup/harnesses',payload:{instances:[{id:'local-antigravity',type:'antigravity',enabled:true}]}})).statusCode).toBe(400);
+    expect((await app.inject({method:'PUT',url:'/api/v1/setup/harnesses',payload:{instances:[{id:'local-antigravity',type:'antigravity',enabled:true}]}})).statusCode).toBe(200);
     const payload={locale:'ru',workspace_root:setup.workspaceRoot,profile:{display_name:'Владимир',handle:'vladimir'},room_title:'Первая комната',route:null};
     const first=await app.inject({method:'POST',url:'/api/v1/setup/complete',payload});expect(first.statusCode).toBe(200);
     const repeated=await app.inject({method:'POST',url:'/api/v1/setup/complete',payload});expect(repeated.json()).toEqual(first.json());

@@ -103,20 +103,20 @@ export function initialConnectorSelection(state:SetupState){
     claudeOAuthConfirmed:state.instances.some(instance=>instance.type==='claude'&&instance.allowSubscriptionOAuth),
   };
 }
-export function instanceConfig(candidate:SetupHarnessCandidate,existing?:SetupState['instances'][number],options:SetupHarnessOptions={},id=`local-${candidate.type}`):SetupHarnessInstance{return{id:existing?.id??id,type:candidate.type,enabled:true,...(existing?.endpoint?{endpoint:existing.endpoint}:{}),...(!existing?.endpoint&&candidate.endpoint&&candidate.type!=='codex'&&candidate.type!=='claude'?{endpoint:candidate.endpoint.url}:{}),...(candidate.type==='opencode'?{managed:options.openCodeManaged??existing?.managed??true,externalDirectoryRoots:existing?.externalDirectoryRoots??[]}:{}),...(candidate.type==='antigravity'?{permissionMode:existing?.permissionMode??'plan' as const}:{}),...(candidate.type==='claude'?{allowSubscriptionOAuth:candidate.requiresConfirmation==='claude_oauth'&&(options.claudeOAuthConfirmed??existing?.allowSubscriptionOAuth??false)}:{})};}
+export function instanceConfig(candidate:SetupHarnessCandidate,existing?:SetupState['instances'][number],options:SetupHarnessOptions={},id=`local-${candidate.type}`):SetupHarnessInstance{return{id:existing?.id??id,type:candidate.type,enabled:true,...(existing?.endpoint?{endpoint:existing.endpoint}:{}),...(!existing?.endpoint&&candidate.endpoint&&candidate.type!=='codex'&&candidate.type!=='claude'?{endpoint:candidate.endpoint.url}:{}),...(candidate.type==='opencode'?{managed:options.openCodeManaged??existing?.managed??true,externalDirectoryRoots:existing?.externalDirectoryRoots??[]}:{}),...(candidate.type==='claude'?{allowSubscriptionOAuth:candidate.requiresConfirmation==='claude_oauth'&&(options.claudeOAuthConfirmed??existing?.allowSubscriptionOAuth??false)}:{})};}
 export function mergeSetupHarnessSelection(state:SetupState,selected:string[],agy:boolean,options:SetupHarnessOptions={}):SetupHarnessInstance[]{
-  const safe=new Map(state.candidates.filter(candidate=>candidate.safeToSelect).map(candidate=>[candidate.type,candidate]));
+  const configurable=new Map(state.candidates.filter(candidate=>candidate.safeToSelect||(candidate.type==='antigravity'&&candidate.cli.found&&candidate.cli.compatible!==false)).map(candidate=>[candidate.type,candidate]));
   const selectedTypes=new Set<SetupHarnessInstance['type']>([...selected.filter(isHarnessType),...(agy?['antigravity' as const]:[])]);
   const typeCounts=new Map<SetupHarnessInstance['type'],number>();for(const instance of state.instances)typeCounts.set(instance.type,(typeCounts.get(instance.type)??0)+1);
   const result:SetupHarnessInstance[]=state.instances.map(({status:_status,error:_error,...instance})=>{
-    const candidate=safe.get(instance.type);if(!candidate)return instance;
+    const candidate=configurable.get(instance.type);if(!candidate)return instance;
     const enabled=selectedTypes.has(instance.type);
     if(!enabled)return{...instance,enabled:false};
     return instanceConfig(candidate,{...instance,status:'healthy'},typeCounts.get(instance.type)===1?options:{});
   });
   for(const type of selectedTypes){
     if(result.some(instance=>instance.type===type))continue;
-    const candidate=safe.get(type);if(!candidate)continue;
+    const candidate=configurable.get(type);if(!candidate)continue;
     result.push(instanceConfig(candidate,undefined,options,uniqueInstanceId(type,result)));
   }
   return result;

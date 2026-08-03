@@ -15,8 +15,8 @@ describe('connector selection merge', () => {
     expect(mergeConnectorSelection(state, ['opencode'], false)[0]).toMatchObject({ id: 'my-opencode', managed: true, enabled: true });
   });
 
-  it('defaults confirmed AGY to plan and never enables it without confirmation', () => {
-    expect(mergeConnectorSelection(state, ['antigravity'], false)[1]).not.toHaveProperty('permissionMode');
-    expect(mergeConnectorSelection(state, ['antigravity'], true)[1]).toMatchObject({ enabled: true, permissionMode: 'plan' });
+  it('enables AGY only after setup confirmation without persisting a permission mode', () => {
+    expect(mergeConnectorSelection(state, ['antigravity'], false)).toHaveLength(1);
+    expect(mergeConnectorSelection(state, ['antigravity'], true)[1]).toEqual({id:'local-antigravity',type:'antigravity',enabled:true});
   });
 });

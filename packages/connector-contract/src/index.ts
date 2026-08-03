@@ -81,7 +81,6 @@ export type ConnectorInstanceConfiguration = {
   endpoint?: string;
   managed?: boolean;
   externalDirectoryRoots?: string[];
-  permissionMode?: 'plan' | 'accept-edits';
   allowSubscriptionOAuth?: boolean;
 };
 export type HarnessAuthentication = {
@@ -303,15 +302,13 @@ export function isConfigureConnectorInstancesRequest(value: unknown): value is C
   const ids = new Set<string>();
   return value.instances.every(instance => {
     if (!isRecord(instance) || typeof instance.id !== 'string' || !/^[a-z0-9][a-z0-9_-]*$/.test(instance.id) || ids.has(instance.id)) return false;
-    if(Object.keys(instance).some(key=>!['id','type','enabled','endpoint','managed','externalDirectoryRoots','permissionMode','allowSubscriptionOAuth'].includes(key)))return false;
+    if(Object.keys(instance).some(key=>!['id','type','enabled','endpoint','managed','externalDirectoryRoots','allowSubscriptionOAuth'].includes(key)))return false;
     ids.add(instance.id);
     return harnessTypes.has(String(instance.type)) && typeof instance.enabled === 'boolean'
       && (instance.endpoint === undefined || safeEndpoint(instance.endpoint))
       && (instance.managed === undefined || typeof instance.managed === 'boolean')
       && (instance.externalDirectoryRoots === undefined || validExternalDirectoryRoots(instance.externalDirectoryRoots))
-      && (instance.permissionMode === undefined || instance.permissionMode === 'plan' || instance.permissionMode === 'accept-edits')
       && (instance.allowSubscriptionOAuth === undefined || typeof instance.allowSubscriptionOAuth === 'boolean')
-      && (instance.type === 'antigravity' || instance.permissionMode === undefined)
       && (instance.type === 'opencode' || instance.managed === undefined)
       && (instance.type === 'opencode' || instance.externalDirectoryRoots === undefined)
       && (instance.type !== 'codex' || instance.endpoint === undefined)

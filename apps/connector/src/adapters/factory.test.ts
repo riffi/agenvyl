@@ -29,11 +29,9 @@ describe('buildConfiguredAdapters', () => {
     expect(adapters.get('local-opencode')).toMatchObject({ type: 'opencode',externalDirectoryRoots:['/srv/shared'], capabilities: ['model_catalog', 'execution_profiles', 'text_streaming', 'reasoning', 'tools', 'approvals', 'clarifications', 'usage'] });
   });
 
-  it('loads Antigravity only behind the persisted explicit permission mode', () => {
+  it('loads enabled Antigravity instances without an instance permission ceiling', () => {
     const value = config();
     value.instances = [{ id: 'local-antigravity', type: 'antigravity', enabled: true }];
-    expect(buildConfiguredAdapters(value, {})).toHaveLength(0);
-    value.instances=[{...value.instances[0],permissionMode:'plan'}];
     const adapters = buildConfiguredAdapters(value, {
       AGENVYL_CONNECTOR_AGY_COMMAND: '/opt/agy',
       AGENVYL_CONNECTOR_AGY_PRINT_TIMEOUT_MS: '1200000',

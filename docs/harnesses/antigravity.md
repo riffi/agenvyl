@@ -31,8 +31,8 @@ model cannot provide an approval round-trip.
 
 1. Open the control center and choose **Configure connectors**.
 2. Select **AGY**.
-3. Keep **Plan** mode unless you explicitly need file edits.
-4. Save, then create or edit an agent in the Web UI.
+3. Confirm the dangerous AGY integration and save.
+4. Create or edit an agent in the Web UI. New AGY agents use **Plan only**.
 
 CLI fallback:
 
@@ -44,9 +44,15 @@ agenvyl setup
 
 Each attempt starts a fresh `agy --print` process in the room workspace.
 
-- **Plan** is the safe default for read-only analysis.
-- **Accept edits** passes AGY's dangerous permission-bypass flag and requires an
-  explicit Agenvyl confirmation.
+- **Plan only** is the safe per-agent default for read-only analysis.
+- **Accept edits** is selected per agent and requires an explicit warning-dialog
+  confirmation. It allows AGY to modify files without per-action approvals.
+- Agenvyl's global **Plan** workflow always forces read-only AGY execution, even
+  for an agent configured with **Accept edits**.
+
+The former connector-level `permissionMode` field is no longer supported. Remove
+it from existing `connector.yaml` files; the selected agent profile is persisted
+instead.
 
 AGY does not expose a documented structured streaming and approval protocol.
 Agenvyl therefore displays the final text and terminal state only. It does not
@@ -68,4 +74,3 @@ export AGENVYL_CONNECTOR_AGY_COMMAND=/absolute/path/to/agy
 The official Windows `.exe` is discovered through `PATH`. Connector disables
 AGY auto-update for child executions and terminates the complete process tree
 on cancellation.
-

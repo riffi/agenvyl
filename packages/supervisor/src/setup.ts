@@ -5,7 +5,7 @@ import { startSupervisor } from './runtime.js';
 
 export type HarnessType = 'hermes' | 'opencode' | 'antigravity' | 'codex' | 'claude';
 export type SetupCandidate = { type: HarnessType; label: string; cli: { found: boolean; version?: string }; endpoint?: { url: string; reachable: boolean }; safeToSelect: boolean; supportsManagedServer?: boolean; auth?:{authenticated:boolean;kind:'api'|'cloud'|'subscription_oauth'|'none'|'unknown'};requiresConfirmation?:'claude_oauth';warning?: string };
-export type SetupInstance = { id: string; type: HarnessType; enabled: boolean; endpoint?: string; managed?: boolean; externalDirectoryRoots?:string[];permissionMode?: 'plan' | 'accept-edits';allowSubscriptionOAuth?:boolean };
+export type SetupInstance = { id: string; type: HarnessType; enabled: boolean; endpoint?: string; managed?: boolean; externalDirectoryRoots?:string[];allowSubscriptionOAuth?:boolean };
 export type SetupState = { completed: boolean; firstRoomId?: string; candidates: SetupCandidate[]; instances: Array<SetupInstance & { status: string; error?: { code: string; message: string } }> };
 
 export async function runSetup(config: SupervisorConfig, cliPath: string, options: { all?: boolean; openBrowser?: boolean } = {}) {
@@ -37,23 +37,22 @@ export async function configureConnectors(config: SupervisorConfig, instances: S
 
 export function mergeConnectorSelection(state: SetupState, selected: HarnessType[], agyConfirmed: boolean,claudeOAuthConfirmed=false): SetupInstance[] {
   const safeCandidates=new Map(state.candidates.filter(candidate=>candidate.safeToSelect).map(candidate=>[candidate.type,candidate]));
+  const allowedSelected=selected.filter(type=>type!=='antigravity'||agyConfirmed);
   const result=state.instances.map(({status:_status,error:_error,...instance})=>{
     const candidate=safeCandidates.get(instance.type);
     if(!candidate)return instance;
-    const enabled=selected.includes(instance.type);
+    const enabled=allowedSelected.includes(instance.type);
     return{...instance,enabled,
       ...(!instance.endpoint&&candidate.endpoint&&instance.type!=='codex'&&instance.type!=='claude'?{endpoint:candidate.endpoint.url}:{}),
-      ...(instance.type==='antigravity'&&enabled&&agyConfirmed?{permissionMode:instance.permissionMode??'plan' as const}:{}),
       ...(instance.type==='claude'&&candidate.requiresConfirmation==='claude_oauth'&&enabled?{allowSubscriptionOAuth:instance.allowSubscriptionOAuth===true||claudeOAuthConfirmed}:{})};
   });
-  for(const type of selected){
+  for(const type of allowedSelected){
     if(result.some(instance=>instance.type===type))continue;
     const candidate=safeCandidates.get(type);if(!candidate)continue;
     const id=uniqueInstanceId(type,result);
     result.push({id,type,enabled:true,
       ...(candidate.endpoint&&type!=='codex'&&type!=='claude'?{endpoint:candidate.endpoint.url}:{}),
       ...(type==='opencode'?{managed:true,externalDirectoryRoots:[]}:{}),
-      ...(type==='antigravity'&&agyConfirmed?{permissionMode:'plan' as const}:{}),
       ...(type==='claude'?{allowSubscriptionOAuth:candidate.requiresConfirmation==='claude_oauth'&&claudeOAuthConfirmed}:{})});
   }
   return result;

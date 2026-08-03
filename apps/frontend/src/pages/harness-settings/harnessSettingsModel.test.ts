@@ -15,6 +15,11 @@ describe('harness settings model',()=>{
     expect(configurationOf({...opencode,externalDirectoryRoots:['/srv/shared'],personas:[{id:'agent',name:'Builder',handle:'builder',archived:false}]})).toEqual({id:'local-opencode',type:'opencode',enabled:true,endpoint:'http://127.0.0.1:4096',managed:true,externalDirectoryRoots:['/srv/shared']});
   });
 
+  it('keeps AGY instance configuration free of persona permissions',()=>{
+    const agy:HarnessDraft={id:'local-antigravity',type:'antigravity',enabled:true,status:'healthy',capabilities:[],personas:[]};
+    expect(configurationOf(agy)).toEqual({id:'local-antigravity',type:'antigravity',enabled:true});
+  });
+
   it('rejects duplicate ids and unsafe endpoints',()=>{
     expect(validDraft([opencode,{...opencode}])).toBe(false);
     expect(validDraft([{...opencode,endpoint:'file:///tmp/opencode'}])).toBe(false);
