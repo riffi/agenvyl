@@ -7,18 +7,21 @@ import type { ShortcutRecord, SupervisorSettings } from './preferences.js';
 
 export type ShortcutPolicy = 'none' | 'recommended' | 'all';
 
-export async function createShortcuts(config: SupervisorConfig, policy: ShortcutPolicy, previous: SupervisorSettings | undefined): Promise<ShortcutRecord[]> {
+export async function createShortcuts(config: SupervisorConfig, policy: ShortcutPolicy, previous: SupervisorSettings | undefined, options:{recognizeOwned?:boolean}={}): Promise<ShortcutRecord[]> {
   if (policy === 'none') return previous?.shortcuts ?? [];
   const records = desired(config, policy);
   for (const record of records) {
     const owned = previous?.shortcuts.some(item => resolve(item.path) === resolve(record.path)) === true;
-    if (await exists(record.path) && !owned) throw new SupervisorError('SHORTCUT_EXISTS', `A shortcut already exists and was not created by Agenvyl: ${record.path}`, 'Choose another shortcut policy or remove the file yourself.');
+    const recoveredOwned=options.recognizeOwned===true&&await belongsToBundle(record);
+    if (await exists(record.path) && !owned&&!recoveredOwned) throw new SupervisorError('SHORTCUT_EXISTS', `A shortcut already exists and was not created by Agenvyl: ${record.path}`, 'Choose another shortcut policy or remove the file yourself.');
     await mkdir(dirname(record.path), { recursive: true });
     await writeFile(record.path, content(config), { mode: 0o755 });
     await chmod(record.path, 0o755).catch(() => undefined);
   }
   return records;
 }
+
+export async function removeDiscoveredOwnedShortcuts(config:SupervisorConfig){return removeOwnedShortcuts({schemaVersion:2,locale:'en',initializedAt:'recovery',shortcuts:desired(config,'all')});}
 
 export async function removeOwnedShortcuts(settings: SupervisorSettings | undefined): Promise<string[]> {
   const removed: string[] = [];
@@ -51,7 +54,7 @@ function content(config: SupervisorConfig) {
 }
 
 async function belongsToBundle(shortcut: ShortcutRecord) {
-  try { return (await readFile(shortcut.path, 'utf8')).includes(shortcut.bundleRoot); }
+  try { const value=await readFile(shortcut.path,'utf8');return value.includes(shortcut.bundleRoot)&&(value.includes('Agenvyl bundle:')||value.includes('X-Agenvyl-Bundle=')); }
   catch { return false; }
 }
 function shellQuote(value: string) { return `'${value.replaceAll("'", "'\\''")}'`; }

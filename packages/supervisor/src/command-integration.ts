@@ -8,10 +8,11 @@ import type { CommandRecord, SupervisorSettings } from './preferences.js';
 const ownershipMarker = 'Agenvyl owned command';
 const pathOwnershipMarker = 'Agenvyl owned PATH';
 
-export async function installUserCommand(config: SupervisorConfig, previous?: SupervisorSettings): Promise<CommandRecord> {
+export async function installUserCommand(config: SupervisorConfig, previous?: SupervisorSettings, options:{recognizeOwned?:boolean}={}): Promise<CommandRecord> {
   const existing = await readExisting(config.userCommandPath);
   const previouslyOwned = previous?.command?.path && resolve(previous.command.path) === resolve(config.userCommandPath);
-  if (existing !== undefined && (!previouslyOwned || !existing.includes(ownershipMarker))) {
+  const recoveredOwned=options.recognizeOwned===true&&existing?.includes(ownershipMarker)&&existing.includes(config.bundleRoot);
+  if (existing !== undefined && ((!previouslyOwned || !existing.includes(ownershipMarker))&&!recoveredOwned)) {
     throw new SupervisorError('COMMAND_EXISTS', `A command already exists and was not created by Agenvyl: ${config.userCommandPath}`, 'Remove it yourself or run init with --path none.');
   }
 
@@ -24,6 +25,13 @@ export async function installUserCommand(config: SupervisorConfig, previous?: Su
     ? ensureWindowsUserPath(config.userBinDirectory, previousPathOwnership === true)
     : await ensurePosixUserPath(config.userBinDirectory, config.userProfileFile, previousPathOwnership === true);
   return { path: config.userCommandPath, bundleRoot: config.bundleRoot, pathEntry: config.userBinDirectory, pathProfile: config.platform === 'win32' ? undefined : config.userProfileFile, pathEntryAdded };
+}
+
+export async function removeDiscoveredOwnedCommand(config:SupervisorConfig,deferFileRemoval=false){
+  const existing=await readExisting(config.userCommandPath);
+  if(!existing?.includes(ownershipMarker)||!existing.includes(config.bundleRoot))return{removed:[],deferredFiles:[]};
+  const settings:SupervisorSettings={schemaVersion:2,locale:'en',initializedAt:'recovery',shortcuts:[],command:{path:config.userCommandPath,bundleRoot:config.bundleRoot,pathEntry:config.userBinDirectory,pathProfile:config.platform==='win32'?undefined:config.userProfileFile,pathEntryAdded:true}};
+  return removeOwnedCommand(settings,config.platform,deferFileRemoval);
 }
 
 export async function removeOwnedCommand(settings: SupervisorSettings | undefined, platform: SupervisorConfig['platform'], deferFileRemoval = false) {

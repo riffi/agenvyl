@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { chmod, mkdtemp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -38,6 +38,45 @@ describe.skipIf(process.platform === 'win32')('POSIX installer integration', () 
     expect(result.stderr).toContain('Archive checksum mismatch');
     await expect(readFile(join(destination, 'keep.txt'), 'utf8')).resolves.toBe('previous');
   }, 15_000);
+
+  it.each([
+    ['traversal path', async root => `${root.installRoot}/../victim`],
+    ['nested directory', async root => join(root.installRoot, 'nested', '0.0.9')],
+    ['foreign manifest', async root => join(root.installRoot, '0.0.9')],
+    ['malformed manifest', async root => join(root.installRoot, '0.0.8')],
+  ])('preserves an external directory referenced by an old shim: %s', async (_label, oldPath) => {
+    const root = await fixture(); roots.push(root.path);
+    const candidate = await oldPath(root);
+    await mkdir(candidate, { recursive: true });
+    const manifest = candidate.endsWith('0.0.8') ? '{' : JSON.stringify({ name: candidate.endsWith('0.0.9') && !candidate.includes('nested') ? 'foreign-runtime' : 'agenvyl-portable-runtime', version: candidate.split('/').at(-1) });
+    await writeFile(join(candidate, 'manifest.json'), manifest);
+    await writeFile(join(candidate, 'keep.txt'), 'keep');
+    await writeOldShim(root, candidate);
+    const result = runInstaller(root);
+    expect(result.status, result.stderr).toBe(0);
+    await expect(readFile(join(candidate, 'keep.txt'), 'utf8')).resolves.toBe('keep');
+  }, 15_000);
+
+  it('preserves a symlinked version and removes a valid directly owned old version', async () => {
+    const root = await fixture(); roots.push(root.path);
+    const external = join(root.path, 'external', '0.0.8');
+    await mkdir(external, { recursive: true });
+    await writeFile(join(external, 'manifest.json'), JSON.stringify({ name: 'agenvyl-portable-runtime', version: '0.0.8' }));
+    await writeFile(join(external, 'keep.txt'), 'keep');
+    await mkdir(root.installRoot, { recursive: true });
+    const linked = join(root.installRoot, '0.0.8');
+    await symlink(external, linked, 'dir');
+    await writeOldShim(root, linked);
+    expect(runInstaller(root).status).toBe(0);
+    await expect(readFile(join(external, 'keep.txt'), 'utf8')).resolves.toBe('keep');
+
+    const owned = join(root.installRoot, '0.0.9');
+    await mkdir(owned);
+    await writeFile(join(owned, 'manifest.json'), JSON.stringify({ name: 'agenvyl-portable-runtime', version: '0.0.9' }));
+    await writeOldShim(root, owned);
+    expect(runInstaller(root).status).toBe(0);
+    await expect(stat(owned)).rejects.toMatchObject({ code: 'ENOENT' });
+  }, 15_000);
 });
 
 async function fixture() {
@@ -50,6 +89,9 @@ async function fixture() {
   await writeFile(join(bundleRoot, 'manifest.json'), JSON.stringify({ name: 'agenvyl-portable-runtime', version: '0.1.0' }));
   await writeFile(join(bundleRoot, 'bin', 'agenvyl'), '#!/bin/sh\nprintf "%s\\n" "$*" >> "$AGENVYL_INIT_LOG"\n');
   await chmod(join(bundleRoot, 'bin', 'agenvyl'), 0o755);
+  await mkdir(join(bundleRoot, 'runtime', 'bin'), { recursive: true });
+  await writeFile(join(bundleRoot, 'runtime', 'bin', 'node'), `#!/bin/sh\nexec '${process.execPath.replaceAll("'", "'\\''")}' "$@"\n`);
+  await chmod(join(bundleRoot, 'runtime', 'bin', 'node'), 0o755);
   const filename = 'agenvyl-0.1.0-linux-x64.tar.xz';
   const archive = join(downloads, filename);
   run('tar', ['-cJf', archive, '-C', bundleParent, 'agenvyl-0.1.0-linux-x64']);
@@ -60,6 +102,11 @@ async function fixture() {
   await writeFile(join(fakeBin, 'uname'), '#!/bin/sh\nif [ "${1:-}" = "-s" ]; then echo Linux; else echo x86_64; fi\n');
   await chmod(join(fakeBin, 'curl'), 0o755); await chmod(join(fakeBin, 'uname'), 0o755);
   return { path, downloads, installRoot, userBin, initLog, index, fakeBin };
+}
+
+async function writeOldShim(root, bundle) {
+  await mkdir(root.userBin, { recursive: true });
+  await writeFile(join(root.userBin, 'agenvyl'), `#!/bin/sh\n# Agenvyl bundle: ${bundle}\n`);
 }
 
 function runInstaller(root) {

@@ -5,9 +5,9 @@ import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { SupervisorConfig } from './config.js';
 import { openWebUi } from './browser.js';
-import { initializePortable, isPortableInitialized } from './initialization.js';
+import { initializePortable, isPortableInitialized, repairPortable } from './initialization.js';
 import { t, type MessageKey } from './messages.js';
-import { defaultLocale, loadSettings, saveSettings, type Locale } from './preferences.js';
+import { defaultLocale, inspectSettings, loadSettings, saveSettings, type Locale } from './preferences.js';
 import { backupDatabase, doctor, getSupervisorStatus, readLogs, restoreDatabase, startSupervisor, stopSupervisor } from './runtime.js';
 import { configureConnectors, getSetupState, mergeConnectorSelection, type HarnessType, type SetupState } from './setup.js';
 import { uninstallPortable, type UninstallStage } from './uninstall.js';
@@ -30,6 +30,7 @@ function ControlCenter({ config, cliPath }: { config: SupervisorConfig; cliPath:
   const { stdout } = useStdout();
   const [locale, setLocale] = useState<Locale>();
   const [needsLocale, setNeedsLocale] = useState(false);
+  const [settingsInvalid,setSettingsInvalid]=useState(false);
   const [installed, setInstalled] = useState(false);
   const [status, setStatus] = useState<Awaited<ReturnType<typeof getSupervisorStatus>>>({ running: false, stale: false, health: {} });
   const [screen, setScreen] = useState<Screen>('dashboard');
@@ -44,9 +45,9 @@ function ControlCenter({ config, cliPath }: { config: SupervisorConfig; cliPath:
   const [uninstallFailedStage, setUninstallFailedStage] = useState<UninstallStage>();
 
   const refresh = useCallback(async () => {
-    const [settings, installation, runtime] = await Promise.all([loadSettings(config), isPortableInitialized(config), getSupervisorStatus(config)]);
-    setLocale(current => current ?? settings?.locale ?? defaultLocale());
-    setNeedsLocale(settings === undefined);
+    const [settings, installation, runtime] = await Promise.all([inspectSettings(config), isPortableInitialized(config), getSupervisorStatus(config)]);
+    setLocale(current => current ?? (settings.status==='valid'?settings.settings.locale:defaultLocale()));
+    setNeedsLocale(settings.status==='missing');setSettingsInvalid(settings.status==='invalid');
     setInstalled(installation);
     setStatus(runtime);
   }, [config]);
@@ -103,6 +104,14 @@ function ControlCenter({ config, cliPath }: { config: SupervisorConfig; cliPath:
     }
   }, [config, locale]);
 
+  const performRecovery=useCallback(async(action:'repair'|'uninstall')=>{
+    const recoveryLocale=locale??defaultLocale();setBusy(true);setTechnical('');
+    try{
+      if(action==='repair'){await repairPortable(config,{locale:recoveryLocale,shortcuts:'recommended',path:'user'});await refresh();setMessage(t(recoveryLocale,'ready'));}
+      else{const result=await uninstallPortable(config,{purge:false});setUninstallResult({purge:false,scheduled:result.scheduled});setSettingsInvalid(false);setScreen('uninstalled');}
+    }catch(error){setTechnical(errorMessage(error));}finally{setBusy(false);}
+  },[config,locale,refresh]);
+
   useInput(input => {
     if (!locale || screen !== 'dashboard' || busy || !needsLocale) return;
     if (needsLocale) {
@@ -116,6 +125,7 @@ function ControlCenter({ config, cliPath }: { config: SupervisorConfig; cliPath:
   });
 
   if (!locale) return <BusyView locale={defaultLocale()} label={t(defaultLocale(), 'working')} />;
+  if(settingsInvalid)return <RecoveryScreen locale={locale} busy={busy} technical={technical} onRepair={()=>void performRecovery('repair')} onUninstall={()=>void performRecovery('uninstall')} onExit={exit}/>;
   if (needsLocale) return <TuiFrame locale={locale}><Text bold>{t(locale, 'selectLocale')}</Text><Text>1. Русский</Text><Text>2. English</Text></TuiFrame>;
   if (screen === 'connectors') return <ConnectorScreen config={config} locale={locale} onBack={() => { setScreen('dashboard'); void refresh(); }} />;
   if (screen === 'language') return <LanguageScreen locale={locale} onBack={() => setScreen('dashboard')} onSelect={async selected => {
@@ -135,7 +145,7 @@ function ControlCenter({ config, cliPath }: { config: SupervisorConfig; cliPath:
 
 function ConnectorScreen({ config, locale, onBack }: { config: SupervisorConfig; locale: Locale; onBack: () => void }) {
   const [state, setState] = useState<SetupState>(); const [selected, setSelected] = useState<HarnessType[]>([]); const [index, setIndex] = useState(0); const [confirm, setConfirm] = useState(''); const [agyPending, setAgyPending] = useState(false); const [claudePending,setClaudePending]=useState(false); const [claudeConfirmed,setClaudeConfirmed]=useState(false); const [message, setMessage] = useState(''); const [saving, setSaving] = useState(false);
-  useEffect(() => { void getSetupState(config).then(value => { setState(value); setSelected(value.instances.filter(item => item.status !== 'unavailable').map(item => item.type).filter((item): item is HarnessType => ['hermes', 'opencode', 'antigravity','codex','claude'].includes(item)));setClaudeConfirmed(value.instances.some(item=>item.type==='claude'&&item.allowSubscriptionOAuth)); }).catch(error => setMessage(errorMessage(error))); }, [config]);
+  useEffect(() => { void getSetupState(config).then(value => { setState(value); setSelected(value.instances.filter(item => item.enabled).map(item => item.type).filter((item): item is HarnessType => ['hermes', 'opencode', 'antigravity','codex','claude'].includes(item)));setClaudeConfirmed(value.instances.some(item=>item.type==='claude'&&item.allowSubscriptionOAuth)); }).catch(error => setMessage(errorMessage(error))); }, [config]);
   useInput((input, key) => {
     if (!state || saving) { if (key.escape && !saving) onBack(); return; }
     if (agyPending||claudePending) {
@@ -170,3 +180,13 @@ function errorMessage(error: unknown) { return error instanceof Error ? error.me
 const startProgress = (locale: Locale, stage: 'preparing' | 'launching' | 'waiting' | 'ready') => locale === 'ru'
   ? ({ preparing: 'Проверяем установку…', launching: 'Запускаем компоненты…', waiting: 'Ожидаем готовности…', ready: 'Agenvyl готов.' } as const)[stage]
   : ({ preparing: 'Checking installation…', launching: 'Starting components…', waiting: 'Waiting for readiness…', ready: 'Agenvyl is ready.' } as const)[stage];
+
+export function RecoveryScreen({locale,busy,technical,onRepair,onUninstall,onExit}:{locale:Locale;busy:boolean;technical:string;onRepair:()=>void;onUninstall:()=>void;onExit:()=>void}){
+  useInput((input,key)=>{if(busy)return;const value=input.toLowerCase();if(value==='r')onRepair();else if(value==='u')onUninstall();else if(value==='q'||key.escape)onExit();});
+  return <TuiFrame locale={locale}>
+    <Text bold color="yellow">{locale==='ru'?'Настройки Agenvyl повреждены':'Agenvyl settings are damaged'}</Text>
+    <Text>{locale==='ru'?'R — восстановить · U — удалить приложение с сохранением данных · Q — выход':'R repair · U uninstall and preserve data · Q exit'}</Text>
+    {busy?<Spinner type="dots" label={t(locale,'working')}/>:null}
+    {technical?<Text color="red">{technical}</Text>:null}
+  </TuiFrame>;
+}

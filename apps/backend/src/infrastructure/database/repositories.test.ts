@@ -5,6 +5,7 @@ import { connectTestDatabase, testDatabaseUrl } from "../../testDatabase.js";
 import { stableSessionId } from "../../modules/runs/stableSessionId.js";
 import { createRepositories } from "./createRepositories.js";
 import { Database } from "./Database.js";
+import { migrations } from "./migrations/manifest.js";
 
 const workProfile = {
   workflowMode: "work" as const,
@@ -31,7 +32,7 @@ describe("PostgreSQL repositories", () => {
         await p.database
           .sql`SELECT version FROM schema_migrations ORDER BY version`
       ).map((row) => row.version),
-    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]);
+    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]);
     expect(
       await p.database.sql`SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='personas' AND column_name='role'`,
     ).toEqual([]);
@@ -69,6 +70,17 @@ describe("PostgreSQL repositories", () => {
     ).toBeNull();
     await database.close();
   });
+  it.each([
+    ['Пользователь','User'],
+    ['Владимир','Владимир'],
+  ])('upgrades the migration 010 default without overwriting %s',async(before,after)=>{
+    const url=testDatabaseUrl(`migration_v10_${before==='Пользователь'?'default':'custom'}`);
+    await seedDatabaseThroughMigration10(url);
+    const sql=connectTestDatabase(url);await sql`UPDATE local_user_profiles SET display_name=${before} WHERE id='local-user'`;await sql.end();
+    const database=await Database.connect(url);
+    expect((await database.sql`SELECT display_name FROM local_user_profiles WHERE id='local-user'`)[0]).toEqual({display_name:after});
+    await database.close();
+  });
   it("backfills immutable snapshots when upgrading an initial-schema database", async () => {
     const url = testDatabaseUrl("migration_v1"),
       parsed = new URL(url),
@@ -100,7 +112,7 @@ describe("PostgreSQL repositories", () => {
         await repositories.database
           .sql`SELECT version FROM schema_migrations ORDER BY version`
       ).map((row) => row.version),
-    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]);
+    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]);
     expect(
       await repositories.database.sql`SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='personas' AND column_name='role'`,
     ).toEqual([]);
@@ -129,7 +141,7 @@ describe("PostgreSQL repositories", () => {
       )[0],
     ).toEqual({
       author_profile_id: "local-user",
-      author_display_name: "User",
+      author_display_name: "Пользователь",
       author_handle: "user",
     });
     expect(
@@ -773,3 +785,14 @@ describe("PostgreSQL repositories", () => {
     expect(id).toBe(stableSessionId("room", "version"));
   });
 });
+
+async function seedDatabaseThroughMigration10(url:string){
+  const parsed=new URL(url),schema=parsed.searchParams.get('schema')!;parsed.searchParams.delete('schema');
+  const bootstrap=postgres(parsed.toString(),{max:1});await bootstrap`CREATE SCHEMA ${bootstrap(schema)}`;await bootstrap.end();
+  const sql=connectTestDatabase(url);await sql`CREATE TABLE schema_migrations (version integer PRIMARY KEY,name text NOT NULL,applied_at timestamptz NOT NULL DEFAULT now())`;
+  for(const migration of migrations.filter(item=>item.version<=10)){
+    await sql.unsafe(await readFile(new URL(`./migrations/${migration.file}`,import.meta.url),'utf8'));
+    await sql`INSERT INTO schema_migrations(version,name)VALUES(${migration.version},${migration.name})`;
+  }
+  await sql.end();
+}

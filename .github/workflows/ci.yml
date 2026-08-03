@@ -21,6 +21,7 @@ jobs:
       - run: npm run typecheck
       - run: npm run test:codex
       - run: npm run test:e2e:codex
+      - run: npm run test:supervisor
       - run: npm run lint:boundaries
 
   full-linux:
@@ -46,5 +47,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm test
+      - name: Test without checkout pollution
+        shell: bash
+        run: |
+          git status --porcelain --untracked-files=all > "$RUNNER_TEMP/status-before"
+          npm test
+          npm run test:supervisor
+          git status --porcelain --untracked-files=all > "$RUNNER_TEMP/status-after"
+          diff -u "$RUNNER_TEMP/status-before" "$RUNNER_TEMP/status-after"
       - run: npm run build

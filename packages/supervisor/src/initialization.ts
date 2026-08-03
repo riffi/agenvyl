@@ -2,7 +2,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { SupervisorConfig } from './config.js';
 import { SupervisorError } from './errors.js';
-import { loadSettings, saveSettings, type Locale } from './preferences.js';
+import { archiveInvalidSettings, inspectSettings, loadSettings, saveSettings, type Locale } from './preferences.js';
 import { initializePortableRuntime } from './runtime.js';
 import { createShortcuts, type ShortcutPolicy } from './shortcuts.js';
 import { installUserCommand } from './command-integration.js';
@@ -10,14 +10,14 @@ import { installUserCommand } from './command-integration.js';
 export type PathPolicy = 'none' | 'user';
 export type InitializationResult = { initialized: true; repaired: boolean; locale: Locale; shortcuts: string[]; command?: string; settingsFile: string };
 
-export async function initializePortable(config: SupervisorConfig, options: { locale: Locale; shortcuts: ShortcutPolicy; path?: PathPolicy }): Promise<InitializationResult> {
+export async function initializePortable(config: SupervisorConfig, options: { locale: Locale; shortcuts: ShortcutPolicy; path?: PathPolicy; recoverOwnedIntegrations?: boolean }): Promise<InitializationResult> {
   await validateManifest(config);
   const previous = await loadSettings(config);
   const installedBefore = await isPortableInitialized(config);
   await initializePortableRuntime(config);
-  const shortcuts = await createShortcuts(config, options.shortcuts, previous);
+  const shortcuts = await createShortcuts(config, options.shortcuts, previous, { recognizeOwned: options.recoverOwnedIntegrations });
   const command = options.path === 'user' || (previous?.command !== undefined && previous.command.bundleRoot !== config.bundleRoot)
-    ? await installUserCommand(config, previous)
+    ? await installUserCommand(config, previous, { recognizeOwned: options.recoverOwnedIntegrations })
     : previous?.command;
   const settings = {
     schemaVersion: 2 as const,
@@ -30,11 +30,20 @@ export async function initializePortable(config: SupervisorConfig, options: { lo
   return { initialized: true, repaired: installedBefore, locale: settings.locale, shortcuts: shortcuts.map(item => item.path), command: command?.path, settingsFile: config.settingsFile };
 }
 
+export type RepairResult=InitializationResult&{settingsBackup?:string};
+export async function repairPortable(config:SupervisorConfig,options:{locale:Locale;shortcuts:ShortcutPolicy;path?:PathPolicy}):Promise<RepairResult>{
+  await validateManifest(config);
+  const inspection=await inspectSettings(config);
+  const settingsBackup=inspection.status==='invalid'?await archiveInvalidSettings(config):undefined;
+  const result=await initializePortable(config,{...options,recoverOwnedIntegrations:true});
+  return{...result,...(settingsBackup?{settingsBackup}:{})};
+}
+
 export async function isPortableInitialized(config: SupervisorConfig) {
   return exists(config.secretsFile) || exists(join(config.paths.postgres, 'PG_VERSION'));
 }
 
-async function validateManifest(config: SupervisorConfig) {
+export async function validateManifest(config: SupervisorConfig) {
   const path = join(config.bundleRoot, 'manifest.json');
   let manifest: { name?: string; platform?: string; architecture?: string };
   try { manifest = JSON.parse(await readFile(path, 'utf8')) as typeof manifest; }

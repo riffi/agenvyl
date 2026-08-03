@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, parse, relative, resolve } from 'node:path';
 import type { SupervisorConfig } from './config.js';
 import { purgeWindowsPostgresStorage, stopSupervisor } from './runtime.js';
-import { loadSettings } from './preferences.js';
-import { removeOwnedShortcuts } from './shortcuts.js';
-import { removeOwnedCommand } from './command-integration.js';
+import { inspectSettings } from './preferences.js';
+import { removeDiscoveredOwnedShortcuts, removeOwnedShortcuts } from './shortcuts.js';
+import { removeDiscoveredOwnedCommand, removeOwnedCommand } from './command-integration.js';
 
 export type UninstallResult = { scheduled: boolean; purge: boolean; removed: string[]; preserved: string[] };
 export type UninstallStage = 'stopping' | 'removing' | 'scheduling';
@@ -20,9 +20,10 @@ export async function uninstallPortable(config: SupervisorConfig, options: { pur
   progress?.('stopping');
   await stopSupervisor(config);
   progress?.('removing');
-  const settings = await loadSettings(config);
-  const shortcuts = await removeOwnedShortcuts(settings);
-  const command = await removeOwnedCommand(settings, config.platform, config.platform === 'win32');
+  const inspection=await inspectSettings(config);
+  const settings=inspection.status==='valid'?inspection.settings:undefined;
+  const shortcuts=settings?await removeOwnedShortcuts(settings):await removeDiscoveredOwnedShortcuts(config);
+  const command=settings?await removeOwnedCommand(settings,config.platform,config.platform==='win32'):await removeDiscoveredOwnedCommand(config,config.platform==='win32');
   if (purge) await purgeWindowsPostgresStorage(config);
   const removed = [config.bundleRoot, ...shortcuts, ...command.removed, ...(purge ? dataRoots : [])];
   const preserved = purge ? [] : dataRoots;

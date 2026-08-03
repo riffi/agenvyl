@@ -21,4 +21,5 @@ export const migrations = [
   { version: 20, name: 'workspace_slots', file: '020_workspace_slots.sql' },
   { version: 21, name: 'workspace_stat_cache', file: '021_workspace_stat_cache.sql' },
   { version: 22, name: 'remove_persona_role', file: '022_remove_persona_role.sql' },
+  { version: 23, name: 'english_local_user_default', file: '023_english_local_user_default.sql' },
 ] as const;

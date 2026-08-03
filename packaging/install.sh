@@ -106,6 +106,11 @@ bundle=$1
 [ -f "$bundle/manifest.json" ] && [ -x "$bundle/bin/agenvyl" ] || { echo 'Agenvyl archive is incomplete.' >&2; exit 1; }
 
 mkdir -p "$versions_root"
+canonical_directory() {
+  [ -d "$1" ] && [ ! -L "$1" ] || return 1
+  (CDPATH= cd -P -- "$1" 2>/dev/null && pwd -P)
+}
+versions_root_canonical=$(canonical_directory "$versions_root") || { echo 'Unable to resolve the Agenvyl versions directory.' >&2; exit 1; }
 destination=$versions_root/$version
 staged=$versions_root/.agenvyl-$version-new-$$
 previous=$versions_root/.agenvyl-$version-previous-$$
@@ -128,11 +133,30 @@ if ! "$bundle_command" init --locale en --shortcuts recommended --path "$path_po
 fi
 rm -rf "$previous"
 
-is_owned_version() {
+owned_version_path() {
   candidate=$1
-  case $candidate in "$versions_root"/*) [ -f "$candidate/manifest.json" ] ;; *) return 1 ;; esac
+  [ -n "$candidate" ] && [ -d "$candidate" ] && [ ! -L "$candidate" ] || return 1
+  candidate_parent=$(canonical_directory "$(dirname -- "$candidate")") || return 1
+  [ "$candidate_parent" = "$versions_root_canonical" ] || return 1
+  candidate_canonical=$(canonical_directory "$candidate") || return 1
+  [ "$(dirname -- "$candidate_canonical")" = "$versions_root_canonical" ] || return 1
+  candidate_name=$(basename -- "$candidate_canonical")
+  case $candidate_name in ''|.|..|.*|*[!0-9A-Za-z._-]*) return 1 ;; esac
+  manifest=$candidate_canonical/manifest.json
+  [ -f "$manifest" ] && [ ! -L "$manifest" ] || return 1
+  "$destination/runtime/bin/node" -e '
+    const fs = require("node:fs");
+    try {
+      const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+      if (manifest?.name !== "agenvyl-portable-runtime" || manifest?.version !== process.argv[2]) process.exit(1);
+    } catch { process.exit(1); }
+  ' "$manifest" "$candidate_name" || return 1
+  printf '%s\n' "$candidate_canonical"
 }
-if [ "$path_policy" = user ] && [ -n "$old_bundle" ] && [ "$old_bundle" != "$destination" ] && is_owned_version "$old_bundle"; then rm -rf "$old_bundle"; fi
+owned_old_bundle=
+if [ "$path_policy" = user ] && [ -n "$old_bundle" ]; then owned_old_bundle=$(owned_version_path "$old_bundle") || owned_old_bundle=; fi
+destination_canonical=$(canonical_directory "$destination")
+if [ -n "$owned_old_bundle" ] && [ "$owned_old_bundle" != "$destination_canonical" ]; then rm -rf "$owned_old_bundle"; fi
 
 setup_complete=0
 if [ "$no_launch" != 1 ]; then

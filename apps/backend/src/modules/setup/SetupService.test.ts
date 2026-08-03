@@ -28,6 +28,14 @@ describe('SetupService harness discovery cache',()=>{
     const stale=await service.harnessSettings({forceRefresh:true});
     expect(stale).toMatchObject({candidates:[],discoveryCache:{state:'stale',error:{code:'discovery_unavailable'}}});
   });
+
+  it('starts setup state from saved configuration when discovery and runtime are empty',async()=>{
+    const connector=connectorFixture();
+    connector.configuration.mockResolvedValueOnce({apiVersion:'v2',instances:[{id:'custom-hermes',type:'hermes',enabled:true,endpoint:'http://127.0.0.1:9000'}]});
+    const database={sql:vi.fn().mockResolvedValue([{completed_at:null,locale:'en',first_room_id:null}])} as unknown as Database;
+    const state=await new SetupService(database,connector,'C:/workspaces',{invalidate:vi.fn()}).state();
+    expect(state.instances).toEqual([{id:'custom-hermes',type:'hermes',enabled:true,endpoint:'http://127.0.0.1:9000',status:'unavailable'}]);
+  });
 });
 
 const databaseFixture=()=>({sql:vi.fn().mockResolvedValue([])}) as unknown as Database;

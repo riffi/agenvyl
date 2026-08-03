@@ -28,7 +28,28 @@ permissions:
   attestations: write
 
 jobs:
+  policy:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.source.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - id: source
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          tag="v$version"
+          tag_sha=""
+          if git show-ref --verify --quiet "refs/tags/$tag"; then
+            tag_sha=$(git rev-parse "$tag^{commit}")
+          fi
+          node scripts/release-policy.mjs source "$GITHUB_REF" "$GITHUB_SHA" "$tag_sha"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
   portable:
+    needs: policy
     uses: ./.github/workflows/portable.yml
     with:
       target: all
@@ -40,6 +61,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version: 22
@@ -111,10 +134,23 @@ jobs:
           node -e "const fs=require('node:fs'); JSON.parse(fs.readFileSync('artifacts/release/agenvyl-sbom.cdx.json','utf8'))"
           (cd artifacts/release && sha256sum agenvyl-* install.sh install.ps1 TRUST.md > SHA256SUMS)
       - name: Attest release build provenance
-        uses: actions/attest-build-provenance@v3
+        uses: actions/attest@v4
         with:
           subject-path: artifacts/release/*
-      - name: Create or update draft release assets
+      - name: Verify release build provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          for asset in artifacts/release/*; do
+            gh attestation verify "$asset" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release-draft.yml" \
+              --signer-digest "$GITHUB_SHA" \
+              --source-digest "$GITHUB_SHA" \
+              --source-ref "$GITHUB_REF"
+          done
+      - name: Create or update draft release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_NOTES: ${{ steps.metadata.outputs.notes }}
@@ -123,6 +159,12 @@ jobs:
           RELEASE_PRERELEASE: ${{ steps.metadata.outputs.prerelease }}
         shell: bash
         run: |
+          git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG" 2>/dev/null || true
+          tag_sha=""
+          if git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
+            tag_sha=$(git rev-parse "$RELEASE_TAG^{commit}")
+          fi
+          node scripts/release-policy.mjs source "$GITHUB_REF" "$GITHUB_SHA" "$tag_sha"
           if ! release_json=$(gh release view "$RELEASE_TAG" --json isDraft,isPrerelease,targetCommitish 2>/dev/null); then
             create_args=(
               "$RELEASE_TAG"
@@ -136,28 +178,20 @@ jobs:
             fi
             gh release create "${create_args[@]}"
           else
-            is_draft=$(printf '%s\n' "$release_json" | jq -r '.isDraft')
-            if [ "$is_draft" != true ]; then
-              echo "::error::Release $RELEASE_TAG is already published. Published release assets are immutable."
-              exit 1
-            fi
-
             target=$(printf '%s\n' "$release_json" | jq -r '.targetCommitish')
             target_sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/$target" --jq '.sha')
-            if [ "$target_sha" != "$GITHUB_SHA" ]; then
-              echo "::error::Draft $RELEASE_TAG targets $target_sha, but this workflow is building $GITHUB_SHA."
-              exit 1
-            fi
-
+            is_draft=$(printf '%s\n' "$release_json" | jq -r '.isDraft')
             is_prerelease=$(printf '%s\n' "$release_json" | jq -r '.isPrerelease')
-            if [ "$is_prerelease" != "$RELEASE_PRERELEASE" ]; then
-              echo "::error::Draft $RELEASE_TAG has prerelease=$is_prerelease, but this run requested prerelease=$RELEASE_PRERELEASE. Delete the obsolete draft deliberately before changing release type."
-              exit 1
-            fi
+            policy=$(jq -cn --argjson exists true --argjson isDraft "$is_draft" --argjson isPrerelease "$is_prerelease" --arg targetSha "$target_sha" --argjson expectedPrerelease "$RELEASE_PRERELEASE" --arg sha "$GITHUB_SHA" '{exists:$exists,isDraft:$isDraft,isPrerelease:$isPrerelease,targetSha:$targetSha,expectedPrerelease:$expectedPrerelease,sha:$sha}')
+            node scripts/release-policy.mjs draft "$policy"
 
             gh release edit "$RELEASE_TAG" \
               --draft \
               --title "$RELEASE_TITLE" \
               --notes-file "$RELEASE_NOTES"
           fi
-          gh release upload "$RELEASE_TAG" --clobber artifacts/release/*
+      - name: Upload verified draft assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.metadata.outputs.tag }}
+        run: gh release upload "$RELEASE_TAG" --clobber artifacts/release/*

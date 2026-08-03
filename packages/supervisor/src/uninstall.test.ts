@@ -62,6 +62,25 @@ describe('portable uninstall cleanup', () => {
     await waitForMissing(fixture.config.userCommandPath);
   });
 
+  it('uses ownership markers when malformed settings cannot be loaded',async()=>{
+    const fixture=await portableFixture();
+    await mkdir(fixture.config.userBinDirectory,{recursive:true});
+    await writeFile(fixture.config.userCommandPath,`#!/bin/sh\n# Agenvyl owned command\n# Agenvyl bundle: ${fixture.config.bundleRoot}\n`);
+    await writeFile(fixture.config.settingsFile,'{');
+    await uninstallPortable(fixture.config);
+    await waitForMissing(fixture.config.userCommandPath);
+    await expect(stat(fixture.config.paths.data)).resolves.toBeTruthy();
+  });
+
+  it('preserves a foreign command when settings are malformed',async()=>{
+    const fixture=await portableFixture();
+    await mkdir(fixture.config.userBinDirectory,{recursive:true});
+    await writeFile(fixture.config.userCommandPath,'foreign command');
+    await writeFile(fixture.config.settingsFile,'{');
+    await uninstallPortable(fixture.config);
+    await expect(readFile(fixture.config.userCommandPath,'utf8')).resolves.toBe('foreign command');
+  });
+
   it('requires confirmation and purges portable files plus user data', async () => {
     const fixture = await portableFixture();
     await expect(uninstallPortable(fixture.config, { purge: true })).rejects.toThrow('--purge --yes');

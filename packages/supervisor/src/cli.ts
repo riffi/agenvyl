@@ -5,8 +5,8 @@ import { backupDatabase, doctor, getSupervisorStatus, readLogs, restoreDatabase,
 import { resolveSupervisorConfig } from './config.js';
 import { runSetup } from './setup.js';
 import { uninstallPortable } from './uninstall.js';
-import { initializePortable } from './initialization.js';
-import { defaultLocale, isLocale, loadSettings, type Locale } from './preferences.js';
+import { initializePortable, repairPortable } from './initialization.js';
+import { defaultLocale, inspectSettings, invalidSettingsError, isLocale, type Locale } from './preferences.js';
 import type { ShortcutPolicy } from './shortcuts.js';
 import { errorEnvelope, SupervisorError } from './errors.js';
 import { runTui } from './tui.js';
@@ -19,7 +19,9 @@ const json = args.includes('--json');
 
 try {
   const config = resolveSupervisorConfig();
-  const locale = (await loadSettings(config))?.locale ?? defaultLocale();
+  const settings=await inspectSettings(config);
+  const locale=settings.status==='valid'?settings.settings.locale:defaultLocale();
+  if(settings.status==='invalid'&&!['repair','doctor','uninstall','tui'].includes(command))throw invalidSettingsError(settings.cause);
   if (command === 'daemon') await runSupervisorDaemon(config);
   else if (command === 'tui') await runTui(config, fileURLToPath(import.meta.url));
   else if (command === 'init') {
@@ -30,6 +32,14 @@ try {
     if (!isShortcutPolicy(shortcuts)) throw new SupervisorError('INVALID_SHORTCUT_POLICY', '--shortcuts must be none, recommended, or all');
     if (path !== 'none' && path !== 'user') throw new SupervisorError('INVALID_PATH_POLICY', '--path must be none or user');
     output(await initializePortable(config, { locale: selectedLocale, shortcuts, path }), json, selectedLocale);
+  } else if(command==='repair'){
+    const selectedLocale=option(args,'--locale')??locale;
+    const shortcuts=option(args,'--shortcuts')??'recommended';
+    const path=option(args,'--path')??'user';
+    if(!isLocale(selectedLocale))throw new SupervisorError('INVALID_LOCALE','--locale must be ru or en');
+    if(!isShortcutPolicy(shortcuts))throw new SupervisorError('INVALID_SHORTCUT_POLICY','--shortcuts must be none, recommended, or all');
+    if(path!=='none'&&path!=='user')throw new SupervisorError('INVALID_PATH_POLICY','--path must be none or user');
+    output(await repairPortable(config,{locale:selectedLocale,shortcuts,path}),json,selectedLocale);
   } else if (command === 'setup') output(await runSetup(config, fileURLToPath(import.meta.url), { all: args.includes('--all'), openBrowser: !args.includes('--no-open') }), json, locale);
   else if (command === 'start') output(await startSupervisor(config, fileURLToPath(import.meta.url)), json, locale);
   else if (command === 'stop') output(await stopSupervisor(config), json, locale);
@@ -46,7 +56,7 @@ try {
     const archive = positional(args, 0); if (!archive) throw new SupervisorError('RESTORE_FILE_REQUIRED', 'Usage: agenvyl restore <file>');
     output({ restored: await restoreDatabase(config, resolve(archive)) }, json, locale);
   } else if (command === 'uninstall') output(await uninstallPortable(config, { purge: args.includes('--purge'), confirmed: args.includes('--yes') }), json, locale);
-  else throw new SupervisorError('UNKNOWN_COMMAND', 'Usage: agenvyl <tui|init|setup|start|stop|status|logs|doctor|backup|restore|uninstall>');
+  else throw new SupervisorError('UNKNOWN_COMMAND', 'Usage: agenvyl <tui|init|repair|setup|start|stop|status|logs|doctor|backup|restore|uninstall>');
 } catch (error) {
   if (json) process.stderr.write(`${JSON.stringify(errorEnvelope(error), null, 2)}\n`);
   else process.stderr.write(`agenvyl: ${humanError(error)}\n`);

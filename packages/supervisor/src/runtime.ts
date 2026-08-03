@@ -8,6 +8,7 @@ import { isProcessAlive, spawnLogged, terminateChild, terminateProcessTree } fro
 import type { SupervisorConfig } from './config.js';
 import type { ManagedComponent, RuntimeState, RuntimeStatus } from './types.js';
 import { SupervisorError } from './errors.js';
+import { inspectSettings } from './preferences.js';
 
 type Secrets = { connectorToken: string; postgresPassword: string };
 type ChildMap = Partial<Record<ManagedComponent, ChildProcess>>;
@@ -187,6 +188,8 @@ export async function readLogs(config: SupervisorConfig, component = 'supervisor
 
 export async function doctor(config: SupervisorConfig): Promise<{ ok: boolean; checks: Check[] }> {
   const checks: Check[] = [];
+  const settings=await inspectSettings(config);
+  checks.push(settings.status==='invalid'?{name:'Supervisor settings',ok:false,detail:`Damaged settings: ${settings.cause}. Run agenvyl repair.`}:{name:'Supervisor settings',ok:true,detail:settings.status==='valid'?'Settings are valid':'Settings have not been created yet'});
   checks.push(await fileCheck('Node runtime', config.nodeExecutable));
   checks.push(await fileCheck('Core entrypoint', config.coreEntrypoint));
   checks.push(await fileCheck('Connector entrypoint', config.connectorEntrypoint));

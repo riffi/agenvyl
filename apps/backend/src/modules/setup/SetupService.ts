@@ -36,8 +36,11 @@ export class SetupService{
       this.connector.instances().catch(()=>({apiVersion:'v2' as const,connectorEpoch:'',instances:[]})),
       this.connector.configuration().catch(()=>({apiVersion:'v2' as const,instances:[]})),
     ]);
-    const configured=new Map(configuration.instances.map(instance=>[instance.id,instance]));
-    return{completed:Boolean(row.completed_at),locale:row.locale==='ru'?'ru':'en',workspaceRoot:this.workspaceRoot,...(row.first_room_id?{firstRoomId:String(row.first_room_id)}:{}),instances:instances.instances.map(instance=>({id:instance.id,type:instance.type,status:instance.status,...(instance.managed!==undefined?{managed:instance.managed}:{}),...(configured.get(instance.id)?.externalDirectoryRoots!==undefined?{externalDirectoryRoots:configured.get(instance.id)?.externalDirectoryRoots}:{}),...(configured.get(instance.id)?.allowDangerFullAccess!==undefined?{allowDangerFullAccess:configured.get(instance.id)?.allowDangerFullAccess}:{}),...(configured.get(instance.id)?.allowSubscriptionOAuth!==undefined?{allowSubscriptionOAuth:configured.get(instance.id)?.allowSubscriptionOAuth}:{})})),candidates:discovery.value.candidates,discoveryCache:discovery.cache};
+    const runtime=new Map(instances.instances.map(instance=>[instance.id,instance]));
+    return{completed:Boolean(row.completed_at),locale:row.locale==='ru'?'ru':'en',workspaceRoot:this.workspaceRoot,...(row.first_room_id?{firstRoomId:String(row.first_room_id)}:{}),instances:configuration.instances.map(instance=>{
+      const current=runtime.get(instance.id);
+      return{...instance,status:instance.enabled?(current?.status??'unavailable'):'disabled',...(current?.error?{error:current.error}:{})};
+    }),candidates:discovery.value.candidates,discoveryCache:discovery.cache};
   }
   async harnessSettings(options:{forceRefresh?:boolean}={}):Promise<HarnessSettingsState>{
     const connectorState=Promise.all([

@@ -36,7 +36,7 @@ export function SetupPage(){
     if(claudeNeedsConfirmation&&claudeOAuthConfirmation!=='CLAUDE OAUTH'){setError('Type CLAUDE OAUTH to confirm');return;}
     setBusy(true);setError('');try{
     const options:SetupHarnessOptions={openCodeManaged,codexDangerFullAccess,claudeOAuthConfirmed:claudeOAuthConfirmation==='CLAUDE OAUTH'};
-    const instances:SetupHarnessInstance[]=(state?.candidates??[]).filter(candidate=>selected.includes(candidate.type)||(candidate.type==='antigravity'&&agy)).map(candidate=>instanceConfig(candidate,state?.instances.find(instance=>instance.type===candidate.type),options));
+    const instances=state?mergeSetupHarnessSelection(state,selected,agy,options):[];
     await apiRequest('/api/v1/setup/harnesses',{method:'PUT',body:{instances}});
     if(configure&&state?.firstRoomId){navigate(`/rooms/${state.firstRoomId}`,{replace:true});return;}
     const catalog=instances.length?await apiRequest<Catalog>('/api/v1/harnesses?refresh=true'):undefined;
@@ -95,7 +95,7 @@ export function ConnectorOptions({selected,openCodeManaged,setOpenCodeManaged,co
   </section>;
 }
 export function initialConnectorSelection(state:SetupState){
-  const enabled=new Set(state.instances.map(instance=>instance.type));
+  const enabled=new Set(state.instances.filter(instance=>instance.enabled).map(instance=>instance.type));
   const selectable=new Set<string>(state.candidates.filter(candidate=>candidate.safeToSelect&&!candidate.requiresConfirmation).map(candidate=>candidate.type));
   const openCode=state.instances.find(instance=>instance.type==='opencode');
   const codex=state.instances.find(instance=>instance.type==='codex');
@@ -107,6 +107,25 @@ export function initialConnectorSelection(state:SetupState){
     claudeOAuthConfirmed:state.instances.some(instance=>instance.type==='claude'&&instance.allowSubscriptionOAuth),
   };
 }
-export function instanceConfig(candidate:SetupHarnessCandidate,existing?:SetupState['instances'][number],options:SetupHarnessOptions={}):SetupHarnessInstance{return{id:`local-${candidate.type}`,type:candidate.type,enabled:true,...(candidate.endpoint&&candidate.type!=='codex'&&candidate.type!=='claude'?{endpoint:candidate.endpoint.url}:{}),...(candidate.type==='opencode'?{managed:options.openCodeManaged??existing?.managed??true,externalDirectoryRoots:existing?.externalDirectoryRoots??[]}:{}),...(candidate.type==='antigravity'?{permissionMode:'plan' as const}:{}),...(candidate.type==='codex'?{allowDangerFullAccess:options.codexDangerFullAccess??existing?.allowDangerFullAccess??false}:{}),...(candidate.type==='claude'?{allowSubscriptionOAuth:candidate.requiresConfirmation==='claude_oauth'&&(options.claudeOAuthConfirmed??existing?.allowSubscriptionOAuth??false)}:{})};}
+export function instanceConfig(candidate:SetupHarnessCandidate,existing?:SetupState['instances'][number],options:SetupHarnessOptions={},id=`local-${candidate.type}`):SetupHarnessInstance{return{id:existing?.id??id,type:candidate.type,enabled:true,...(existing?.endpoint?{endpoint:existing.endpoint}:{}),...(!existing?.endpoint&&candidate.endpoint&&candidate.type!=='codex'&&candidate.type!=='claude'?{endpoint:candidate.endpoint.url}:{}),...(candidate.type==='opencode'?{managed:options.openCodeManaged??existing?.managed??true,externalDirectoryRoots:existing?.externalDirectoryRoots??[]}:{}),...(candidate.type==='antigravity'?{permissionMode:existing?.permissionMode??'plan' as const}:{}),...(candidate.type==='codex'?{allowDangerFullAccess:options.codexDangerFullAccess??existing?.allowDangerFullAccess??false}:{}),...(candidate.type==='claude'?{allowSubscriptionOAuth:candidate.requiresConfirmation==='claude_oauth'&&(options.claudeOAuthConfirmed??existing?.allowSubscriptionOAuth??false)}:{})};}
+export function mergeSetupHarnessSelection(state:SetupState,selected:string[],agy:boolean,options:SetupHarnessOptions={}):SetupHarnessInstance[]{
+  const safe=new Map(state.candidates.filter(candidate=>candidate.safeToSelect).map(candidate=>[candidate.type,candidate]));
+  const selectedTypes=new Set<SetupHarnessInstance['type']>([...selected.filter(isHarnessType),...(agy?['antigravity' as const]:[])]);
+  const typeCounts=new Map<SetupHarnessInstance['type'],number>();for(const instance of state.instances)typeCounts.set(instance.type,(typeCounts.get(instance.type)??0)+1);
+  const result:SetupHarnessInstance[]=state.instances.map(({status:_status,error:_error,...instance})=>{
+    const candidate=safe.get(instance.type);if(!candidate)return instance;
+    const enabled=selectedTypes.has(instance.type);
+    if(!enabled)return{...instance,enabled:false};
+    return instanceConfig(candidate,{...instance,status:'healthy'},typeCounts.get(instance.type)===1?options:{});
+  });
+  for(const type of selectedTypes){
+    if(result.some(instance=>instance.type===type))continue;
+    const candidate=safe.get(type);if(!candidate)continue;
+    result.push(instanceConfig(candidate,undefined,options,uniqueInstanceId(type,result)));
+  }
+  return result;
+}
+function uniqueInstanceId(type:string,instances:SetupHarnessInstance[]){const base=`local-${type}`;let id=base,index=2;while(instances.some(instance=>instance.id===id))id=`${base}-${index++}`;return id;}
+function isHarnessType(value:string):value is SetupHarnessInstance['type']{return['hermes','opencode','antigravity','codex','claude'].includes(value);}
 function message(value:unknown){return value instanceof Error?value.message:'Setup failed';}
 const cacheTime=(value:string|null)=>value?` from ${new Date(value).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`:'';

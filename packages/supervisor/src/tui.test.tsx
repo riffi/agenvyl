@@ -1,6 +1,6 @@
 import { render } from 'ink-testing-library';
 import { describe, expect, it, vi } from 'vitest';
-import { availableDashboardActions, DashboardView, type DashboardAction } from './tui.js';
+import { availableDashboardActions, DashboardView, RecoveryScreen, type DashboardAction } from './tui.js';
 import { LanguageScreen } from './tui-language.js';
 import { UninstallErrorScreen, UninstalledScreen, UninstallingScreen, UninstallScreen } from './tui-uninstall.js';
 
@@ -62,6 +62,17 @@ describe('uninstall completion', () => {
     expect(view.lastFrame()).toContain('данные сохранены');
     view.stdin.write('\r');
     expect(onExit).toHaveBeenCalled();
+  });
+});
+
+describe('settings recovery',()=>{
+  it('offers repair, preserving uninstall, and exit without loaded settings',async()=>{
+    const repair=vi.fn(),uninstall=vi.fn(),exit=vi.fn();
+    const view=render(<RecoveryScreen locale="en" busy={false} technical="invalid JSON" onRepair={repair} onUninstall={uninstall} onExit={exit}/>);
+    await new Promise(resolve=>setTimeout(resolve,10));
+    expect(view.lastFrame()).toContain('settings are damaged');
+    view.stdin.write('r');view.stdin.write('u');view.stdin.write('q');
+    expect(repair).toHaveBeenCalledOnce();expect(uninstall).toHaveBeenCalledOnce();expect(exit).toHaveBeenCalledOnce();
   });
 });
 

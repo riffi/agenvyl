@@ -41,6 +41,13 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run check:local
+      - name: Check without checkout pollution
+        shell: bash
+        run: |
+          git status --porcelain --untracked-files=all > "$RUNNER_TEMP/status-before"
+          npm run check:local
+          npm run test:supervisor
+          git status --porcelain --untracked-files=all > "$RUNNER_TEMP/status-after"
+          diff -u "$RUNNER_TEMP/status-before" "$RUNNER_TEMP/status-after"
       - run: npm run build
       - run: sh -n packaging/install.sh
