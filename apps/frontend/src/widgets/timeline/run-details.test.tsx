@@ -95,13 +95,13 @@ describe('Timeline run details', () => {
   });
 
   it('hides resolved requests but keeps unresolved requests visible',()=>{
-    const resolvedRun:Run={...run,request:{kind:'approval',prompt:'Allow completed action?',resolved:'answered'}};
+    const resolvedRun:Run={...run,requests:[{id:'request-resolved',kind:'approval',prompt:'Allow completed action?',resolved:'answered'}]};
     const state={...initialState,hydrated:true,messages:[{id:'message-1',text:'@coder continue',createdAt:'2026-07-23T07:31:58.341Z',targets:['coder' as const],runIds:['run-1'],author:{profileId:'local-user',displayName:'User',handle:'user'},addressedToAll:false}],runs:{'run-1':resolvedRun},runOrder:['run-1']};
     const {rerender}=render(<Timeline state={state} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()}/>);
     expect(screen.queryByText('Allow completed action?')).toBeNull();
     expect(screen.queryByText(/approval/)).toBeNull();
 
-    const unresolvedRun:Run={...resolvedRun,request:{kind:'approval',prompt:'Allow pending action?'}};
+    const unresolvedRun:Run={...resolvedRun,requests:[{id:'request-pending',kind:'approval',prompt:'Allow pending action?'}]};
     rerender(<Timeline state={{...state,runs:{'run-1':unresolvedRun}}} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()}/>);
     expect(screen.getByText('Allow pending action?')).toBeTruthy();
   });

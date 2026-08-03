@@ -1,4 +1,4 @@
-import type { ConnectorRunState, Message, Room, Run, ToolActivity,WorkspaceAttachment,RunArtifact,RunEmbed } from '@agenvyl/contracts';
+import type { ConnectorRunState, Message, Room, Run, RunRequest, ToolActivity,WorkspaceAttachment,RunArtifact,RunEmbed } from '@agenvyl/contracts';
 import type { Persona, PersonaGroup, PersonaVersion, RoomEvent, RunStatus } from '../../types.js';
 
 export type DatabaseRow = Record<string, unknown>;
@@ -33,7 +33,7 @@ export function toRoomEvent(row: DatabaseRow): RoomEvent {
   return { id:text(row.id),event_id:text(row.event_id),sequence:number(row.sequence),type:text(row.type),payload:row.payload };
 }
 
-export function toTimelineRun(row: DatabaseRow, tools: ToolActivity[], request?: Run['request'],artifacts:RunArtifact[]=[],embeds:RunEmbed[]=[]): Run {
+export function toTimelineRun(row: DatabaseRow, tools: ToolActivity[], requests:RunRequest[]=[],artifacts:RunArtifact[]=[],embeds:RunEmbed[]=[]): Run {
   const connector=connectorRunState(row);
   return {
     id:text(row.id),messageId:text(row.message_id),agent:text(row.persona_handle),requestedModel:text(row.requested_model),harnessInstanceId:text(row.harness_instance_id),harnessType:text(row.harness_type),...(row.adapter_generation==null?{}:{adapterGeneration:number(row.adapter_generation)}),modelId:text(row.model_id),executionProfile:runExecutionProfile(row.execution_profile),status:runStatus(row.status),text:text(row.text),reasoning:text(row.reasoning),tools,
@@ -43,7 +43,7 @@ export function toTimelineRun(row: DatabaseRow, tools: ToolActivity[], request?:
     ...(row.retry_of_run_id == null ? {} : { retryOfRunId:text(row.retry_of_run_id) }),
     ...(row.response_slot_id == null ? {} : { responseSlotId:text(row.response_slot_id) }),
     ...(row.attempt_number == null ? {} : { attemptNumber:number(row.attempt_number) }),
-    ...(request ? { request } : {}), ...(row.error == null ? {} : { error:text(row.error) }),...(row.error_code == null ? {} : { errorCode:text(row.error_code) }),artifacts,embeds,
+    requests, ...(row.error == null ? {} : { error:text(row.error) }),...(row.error_code == null ? {} : { errorCode:text(row.error_code) }),artifacts,embeds,
     ...(row.base_snapshot_id?{workspaceResult:{base_snapshot_id:text(row.base_snapshot_id),...(row.result_snapshot_id?{result_snapshot_id:text(row.result_snapshot_id)}:{}),...(row.published_snapshot_id?{published_snapshot_id:text(row.published_snapshot_id)}:{}),capture_status:text(row.workspace_capture_status) as NonNullable<Run['workspaceResult']>['capture_status'],publish_status:text(row.workspace_publish_status) as NonNullable<Run['workspaceResult']>['publish_status'],conflict_count:number(row.workspace_conflict_count),errors:Array.isArray(row.workspace_errors)?row.workspace_errors as NonNullable<Run['workspaceResult']>['errors']:[]}}:{}),
   };
 }

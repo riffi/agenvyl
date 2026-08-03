@@ -39,18 +39,18 @@ export class ConnectorRunAdapter implements RunGateway,RunEventStream,RunRecover
     return this.controlCheckpoint(execution);
   }
 
-  async approve(executionId:string,choice:ApprovalChoice):Promise<RunCheckpoint>{
+  async approve(executionId:string,requestId:string,choice:ApprovalChoice):Promise<RunCheckpoint>{
     const state=this.executions.get(executionId);
-    const request=[...(state?.pendingRequests.values()??[])].find(candidate=>candidate.kind==='approval');
-    if(!request)throw new Error('Connector has no active approval request for this execution');
+    const request=state?.pendingRequests.get(requestId);
+    if(!request||request.kind!=='approval')throw new Error('Connector has no matching active approval request for this execution');
     const result=await this.connector.resolve(executionId,request.id,normalizeApproval(choice,request.choices));
     return this.controlCheckpoint(result.execution);
   }
 
-  async clarify(executionId:string,resolution:import('@agenvyl/contracts').RunRequestResolution|string):Promise<RunCheckpoint>{
+  async clarify(executionId:string,requestId:string,resolution:import('@agenvyl/contracts').RunRequestResolution|string):Promise<RunCheckpoint>{
     const state=this.executions.get(executionId);
-    const request=[...(state?.pendingRequests.values()??[])].find(candidate=>candidate.kind==='clarification');
-    if(!request)throw new Error('Connector has no active clarification request for this execution');
+    const request=state?.pendingRequests.get(requestId);
+    if(!request||request.kind!=='clarification')throw new Error('Connector has no matching active clarification request for this execution');
     const result=await this.connector.resolve(executionId,request.id,typeof resolution==='string'?resolution:'resolution' in resolution?resolution.resolution:resolution);
     return this.controlCheckpoint(result.execution);
   }
@@ -94,7 +94,7 @@ function mapConnectorEvent(localRunId:string,event:ConnectorExecutionEvent):RunE
     case'output.text.delta':return{events:[{type:'run.delta',payload:{runId:localRunId,text:event.payload.text}}]};
     case'output.reasoning.delta':return{events:[{type:'run.reasoning.delta',payload:{runId:localRunId,text:event.payload.text}}]};
     case'usage.updated':return{events:[{type:'run.usage',payload:{runId:localRunId,usage:event.payload.usage}}]};
-    case'tool.started':case'tool.updated':case'tool.completed':return{events:[{type:'tool.updated',payload:{runId:localRunId,tool:{id:event.payload.toolId,name:event.payload.name,detail:event.payload.safeSummary,...(event.payload.safeInput===undefined?{}:{input:event.payload.safeInput}),status:event.type==='tool.started'?'started':event.type==='tool.completed'?'completed':'progress'}}}]};
+    case'tool.started':case'tool.updated':case'tool.completed':case'tool.failed':case'tool.cancelled':return{events:[{type:'tool.updated',payload:{runId:localRunId,tool:{id:event.payload.toolId,name:event.payload.name,detail:event.payload.safeSummary,...(event.payload.safeInput===undefined?{}:{input:event.payload.safeInput}),status:event.type==='tool.started'?'started':event.type==='tool.completed'?'completed':event.type==='tool.failed'?'failed':event.type==='tool.cancelled'?'cancelled':'progress'}}}]};
     case'request.opened':return{events:[{type:'request.created',payload:{runId:localRunId,requestId:event.payload.request.id,kind:event.payload.request.kind,prompt:event.payload.request.prompt,...(event.payload.request.directory?{directory:event.payload.request.directory}:{}),...(event.payload.request.choices?{choices:event.payload.request.choices}:{}),...(event.payload.request.questions?{questions:event.payload.request.questions}:{}),...(event.payload.request.autoResolutionMs?{autoResolutionMs:event.payload.request.autoResolutionMs}:{})}}],status:event.payload.request.kind==='approval'?'waiting_approval':'waiting_clarification'};
     case'request.resolved':return{events:[{type:'request.resolved',payload:{runId:localRunId,requestId:event.payload.requestId,resolution:event.payload.outcome}}]};
     case'execution.completed':return{events:[],terminal:{status:'completed'}};

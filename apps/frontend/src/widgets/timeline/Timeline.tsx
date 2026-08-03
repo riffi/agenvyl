@@ -54,8 +54,8 @@ function StatusIcon({status}:{status:Run['status']}) {
 }
 
 function ToolStatusIcon({status}:{status:Run['tools'][number]['status']}) {
-  const label=status==='completed'?'Completed':status==='progress'?'In progress':'Started';
-  const icon=status==='completed'?<CircleCheck/>:status==='progress'?<LoaderCircle/>:<Clock3/>;
+  const label=status==='completed'?'Completed':status==='failed'?'Failed':status==='cancelled'?'Cancelled':status==='progress'?'In progress':'Started';
+  const icon=status==='completed'?<CircleCheck/>:status==='failed'?<CircleX/>:status==='cancelled'?<Ban/>:status==='progress'?<LoaderCircle/>:<Clock3/>;
   return <span className={`${styles['tool-status']} ${styles[`tool-status-${status}`]}`} role="img" aria-label={`Tool status: ${label}`} title={label}>{icon}</span>;
 }
 
@@ -125,7 +125,7 @@ function RunCard({
   attemptCount:number;
   previousAttempt:()=>void;
   nextAttempt:()=>void;
-  resolve: (v: import('@agenvyl/contracts').RunRequestResolution|string) => void;
+  resolve: (requestId:string,v: import('@agenvyl/contracts').RunRequestResolution|string) => Promise<void>;
   collapsed:boolean;
   toggleCollapsed:()=>void;
   harnessCatalog?:HarnessCatalog;
@@ -184,7 +184,7 @@ function RunCard({
         </div>
         {isLongAnswer(run.text)&&run.status==='completed'&&<button className={`${styles['answer-toggle']} ${collapsed?styles.expand:styles.collapse}`} type="button" onClick={toggleCollapsed} aria-expanded={!collapsed}>{collapsed?<><span>Expand response</span><ChevronDown/></>:<><span>Collapse response</span><ChevronUp/></>}</button>}
         {run.status==='failed'&&<RunFailureNotice errorCode={run.errorCode} error={run.error}/>}
-        {run.request&&!run.request.resolved&&<RunRequest key={`${run.id}:${run.request.prompt}:${run.request.questions?.map(question=>question.id).join(',')??''}`} request={run.request} resolve={resolve}/>}
+        {(run.requests??[]).some(request=>!request.resolved)&&<section className={styles['request-list']} aria-label="Pending agent requests"><strong>{(run.requests??[]).filter(request=>!request.resolved).length} pending {(run.requests??[]).filter(request=>!request.resolved).length===1?'request':'requests'}</strong>{(run.requests??[]).filter(request=>!request.resolved).map(request=><RunRequest key={request.id} request={request} resolve={value=>resolve(request.id,value)}/>)}</section>}
         <RunFiles files={changedFiles} openWorkspace={openWorkspace}/>
         {hasActivity&&<div className={styles['run-meta-row']}>
           <RunActivity actionCount={run.tools.length} hasWorkspaceEvent={workspaceActivity}>
@@ -342,7 +342,7 @@ export function Timeline({
                     attemptCount={attemptIds.length}
                     previousAttempt={()=>void showAttempt(shownIndex-1)}
                     nextAttempt={()=>void showAttempt(shownIndex+1)}
-                    resolve={(v) => gateway.resolve(id, v)}
+                    resolve={(requestId,v) => gateway.resolve(id,requestId,v)}
                     collapsed={isCollapsed(run)}
                     toggleCollapsed={()=>{const collapse=!isCollapsed(run);setExpandedAnswers(current=>{const next=new Set(current);collapse?next.delete(id):next.add(id);return next});setCollapsedAnswers(current=>{const next=new Set(current);collapse?next.add(id):next.delete(id);return next});if(collapse)requestAnimationFrame(()=>document.getElementById(`run-${id}`)?.scrollIntoView({behavior:'smooth',block:'start'}))}}
                     harnessCatalog={harnessCatalog}

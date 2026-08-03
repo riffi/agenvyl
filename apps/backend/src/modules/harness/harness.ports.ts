@@ -32,8 +32,8 @@ export type RunEventMapping = {
 export interface RunGateway {
   createRun(input: StartRunInput): Promise<RunHandle>;
   stop(runId: string): Promise<RunCheckpoint | undefined>;
-  approve(runId: string, choice: ApprovalChoice): Promise<RunCheckpoint | undefined>;
-  clarify?(runId: string, resolution: import('@agenvyl/contracts').RunRequestResolution|string): Promise<RunCheckpoint | undefined>;
+  approve(runId: string, requestId:string, choice: ApprovalChoice): Promise<RunCheckpoint | undefined>;
+  clarify?(runId: string, requestId:string, resolution: import('@agenvyl/contracts').RunRequestResolution|string): Promise<RunCheckpoint | undefined>;
 }
 
 export interface RunEventStream {

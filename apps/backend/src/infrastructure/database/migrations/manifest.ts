@@ -23,4 +23,5 @@ export const migrations = [
   { version: 22, name: 'remove_persona_role', file: '022_remove_persona_role.sql' },
   { version: 23, name: 'english_local_user_default', file: '023_english_local_user_default.sql' },
   { version: 24, name: 'run_adapter_generation', file: '024_run_adapter_generation.sql' },
+  { version: 25, name: 'failed_tool_activity', file: '025_failed_tool_activity.sql' },
 ] as const;

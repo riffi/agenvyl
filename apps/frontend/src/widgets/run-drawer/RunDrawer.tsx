@@ -18,7 +18,7 @@ const statusCopy:Record<RunStatus,{title:string;description:string;tone:string}>
   cancelled:{title:'Run cancelled',description:'The agent’s work was stopped.',tone:'neutral'},
 };
 
-const toolStatus:Record<ToolActivity['status'],string>={started:'Started',progress:'In progress',completed:'Completed'};
+const toolStatus:Record<ToolActivity['status'],string>={started:'Started',progress:'In progress',completed:'Completed',failed:'Failed',cancelled:'Cancelled'};
 
 function modelInfo(run:Run|undefined,persona:Persona|undefined,harnessCatalog:HarnessCatalog|undefined){
   const route=run?.modelId??run?.requestedModel??persona?.model_id??persona?.requested_model;
@@ -41,7 +41,9 @@ function StatusGlyph({status}:{status:RunStatus}) {
 }
 
 function ToolGlyph({status}:{status:ToolActivity['status']}) {
-  return <span className={status==='completed'?styles['tool-completed']:styles.spinning}>{status==='completed'?<Check/>:<LoaderCircle/>}</span>;
+  const className=status==='completed'?'tool-completed':status==='failed'?'tool-failed':status==='cancelled'?'tool-cancelled':'spinning';
+  const icon=status==='completed'?<Check/>:status==='failed'?<CircleX/>:status==='cancelled'?<Ban/>:<LoaderCircle/>;
+  return <span className={styles[className]}>{icon}</span>;
 }
 
 function readableToolDetail(detail:string) {
@@ -96,10 +98,10 @@ export function RunDrawer({run,persona,harnessCatalog,close}:{run?:Run;persona?:
 
         {run.status==='failed'&&<RunFailureNotice errorCode={run.errorCode} error={run.error}/>}
 
-        {run.request&&<section className={styles['request-card']}>
-          {run.request.kind==='approval'?<TriangleAlert/>:<CircleHelp/>}
-          <span><strong>{run.request.kind==='approval'?'Approval requested':'Clarification requested'}</strong><p>{run.request.prompt}</p>{run.request.directory&&<code>{run.request.directory}</code>}{run.request.resolved&&<small>Response received: {run.request.resolved}</small>}</span>
-        </section>}
+        {(run.requests??[]).map(request=><section key={request.id} className={styles['request-card']}>
+          {request.kind==='approval'?<TriangleAlert/>:<CircleHelp/>}
+          <span><strong>{request.kind==='approval'?'Approval requested':'Clarification requested'}</strong><p>{request.prompt}</p>{request.directory&&<code>{request.directory}</code>}{request.resolved&&<small>Response received: {request.resolved}</small>}</span>
+        </section>)}
 
         <section className={styles.activity}>
           <h3><Wrench/>Activity</h3>

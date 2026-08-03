@@ -97,7 +97,7 @@ export class RoomRepository {
           : [];
         const extras = new Map<
           string,
-          { tools: ToolActivity[]; request?: Run["request"] }
+          { tools: ToolActivity[]; requests:Map<string,NonNullable<Run["requests"]>[number]> }
         >();
         for (const event of eventRows) {
           if (!event.payload || typeof event.payload !== "object") continue;
@@ -105,7 +105,7 @@ export class RoomRepository {
             runId =
               typeof payload.runId === "string" ? payload.runId : undefined;
           if (!runId) continue;
-          const extra = extras.get(runId) ?? { tools: [] },
+          const extra = extras.get(runId) ?? { tools: [],requests:new Map() },
             tool = payload.tool;
           if (event.type === "tool.updated" && isTool(tool)) {
             extra.tools = upsertToolActivity(extra.tools,tool);
@@ -125,21 +125,25 @@ export class RoomRepository {
               autoResolutionMs = Number.isSafeInteger(payload.autoResolutionMs)
                 ? Number(payload.autoResolutionMs)
                 : undefined;
-            extra.request = {
+            const requestId=typeof payload.requestId==='string'?payload.requestId:`legacy-${runId}`;
+            extra.requests.set(requestId,{
+              id:requestId,
               kind: payload.kind,
               prompt: typeof payload.prompt === "string" ? payload.prompt : "",
               ...(typeof payload.directory==="string"?{directory:payload.directory}:{}),
               ...(choices.length ? { choices } : {}),
               ...(questions.length ? { questions } : {}),
               ...(autoResolutionMs !== undefined ? { autoResolutionMs } : {}),
-            };
+            });
           }
           if (
             event.type === "request.resolved" &&
-            extra.request &&
+            typeof payload.requestId==='string' &&
             typeof payload.resolution === "string"
-          )
-            extra.request.resolved = payload.resolution;
+          ){
+            const request=extra.requests.get(payload.requestId);
+            if(request)extra.requests.set(payload.requestId,{...request,resolved:payload.resolution});
+          }
           extras.set(runId, extra);
         }
         const selectedRows = messageIds.length
@@ -161,7 +165,7 @@ export class RoomRepository {
             return toTimelineRun(
               row,
               extra?.tools ?? [],
-              extra?.request,
+              [...(extra?.requests.values()??[])],
               artifactMap.get(id) ?? [],
               embedMap.get(id) ?? [],
             );
@@ -376,7 +380,7 @@ function isTool(value: unknown): value is ToolActivity {
     typeof (value as { detail?: unknown }).detail === "string" &&
     ((value as { input?: unknown }).input === undefined ||
       typeof (value as { input?: unknown }).input === "string") &&
-    ["started", "progress", "completed"].includes(
+    ["started", "progress", "completed", "failed", "cancelled"].includes(
       String((value as { status?: unknown }).status),
     ),
   );

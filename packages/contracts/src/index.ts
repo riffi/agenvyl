@@ -46,7 +46,18 @@ export type ToolActivity = {
   name: string;
   detail: string;
   input?: string;
-  status: 'started' | 'progress' | 'completed';
+  status: 'started' | 'progress' | 'completed' | 'failed' | 'cancelled';
+};
+
+export type RunRequest = {
+  id: string;
+  kind: 'approval' | 'clarification';
+  prompt: string;
+  directory?: string;
+  choices?: string[];
+  questions?: StructuredQuestion[];
+  autoResolutionMs?: number;
+  resolved?: string;
 };
 
 export function upsertToolActivity(tools:ToolActivity[],incoming:ToolActivity):ToolActivity[]{
@@ -106,7 +117,7 @@ export type Run = {
   retryOfRunId?: string;
   responseSlotId?: string;
   attemptNumber?: number;
-  request?: { kind: 'approval' | 'clarification'; prompt: string;directory?:string;choices?: string[]; questions?: StructuredQuestion[]; autoResolutionMs?:number; resolved?: string };
+  requests?: RunRequest[];
   error?: string;
   errorCode?: string;
   artifacts?: RunArtifact[];
@@ -249,8 +260,8 @@ export type ServerRoomEvent =
   | Envelope<'run.upstream_status', { runId: string } & UpstreamStatusEvent>
   | Envelope<'run.usage', {runId:string;usage:TokenUsage}>
   | Envelope<'tool.updated', { runId: string; tool: ToolActivity }>
-  | Envelope<'request.created', { runId: string; kind: 'approval' | 'clarification'; prompt: string;directory?:string;choices?: string[];questions?:StructuredQuestion[];autoResolutionMs?:number }>
-  | Envelope<'request.resolved', { runId: string; resolution: string }>
+  | Envelope<'request.created', { runId: string; requestId:string; kind: 'approval' | 'clarification'; prompt: string;directory?:string;choices?: string[];questions?:StructuredQuestion[];autoResolutionMs?:number }>
+  | Envelope<'request.resolved', { runId: string; requestId:string; resolution: string }>
   | Envelope<'run.selected', { responseSlotId: string; runId: string }>
   | Envelope<'room.participant.updated', RoomPersona>
   | Envelope<'room.plan.approval.updated', { approved: PlanVersionRef | null }>
@@ -281,7 +292,7 @@ const eventTypes = new Set<ServerRoomEvent['type']>([
   'run.workspace.publish.updated',
 ]);
 const runStatuses = new Set<RunStatus>(['queued', 'streaming', 'finalizing', 'stopping', 'waiting_approval', 'waiting_clarification', 'completed', 'failed', 'cancelled']);
-const toolStatuses = new Set<ToolActivity['status']>(['started', 'progress', 'completed']);
+const toolStatuses = new Set<ToolActivity['status']>(['started', 'progress', 'completed', 'failed', 'cancelled']);
 
 export function isServerRoomEvent(value: unknown): value is ServerRoomEvent {
   if (!isRecord(value) || typeof value.id !== 'string' || !Number.isSafeInteger(value.sequence)) return false;
@@ -295,8 +306,8 @@ export function isServerRoomEvent(value: unknown): value is ServerRoomEvent {
     case 'run.upstream_status': return typeof payload.runId === 'string' && isUpstreamStatusEvent(payload);
     case 'run.usage': return typeof payload.runId==='string'&&isTokenUsage(payload.usage);
     case 'tool.updated': return typeof payload.runId === 'string' && isRecord(payload.tool) && strings(payload.tool, 'id', 'name', 'detail', 'status') && (payload.tool.input === undefined || typeof payload.tool.input === 'string') && toolStatuses.has(payload.tool.status as ToolActivity['status']);
-    case 'request.created': return strings(payload, 'runId', 'kind', 'prompt') && (payload.kind === 'approval' || payload.kind === 'clarification') && (payload.directory===undefined||typeof payload.directory==='string') && (payload.choices===undefined||(Array.isArray(payload.choices)&&payload.choices.every(choice=>typeof choice==='string'))) && (payload.questions===undefined||isStructuredQuestions(payload.questions)) && (payload.autoResolutionMs===undefined||Number.isSafeInteger(payload.autoResolutionMs));
-    case 'request.resolved': return strings(payload, 'runId', 'resolution');
+    case 'request.created': return strings(payload, 'runId', 'requestId', 'kind', 'prompt') && (payload.kind === 'approval' || payload.kind === 'clarification') && (payload.directory===undefined||typeof payload.directory==='string') && (payload.choices===undefined||(Array.isArray(payload.choices)&&payload.choices.every(choice=>typeof choice==='string'))) && (payload.questions===undefined||isStructuredQuestions(payload.questions)) && (payload.autoResolutionMs===undefined||Number.isSafeInteger(payload.autoResolutionMs));
+    case 'request.resolved': return strings(payload, 'runId', 'requestId', 'resolution');
     case 'run.selected': return strings(payload, 'responseSlotId', 'runId');
     case 'room.participant.updated': return isRoomPersona(payload);
     case 'room.plan.approval.updated': return payload.approved===null||isPlanVersionRef(payload.approved);

@@ -201,7 +201,7 @@ export type ConnectorExecutionEvent =
   | EventEnvelope<'output.text.delta', { text: string }>
   | EventEnvelope<'output.reasoning.delta', { text: string }>
   | EventEnvelope<'usage.updated', { usage: TokenUsage }>
-  | EventEnvelope<'tool.started' | 'tool.updated' | 'tool.completed', { toolId: string; name: string; safeSummary: string; safeInput?: string }>
+  | EventEnvelope<'tool.started' | 'tool.updated' | 'tool.completed' | 'tool.failed' | 'tool.cancelled', { toolId: string; name: string; safeSummary: string; safeInput?: string }>
   | EventEnvelope<'request.opened', { request: ConnectorRequestSnapshot }>
   | EventEnvelope<'request.resolved', { requestId: string; outcome: ConnectorRequestResolution }>
   | EventEnvelope<'execution.completed' | 'execution.cancelled', Record<string, never>>

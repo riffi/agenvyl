@@ -1,25 +1,26 @@
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight, CircleHelp, TriangleAlert } from 'lucide-react';
-import type { Run, RunRequestResolution, StructuredQuestion } from '@agenvyl/contracts';
+import type { RunRequest as RequestSnapshot, RunRequestResolution, StructuredQuestion } from '@agenvyl/contracts';
 import { Button, Input } from '../../shared/ui';
 import styles from './Timeline.module.css';
 
-type RequestSnapshot = NonNullable<Run['request']>;
-
-export const RunRequest = ({ request, resolve }: { request:RequestSnapshot; resolve:(value:RunRequestResolution|string)=>void }) => {
+export const RunRequest = ({ request, resolve }: { request:RequestSnapshot; resolve:(value:RunRequestResolution|string)=>Promise<void>|void }) => {
   const [reply,setReply]=useState('');
   const [activeIndex,setActiveIndex]=useState(0);
   const [answers,setAnswers]=useState<Record<string,string[]>>({});
   const [otherAnswers,setOtherAnswers]=useState<Record<string,string>>({});
+  const [submitting,setSubmitting]=useState(false);
+  const [error,setError]=useState<string>();
   const questions=request.questions??[];
   const activeQuestion=questions[activeIndex];
 
   if(request.resolved)return <RequestFrame request={request}><small>Response: {request.resolved}</small></RequestFrame>;
+  const submit=async(value:RunRequestResolution|string)=>{setSubmitting(true);setError(undefined);try{await resolve(value)}catch(reason){setError(reason instanceof Error?reason.message:String(reason));setSubmitting(false)}};
   if(request.kind==='approval'){
     const choices=request.choices?.length?request.choices:['approved','denied'];
-    return <RequestFrame request={request}><div>{choices.map((choice,index)=><Button key={choice} variant={index===0?'primary':undefined} size="sm" onClick={()=>resolve(choice)}>{approvalLabel(choice)}</Button>)}</div></RequestFrame>;
+    return <RequestFrame request={request}><div>{choices.map((choice,index)=><Button key={choice} disabled={submitting} variant={index===0?'primary':undefined} size="sm" onClick={()=>void submit(choice)}>{approvalLabel(choice)}</Button>)}</div>{error&&<small role="alert">{error}</small>}</RequestFrame>;
   }
-  if(activeQuestion)return <RequestFrame request={request}><form className={styles['request-questions']} onSubmit={event=>{event.preventDefault();const payload=questionAnswers(questions,answers,otherAnswers);if(Object.values(payload).every(values=>values.length>0))resolve({answers:payload});}}>
+  if(activeQuestion)return <RequestFrame request={request}><form className={styles['request-questions']} onSubmit={event=>{event.preventDefault();const payload=questionAnswers(questions,answers,otherAnswers);if(Object.values(payload).every(values=>values.length>0))void submit({answers:payload});}}>
     <div className={styles['request-progress']} aria-label={`Question ${activeIndex+1} of ${questions.length}`}>
       <span>Question {activeIndex+1} of {questions.length}</span>
       <div aria-hidden="true">{questions.map((question,index)=><i key={question.id} className={index===activeIndex?styles.active:index<activeIndex?styles.complete:''}/>)}</div>
@@ -29,11 +30,12 @@ export const RunRequest = ({ request, resolve }: { request:RequestSnapshot; reso
       <Button type="button" size="sm" icon={<ChevronLeft/>} disabled={activeIndex===0} onClick={()=>setActiveIndex(index=>Math.max(0,index-1))}>Back</Button>
       {activeIndex<questions.length-1
         ? <Button type="button" variant="primary" size="sm" disabled={!hasAnswer(activeQuestion,answers,otherAnswers)} onClick={()=>setActiveIndex(index=>Math.min(questions.length-1,index+1))}>Next<ChevronRight/></Button>
-        : <Button variant="primary" size="sm" disabled={!hasAnswer(activeQuestion,answers,otherAnswers)}>Respond</Button>}
+        : <Button variant="primary" size="sm" disabled={submitting||!hasAnswer(activeQuestion,answers,otherAnswers)}>Respond</Button>}
     </div>
+    {error&&<small role="alert">{error}</small>}
   </form></RequestFrame>;
 
-  return <RequestFrame request={request}>{request.choices?.length?<div className={styles['request-choices']}>{request.choices.map(choice=><Button key={choice} type="button" size="sm" onClick={()=>setReply(choice)}>{choice}</Button>)}</div>:null}<form onSubmit={event=>{event.preventDefault();if(reply.trim())resolve(reply.trim());}}><Input value={reply} onChange={event=>setReply(event.target.value)} placeholder="Your response…"/><Button variant="primary" size="sm">Respond</Button></form></RequestFrame>;
+  return <RequestFrame request={request}>{request.choices?.length?<div className={styles['request-choices']}>{request.choices.map(choice=><Button key={choice} type="button" size="sm" onClick={()=>setReply(choice)}>{choice}</Button>)}</div>:null}<form onSubmit={event=>{event.preventDefault();if(reply.trim())void submit(reply.trim());}}><Input value={reply} onChange={event=>setReply(event.target.value)} placeholder="Your response…"/><Button disabled={submitting} variant="primary" size="sm">Respond</Button></form>{error&&<small role="alert">{error}</small>}</RequestFrame>;
 };
 
 const RequestFrame = ({request,children}:{request:RequestSnapshot;children:React.ReactNode}) => <div className={`${styles.request} ${styles[request.kind]??''}`}>

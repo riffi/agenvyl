@@ -80,7 +80,7 @@ describe.sequential('Core -> Connector -> Hermes black-box gate', () => {
 
     const approvalId = await createRun(core.url, '[e2e:approval]');
     const waiting = await waitForRun(core.url, approvalId, run => run.status === 'waiting_approval');
-    expect(waiting.request).toMatchObject({ kind: 'approval', prompt: 'Allow fixture tool?' });
+    expect(waiting.requests?.[0]).toMatchObject({ kind: 'approval', prompt: 'Allow fixture tool?' });
     const approval = await fetch(`${core.url}/api/v1/runs/${approvalId}/approval`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -90,7 +90,7 @@ describe.sequential('Core -> Connector -> Hermes black-box gate', () => {
     expect(approval.status, JSON.stringify(approvalBody)).toBe(200);
     const approved = await waitForRun(core.url, approvalId, run => run.status === 'completed');
     expect(approved.text).toBe('before after');
-    expect(approved.request).toMatchObject({ resolved: 'answered' });
+    expect(approved.requests?.[0]).toMatchObject({ resolved: 'answered' });
     expect(hermes.approvalChoices).toEqual(['once']);
 
     const cancelledId = await createRun(core.url, '[e2e:cancel]');
@@ -182,7 +182,7 @@ type TimelineRun = {
   status: string;
   text: string;
   tools: Array<{ id: string; name: string; detail: string; status: string }>;
-  request?: { kind: string; prompt: string; resolved?: string };
+  requests?: Array<{id:string;kind:string;prompt:string;resolved?:string}>;
   harnessInstanceId: string;
   harnessType: string;
   modelId: string;

@@ -42,7 +42,7 @@ describe.sequential('Core -> Connector -> OpenCode-compatible black-box gate', (
     const runtime=await startRuntime(cleanups);
     const sourceId=await createRun(runtime.coreUrl,'[opencode:external-denial]');
     const sourceApproval=await waitForRun(runtime.coreUrl,sourceId,run=>run.status==='waiting_approval');
-    expect(sourceApproval.request).toMatchObject({kind:'approval',choices:['allow_directory','deny']});
+    expect(sourceApproval.requests?.[0]).toMatchObject({kind:'approval',choices:['allow_directory','deny']});
     await resolveApproval(runtime.coreUrl,sourceId,'denied');
     const failed=await waitForRun(runtime.coreUrl,sourceId,run=>run.status==='failed');
     expect(failed).toMatchObject({text:'Checking external file. ',errorCode:'external_directory_denied'});
@@ -73,7 +73,7 @@ describe.sequential('Core -> Connector -> OpenCode-compatible black-box gate', (
     const runtime=await startRuntime(cleanups);
     const runId=await createRun(runtime.coreUrl,'[opencode:external-grant]');
     const waiting=await waitForRun(runtime.coreUrl,runId,run=>run.status==='waiting_approval');
-    expect(waiting.request).toMatchObject({
+    expect(waiting.requests?.[0]).toMatchObject({
       kind:'approval',
       choices:['allow_directory','deny'],
       prompt:'Add this directory to allowed external directories and allow this request?',
@@ -99,10 +99,10 @@ describe.sequential('Core -> Connector -> OpenCode-compatible black-box gate', (
 
     const approvalId = await createRun(runtime.coreUrl, '[opencode:cancel-approval]');
     const waiting = await waitForRun(runtime.coreUrl, approvalId, run => run.status === 'waiting_approval');
-    expect(waiting.request).toMatchObject({ kind: 'approval' });
+    expect(waiting.requests?.[0]).toMatchObject({ kind: 'approval' });
     await cancelRun(runtime.coreUrl, approvalId);
     const cancelled = await waitForRun(runtime.coreUrl, approvalId, run => run.status === 'cancelled');
-    expect(cancelled.request).toMatchObject({ kind: 'approval', resolved: 'cancelled' });
+    expect(cancelled.requests?.[0]).toMatchObject({ kind: 'approval', resolved: 'cancelled' });
 
     expect(runtime.fixture.abortCount).toBe(2);
     expect(new Set(runtime.fixture.abortedSessionIds).size).toBe(2);
@@ -133,18 +133,18 @@ describe.sequential('Core -> Connector -> OpenCode-compatible black-box gate', (
     const runtime = await startRuntime(cleanups);
     const runId = await createRun(runtime.coreUrl, '[opencode:restart-approval]');
     const beforeRestart = await waitForRun(runtime.coreUrl, runId, run => run.status === 'waiting_approval');
-    expect(beforeRestart).toMatchObject({ text: 'before-restart ', request: { kind: 'approval' } });
+    expect(beforeRestart).toMatchObject({ text: 'before-restart ', requests: [{ kind: 'approval' }] });
 
     await runtime.restartCore();
     const restored = await waitForRun(runtime.coreUrl, runId, run => run.status === 'waiting_approval');
-    expect(restored).toMatchObject({ text: 'before-restart ', request: beforeRestart.request });
+    expect(restored).toMatchObject({ text: 'before-restart ', requests: beforeRestart.requests });
 
     const approval = await fetch(`${runtime.coreUrl}/api/v1/runs/${runId}/approval`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ resolution: 'approved' }),
     });
     expect(approval.status, await approval.clone().text()).toBe(200);
     const completed = await waitForRun(runtime.coreUrl, runId, run => run.status === 'completed');
-    expect(completed).toMatchObject({ text: 'before-restart after-restart', request: { kind: 'approval', resolved: 'answered' } });
+    expect(completed).toMatchObject({ text: 'before-restart after-restart', requests: [{ kind: 'approval', resolved: 'answered' }] });
     expect(runtime.fixture.permissionReplies).toHaveLength(1);
 
     const sql = connectTestDatabase(runtime.databaseUrl);
@@ -170,17 +170,17 @@ describe.sequential('Core -> Connector -> OpenCode-compatible black-box gate', (
     const runtime = await startRuntime(cleanups);
     const runId = await createRun(runtime.coreUrl, '[opencode:clarification]');
     const beforeRestart = await waitForRun(runtime.coreUrl, runId, run => run.status === 'waiting_clarification');
-    expect(beforeRestart.request).toMatchObject({ kind: 'clarification', choices: ['PNG', 'SVG'] });
+    expect(beforeRestart.requests?.[0]).toMatchObject({ kind: 'clarification', choices: ['PNG', 'SVG'] });
 
     await runtime.restartCore();
     const restored = await waitForRun(runtime.coreUrl, runId, run => run.status === 'waiting_clarification');
-    expect(restored.request).toEqual(beforeRestart.request);
+    expect(restored.requests).toEqual(beforeRestart.requests);
     const answer = await fetch(`${runtime.coreUrl}/api/v1/runs/${runId}/request`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ resolution: 'WebP, please' }),
     });
     expect(answer.status, await answer.clone().text()).toBe(200);
     const completed = await waitForRun(runtime.coreUrl, runId, run => run.status === 'completed');
-    expect(completed).toMatchObject({ text: 'clarification-answer-received', request: { kind: 'clarification', resolved: 'answered' } });
+    expect(completed).toMatchObject({ text: 'clarification-answer-received', requests: [{ kind: 'clarification', resolved: 'answered' }] });
     expect(runtime.fixture.questionReplies).toEqual([{ requestId: expect.stringContaining('question-'), answers: [['WebP, please']] }]);
     await expectSingleTerminal(runtime.databaseUrl, [runId]);
   }, 20_000);
@@ -218,7 +218,7 @@ type TimelineRun = {
   harnessInstanceId: string;
   harnessType: string;
   modelId: string;
-  request?: { kind: string;prompt?:string;directory?:string;choices?: string[]; resolved?: string };
+  requests?: Array<{id:string;kind:string;prompt?:string;directory?:string;choices?:string[];resolved?:string}>;
   error?: string;
   errorCode?: string;
 };

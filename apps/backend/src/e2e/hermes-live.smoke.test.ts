@@ -96,7 +96,7 @@ describe.sequential('Core -> Connector -> installed Hermes live smoke', () => {
     );
     const waiting = await waitForRun(coreUrl, approvalRunId, run => run.status === 'waiting_approval' || terminalStatuses.has(run.status));
     expect(waiting.status, `Hermes did not request approval; ${safeFailure(waiting)}`).toBe('waiting_approval');
-    expect(waiting.request).toMatchObject({ kind: 'approval' });
+    expect(waiting.requests?.[0]).toMatchObject({ kind: 'approval' });
     const approval = await fetch(`${coreUrl}/api/v1/runs/${approvalRunId}/approval`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -144,7 +144,7 @@ type TimelineRun = {
   status: string;
   text: string;
   tools: Array<{ id: string; name: string; detail: string; status: string }>;
-  request?: { kind: string; resolved?: string };
+  requests?: Array<{id:string;kind:string;resolved?:string}>;
   usage?:{inputTokens:number;outputTokens:number;totalTokens?:number};
   error?: { code?: string; message?: string };
   errorCode?:string;

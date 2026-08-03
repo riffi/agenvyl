@@ -666,7 +666,7 @@ function normalizeToolEvent(event: Record<string, unknown>): AdapterExecutionEve
   if (status === 'pending') return { type: 'tool.started', payload: { toolId, name, safeSummary: `Preparing ${name}` } };
   if (status === 'running') return { type: 'tool.updated', payload: { toolId, name, safeSummary: title ?? `Running ${name}` } };
   if (status === 'completed') return { type: 'tool.completed', payload: { toolId, name, safeSummary: title ?? `${name} completed` } };
-  if (status === 'error') return { type: 'tool.completed', payload: { toolId, name, safeSummary: `${name} failed` } };
+  if (status === 'error') return { type: 'tool.failed', payload: { toolId, name, safeSummary: `${name} failed` } };
   return;
 }
 

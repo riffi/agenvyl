@@ -109,7 +109,7 @@ export class RunExecutor {
   }
 
   private resumePersisted(persisted:PersistedNonTerminalRun,execution:ExecutionSnapshot,transport:RunGateway&RunEventStream&RunRecovery){
-    const waitingFor=execution.pendingRequests[0]?.kind,run:RunContext={id:persisted.id,messageId:persisted.messageId,roomId:persisted.roomId,personaVersionId:persisted.personaVersionId,personaHandle:persisted.personaHandle,requestedModel:persisted.requestedModel,harnessInstanceId:persisted.harnessInstanceId,harnessType:persisted.harnessType,modelId:persisted.modelId,executionProfile:persisted.executionProfile,conversationHistory:persisted.context,responseText:persisted.text,upstreamRunId:persisted.connectorExecutionId!,connectorExecutionId:persisted.connectorExecutionId!,...(persisted.executionDeadlineAt?{executionDeadlineAt:persisted.executionDeadlineAt}:{}),status:persisted.status as RunStatus,terminal:false,started:true,refreshContext:false,stopping:persisted.status==='stopping'||execution.status==='stopping',...(waitingFor?{waitingFor}:{})};
+    const pendingRequests=new Map(execution.pendingRequests.map(request=>[request.id,{...request,resolved:request.resolution?.outcome}])),run:RunContext={id:persisted.id,messageId:persisted.messageId,roomId:persisted.roomId,personaVersionId:persisted.personaVersionId,personaHandle:persisted.personaHandle,requestedModel:persisted.requestedModel,harnessInstanceId:persisted.harnessInstanceId,harnessType:persisted.harnessType,modelId:persisted.modelId,executionProfile:persisted.executionProfile,conversationHistory:persisted.context,responseText:persisted.text,upstreamRunId:persisted.connectorExecutionId!,connectorExecutionId:persisted.connectorExecutionId!,...(persisted.executionDeadlineAt?{executionDeadlineAt:persisted.executionDeadlineAt}:{}),status:persisted.status as RunStatus,terminal:false,started:true,refreshContext:false,stopping:persisted.status==='stopping'||execution.status==='stopping',pendingRequests};
     this.dependencies.activeRuns.add(run);
     const task=this.consumeRecovered(run,execution,transport).finally(()=>{this.tasks.delete(run.id);this.pump();});
     this.tasks.set(run.id,task);
@@ -182,21 +182,23 @@ export class RunExecutor {
     return { status: 'stopping', adapter: 'run_gateway' };
   }
 
-  async approve(runId: string, input: RunRequestResolution|string|undefined) {
+  async approve(runId: string, requestId:string, input: RunRequestResolution|string|undefined) {
     const { activeRuns } = this.dependencies;
     const run = activeRuns.get(runId);
     if (!run) throw new AppError('not_found', 404, 'Run not found');
-    if (run.waitingFor === 'clarification') {
+    const pending=run.pendingRequests?.get(requestId);
+    if(!pending)throw new AppError('request_not_active',409,'Run request is not active');
+    if (pending.kind === 'clarification') {
       const resolution=typeof input==='string'?{resolution:input.trim()}:input,gateway=this.gatewayFor(run);
       if(!run.upstreamRunId||!resolution||('resolution' in resolution&&!resolution.resolution))throw new AppError('invalid_clarification_resolution',400,'Clarification answer must not be empty');
       if('resolution' in resolution&&resolution.resolution.length>2_000)throw new AppError('invalid_clarification_resolution',400,'Clarification answer is too long');
       if('answers' in resolution&&(!Object.keys(resolution.answers).length||Object.values(resolution.answers).some(values=>!Array.isArray(values)||values.some(value=>typeof value!=='string'||value.length>2_000))))throw new AppError('invalid_clarification_resolution',400,'Structured clarification answers are invalid');
       if(!gateway.clarify)throw new AppError('unsupported',409,'The configured run gateway has no verified clarification resolution endpoint');
-      try{const checkpoint=await gateway.clarify(run.upstreamRunId,resolution);if(checkpoint)await this.dependencies.runs.advanceConnectorCheckpoint(run.id,checkpoint);}
+      try{const checkpoint=await gateway.clarify(run.upstreamRunId,requestId,resolution);if(checkpoint)await this.dependencies.runs.advanceConnectorCheckpoint(run.id,checkpoint);}
       catch(error){throw mapUpstreamError(error);}
       return;
     }
-    if (!run.upstreamRunId || run.waitingFor !== 'approval') {
+    if (!run.upstreamRunId || pending.kind !== 'approval') {
       throw new AppError('approval_not_active', 409, 'Approval is not active');
     }
     const choice=typeof input==='string'?input:'resolution' in (input??{})?(input as {resolution:string}).resolution:undefined;
@@ -204,11 +206,19 @@ export class RunExecutor {
       throw new AppError('invalid_approval_choice', 400, 'Invalid approval choice');
     }
     try {
-      const checkpoint=await this.gatewayFor(run).approve(run.upstreamRunId, choice);
+      const checkpoint=await this.gatewayFor(run).approve(run.upstreamRunId,requestId,choice);
       if(checkpoint)await this.dependencies.runs.advanceConnectorCheckpoint(run.id,checkpoint);
     } catch (error) {
       throw mapUpstreamError(error);
     }
+  }
+
+  async approveLegacy(runId:string,input:RunRequestResolution|string|undefined){
+    const run=this.dependencies.activeRuns.get(runId);
+    if(!run)throw new AppError('not_found',404,'Run not found');
+    const pending=[...(run.pendingRequests?.keys()??[])];
+    if(pending.length!==1)throw new AppError('ambiguous_request',409,pending.length?'Multiple run requests are active; resolve one by request ID':'Run request is not active');
+    return this.approve(runId,pending[0]!,input);
   }
 
   async shutdown(timeoutMs=10_000) {
@@ -336,7 +346,13 @@ export class RunExecutor {
       }
     }else for(const event of mappedEvents)await this.dependencies.events.emit(run.roomId,event.type,event.payload);
     if(mapping.status)run.status=mapping.status;
-    for(const event of mapping.events){if(event.type==='run.delta')run.responseText=(run.responseText??'')+String(event.payload.text??'');if(event.type==='request.created')run.waitingFor=event.payload.kind as'approval'|'clarification';if(event.type==='request.resolved')run.waitingFor=undefined;}
+    for(const event of mapping.events){
+      if(event.type==='run.delta')run.responseText=(run.responseText??'')+String(event.payload.text??'');
+      if(event.type==='request.created'&&typeof event.payload.requestId==='string'&&(event.payload.kind==='approval'||event.payload.kind==='clarification')){
+        run.pendingRequests??=new Map();run.pendingRequests.set(event.payload.requestId,{id:event.payload.requestId,kind:event.payload.kind,prompt:String(event.payload.prompt??''),...(typeof event.payload.directory==='string'?{directory:event.payload.directory}:{}),...(Array.isArray(event.payload.choices)?{choices:event.payload.choices as string[]}:{}),...(Array.isArray(event.payload.questions)?{questions:event.payload.questions as import('@agenvyl/contracts').StructuredQuestion[]}:{}),...(typeof event.payload.autoResolutionMs==='number'?{autoResolutionMs:event.payload.autoResolutionMs}:{})});
+      }
+      if(event.type==='request.resolved'&&typeof event.payload.requestId==='string')run.pendingRequests?.delete(event.payload.requestId);
+    }
     if(mapping.terminal)await this.terminal(run,mapping.terminal.status,mapping.terminal.error,mapping.terminal.errorCode);
   }
 
@@ -373,7 +389,7 @@ export class RunExecutor {
     }
     run.terminal = true;
     this.clearDeadline(run.id);
-    run.waitingFor = undefined;
+    run.pendingRequests?.clear();
     if(this.dependencies.roomWorkspace){try{const embeds=await this.dependencies.roomWorkspace.resolveRunEmbeds(run.roomId,run.id,responseText);await events.emit(run.roomId,'run.embeds',{runId:run.id,embeds})}catch{/* an embed rendering failure must not strand a durably finalized run */}}
     if(run.connectorExecutionId){const finished=await runs.finishNonTerminal(run.id,status,error,errorCode);if(!finished){activeRuns.remove(run.id);this.stopTasks.delete(run.id);return;}events.publishPersisted(finished.roomId,finished.event);}
     else await events.emit(run.roomId,'run.status',{runId:run.id,status,...(error?{error}:{}),...(errorCode?{errorCode}:{})});
@@ -399,7 +415,7 @@ export class RunExecutor {
 
   private async timeout(run:RunContext){
     if(run.terminal||this.closing)return;
-    run.terminal=true;run.waitingFor=undefined;this.clearDeadline(run.id);run.controller?.abort();
+    run.terminal=true;run.pendingRequests?.clear();this.clearDeadline(run.id);run.controller?.abort();
     const error='Run exceeded the configured execution deadline',errorCode='run_timeout';
     const finished=await this.dependencies.runs.finishNonTerminal(run.id,'failed',error,errorCode);
     if(!finished){this.dependencies.activeRuns.remove(run.id);this.stopTasks.delete(run.id);return;}

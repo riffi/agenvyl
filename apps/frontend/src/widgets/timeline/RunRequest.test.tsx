@@ -3,10 +3,10 @@
 import { render,screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe,expect,it,vi } from 'vitest';
-import type { Run } from '@agenvyl/contracts';
+import type { RunRequest as RunRequestSnapshot } from '@agenvyl/contracts';
 import { RunRequest } from './RunRequest';
 
-const request:NonNullable<Run['request']>={kind:'clarification',prompt:'OpenCode needs additional input',questions:[
+const request:RunRequestSnapshot={id:'request-clarification',kind:'clarification',prompt:'OpenCode needs additional input',questions:[
   {id:'stack',header:'Stack',question:'Choose a stack',options:[{label:'React'},{label:'Vanilla'}],isOther:false,isSecret:false},
   {id:'sections',header:'Sections',question:'Choose sections',options:[{label:'Hero'},{label:'Music'}],isOther:false,isSecret:false,multiSelect:true},
   {id:'content',header:'Content',question:'Describe the content',isOther:false,isSecret:false},
@@ -15,7 +15,7 @@ const request:NonNullable<Run['request']>={kind:'clarification',prompt:'OpenCode
 describe('RunRequest structured clarification carousel',()=>{
   it('renders external-directory approval choices with user-facing labels',async()=>{
     const user=userEvent.setup(),resolve=vi.fn();
-    render(<RunRequest request={{kind:'approval',prompt:'Add this directory?',directory:'C:\\work',choices:['allow_directory','deny']}} resolve={resolve}/>);
+    render(<RunRequest request={{id:'request-approval',kind:'approval',prompt:'Add this directory?',directory:'C:\\work',choices:['allow_directory','deny']}} resolve={resolve}/>);
 
     expect(screen.getByText('C:\\work')).toBeTruthy();
     await user.click(screen.getByRole('button',{name:'Add directory and allow'}));

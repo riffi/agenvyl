@@ -227,7 +227,7 @@ describe('OpenCodeConnectorAdapter', () => {
       { type: 'tool.started', payload: { toolId: 'call-1', name: 'bash', safeSummary: 'Preparing bash' } },
       { type: 'tool.updated', payload: { toolId: 'call-1', name: 'bash', safeSummary: 'Run [ABSOLUTE_PATH]' } },
       { type: 'tool.completed', payload: { toolId: 'call-1', name: 'bash', safeSummary: 'Command finished' } },
-      { type: 'tool.completed', payload: { toolId: 'call-2', name: 'edit', safeSummary: 'edit failed' } },
+      { type: 'tool.failed', payload: { toolId: 'call-2', name: 'edit', safeSummary: 'edit failed' } },
       { type: 'execution.completed', payload: {} },
     ]);
     expect(JSON.stringify(normalized)).not.toContain('secret');

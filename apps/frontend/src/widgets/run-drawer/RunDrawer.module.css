@@ -49,6 +49,8 @@
 .activity li summary small,.tool-summary small { max-width:100%;overflow:hidden;color:var(--muted);font-size:11px;text-overflow:ellipsis;white-space:nowrap; }
 .activity li em { padding:3px 16px 0 0;color:var(--muted);font-size:10px;font-style:normal;white-space:nowrap; }
 .activity li>.tool-completed { background:#f0fdf4;color:#16a34a; }
+.activity li>.tool-failed { background:#fef2f2;color:#dc2626; }
+.activity li>.tool-cancelled { background:#f8fafc;color:#64748b; }
 .tool-details { display:flex;flex-direction:column;gap:10px;padding:10px;margin-top:8px;border-radius:8px;background:#f8fafc; }
 .tool-details>span { display:flex;min-width:0;flex-direction:column;gap:4px; }
 .tool-details small { color:var(--muted);font-size:9px;font-weight:600;text-transform:uppercase; }

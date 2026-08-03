@@ -22,6 +22,8 @@ const upstreamConfirmationEvents = new Set<AdapterExecutionEvent['type']>([
   'tool.started',
   'tool.updated',
   'tool.completed',
+  'tool.failed',
+  'tool.cancelled',
   'request.opened',
   'usage.updated',
 ]);

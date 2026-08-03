@@ -35,6 +35,8 @@ export function sanitizeAdapterEvent(event: AdapterExecutionEvent): AdapterExecu
     case 'tool.started':
     case 'tool.updated':
     case 'tool.completed':
+    case 'tool.failed':
+    case 'tool.cancelled':
       return {
         type: event.type,
         payload: {
