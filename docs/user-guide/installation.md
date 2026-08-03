@@ -111,9 +111,10 @@ The setup screen also exposes safety-sensitive instance controls when they
 apply:
 
 - OpenCode can use an existing endpoint or a Connector-managed server;
-- Codex danger-full-access requires the exact `CODEX FULL ACCESS`
-  confirmation; and
 - Claude subscription OAuth requires the exact `CLAUDE OAUTH` confirmation.
+
+Codex Full access is selected per agent after setup and requires an explicit
+warning-dialog confirmation each time it is enabled.
 
 OpenCode external-directory roots are configured later through
 **Configure connectors** and are empty by default.

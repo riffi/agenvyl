@@ -72,8 +72,6 @@ export class SetupService{
       const personas=await this.database.sql`SELECT id,name,handle,harness_instance_id,archived_at FROM personas WHERE harness_instance_id=ANY(${ids}) ORDER BY archived_at NULLS FIRST,name`;
       if(personas.length)throw new AppError('harness_instance_in_use',409,'A harness used by agents cannot be removed or change type',{instances:ids,personas:personas.map(row=>({id:String(row.id),name:String(row.name),handle:String(row.handle),harness_instance_id:String(row.harness_instance_id),archived:Boolean(row.archived_at)}))});
     }
-    const restricted=current.instances.filter(instance=>instance.type==='codex'&&instance.allowDangerFullAccess&&!nextById.get(instance.id)?.allowDangerFullAccess).map(instance=>instance.id);
-    if(restricted.length){const personas=await this.database.sql`SELECT id,name,handle,harness_instance_id,permission_profile_id,archived_at FROM personas WHERE harness_instance_id=ANY(${restricted}) AND permission_profile_id='danger-full-access' ORDER BY archived_at NULLS FIRST,name`;if(personas.length)throw new AppError('codex_danger_mode_in_use',409,'Reassign agents using danger-full-access before disabling full access',{instances:restricted,personas:personas.map(row=>({id:String(row.id),name:String(row.name),handle:String(row.handle),permission_profile_id:String(row.permission_profile_id),archived:Boolean(row.archived_at)}))});}
     const configured=await this.connector.configureInstances(input);
     this.catalogCache.invalidate();
     this.discoveryCache.invalidate();

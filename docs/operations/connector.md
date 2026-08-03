@@ -51,7 +51,6 @@ instances:
   - id: local-codex
     type: codex
     enabled: true
-    allowDangerFullAccess: false
   - id: local-opencode
     type: opencode
     enabled: true

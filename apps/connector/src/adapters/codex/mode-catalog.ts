@@ -1,8 +1,8 @@
 export type CodexSandbox='read-only'|'workspace-write'|'danger-full-access';
 type AppServerModel={model:string;displayName:string;hidden:boolean;defaultReasoningEffort?:string;supportedReasoningEfforts:Array<{reasoningEffort?:string}|string>};
 
-export const buildCodexCatalog=(values:unknown[],allowDangerFullAccess:boolean)=>{
-  const sandboxes:CodexSandbox[]=allowDangerFullAccess?['workspace-write','read-only','danger-full-access']:['workspace-write','read-only'];
+export const buildCodexCatalog=(values:unknown[])=>{
+  const sandboxes:CodexSandbox[]=['workspace-write','read-only','danger-full-access'];
   const models=values.map(parseModel).filter((model):model is AppServerModel=>model!==undefined&&!model.hidden).map(model=>{
     const reasoningEfforts=[...new Set(model.supportedReasoningEfforts.map(value=>typeof value==='string'?value:value.reasoningEffort).filter((value):value is string=>Boolean(value)))];
     return{id:model.model,label:model.displayName,reasoningEfforts,defaultReasoningEffort:model.defaultReasoningEffort??reasoningEfforts[0]??null};
@@ -10,9 +10,8 @@ export const buildCodexCatalog=(values:unknown[],allowDangerFullAccess:boolean)=
   return{models,controls:{nativeWorkflowModes:['plan','work'] as Array<'plan'|'work'>,permissionProfiles:sandboxes.map(id=>({id,label:sandboxLabel(id)})),agentVariants:[]}};
 };
 
-export const parseCodexPermission=(value:string|null,allowDangerFullAccess:boolean):CodexSandbox=>{
+export const parseCodexPermission=(value:string|null):CodexSandbox=>{
   if(!value||!['read-only','workspace-write','danger-full-access'].includes(value))throw new Error('Codex permission profile is invalid');
-  if(value==='danger-full-access'&&!allowDangerFullAccess)throw new Error('Codex danger-full-access is not enabled for this instance');
   return value as CodexSandbox;
 };
 

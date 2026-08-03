@@ -47,7 +47,6 @@ export function buildConfiguredAdapters(config: ConnectorConfig, env: NodeJS.Pro
   for(const instance of config.instances.filter(candidate=>candidate.enabled&&candidate.type==='codex'))adapters.set(instance.id,new CodexConnectorAdapter({
     command:env.AGENVYL_CONNECTOR_CODEX_COMMAND,
     env,
-    allowDangerFullAccess:instance.allowDangerFullAccess,
   }));
   for(const instance of config.instances.filter(candidate=>candidate.enabled&&candidate.type==='claude'))adapters.set(instance.id,new ClaudeConnectorAdapter({
     command:env.AGENVYL_CONNECTOR_CLAUDE_COMMAND,

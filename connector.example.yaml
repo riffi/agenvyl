@@ -20,8 +20,6 @@ instances:
   - id: local-codex
     type: codex
     enabled: false
-    # Publishes danger-full-access modes. Keep false unless the machine is trusted.
-    allowDangerFullAccess: false
   - id: local-claude
     type: claude
     enabled: false

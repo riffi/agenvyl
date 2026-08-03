@@ -14,7 +14,7 @@ const settings:HarnessSettingsState={connectorEpoch:'epoch',discoveryCache:cache
   {type:'hermes',label:'Hermes',cli:{found:true,command:'hermes'},endpoint:{url:'http://127.0.0.1:8642',reachable:true},safeToSelect:true,supportsManagedServer:false},
 ],instances:[
   {id:'local-opencode',type:'opencode',enabled:true,endpoint:'http://127.0.0.1:4096',managed:true,externalDirectoryRoots:[],status:'healthy',capabilities:['model_catalog'],personas:[]},
-  {id:'local-codex',type:'codex',enabled:false,allowDangerFullAccess:false,status:'disabled',capabilities:[],personas:[{id:'agent',name:'Builder',handle:'builder',archived:false}]},
+  {id:'local-codex',type:'codex',enabled:false,status:'disabled',capabilities:[],personas:[{id:'agent',name:'Builder',handle:'builder',archived:false}]},
 ]};
 
 let requests:Array<{url:string;method:string;body?:unknown}>=[],testHealthy=true;

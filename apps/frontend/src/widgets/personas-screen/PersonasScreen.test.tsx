@@ -5,12 +5,14 @@ import {renderToStaticMarkup} from 'react-dom/server';
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import type {HarnessCatalog} from '../../entities/harness';
 import type {Persona} from '../../entities/persona';
+import {DangerFullAccessDialog} from './DangerFullAccessDialog';
 import {HarnessRouteFields,PersonaInstructionFields} from './PersonasScreen';
 
 const cache={state:'fresh' as const,refreshedAt:'2026-07-24T00:00:00.000Z',expiresAt:'2026-07-24T00:05:00.000Z'};
 const catalog:HarnessCatalog={connectorEpoch:'epoch-1',cache,instances:[
   {id:'local-hermes',type:'hermes',status:'healthy',capabilities:['model_catalog'],models:[{id:'sol',label:'Sonnet'}],controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]},catalogCache:{state:'fresh',refreshedAt:cache.refreshedAt}},
   {id:'local-opencode',type:'opencode',status:'healthy',capabilities:['model_catalog'],models:[{id:'gpt-5',label:'GPT-5'}],controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[{id:'standard',label:'Standard'},{id:'auto-approve',label:'Auto-approve'}],agentVariants:[{id:'build',label:'Build'},{id:'plan',label:'Plan'}]},catalogCache:{state:'fresh',refreshedAt:cache.refreshedAt}},
+  {id:'local-codex',type:'codex',status:'healthy',capabilities:['model_catalog'],models:[{id:'gpt-codex',label:'GPT Codex'}],controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[{id:'workspace-write',label:'Workspace write'},{id:'read-only',label:'Read only'},{id:'danger-full-access',label:'Full access'}],agentVariants:[]},catalogCache:{state:'fresh',refreshedAt:cache.refreshedAt}},
 ]};
 const persona=(patch:Partial<Persona>={}):Persona=>({id:'persona-1',handle:'coder',name:'Coder',color:'#64748b',requested_model:'sol',harness_instance_id:'local-hermes',harness_type:'hermes',model_id:'sol',permission_profile_id:null,agent_variant_id:null,default_reasoning_effort:null,group_id:null,archived_at:null,...patch});
 
@@ -54,6 +56,19 @@ describe('persona harness route fields',()=>{
     expect(html).toContain('External paths remain limited');
   });
 
+  it('routes a Codex Full access selection through the confirmation callback',()=>{
+    const onPermissionProfileChange=vi.fn();
+    render(<HarnessRouteFields form={persona({requested_model:'gpt-codex',harness_instance_id:'local-codex',harness_type:'codex',model_id:'gpt-codex',permission_profile_id:'workspace-write'})} catalog={catalog} onChange={vi.fn()} onPermissionProfileChange={onPermissionProfileChange}/>);
+    fireEvent.change(screen.getByRole('combobox',{name:'Permission profile'}),{target:{value:'danger-full-access'}});
+    expect(onPermissionProfileChange).toHaveBeenCalledWith('danger-full-access');
+  });
+
+  it('keeps the Codex Full access risk visible after confirmation',()=>{
+    const html=renderToStaticMarkup(<HarnessRouteFields form={persona({requested_model:'gpt-codex',harness_instance_id:'local-codex',harness_type:'codex',model_id:'gpt-codex',permission_profile_id:'danger-full-access'})} catalog={catalog} onChange={vi.fn()}/>);
+    expect(html).toContain('Full access applies to Work runs');
+    expect(html).toContain('Plan runs remain read-only');
+  });
+
   it('shows AGY permissions without exposing room workflow state',()=>{
     const agyCatalog:HarnessCatalog={connectorEpoch:'agy',cache,instances:[{id:'local-antigravity',type:'antigravity',status:'healthy',capabilities:['model_catalog'],models:[{id:'gemini'}],controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[{id:'accept-edits',label:'Accept edits'}],agentVariants:[]},catalogCache:{state:'fresh',refreshedAt:cache.refreshedAt}}]};
     const html=renderToStaticMarkup(<HarnessRouteFields form={persona({harness_instance_id:'local-antigravity',harness_type:'antigravity',model_id:'gemini',requested_model:'gemini',permission_profile_id:'accept-edits'})} catalog={agyCatalog} onChange={vi.fn()}/>);
@@ -79,5 +94,17 @@ describe('persona harness route fields',()=>{
     render(<HarnessRouteFields form={persona()} catalog={staleCatalog} onChange={vi.fn()}/>);
     fireEvent.click(screen.getByRole('button',{name:'Harness instance'}));
     expect((screen.getByRole('option',{name:/local-hermes/}) as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
+describe('Codex Full access confirmation',()=>{
+  it('requires an explicit danger action and supports cancellation',()=>{
+    const onCancel=vi.fn(),onConfirm=vi.fn();
+    render(<DangerFullAccessDialog open onCancel={onCancel} onConfirm={onConfirm}/>);
+    expect(screen.getByRole('dialog',{name:'Enable full access?'})).toBeTruthy();
+    fireEvent.click(screen.getByRole('button',{name:'Cancel'}));
+    expect(onCancel).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button',{name:'Enable full access'}));
+    expect(onConfirm).toHaveBeenCalledOnce();
   });
 });

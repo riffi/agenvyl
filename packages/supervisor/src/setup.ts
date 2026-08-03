@@ -5,7 +5,7 @@ import { startSupervisor } from './runtime.js';
 
 export type HarnessType = 'hermes' | 'opencode' | 'antigravity' | 'codex' | 'claude';
 export type SetupCandidate = { type: HarnessType; label: string; cli: { found: boolean; version?: string }; endpoint?: { url: string; reachable: boolean }; safeToSelect: boolean; supportsManagedServer?: boolean; auth?:{authenticated:boolean;kind:'api'|'cloud'|'subscription_oauth'|'none'|'unknown'};requiresConfirmation?:'claude_oauth';warning?: string };
-export type SetupInstance = { id: string; type: HarnessType; enabled: boolean; endpoint?: string; managed?: boolean; externalDirectoryRoots?:string[];permissionMode?: 'plan' | 'accept-edits';allowDangerFullAccess?:boolean;allowSubscriptionOAuth?:boolean };
+export type SetupInstance = { id: string; type: HarnessType; enabled: boolean; endpoint?: string; managed?: boolean; externalDirectoryRoots?:string[];permissionMode?: 'plan' | 'accept-edits';allowSubscriptionOAuth?:boolean };
 export type SetupState = { completed: boolean; firstRoomId?: string; candidates: SetupCandidate[]; instances: Array<SetupInstance & { status: string; error?: { code: string; message: string } }> };
 
 export async function runSetup(config: SupervisorConfig, cliPath: string, options: { all?: boolean; openBrowser?: boolean } = {}) {
@@ -54,7 +54,6 @@ export function mergeConnectorSelection(state: SetupState, selected: HarnessType
       ...(candidate.endpoint&&type!=='codex'&&type!=='claude'?{endpoint:candidate.endpoint.url}:{}),
       ...(type==='opencode'?{managed:true,externalDirectoryRoots:[]}:{}),
       ...(type==='antigravity'&&agyConfirmed?{permissionMode:'plan' as const}:{}),
-      ...(type==='codex'?{allowDangerFullAccess:false}:{}),
       ...(type==='claude'?{allowSubscriptionOAuth:candidate.requiresConfirmation==='claude_oauth'&&claudeOAuthConfirmed}:{})});
   }
   return result;

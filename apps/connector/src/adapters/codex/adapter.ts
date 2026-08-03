@@ -11,13 +11,12 @@ type ExecutionState={
   id:string;threadId:string;turnId?:string;status:ExecutionStatus;queue:EventQueue;client:CodexAppServerPort;pending:Map<string,PendingRequest>;itemText:Map<string,number>;reasoningIndexes:Map<string,number>;forceStopTimer?:ReturnType<typeof setTimeout>;settling?:Promise<void>;unsubscribeMessage:()=>void;unsubscribeExit:()=>void;
 };
 
-export type CodexAdapterOptions={command?:string;env?:NodeJS.ProcessEnv;allowDangerFullAccess?:boolean;client?:CodexAppServerPort;clientFactory?:()=>CodexAppServerPort;stopGraceMs?:number};
+export type CodexAdapterOptions={command?:string;env?:NodeJS.ProcessEnv;client?:CodexAppServerPort;clientFactory?:()=>CodexAppServerPort;stopGraceMs?:number};
 
 export class CodexConnectorAdapter implements ConnectorAdapter{
   readonly type='codex';
   readonly capabilities:ConnectorAdapter['capabilities']=['model_catalog','execution_profiles','text_streaming','reasoning','tools','approvals','clarifications','elicitations','usage'];
   private readonly clientFactory:()=>CodexAppServerPort;
-  private readonly allowDangerFullAccess:boolean;
   private readonly stopGraceMs:number;
   private readonly clients=new Set<CodexAppServerPort>();
   private readonly executions=new Map<string,ExecutionState>();
@@ -27,7 +26,6 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
     if(options.client&&options.clientFactory)throw new Error('Codex adapter accepts either client or clientFactory, not both');
     const command=options.command?.trim()||'codex';
     this.clientFactory=options.clientFactory??(options.client?()=>options.client!:()=>new CodexAppServerClient(command,options.env));
-    this.allowDangerFullAccess=Boolean(options.allowDangerFullAccess);
     this.stopGraceMs=Math.max(0,options.stopGraceMs??3_000);
   }
 
@@ -35,7 +33,7 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
     const client=this.createClient(),values:unknown[]=[];let cursor:string|undefined;
     try{
       for(let page=0;page<20;page++){const response=record(await client.request('model/list',{includeHidden:false,...(cursor?{cursor}:{})}));if(!response||!Array.isArray(response.data))throw new Error('Codex model catalog response is invalid');values.push(...response.data);if(values.length>1_000)throw new Error('Codex model catalog is too large');if(response.nextCursor===null||response.nextCursor===undefined)break;if(typeof response.nextCursor!=='string'||!response.nextCursor||response.nextCursor===cursor)throw new Error('Codex model catalog cursor is invalid');cursor=response.nextCursor;if(page===19)throw new Error('Codex model catalog pagination limit exceeded');}
-      const catalog=buildCodexCatalog(values,this.allowDangerFullAccess);this.supportedModels=new Map(catalog.models.map(model=>[model.id,new Set(model.reasoningEfforts)]));return catalog;
+      const catalog=buildCodexCatalog(values);this.supportedModels=new Map(catalog.models.map(model=>[model.id,new Set(model.reasoningEfforts)]));return catalog;
     }finally{await this.closeClient(client)}
   }
 
@@ -44,7 +42,7 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
     if(!this.supportedModels.size)await this.catalog();
     const efforts=this.supportedModels.get(request.modelId);if(!efforts)throw new Error('Codex model is not supported');
     const profile=request.executionProfile;if(profile.reasoningEffort&&!efforts.has(profile.reasoningEffort))throw new Error('Codex reasoning effort is not supported');
-    const configuredSandbox=parseCodexPermission(profile.permissionProfileId,this.allowDangerFullAccess),sandbox=profile.workflowMode==='plan'?'read-only':configuredSandbox;
+    const configuredSandbox=parseCodexPermission(profile.permissionProfileId),sandbox=profile.workflowMode==='plan'?'read-only':configuredSandbox;
     const client=this.createClient();
     let state:ExecutionState|undefined;
     try{

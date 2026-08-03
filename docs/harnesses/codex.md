@@ -47,12 +47,13 @@ thread for each Agenvyl attempt.
 - **Workspace write** is the normal default. Codex can write within the room
   workspace and asks for actions outside the policy.
 - **Read only** prevents workspace writes and keeps per-action approvals.
-- **Danger full access** uses no Codex sandbox or approval prompt. Agenvyl hides
-  it until the Connector instance is explicitly enabled with the exact
-  `CODEX FULL ACCESS` confirmation.
+- **Full access** uses no Codex sandbox or approval prompt during Work runs.
+  It is always available in an agent's permission profiles and requires an
+  explicit warning-dialog confirmation when selected.
+- **Plan** always runs read-only, even when the agent's saved permission profile
+  is Full access.
 
 Do not enable full access on a machine or workspace you do not fully trust.
-Disable it only after reassigning every active and archived agent that uses it.
 
 ## Verify and troubleshoot
 
@@ -76,4 +77,3 @@ in the environment used to start Agenvyl, then restart the local runtime.
 Codex app-server is an evolving interface. Agenvyl validates its supported
 protocol at runtime, ignores unknown notifications, and fails closed on unknown
 server requests.
-

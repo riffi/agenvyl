@@ -6,19 +6,18 @@ import {apiRequest} from '../../shared/api';
 import styles from './SetupPage.module.css';
 
 type Catalog={instances:Array<{id:string;type:string;status:string;models:Array<{id:string;label?:string}>;controls:{permissionProfiles:Array<{id:string}>;agentVariants:Array<{id:string}>}}>};
-type SetupHarnessOptions={openCodeManaged?:boolean;codexDangerFullAccess?:boolean;claudeOAuthConfirmed?:boolean};
+type SetupHarnessOptions={openCodeManaged?:boolean;claudeOAuthConfirmed?:boolean};
 
 export function SetupPage(){
   const navigate=useNavigate(),location=useLocation(),configure=new URLSearchParams(location.search).get('configure')==='1';
   const [state,setState]=useState<SetupState>(),[selected,setSelected]=useState<string[]>([]);
   const [agy,setAgy]=useState(false),[agyConfirmation,setAgyConfirmation]=useState('');
   const [openCodeManaged,setOpenCodeManaged]=useState(true);
-  const [codexDangerFullAccess,setCodexDangerFullAccess]=useState(false),[codexConfirmation,setCodexConfirmation]=useState('');
   const [claudeOAuthConfirmation,setClaudeOAuthConfirmation]=useState('');
   const [name,setName]=useState('User'),[handle,setHandle]=useState('user'),[roomTitle,setRoomTitle]=useState('First room'),[busy,setBusy]=useState(false),[error,setError]=useState('');
   useEffect(()=>{if(configure){navigate('/settings/harnesses',{replace:true});return;}void apiRequest<SetupState>('/api/v1/setup').then(value=>{
     const initial=initialConnectorSelection(value);
-    setState(value);setSelected(initial.selected);setAgy(initial.agy);setOpenCodeManaged(initial.openCodeManaged);setCodexDangerFullAccess(initial.codexDangerFullAccess);
+    setState(value);setSelected(initial.selected);setAgy(initial.agy);setOpenCodeManaged(initial.openCodeManaged);
     setClaudeOAuthConfirmation(initial.claudeOAuthConfirmed?'CLAUDE OAUTH':'');
     if(value.completed&&value.firstRoomId)navigate(`/rooms/${value.firstRoomId}`,{replace:true});
   }).catch(issue=>setError(message(issue)));},[configure,navigate]);
@@ -32,10 +31,9 @@ export function SetupPage(){
   const toggle=(candidate:SetupHarnessCandidate)=>setSelected(value=>value.includes(candidate.type)?value.filter(item=>item!==candidate.type):[...value,candidate.type]);
   const submit=async(event:FormEvent)=>{event.preventDefault();
     if(agy&&agyConfirmation!=='AGY'){setError('Type AGY to confirm');return;}
-    if(codexDangerFullAccess&&selected.includes('codex')&&codexConfirmation!=='CODEX FULL ACCESS'){setError('Type CODEX FULL ACCESS to confirm');return;}
     if(claudeNeedsConfirmation&&claudeOAuthConfirmation!=='CLAUDE OAUTH'){setError('Type CLAUDE OAUTH to confirm');return;}
     setBusy(true);setError('');try{
-    const options:SetupHarnessOptions={openCodeManaged,codexDangerFullAccess,claudeOAuthConfirmed:claudeOAuthConfirmation==='CLAUDE OAUTH'};
+    const options:SetupHarnessOptions={openCodeManaged,claudeOAuthConfirmed:claudeOAuthConfirmation==='CLAUDE OAUTH'};
     const instances=state?mergeSetupHarnessSelection(state,selected,agy,options):[];
     await apiRequest('/api/v1/setup/harnesses',{method:'PUT',body:{instances}});
     if(configure&&state?.firstRoomId){navigate(`/rooms/${state.firstRoomId}`,{replace:true});return;}
@@ -57,10 +55,6 @@ export function SetupPage(){
       selected={selected}
       openCodeManaged={openCodeManaged}
       setOpenCodeManaged={setOpenCodeManaged}
-      codexDangerFullAccess={codexDangerFullAccess}
-      setCodexDangerFullAccess={value=>{setCodexDangerFullAccess(value);if(!value)setCodexConfirmation('')}}
-      codexConfirmation={codexConfirmation}
-      setCodexConfirmation={setCodexConfirmation}
       claudeNeedsConfirmation={claudeNeedsConfirmation}
       claudeOAuthConfirmation={claudeOAuthConfirmation}
       setClaudeOAuthConfirmation={setClaudeOAuthConfirmation}
@@ -72,24 +66,19 @@ export function SetupPage(){
 }
 
 export function Candidate({candidate,checked,onChange}:{candidate:SetupHarnessCandidate;checked:boolean;onChange:()=>void}){const available=candidate.safeToSelect;return <label className={`${styles.option} ${available?'':styles.unavailable}`}><input type="checkbox" checked={checked} disabled={!available&&!checked} onChange={onChange}/><HarnessIcon type={candidate.type} size="md"/><span><strong>{candidate.label}</strong><small>{candidate.endpoint?.reachable?'Endpoint ready':candidate.cli.found?`${candidate.cli.version??'CLI'} detected`:'Not detected'}</small></span></label>}
-export function ConnectorOptions({selected,openCodeManaged,setOpenCodeManaged,codexDangerFullAccess,setCodexDangerFullAccess,codexConfirmation,setCodexConfirmation,claudeNeedsConfirmation,claudeOAuthConfirmation,setClaudeOAuthConfirmation}:{
+export function ConnectorOptions({selected,openCodeManaged,setOpenCodeManaged,claudeNeedsConfirmation,claudeOAuthConfirmation,setClaudeOAuthConfirmation}:{
   selected:string[];
   openCodeManaged:boolean;
   setOpenCodeManaged:(value:boolean)=>void;
-  codexDangerFullAccess:boolean;
-  setCodexDangerFullAccess:(value:boolean)=>void;
-  codexConfirmation:string;
-  setCodexConfirmation:(value:string)=>void;
   claudeNeedsConfirmation:boolean;
   claudeOAuthConfirmation:string;
   setClaudeOAuthConfirmation:(value:string)=>void;
 }){
-  if(!selected.includes('opencode')&&!selected.includes('codex')&&!claudeNeedsConfirmation)return null;
+  if(!selected.includes('opencode')&&!claudeNeedsConfirmation)return null;
   return <section className={styles.connectorSettings} aria-labelledby="connector-options-title">
     <div className={styles.subsectionTitle}><span><h3 id="connector-options-title">Connector options</h3><small>Settings for the runtimes selected above.</small></span></div>
     <div className={styles.settingList}>
       {selected.includes('opencode')&&<div className={styles.setting}><label className={styles.settingChoice}><input type="checkbox" checked={openCodeManaged} onChange={event=>setOpenCodeManaged(event.target.checked)}/><span><strong>Managed server</strong><small>Start and stop OpenCode with Agenvyl instead of relying on an existing endpoint.</small></span><em>OpenCode</em></label></div>}
-      {selected.includes('codex')&&<div className={`${styles.setting} ${codexDangerFullAccess?styles.settingDanger:''}`}><label className={styles.settingChoice}><input type="checkbox" checked={codexDangerFullAccess} onChange={event=>setCodexDangerFullAccess(event.target.checked)}/><span><strong>Allow danger-full-access</strong><small>Expose an unsandboxed Codex mode that runs without approval prompts.</small></span><em>Codex</em></label>{codexDangerFullAccess&&<label className={styles.confirmation}><span>Confirmation phrase</span><input type="text" value={codexConfirmation} onChange={event=>setCodexConfirmation(event.target.value)} placeholder="Type CODEX FULL ACCESS" autoComplete="off"/></label>}</div>}
       {claudeNeedsConfirmation&&<div className={`${styles.setting} ${styles.settingDanger}`}><div className={styles.requiredSetting}><i aria-hidden="true"/><span><strong>Confirm subscription OAuth</strong><small>This experimental integration may conflict with Anthropic terms for third-party products.</small></span><em>Claude</em></div><label className={styles.confirmation}><span>Confirmation phrase</span><input type="text" value={claudeOAuthConfirmation} onChange={event=>setClaudeOAuthConfirmation(event.target.value)} placeholder="Type CLAUDE OAUTH" autoComplete="off"/></label></div>}
     </div>
   </section>;
@@ -98,16 +87,14 @@ export function initialConnectorSelection(state:SetupState){
   const enabled=new Set(state.instances.filter(instance=>instance.enabled).map(instance=>instance.type));
   const selectable=new Set<string>(state.candidates.filter(candidate=>candidate.safeToSelect&&!candidate.requiresConfirmation).map(candidate=>candidate.type));
   const openCode=state.instances.find(instance=>instance.type==='opencode');
-  const codex=state.instances.find(instance=>instance.type==='codex');
   return{
     selected:[...enabled].filter(type=>type!=='antigravity'&&(state.completed||selectable.has(type))),
     agy:state.completed&&enabled.has('antigravity'),
     openCodeManaged:openCode?.managed??true,
-    codexDangerFullAccess:codex?.allowDangerFullAccess??false,
     claudeOAuthConfirmed:state.instances.some(instance=>instance.type==='claude'&&instance.allowSubscriptionOAuth),
   };
 }
-export function instanceConfig(candidate:SetupHarnessCandidate,existing?:SetupState['instances'][number],options:SetupHarnessOptions={},id=`local-${candidate.type}`):SetupHarnessInstance{return{id:existing?.id??id,type:candidate.type,enabled:true,...(existing?.endpoint?{endpoint:existing.endpoint}:{}),...(!existing?.endpoint&&candidate.endpoint&&candidate.type!=='codex'&&candidate.type!=='claude'?{endpoint:candidate.endpoint.url}:{}),...(candidate.type==='opencode'?{managed:options.openCodeManaged??existing?.managed??true,externalDirectoryRoots:existing?.externalDirectoryRoots??[]}:{}),...(candidate.type==='antigravity'?{permissionMode:existing?.permissionMode??'plan' as const}:{}),...(candidate.type==='codex'?{allowDangerFullAccess:options.codexDangerFullAccess??existing?.allowDangerFullAccess??false}:{}),...(candidate.type==='claude'?{allowSubscriptionOAuth:candidate.requiresConfirmation==='claude_oauth'&&(options.claudeOAuthConfirmed??existing?.allowSubscriptionOAuth??false)}:{})};}
+export function instanceConfig(candidate:SetupHarnessCandidate,existing?:SetupState['instances'][number],options:SetupHarnessOptions={},id=`local-${candidate.type}`):SetupHarnessInstance{return{id:existing?.id??id,type:candidate.type,enabled:true,...(existing?.endpoint?{endpoint:existing.endpoint}:{}),...(!existing?.endpoint&&candidate.endpoint&&candidate.type!=='codex'&&candidate.type!=='claude'?{endpoint:candidate.endpoint.url}:{}),...(candidate.type==='opencode'?{managed:options.openCodeManaged??existing?.managed??true,externalDirectoryRoots:existing?.externalDirectoryRoots??[]}:{}),...(candidate.type==='antigravity'?{permissionMode:existing?.permissionMode??'plan' as const}:{}),...(candidate.type==='claude'?{allowSubscriptionOAuth:candidate.requiresConfirmation==='claude_oauth'&&(options.claudeOAuthConfirmed??existing?.allowSubscriptionOAuth??false)}:{})};}
 export function mergeSetupHarnessSelection(state:SetupState,selected:string[],agy:boolean,options:SetupHarnessOptions={}):SetupHarnessInstance[]{
   const safe=new Map(state.candidates.filter(candidate=>candidate.safeToSelect).map(candidate=>[candidate.type,candidate]));
   const selectedTypes=new Set<SetupHarnessInstance['type']>([...selected.filter(isHarnessType),...(agy?['antigravity' as const]:[])]);

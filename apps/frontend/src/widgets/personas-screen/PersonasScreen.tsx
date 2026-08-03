@@ -9,6 +9,7 @@ import { roomsApi } from '../../entities/room';
 import {ApiError} from '../../shared/api';
 import { Alert, Avatar, Button, Dialog, Input, Select, Spinner, TextArea } from '../../shared/ui';
 import {PersonaCatalog} from './PersonaCatalog';
+import {DangerFullAccessDialog} from './DangerFullAccessDialog';
 import styles from './PersonasScreen.module.css';
 import {isPersonaDraftDirty,newPersonaDraft,personaHandleAfterNameChange,personaInputFromDraft,personaSaveAvailable,selectHarnessInstance,selectHarnessModel} from './personaDraft';
 
@@ -97,7 +98,7 @@ function HarnessInstancePicker({instances,value,onChange}:{instances:HarnessInst
   </div>;
 }
 
-export function HarnessRouteFields({form,catalog,error,onChange}:{form:Persona;catalog?:HarnessCatalog;error?:string;onChange:(next:Persona)=>void}) {
+export function HarnessRouteFields({form,catalog,error,onChange,onPermissionProfileChange}:{form:Persona;catalog?:HarnessCatalog;error?:string;onChange:(next:Persona)=>void;onPermissionProfileChange?:(value:string|null)=>void}) {
   const discovered=catalog?.instances??[];
   const selectedInstance=discovered.find(instance=>instance.id===form.harness_instance_id);
   const visibleInstances=form.harness_instance_id&&!selectedInstance?[...discovered,{id:form.harness_instance_id,type:form.harness_type,status:'unavailable' as const,capabilities:[],models:[],controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]},catalogCache:{state:'unavailable' as const,refreshedAt:null}}]:discovered;
@@ -111,10 +112,11 @@ export function HarnessRouteFields({form,catalog,error,onChange}:{form:Persona;c
       <HarnessInstancePicker instances={visibleInstances} value={form.harness_instance_id} onChange={instance=>onChange(selectHarnessInstance(form,instance))}/>
       <ModelPicker models={visibleModels} value={form.model_id} onChange={modelId=>onChange(selectHarnessModel(form,modelId,selectedInstance))}/>
       <label>Default reasoning<Select aria-label="Default reasoning" value={form.default_reasoning_effort??''} onChange={event=>onChange({...form,default_reasoning_effort:event.target.value||null})}>{invalidReasoning&&<option value={form.default_reasoning_effort!}>Unsupported: {form.default_reasoning_effort}</option>}<option value="">Auto / model default</option>{reasoningEfforts.map(effort=><option key={effort} value={effort}>{effort}</option>)}</Select>{invalidReasoning&&<small className={styles['field-error']}>Choose Auto or a supported value before saving.</small>}</label>
-      {selectedInstance&&selectedInstance.controls.permissionProfiles.length>0&&<label>Permissions<Select aria-label="Permission profile" value={form.permission_profile_id??''} onChange={event=>onChange({...form,permission_profile_id:event.target.value||null})}>{selectedInstance.controls.permissionProfiles.map(item=><option key={item.id} value={item.id}>{item.label??item.id}</option>)}</Select></label>}
+      {selectedInstance&&selectedInstance.controls.permissionProfiles.length>0&&<label>Permissions<Select aria-label="Permission profile" value={form.permission_profile_id??''} onChange={event=>{const value=event.target.value||null;if(onPermissionProfileChange)onPermissionProfileChange(value);else onChange({...form,permission_profile_id:value})}}>{selectedInstance.controls.permissionProfiles.map(item=><option key={item.id} value={item.id}>{item.label??item.id}</option>)}</Select></label>}
       {selectedInstance&&selectedInstance.controls.agentVariants.length>0&&<label>Agent variant<Select aria-label="Agent variant" value={form.agent_variant_id??''} onChange={event=>onChange({...form,agent_variant_id:event.target.value||null})}>{selectedInstance.controls.agentVariants.map(item=><option key={item.id} value={item.id}>{item.label??item.id}</option>)}</Select></label>}
     </div>
     {selectedInstance?.type==='opencode'&&form.permission_profile_id==='auto-approve'&&<Alert tone="warning">Auto-approve confirms every OpenCode permission that is not explicitly denied during Work runs. External paths remain limited to this instance’s allowlist.</Alert>}
+    {selectedInstance?.type==='codex'&&form.permission_profile_id==='danger-full-access'&&<Alert tone="warning">Full access applies to Work runs without sandboxing or approval prompts. Plan runs remain read-only.</Alert>}
     {form.harness_instance_id&&<details className={styles['model-technical']}><summary>Technical parameters</summary><p><b>Instance:</b> {form.harness_instance_id} · <b>Type:</b> {form.harness_type}</p><p><b>Model:</b> {(selectedModel?.label??form.model_id)||'unavailable'}{form.permission_profile_id&&<> · <b>Permissions:</b> {form.permission_profile_id}</>}{form.agent_variant_id&&<> · <b>Variant:</b> {form.agent_variant_id}</>}</p></details>}
   </>;
 }
@@ -167,6 +169,7 @@ export function PersonasScreen({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string>();
   const [reasoningResetConfirmation,setReasoningResetConfirmation]=useState<{affectedRoomCount:number}>();
+  const [dangerFullAccessConfirmation,setDangerFullAccessConfirmation]=useState(false);
   const creating=selectedPersonaId==='new';
   const [pendingNavigation,setPendingNavigation]=useState<{label:string}|undefined>();
   const [lifecycleConfirmation,setLifecycleConfirmation]=useState<'archive'|'restore'|'delete'>();
@@ -191,8 +194,16 @@ export function PersonasScreen({
     else { setForm(undefined);if(detailQuery.error)setSaveError(detailQuery.error instanceof Error?detailQuery.error.message:String(detailQuery.error)); }
   }, [selectedPersona, real, creating, detailQuery.data, detailQuery.error, dirty]);
   useEffect(()=>{if(creating&&form?.id!==""){const empty=newPersonaDraft(harnessCatalog);setForm(empty);setSnapshot(empty)}},[creating,form?.id,harnessCatalog]);
+  useEffect(()=>setDangerFullAccessConfirmation(false),[selectedPersonaId]);
   useEffect(()=>{const warn=(event:BeforeUnloadEvent)=>{if(dirty){event.preventDefault();event.returnValue=''}};addEventListener('beforeunload',warn);return()=>removeEventListener('beforeunload',warn)},[dirty]);
   const edit=(patch:Partial<Persona>)=>setForm(current=>current?{...current,...patch}:current);
+  const changePermissionProfile=(value:string|null)=>{
+    if(form?.harness_type==='codex'&&value==='danger-full-access'&&form.permission_profile_id!=='danger-full-access'){
+      setDangerFullAccessConfirmation(true);
+      return;
+    }
+    edit({permission_profile_id:value});
+  };
   const save = async (resetRoomReasoningOverrides=false):Promise<boolean> => {
     if (!form || !real) return false;
     const handle=form.handle.trim().replace(/^@/,'').toLowerCase();
@@ -319,7 +330,7 @@ export function PersonasScreen({
                   <fieldset className={styles['color-swatches']}><legend>Persistent agent color</legend><div>{[...new Set([...PERSONA_COLORS,form.color])].map(color=><label key={color} className={styles.swatch} style={{'--swatch-color':color} as CSSProperties}><input type="radio" name="persona-color" value={color} checked={form.color.toLowerCase()===color.toLowerCase()} onChange={()=>edit({color})}/><i aria-hidden="true"/></label>)}</div></fieldset>
                 </div></section>
                 <section className={styles['editor-section']} ui-spec-block-id="persona_harness_route"><h3>Runtime</h3>
-                  <HarnessRouteFields form={form} catalog={harnessCatalog} error={harnessError} onChange={setForm}/>
+                  <HarnessRouteFields form={form} catalog={harnessCatalog} error={harnessError} onChange={setForm} onPermissionProfileChange={changePermissionProfile}/>
                 </section>
                 <PersonaInstructionFields value={form.system_prompt??''} onChange={value=>edit({system_prompt:value})}/>
                 {saveError&&<div className={styles['editor-alert']}><Alert tone="error">{saveError}</Alert></div>}
@@ -333,6 +344,7 @@ export function PersonasScreen({
       </div>
       <div ui-spec-block-id="unsaved_changes_guard"><Dialog open={Boolean(pendingNavigation)&&!reasoningResetConfirmation} title="You have unsaved changes" description={`You changed agent “${form?.name||form?.handle||'New agent'}”. What should happen before navigating to ${pendingNavigation?.label??'another screen'}?`} onClose={()=>{pendingNavigationRef.current=undefined;setPendingNavigation(undefined)}} footer={<><Button onClick={()=>{pendingNavigationRef.current=undefined;setPendingNavigation(undefined)}}>Stay</Button><Button variant="danger" onClick={finishNavigation}>Discard and continue</Button><Button variant="primary" disabled={saving} onClick={async()=>{if(await save())finishNavigation()}}>Save and continue</Button></>}><p className={styles['dialog-message']}>Unsaved changes will be lost if you continue without saving.</p></Dialog></div>
       <Dialog open={Boolean(reasoningResetConfirmation)} title="Reset reasoning settings in chats?" description="Changing the model clears chat-specific reasoning settings." onClose={()=>setReasoningResetConfirmation(undefined)} footer={<><Button disabled={saving} onClick={()=>setReasoningResetConfirmation(undefined)}>Cancel</Button><Button variant="primary" disabled={saving} onClick={()=>void confirmReasoningReset()}>{saving?'Changing model…':'Reset and change model'}</Button></>}><p className={styles['dialog-message']}>{reasoningResetConfirmation?.affectedRoomCount===1?'One chat uses a custom reasoning setting.':`${reasoningResetConfirmation?.affectedRoomCount??0} chats use custom reasoning settings.`} They will switch to Auto. Existing messages and running tasks won’t change.</p></Dialog>
+      <DangerFullAccessDialog open={dangerFullAccessConfirmation} onCancel={()=>setDangerFullAccessConfirmation(false)} onConfirm={()=>{edit({permission_profile_id:'danger-full-access'});setDangerFullAccessConfirmation(false)}}/>
       <Dialog open={Boolean(lifecycleConfirmation)} title={lifecycleConfirmation==='delete'?'Permanently delete agent?':lifecycleConfirmation==='archive'?'Archive agent?':'Restore agent?'} description={lifecycleConfirmation==='delete'?'This action cannot be undone.':undefined} onClose={()=>setLifecycleConfirmation(undefined)} footer={<><Button onClick={()=>setLifecycleConfirmation(undefined)}>Cancel</Button><Button variant={lifecycleConfirmation==='delete'?'danger':'primary'} disabled={saving} onClick={()=>lifecycleConfirmation&&void lifecycle(lifecycleConfirmation)}>{saving?'Working…':lifecycleConfirmation==='delete'?'Delete permanently':lifecycleConfirmation==='archive'?'Archive':'Restore'}</Button></>}><p className={styles['dialog-message']}>{lifecycleConfirmation==='delete'?`@${form?.handle} will be permanently deleted.`:lifecycleConfirmation==='archive'?'The agent will disappear from the active catalog but can be restored later.':'The agent will return to the active catalog.'}</p></Dialog>
     </section>
   );

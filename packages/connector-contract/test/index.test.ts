@@ -59,4 +59,9 @@ describe('Connector v1 contract fixtures', () => {
     expect(isConfigureConnectorInstancesRequest(request(['/srv/shared','/srv/shared/']))).toBe(false);
     expect(isConfigureConnectorInstancesRequest({instances:[{id:'local-hermes',type:'hermes',enabled:true,externalDirectoryRoots:[]}]})).toBe(false);
   });
+
+  it('rejects removed and unknown instance configuration fields',()=>{
+    expect(isConfigureConnectorInstancesRequest({instances:[{id:'local-codex',type:'codex',enabled:true,allowDangerFullAccess:true}]})).toBe(false);
+    expect(isConfigureConnectorInstancesRequest({instances:[{id:'local-codex',type:'codex',enabled:true,unknown:true}]})).toBe(false);
+  });
 });

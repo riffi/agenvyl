@@ -3,7 +3,7 @@ import { isAbsolute } from 'node:path';
 import { parse, stringify } from 'yaml';
 import { resolveAgenvylPaths } from '@agenvyl/runtime-config';
 
-export type ConnectorInstanceConfig = { id: string; type: 'hermes'|'opencode'|'antigravity'|'codex'|'claude'; enabled: boolean; endpoint?:string; managed?:boolean; externalDirectoryRoots?:string[];permissionMode?:'plan'|'accept-edits';allowDangerFullAccess?:boolean;allowSubscriptionOAuth?:boolean };
+export type ConnectorInstanceConfig = { id: string; type: 'hermes'|'opencode'|'antigravity'|'codex'|'claude'; enabled: boolean; endpoint?:string; managed?:boolean; externalDirectoryRoots?:string[];permissionMode?:'plan'|'accept-edits';allowSubscriptionOAuth?:boolean };
 export type ConnectorConfig = {
   version: 1;
   listen: { host: string; port: number };
@@ -73,7 +73,7 @@ export function normalizeConnectorInstances(value: unknown): ConnectorInstanceCo
   const seen = new Set<string>();
   return value.map((item, index) => {
     if (!isRecord(item)) throw new Error(`instances[${index}] must be an object`);
-    exactKeys(item, ['id', 'type', 'enabled','endpoint','managed','externalDirectoryRoots','permissionMode','allowDangerFullAccess','allowSubscriptionOAuth'], `instances[${index}]`);
+    exactKeys(item, ['id', 'type', 'enabled','endpoint','managed','externalDirectoryRoots','permissionMode','allowSubscriptionOAuth'], `instances[${index}]`);
     if (typeof item.id !== 'string' || !/^[a-z0-9][a-z0-9_-]*$/.test(item.id)) throw new Error(`instances[${index}].id is invalid`);
     if (seen.has(item.id)) throw new Error(`Duplicate Connector instance id: ${item.id}`);
     seen.add(item.id);
@@ -83,11 +83,10 @@ export function normalizeConnectorInstances(value: unknown): ConnectorInstanceCo
     if(item.managed!==undefined&&(item.type!=='opencode'||typeof item.managed!=='boolean'))throw new Error(`instances[${index}].managed is invalid`);
     const externalDirectoryRoots=parseExternalDirectoryRoots(item.externalDirectoryRoots,index,item.type);
     if(item.permissionMode!==undefined&&(item.type!=='antigravity'||(item.permissionMode!=='plan'&&item.permissionMode!=='accept-edits')))throw new Error(`instances[${index}].permissionMode is invalid`);
-    if(item.allowDangerFullAccess!==undefined&&(item.type!=='codex'||typeof item.allowDangerFullAccess!=='boolean'))throw new Error(`instances[${index}].allowDangerFullAccess is invalid`);
     if(item.allowSubscriptionOAuth!==undefined&&(item.type!=='claude'||typeof item.allowSubscriptionOAuth!=='boolean'))throw new Error(`instances[${index}].allowSubscriptionOAuth is invalid`);
     if(item.type==='codex'&&item.endpoint!==undefined)throw new Error(`instances[${index}].endpoint is invalid for Codex`);
     if(item.type==='claude'&&item.endpoint!==undefined)throw new Error(`instances[${index}].endpoint is invalid for Claude`);
-    return { id: item.id, type: item.type, enabled: item.enabled ?? true, ...(item.endpoint?{endpoint:new URL(String(item.endpoint)).toString()}:{}), ...(item.managed!==undefined?{managed:item.managed}:{}), ...(externalDirectoryRoots?{externalDirectoryRoots}:{}),...(item.permissionMode?{permissionMode:item.permissionMode}:{}),...(item.allowDangerFullAccess!==undefined?{allowDangerFullAccess:item.allowDangerFullAccess}:{}),...(item.allowSubscriptionOAuth!==undefined?{allowSubscriptionOAuth:item.allowSubscriptionOAuth}:{}) };
+    return { id: item.id, type: item.type, enabled: item.enabled ?? true, ...(item.endpoint?{endpoint:new URL(String(item.endpoint)).toString()}:{}), ...(item.managed!==undefined?{managed:item.managed}:{}), ...(externalDirectoryRoots?{externalDirectoryRoots}:{}),...(item.permissionMode?{permissionMode:item.permissionMode}:{}),...(item.allowSubscriptionOAuth!==undefined?{allowSubscriptionOAuth:item.allowSubscriptionOAuth}:{}) };
   });
 }
 

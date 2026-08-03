@@ -34,7 +34,6 @@ export const configurationOf=(instance:HarnessDraft):SetupHarnessInstance=>({
   ...(instance.endpoint&&instance.type!=='codex'&&instance.type!=='claude'?{endpoint:instance.endpoint}:{}),
   ...(instance.type==='opencode'?{managed:Boolean(instance.managed),externalDirectoryRoots:instance.externalDirectoryRoots??[]}:{}),
   ...(instance.type==='antigravity'?{permissionMode:instance.permissionMode??'plan'}:{}),
-  ...(instance.type==='codex'?{allowDangerFullAccess:Boolean(instance.allowDangerFullAccess)}:{}),
   ...(instance.type==='claude'?{allowSubscriptionOAuth:Boolean(instance.allowSubscriptionOAuth)}:{}),
 });
 
@@ -47,7 +46,6 @@ export const addHarnessDraft=(type:SetupHarnessInstance['type'],current:HarnessD
     ...(candidate?.endpoint&&type!=='codex'&&type!=='claude'?{endpoint:candidate.endpoint.url}:{}),
     ...(type==='opencode'?{managed:true,externalDirectoryRoots:[]}:{}),
     ...(type==='antigravity'?{permissionMode:'plan' as const}:{}),
-    ...(type==='codex'?{allowDangerFullAccess:false}:{}),
     ...(type==='claude'?{allowSubscriptionOAuth:false}:{})};
 };
 
