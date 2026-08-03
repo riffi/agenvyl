@@ -144,6 +144,25 @@ describe('OpenCodeConnectorAdapter', () => {
     expect(JSON.stringify(normalized)).not.toContain('do-not-leak');
   });
 
+  it('separates text parts while preserving deltas within one part',async()=>{
+    const client=fixtureClient();client.subscribe=vi.fn().mockResolvedValue(events([
+      {type:'message.part.updated',properties:{sessionID:'session-1',part:{id:'text-before',type:'text'}}},
+      {type:'message.part.delta',properties:{sessionID:'session-1',partID:'text-before',field:'text',delta:'First'}},
+      {type:'message.part.delta',properties:{sessionID:'session-1',partID:'text-before',field:'text',delta:' message.'}},
+      {type:'message.part.updated',properties:{sessionID:'session-1',part:{id:'text-after',type:'text'}}},
+      {type:'message.part.delta',properties:{sessionID:'session-1',partID:'text-after',field:'text',delta:'Second message.'}},
+      ...assistantFinished(),
+      {type:'session.idle',properties:{sessionID:'session-1'}},
+    ]));
+    const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client}),normalized=await collect(adapter.events(await adapter.start(startRequest())));
+    expect(normalized).toEqual([
+      {type:'output.text.delta',payload:{text:'First'}},
+      {type:'output.text.delta',payload:{text:' message.'}},
+      {type:'output.text.delta',payload:{text:'\n\nSecond message.'}},
+      {type:'execution.completed',payload:{}},
+    ]);
+  });
+
   it('aggregates exact assistant message usage and suppresses repeated updates',async()=>{
     const client=fixtureClient(),first={id:'assistant-1',sessionID:'session-1',role:'assistant',tokens:{input:10,output:3,reasoning:2,cache:{read:4,write:1}}};
     client.subscribe=vi.fn().mockResolvedValue(events([

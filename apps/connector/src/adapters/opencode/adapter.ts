@@ -57,6 +57,7 @@ type ActiveSession = {
   consumed:boolean;
   partTypes:Map<string,string>;
   eligibleTextParts:Set<string>;
+  emittedTextParts:Set<string>;
   textByPart:Map<string,string>;
   toolStates:Map<string,string>;
   pendingTools:Set<string>;
@@ -157,6 +158,7 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
         consumed:false,
         partTypes:new Map(),
         eligibleTextParts:new Set(),
+        emittedTextParts:new Set(),
         textByPart:new Map(),
         toolStates:new Map(),
         pendingTools:new Set(),
@@ -221,8 +223,11 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
           const partType = typeof properties?.partID === 'string' ? active.partTypes.get(properties.partID) : undefined;
           if (properties?.field === 'text' && typeof properties.delta === 'string' && properties.delta) {
             if (partType === 'text' || partType === 'reasoning') {
-              if(partType==='text'&&typeof properties.partID==='string'&&active.eligibleTextParts.has(properties.partID))rememberTextDelta(active,properties.partID,properties.delta);
-              yield { type: partType === 'text' ? 'output.text.delta' as const : 'output.reasoning.delta' as const, payload: { text: properties.delta } };
+              if(partType==='text'){
+                const partId=typeof properties.partID==='string'?properties.partID:undefined;
+                const text=partId&&active.eligibleTextParts.has(partId)?outputTextDelta(active,partId,properties.delta):properties.delta;
+                yield {type:'output.text.delta' as const,payload:{text}};
+              }else yield {type:'output.reasoning.delta' as const,payload:{text:properties.delta}};
             }
           }
           continue;
@@ -444,6 +449,13 @@ function rememberText(active:ActiveSession,text:string){
 function rememberTextDelta(active:ActiveSession,partId:string,delta:string){
   active.textByPart.set(partId,(active.textByPart.get(partId)??'')+delta);
   rememberText(active,delta);
+}
+
+function outputTextDelta(active:ActiveSession,partId:string,delta:string){
+  const isNewPart=!active.emittedTextParts.has(partId),hasPriorPart=active.emittedTextParts.size>0;
+  active.emittedTextParts.add(partId);
+  rememberTextDelta(active,partId,delta);
+  return isNewPart&&hasPriorPart?`\n\n${delta}`:delta;
 }
 
 function rememberToolLifecycle(active:ActiveSession,event:Record<string,unknown>){

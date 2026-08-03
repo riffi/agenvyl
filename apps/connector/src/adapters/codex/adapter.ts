@@ -8,7 +8,7 @@ import {buildCodexCatalog,parseCodexPermission} from './mode-catalog.js';
 type RpcId=string|number;
 type PendingRequest={rpcId:RpcId;method:string};
 type ExecutionState={
-  id:string;threadId:string;turnId?:string;status:ExecutionStatus;queue:EventQueue;client:CodexAppServerPort;pending:Map<string,PendingRequest>;itemText:Map<string,number>;reasoningIndexes:Map<string,number>;forceStopTimer?:ReturnType<typeof setTimeout>;settling?:Promise<void>;unsubscribeMessage:()=>void;unsubscribeExit:()=>void;
+  id:string;threadId:string;turnId?:string;status:ExecutionStatus;queue:EventQueue;client:CodexAppServerPort;pending:Map<string,PendingRequest>;itemText:Map<string,number>;textItems:Set<string>;reasoningIndexes:Map<string,number>;forceStopTimer?:ReturnType<typeof setTimeout>;settling?:Promise<void>;unsubscribeMessage:()=>void;unsubscribeExit:()=>void;
 };
 
 export type CodexAdapterOptions={command?:string;env?:NodeJS.ProcessEnv;client?:CodexAppServerPort;clientFactory?:()=>CodexAppServerPort;stopGraceMs?:number};
@@ -54,7 +54,7 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
       const thread=record(threadResponse?.thread),threadId=typeof thread?.id==='string'?thread.id:undefined;
       if(!threadId)throw new Error('Codex thread/start response is invalid');
       const queue=new EventQueue();
-      state={id:request.executionId,threadId,status:'running',queue,client,pending:new Map(),itemText:new Map(),reasoningIndexes:new Map(),unsubscribeMessage:()=>{},unsubscribeExit:()=>{}};
+      state={id:request.executionId,threadId,status:'running',queue,client,pending:new Map(),itemText:new Map(),textItems:new Set(),reasoningIndexes:new Map(),unsubscribeMessage:()=>{},unsubscribeExit:()=>{}};
       state.unsubscribeMessage=client.onMessage(message=>this.onMessage(state!,message));
       state.unsubscribeExit=client.onExit(error=>this.onExit(state!,error));
       this.executions.set(request.executionId,state);
@@ -137,7 +137,7 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
 
   private onNotification(state:ExecutionState,method:string,params:Record<string,unknown>){
     if(state.turnId&&typeof params.turnId==='string'&&params.turnId!==state.turnId)return;
-    if(method==='item/agentMessage/delta'&&typeof params.delta==='string'){this.trackText(state,params);state.queue.push({type:'output.text.delta',payload:{text:params.delta}});return;}
+    if(method==='item/agentMessage/delta'&&typeof params.delta==='string'){this.pushTextDelta(state,params.itemId,params.delta);return;}
     if(method==='item/reasoning/summaryTextDelta'&&typeof params.delta==='string'){this.pushReasoningDelta(state,params,'summaryIndex','summary');return;}
     if(method==='item/reasoning/textDelta'&&typeof params.delta==='string'){this.pushReasoningDelta(state,params,'contentIndex','content');return;}
     if(method==='item/started'){const tool=toolEvent(params.item,'started');if(tool)state.queue.push(tool);return;}
@@ -150,7 +150,13 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
     if(method==='turn/completed')this.completeTurn(state,params.turn);
   }
 
-  private trackText(state:ExecutionState,params:Record<string,unknown>){if(typeof params.itemId==='string'&&typeof params.delta==='string')state.itemText.set(params.itemId,(state.itemText.get(params.itemId)??0)+params.delta.length);}
+  private pushTextDelta(state:ExecutionState,itemId:unknown,text:string){
+    if(!text)return;
+    const id=typeof itemId==='string'?itemId:undefined;
+    const isNewItem=Boolean(id&&!state.textItems.has(id));
+    if(id){state.textItems.add(id);state.itemText.set(id,(state.itemText.get(id)??0)+text.length);}
+    state.queue.push({type:'output.text.delta',payload:{text:isNewItem&&state.textItems.size>1?`\n\n${text}`:text}});
+  }
   private pushReasoningDelta(state:ExecutionState,params:Record<string,unknown>,indexField:'summaryIndex'|'contentIndex',channel:'summary'|'content'){
     let text=String(params.delta??'');const index=params[indexField],itemId=params.itemId;
     if(typeof itemId==='string'&&safeInteger(index)){
@@ -163,7 +169,7 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
   private completeItem(state:ExecutionState,value:unknown){
     const item=record(value);if(!item)return;
     if((item.type==='agentMessage'||item.type==='plan')&&typeof item.id==='string'&&typeof item.text==='string'){
-      const sent=state.itemText.get(item.id)??0;if(item.text.length>sent)state.queue.push({type:'output.text.delta',payload:{text:item.text.slice(sent)}});return;
+      const sent=state.itemText.get(item.id)??0;if(item.text.length>sent)this.pushTextDelta(state,item.id,item.text.slice(sent));return;
     }
     const tool=toolEvent(item,'completed');if(tool)state.queue.push(tool);
   }

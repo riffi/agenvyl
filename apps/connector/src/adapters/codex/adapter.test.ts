@@ -24,6 +24,22 @@ describe('Codex connector adapter',()=>{
     client.emit({id:7,method:'item/commandExecution/requestApproval',params:{threadId:'thread-1',turnId:'turn-1',command:'npm test'}});const approval=await iterator.next();expect(approval).toMatchObject({value:{type:'request.opened',payload:{request:{kind:'approval',choices:['once','session','deny']}}}});await adapter.resolveRequest(execution,(approval.value as Extract<typeof approval.value,{type:'request.opened'}>).payload.request,{resolution:'session'});expect(client.responses.at(-1)).toEqual({id:7,result:{decision:'acceptForSession'}});
     client.emit({id:'q1',method:'item/tool/requestUserInput',params:{threadId:'thread-1',turnId:'turn-1',questions:[{id:'format',header:'Format',question:'Which format?',isOther:true,isSecret:false,options:[{label:'SVG',description:'Vector'}]},{id:'token',header:'Token',question:'Secret?',isOther:false,isSecret:true,options:null}]}});const clarification=await iterator.next();expect(clarification).toMatchObject({value:{type:'request.opened',payload:{request:{kind:'clarification',questions:[{id:'format',isOther:true},{id:'token',isSecret:true}]}}}});await adapter.resolveRequest(execution,(clarification.value as Extract<typeof clarification.value,{type:'request.opened'}>).payload.request,{answers:{format:['SVG'],token:['secret']}});expect(client.responses.at(-1)).toEqual({id:'q1',result:{answers:{format:{answers:['SVG']},token:{answers:['secret']}}}});
     client.emit({method:'turn/completed',params:{threadId:'thread-1',turn:{id:'turn-1',status:'completed'}}});expect(await iterator.next()).toMatchObject({value:{type:'execution.completed'}});expect(await iterator.next()).toEqual({value:undefined,done:true});});
+  it('separates distinct agent-authored items without splitting deltas from one item',async()=>{
+    const client=new FakeAppServer(),adapter=new CodexConnectorAdapter({client}),execution=await adapter.start(input()),iterator=adapter.events(execution)[Symbol.asyncIterator]();
+    client.emit({method:'item/agentMessage/delta',params:{threadId:'thread-1',turnId:'turn-1',itemId:'commentary-1',delta:'First'}});
+    client.emit({method:'item/agentMessage/delta',params:{threadId:'thread-1',turnId:'turn-1',itemId:'commentary-1',delta:' block.'}});
+    client.emit({method:'item/agentMessage/delta',params:{threadId:'thread-1',turnId:'turn-1',itemId:'commentary-2',delta:'Second block.'}});
+    expect((await iterator.next()).value).toMatchObject({payload:{text:'First'}});
+    expect((await iterator.next()).value).toMatchObject({payload:{text:' block.'}});
+    expect((await iterator.next()).value).toMatchObject({payload:{text:'\n\nSecond block.'}});
+  });
+  it('separates completed text items recovered without streaming deltas',async()=>{
+    const client=new FakeAppServer(),adapter=new CodexConnectorAdapter({client}),execution=await adapter.start(input()),iterator=adapter.events(execution)[Symbol.asyncIterator]();
+    client.emit({method:'item/completed',params:{threadId:'thread-1',turnId:'turn-1',item:{id:'commentary',type:'agentMessage',text:'Commentary.'}}});
+    client.emit({method:'item/completed',params:{threadId:'thread-1',turnId:'turn-1',item:{id:'answer',type:'agentMessage',text:'Answer.'}}});
+    expect((await iterator.next()).value).toMatchObject({payload:{text:'Commentary.'}});
+    expect((await iterator.next()).value).toMatchObject({payload:{text:'\n\nAnswer.'}});
+  });
   it('runs full access without approvals in Work and forces read-only in Plan',async()=>{
     const workClient=new FakeAppServer(),workAdapter=new CodexConnectorAdapter({client:workClient});
     await workAdapter.start({...input('full-work'),executionProfile:{...input().executionProfile,permissionProfileId:'danger-full-access'}});
