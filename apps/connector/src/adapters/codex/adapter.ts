@@ -1,5 +1,5 @@
 import {createHash} from 'node:crypto';
-import type {ConnectorRequestAnswer,ConnectorRequestSnapshot,ExecutionStatus,TokenUsage} from '@agenvyl/connector-contract';
+import type {ConnectorElicitation,ConnectorJsonValue,ConnectorRequestAnswer,ConnectorRequestSnapshot,ExecutionStatus,TokenUsage} from '@agenvyl/connector-contract';
 import type {AdapterExecution,AdapterExecutionEvent,AdapterStartExecutionRequest,ConnectorAdapter} from '../../adapter.js';
 import {redactConnectorText} from '../../safety.js';
 import {CodexAppServerClient,type AppServerMessage,type CodexAppServerPort} from './app-server-client.js';
@@ -15,7 +15,7 @@ export type CodexAdapterOptions={command?:string;env?:NodeJS.ProcessEnv;allowDan
 
 export class CodexConnectorAdapter implements ConnectorAdapter{
   readonly type='codex';
-  readonly capabilities:ConnectorAdapter['capabilities']=['model_catalog','execution_profiles','text_streaming','reasoning','tools','approvals','clarifications','usage'];
+  readonly capabilities:ConnectorAdapter['capabilities']=['model_catalog','execution_profiles','text_streaming','reasoning','tools','approvals','clarifications','elicitations','usage'];
   private readonly clientFactory:()=>CodexAppServerPort;
   private readonly allowDangerFullAccess:boolean;
   private readonly stopGraceMs:number;
@@ -75,6 +75,12 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
   async resolveRequest(execution:AdapterExecution,request:ConnectorRequestSnapshot,answer:ConnectorRequestAnswer|string){
     const state=this.require(execution.upstreamId),pending=state.pending.get(request.id);
     if(!pending)throw new Error('Codex request is no longer pending');
+    if(pending.method==='mcpServer/elicitation/request'){
+      if(typeof answer==='string'||!('elicitation'in answer))throw new Error('Codex MCP elicitation requires an elicitation answer');
+      state.client.respond(pending.rpcId,{...answer.elicitation,_meta:null});
+      state.pending.delete(request.id);
+      return{outcome:answer.elicitation.action==='accept'?'answered' as const:answer.elicitation.action==='decline'?'declined' as const:'cancelled' as const};
+    }
     if(pending.method==='item/tool/requestUserInput'){
       if(typeof answer==='string'||!('answers'in answer))throw new Error('Codex clarification requires structured answers');
       state.client.respond(pending.rpcId,{answers:Object.fromEntries(Object.entries(answer.answers).map(([id,answers])=>[id,{answers}]))});
@@ -117,6 +123,12 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
       const questions=normalizeQuestions(params.questions);if(!questions){this.rejectServerRequest(state,rpcId,'Codex clarification request is invalid');return;}
       const requestId=requestIdentity(state,rpcId);state.pending.set(requestId,{rpcId,method});
       state.queue.push({type:'request.opened',payload:{request:{id:requestId,kind:'clarification',prompt:'Codex needs additional input',questions,...(safeInteger(params.autoResolutionMs)?{autoResolutionMs:Number(params.autoResolutionMs)}:{})}}});return;
+    }
+    if(method==='mcpServer/elicitation/request'){
+      const elicitation=normalizeElicitation(params);
+      if(!elicitation){state.client.respond(rpcId,{action:'decline',content:null,_meta:null});return;}
+      const requestId=requestIdentity(state,rpcId);state.pending.set(requestId,{rpcId,method});
+      state.queue.push({type:'request.opened',payload:{request:{id:requestId,kind:'elicitation',prompt:elicitation.message,elicitation}}});return;
     }
     this.rejectServerRequest(state,rpcId,`Unsupported Codex server request: ${method}`);
   }
@@ -213,6 +225,27 @@ const normalizeQuestions=(value:unknown)=>{
   if(!Array.isArray(value)||value.length<1||value.length>4)return;
   const result=[];for(const raw of value){const item=record(raw);if(!item||typeof item.id!=='string'||typeof item.header!=='string'||typeof item.question!=='string'||typeof item.isOther!=='boolean'||typeof item.isSecret!=='boolean')return;const options=Array.isArray(item.options)?item.options.map(option=>record(option)).filter((option):option is Record<string,unknown>=>Boolean(option&&typeof option.label==='string')).map(option=>({label:redactConnectorText(String(option.label),300),...(typeof option.description==='string'?{description:redactConnectorText(option.description,500)}:{})})):undefined;result.push({id:item.id,header:redactConnectorText(item.header,128),question:redactConnectorText(item.question,2_000),isOther:item.isOther,isSecret:item.isSecret,...(typeof item.multiSelect==='boolean'?{multiSelect:item.multiSelect}:{}),...(options?.length?{options}:{})});}return result;
 };
+const normalizeElicitation=(params:Record<string,unknown>):ConnectorElicitation|undefined=>{
+  if(typeof params.serverName!=='string'||!params.serverName||params.serverName.length>128||typeof params.message!=='string'||!params.message||params.message.length>8_000)return;
+  const serverName=redactConnectorText(params.serverName,128),message=redactConnectorText(params.message,8_000);
+  if(params.mode==='url'){
+    if(typeof params.url!=='string'||params.url.length>8_000||typeof params.elicitationId!=='string'||!params.elicitationId||params.elicitationId.length>512||!safeHttpUrl(params.url))return;
+    return{mode:'url',serverName,message,url:params.url,elicitationId:params.elicitationId};
+  }
+  if(params.mode!=='form'&&params.mode!=='openai/form')return;
+  if(!boundedJson(params.requestedSchema,64_000))return;
+  return{mode:params.mode,serverName,message,requestedSchema:structuredClone(params.requestedSchema)};
+};
+const boundedJson=(value:unknown,maxBytes:number):value is ConnectorJsonValue=>{try{return jsonValue(value,0)&&JSON.stringify(value).length<=maxBytes;}catch{return false;}};
+const jsonValue=(value:unknown,depth:number):value is ConnectorJsonValue=>{
+  if(depth>12)return false;
+  if(value===null||typeof value==='string'||typeof value==='boolean')return true;
+  if(typeof value==='number')return Number.isFinite(value);
+  if(Array.isArray(value))return value.length<=256&&value.every(item=>jsonValue(item,depth+1));
+  const object=record(value);if(!object)return false;
+  return Object.keys(object).length<=256&&Object.values(object).every(item=>jsonValue(item,depth+1));
+};
+const safeHttpUrl=(value:string)=>{try{const url=new URL(value);return(url.protocol==='http:'||url.protocol==='https:')&&!url.username&&!url.password;}catch{return false;}};
 const toolEvent=(value:unknown,status:'started'|'completed'):AdapterExecutionEvent|undefined=>{const item=record(value);if(!item||typeof item.id!=='string'||typeof item.type!=='string'||['agentMessage','reasoning','userMessage','plan'].includes(item.type))return;const name=redactConnectorText(item.type,128),summary=toolSummary(item,status),safeInput=toolInput(item);return{type:status==='started'?'tool.started':'tool.completed',payload:{toolId:item.id,name,safeSummary:summary,...(safeInput===undefined?{}:{safeInput})}};};
 const toolSummary=(item:Record<string,unknown>,status:string)=>redactConnectorText(typeof item.command==='string'?item.command:typeof item.tool==='string'?`${item.server??'MCP'}: ${item.tool}`:`${item.type} ${status}`,500);
 const toolInput=(item:Record<string,unknown>)=>{

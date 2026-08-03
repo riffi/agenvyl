@@ -85,6 +85,10 @@ export const userProfileResponseSchema=objectSchema({id:{type:'string'},displayN
 export const runRequestResolutionBodySchema = {anyOf:[
   objectSchema({resolution:{type:'string',minLength:1,maxLength:2_000}},['resolution']),
   objectSchema({answers:{type:'object',minProperties:1,maxProperties:4,additionalProperties:{type:'array',minItems:1,items:{type:'string',maxLength:2_000},maxItems:10}}},['answers']),
+  objectSchema({elicitation:{anyOf:[
+    objectSchema({action:{type:'string',const:'accept'},content:{}},['action','content']),
+    objectSchema({action:{type:'string',enum:['decline','cancel']},content:{type:'null'}},['action','content']),
+  ]}},['elicitation']),
 ]} as const;
 
 export const roomResponseSchema = objectSchema({
@@ -116,7 +120,8 @@ const upstreamStatusResponseSchema=objectSchema({state:{type:'string',enum:['wai
 const connectorRunStateResponseSchema=objectSchema({state:{type:'string',enum:['active','degraded','terminal','unavailable','lost']},checkpointed:{type:'boolean'}},['state','checkpointed']);
 const structuredQuestionOptionResponseSchema=objectSchema({label:{type:'string'},description:{type:'string'}},['label']);
 const structuredQuestionResponseSchema=objectSchema({id:{type:'string'},header:{type:'string'},question:{type:'string'},options:{type:'array',items:structuredQuestionOptionResponseSchema},isOther:{type:'boolean'},isSecret:{type:'boolean'},multiSelect:{type:'boolean'}},['id','header','question','isOther','isSecret']);
-const runRequestResponseSchema=objectSchema({id:{type:'string'},kind:{type:'string',enum:['approval','clarification']},prompt:{type:'string'},directory:{type:'string'},choices:{type:'array',items:{type:'string'}},questions:{type:'array',items:structuredQuestionResponseSchema,maxItems:4},autoResolutionMs:{type:'integer'},resolved:{type:'string'}},['id','kind','prompt']);
+const mcpElicitationResponseSchema={anyOf:[objectSchema({mode:{type:'string',enum:['form','openai/form']},serverName:{type:'string'},message:{type:'string'},requestedSchema:{}},['mode','serverName','message','requestedSchema']),objectSchema({mode:{type:'string',const:'url'},serverName:{type:'string'},message:{type:'string'},url:{type:'string'},elicitationId:{type:'string'}},['mode','serverName','message','url','elicitationId'])]} as const;
+const runRequestResponseSchema=objectSchema({id:{type:'string'},kind:{type:'string',enum:['approval','clarification','elicitation']},prompt:{type:'string'},directory:{type:'string'},choices:{type:'array',items:{type:'string'}},questions:{type:'array',items:structuredQuestionResponseSchema,maxItems:4},elicitation:mcpElicitationResponseSchema,autoResolutionMs:{type:'integer'},resolved:{type:'string'}},['id','kind','prompt']);
 const runExecutionProfileResponseSchema=objectSchema({workflowMode:workflowModeSchema,requestedReasoningEffort:nullableStringSchema,reasoningEffort:nullableStringSchema,reasoningEffortFallback:{type:'boolean'},reasoningEffortSource:{type:'string',enum:['room_override','persona_default','model_default','auto']},planEnforcement:{anyOf:[{type:'null'},{type:'string',enum:['native','instruction_only']}]},permissionProfileId:nullableStringSchema,agentVariantId:nullableStringSchema,implementationPlanVersionId:nullableStringSchema},['workflowMode','requestedReasoningEffort','reasoningEffort','reasoningEffortFallback','reasoningEffortSource','planEnforcement','permissionProfileId','agentVariantId','implementationPlanVersionId']);
 const workspaceCaptureErrorSchema=objectSchema({path:{type:'string'},code:{type:'string'},message:{type:'string'}},['path','code']);
 const runWorkspaceResultSchema=objectSchema({base_snapshot_id:{type:'string'},result_snapshot_id:{type:'string'},published_snapshot_id:{type:'string'},capture_status:{type:'string'},publish_status:{type:'string'},conflict_count:{type:'integer',minimum:0},errors:{type:'array',items:workspaceCaptureErrorSchema}},['base_snapshot_id','capture_status','publish_status','conflict_count','errors']);

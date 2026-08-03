@@ -11,6 +11,7 @@ export type ConnectorCapability =
   | 'tools'
   | 'approvals'
   | 'clarifications'
+  | 'elicitations'
   | 'usage';
 
 export type ConnectorError = { code: string; message: string };
@@ -134,8 +135,15 @@ export type ExecutionStatus =
   | 'failed'
   | 'cancelled';
 
-export type ConnectorRequestKind = 'approval' | 'clarification';
+export type ConnectorRequestKind = 'approval' | 'clarification' | 'elicitation';
 export type ConnectorRequestResolution = 'answered' | 'declined' | 'cancelled' | 'expired' | 'superseded';
+export type ConnectorJsonValue = null | boolean | number | string | ConnectorJsonValue[] | { [key: string]: ConnectorJsonValue };
+export type ConnectorElicitation =
+  | { mode: 'form' | 'openai/form'; serverName: string; message: string; requestedSchema: ConnectorJsonValue }
+  | { mode: 'url'; serverName: string; message: string; url: string; elicitationId: string };
+export type ConnectorElicitationAnswer =
+  | { action: 'accept'; content: ConnectorJsonValue }
+  | { action: 'decline' | 'cancel'; content: null };
 export type ConnectorQuestion = {
   id: string;
   header: string;
@@ -152,6 +160,7 @@ export type ConnectorRequestSnapshot = {
   directory?:string;
   choices?: string[];
   questions?: ConnectorQuestion[];
+  elicitation?: ConnectorElicitation;
   autoResolutionMs?: number;
   resolution?: { outcome: ConnectorRequestResolution; value?: string };
 };
@@ -207,7 +216,7 @@ export type ConnectorExecutionEvent =
   | EventEnvelope<'execution.completed' | 'execution.cancelled', Record<string, never>>
   | EventEnvelope<'execution.failed', { error: ConnectorError }>;
 
-export type ConnectorRequestAnswer = { resolution: string } | { answers: Record<string, string[]> };
+export type ConnectorRequestAnswer = { resolution: string } | { answers: Record<string, string[]> } | { elicitation: ConnectorElicitationAnswer };
 export type ResolveConnectorRequest = ConnectorRequestAnswer;
 export type ConnectorCommandResult = { execution: ExecutionSnapshot };
 export type ConnectorRequestCommandResult = ConnectorCommandResult & { request: ConnectorRequestSnapshot };
@@ -338,9 +347,11 @@ export function isStartExecutionRequest(value: unknown): value is StartExecution
 export function isResolveConnectorRequest(value: unknown): value is ResolveConnectorRequest {
   if (!isRecord(value)) return false;
   if (typeof value.resolution === 'string') return value.resolution.trim().length > 0 && value.resolution.length <= 2_000;
-  if (!isRecord(value.answers)) return false;
-  const entries=Object.entries(value.answers);
-  return entries.length>0&&entries.length<=4&&entries.every(([id,answers])=>id.length>0&&id.length<=128&&Array.isArray(answers)&&answers.length>0&&answers.length<=10&&answers.every(answer=>typeof answer==='string'&&answer.trim().length>0&&answer.length<=2_000));
+  if (isRecord(value.answers)) {
+    const entries=Object.entries(value.answers);
+    return entries.length>0&&entries.length<=4&&entries.every(([id,answers])=>id.length>0&&id.length<=128&&Array.isArray(answers)&&answers.length>0&&answers.length<=10&&answers.every(answer=>typeof answer==='string'&&answer.trim().length>0&&answer.length<=2_000));
+  }
+  return isRecord(value.elicitation)&&isElicitationAnswer(value.elicitation);
 }
 
 export function isConnectorExecutionEvent(value: unknown): value is ConnectorExecutionEvent {
@@ -361,7 +372,7 @@ export function isConnectorExecutionEvent(value: unknown): value is ConnectorExe
   }
 }
 
-const capabilities = new Set<string>(['model_catalog', 'execution_profiles', 'text_streaming', 'reasoning', 'tools', 'approvals', 'clarifications', 'usage']);
+const capabilities = new Set<string>(['model_catalog', 'execution_profiles', 'text_streaming', 'reasoning', 'tools', 'approvals', 'clarifications', 'elicitations', 'usage']);
 const harnessTypes = new Set<string>(['hermes', 'opencode', 'antigravity', 'codex', 'claude']);
 const executionStatuses = new Set<string>(['queued', 'running', 'waiting_for_user', 'stopping', 'completed', 'failed', 'cancelled']);
 const requestResolutions = new Set<string>(['answered', 'declined', 'cancelled', 'expired', 'superseded']);
@@ -389,20 +400,41 @@ function isTokenUsage(value:unknown):value is TokenUsage{
   return ['totalTokens','reasoningTokens','cacheReadTokens','cacheWriteTokens'].every(key=>value[key]===undefined||nonNegativeInteger(value[key]));
 }
 function isRequest(value: unknown): value is ConnectorRequestSnapshot {
-  if (!isRecord(value) || !strings(value, 'id', 'kind', 'prompt') || (value.kind !== 'approval' && value.kind !== 'clarification')) return false;
+  if (!isRecord(value) || !strings(value, 'id', 'kind', 'prompt') || !['approval','clarification','elicitation'].includes(String(value.kind))) return false;
   if(value.directory!==undefined&&typeof value.directory!=='string')return false;
   if (value.choices !== undefined && (!Array.isArray(value.choices) || value.choices.some(choice => typeof choice !== 'string'))) return false;
   if(value.questions!==undefined&&(!Array.isArray(value.questions)||value.questions.length<1||value.questions.length>4||!value.questions.every(isQuestion)))return false;
+  if(value.elicitation!==undefined&&!isElicitation(value.elicitation))return false;
+  if(value.kind==='elicitation'&&value.elicitation===undefined)return false;
+  if(value.kind!=='elicitation'&&value.elicitation!==undefined)return false;
   if(value.autoResolutionMs!==undefined&&(!Number.isSafeInteger(value.autoResolutionMs)||Number(value.autoResolutionMs)<0))return false;
   return value.resolution === undefined || (isRecord(value.resolution) && typeof value.resolution.outcome === 'string' && requestResolutions.has(value.resolution.outcome) && (value.resolution.value === undefined || typeof value.resolution.value === 'string'));
 }
 function isQuestion(value:unknown){return isRecord(value)&&strings(value,'id','header','question')&&typeof value.isOther==='boolean'&&typeof value.isSecret==='boolean'&&(value.multiSelect===undefined||typeof value.multiSelect==='boolean')&&(value.options===undefined||(Array.isArray(value.options)&&value.options.every(option=>isRecord(option)&&typeof option.label==='string'&&(option.description===undefined||typeof option.description==='string'))));}
+function isElicitation(value:unknown):value is ConnectorElicitation{
+  if(!isRecord(value)||!strings(value,'mode','serverName','message')||String(value.serverName).length>128||String(value.message).length>8_000)return false;
+  if(value.mode==='url')return strings(value,'url','elicitationId')&&String(value.url).length<=8_000&&String(value.elicitationId).length<=512&&safeHttpUrl(value.url);
+  return(value.mode==='form'||value.mode==='openai/form')&&isBoundedJson(value.requestedSchema,64_000);
+}
+function isElicitationAnswer(value:Record<string,unknown>):value is ConnectorElicitationAnswer{
+  if(value.action==='decline'||value.action==='cancel')return value.content===null;
+  return value.action==='accept'&&isBoundedJson(value.content,64_000);
+}
+function isBoundedJson(value:unknown,maxBytes:number){try{return isJsonValue(value,0)&&JSON.stringify(value).length<=maxBytes;}catch{return false;}}
+function isJsonValue(value:unknown,depth:number):value is ConnectorJsonValue{
+  if(depth>12)return false;
+  if(value===null||typeof value==='string'||typeof value==='boolean')return true;
+  if(typeof value==='number')return Number.isFinite(value);
+  if(Array.isArray(value))return value.length<=256&&value.every(item=>isJsonValue(item,depth+1));
+  return isRecord(value)&&Object.keys(value).length<=256&&Object.values(value).every(item=>isJsonValue(item,depth+1));
+}
 function isRecord(value: unknown): value is Record<string, unknown> { return Boolean(value && typeof value === 'object' && !Array.isArray(value)); }
 function strings(value: Record<string, unknown>, ...keys: string[]) { return keys.every(key => typeof value[key] === 'string'); }
 function integers(value: Record<string, unknown>, ...keys: string[]) { return keys.every(key => Number.isSafeInteger(value[key]) && Number(value[key]) >= 0); }
 function nonNegativeInteger(value:unknown){return Number.isSafeInteger(value)&&Number(value)>=0;}
 function isIsoDate(value: unknown) { return typeof value === 'string' && Number.isFinite(Date.parse(value)); }
 function safeEndpoint(value: unknown) { try { const url = new URL(String(value)); return (url.protocol === 'http:' || url.protocol === 'https:') && !url.username && !url.password && !url.search && !url.hash; } catch { return false; } }
+function safeHttpUrl(value:unknown){try{const url=new URL(String(value));return(url.protocol==='http:'||url.protocol==='https:')&&!url.username&&!url.password;}catch{return false;}}
 function validExternalDirectoryRoots(value:unknown){
   if(!Array.isArray(value))return false;
   const roots:string[]=[];

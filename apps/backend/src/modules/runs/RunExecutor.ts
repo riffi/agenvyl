@@ -188,6 +188,14 @@ export class RunExecutor {
     if (!run) throw new AppError('not_found', 404, 'Run not found');
     const pending=run.pendingRequests?.get(requestId);
     if(!pending)throw new AppError('request_not_active',409,'Run request is not active');
+    if(pending.kind==='elicitation'){
+      const answer=typeof input==='object'&&input&&'elicitation'in input?input.elicitation:undefined;
+      if(!run.upstreamRunId||!answer||!validElicitationAnswer(answer))throw new AppError('invalid_elicitation_resolution',400,'MCP elicitation response is invalid');
+      const gateway=this.gatewayFor(run);if(!gateway.elicit)throw new AppError('unsupported',409,'The configured run gateway has no verified elicitation resolution endpoint');
+      try{const checkpoint=await gateway.elicit(run.upstreamRunId,requestId,answer);if(checkpoint)await this.dependencies.runs.advanceConnectorCheckpoint(run.id,checkpoint);}
+      catch(error){throw mapUpstreamError(error);}
+      return;
+    }
     if (pending.kind === 'clarification') {
       const resolution=typeof input==='string'?{resolution:input.trim()}:input,gateway=this.gatewayFor(run);
       if(!run.upstreamRunId||!resolution||('resolution' in resolution&&!resolution.resolution))throw new AppError('invalid_clarification_resolution',400,'Clarification answer must not be empty');
@@ -348,8 +356,8 @@ export class RunExecutor {
     if(mapping.status)run.status=mapping.status;
     for(const event of mapping.events){
       if(event.type==='run.delta')run.responseText=(run.responseText??'')+String(event.payload.text??'');
-      if(event.type==='request.created'&&typeof event.payload.requestId==='string'&&(event.payload.kind==='approval'||event.payload.kind==='clarification')){
-        run.pendingRequests??=new Map();run.pendingRequests.set(event.payload.requestId,{id:event.payload.requestId,kind:event.payload.kind,prompt:String(event.payload.prompt??''),...(typeof event.payload.directory==='string'?{directory:event.payload.directory}:{}),...(Array.isArray(event.payload.choices)?{choices:event.payload.choices as string[]}:{}),...(Array.isArray(event.payload.questions)?{questions:event.payload.questions as import('@agenvyl/contracts').StructuredQuestion[]}:{}),...(typeof event.payload.autoResolutionMs==='number'?{autoResolutionMs:event.payload.autoResolutionMs}:{})});
+      if(event.type==='request.created'&&typeof event.payload.requestId==='string'&&['approval','clarification','elicitation'].includes(String(event.payload.kind))){
+        run.pendingRequests??=new Map();run.pendingRequests.set(event.payload.requestId,{id:event.payload.requestId,kind:event.payload.kind as import('@agenvyl/contracts').RunRequest['kind'],prompt:String(event.payload.prompt??''),...(typeof event.payload.directory==='string'?{directory:event.payload.directory}:{}),...(Array.isArray(event.payload.choices)?{choices:event.payload.choices as string[]}:{}),...(Array.isArray(event.payload.questions)?{questions:event.payload.questions as import('@agenvyl/contracts').StructuredQuestion[]}:{}),...(event.payload.elicitation?{elicitation:event.payload.elicitation as import('@agenvyl/contracts').McpElicitation}:{}),...(typeof event.payload.autoResolutionMs==='number'?{autoResolutionMs:event.payload.autoResolutionMs}:{})});
       }
       if(event.type==='request.resolved'&&typeof event.payload.requestId==='string')run.pendingRequests?.delete(event.payload.requestId);
     }
@@ -439,6 +447,15 @@ function isTerminal(status: string) {
 }
 
 function recoveredStatus(execution:ExecutionSnapshot):RunStatus|undefined{const pending=execution.pendingRequests[0];if(pending)return pending.kind==='approval'?'waiting_approval':'waiting_clarification';if(execution.status==='running')return'streaming';if(execution.status==='stopping')return'stopping';return undefined;}
+
+function validElicitationAnswer(value:unknown):value is import('@agenvyl/contracts').McpElicitationAnswer{
+  if(!value||typeof value!=='object'||!('action'in value)||!('content'in value))return false;
+  const answer=value as {action:unknown;content:unknown};
+  if(answer.action==='decline'||answer.action==='cancel')return answer.content===null;
+  if(answer.action!=='accept'||!jsonValue(answer.content,0))return false;
+  try{return JSON.stringify(answer.content).length<=64_000;}catch{return false;}
+}
+function jsonValue(value:unknown,depth:number):boolean{if(depth>12)return false;if(value===null||typeof value==='string'||typeof value==='boolean')return true;if(typeof value==='number')return Number.isFinite(value);if(Array.isArray(value))return value.length<=256&&value.every(item=>jsonValue(item,depth+1));if(!value||typeof value!=='object')return false;const values=Object.values(value);return values.length<=256&&values.every(item=>jsonValue(item,depth+1));}
 
 function connectorTerminal(execution:ExecutionSnapshot):{status:'completed'|'failed'|'cancelled';error?:string}|undefined{if(execution.status==='completed')return{status:'completed'};if(execution.status==='cancelled')return{status:'cancelled'};if(execution.status==='failed')return{status:'failed',...(execution.error?.message?{error:execution.error.message}:{})};return undefined;}
 

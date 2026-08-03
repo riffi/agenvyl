@@ -51,11 +51,12 @@ export type ToolActivity = {
 
 export type RunRequest = {
   id: string;
-  kind: 'approval' | 'clarification';
+  kind: 'approval' | 'clarification' | 'elicitation';
   prompt: string;
   directory?: string;
   choices?: string[];
   questions?: StructuredQuestion[];
+  elicitation?: McpElicitation;
   autoResolutionMs?: number;
   resolved?: string;
 };
@@ -226,7 +227,10 @@ export type CreateRoomRequest = { title?: string; persona_ids?: string[] };
 export type RenameRoomRequest = { title?: string };
 export type CreateMessageRequest = { text?: string; targets?: AgentHandle[]; message_id?: string; attachment_version_ids?:string[]; execution_intent?:ExecutionIntent };
 export type StructuredQuestion={id:string;header:string;question:string;options?:Array<{label:string;description?:string}>;isOther:boolean;isSecret:boolean;multiSelect?:boolean};
-export type RunRequestResolution={resolution:string}|{answers:Record<string,string[]>};
+export type JsonValue=null|boolean|number|string|JsonValue[]|{[key:string]:JsonValue};
+export type McpElicitation={mode:'form'|'openai/form';serverName:string;message:string;requestedSchema:JsonValue}|{mode:'url';serverName:string;message:string;url:string;elicitationId:string};
+export type McpElicitationAnswer={action:'accept';content:JsonValue}|{action:'decline'|'cancel';content:null};
+export type RunRequestResolution={resolution:string}|{answers:Record<string,string[]>}|{elicitation:McpElicitationAnswer};
 export type ResolveRunRequest = RunRequestResolution;
 export type ApprovalRequest = ResolveRunRequest;
 export type PersonaInput = Pick<Persona, 'handle' | 'name' | 'color' | 'group_id'> & {
@@ -260,7 +264,7 @@ export type ServerRoomEvent =
   | Envelope<'run.upstream_status', { runId: string } & UpstreamStatusEvent>
   | Envelope<'run.usage', {runId:string;usage:TokenUsage}>
   | Envelope<'tool.updated', { runId: string; tool: ToolActivity }>
-  | Envelope<'request.created', { runId: string; requestId:string; kind: 'approval' | 'clarification'; prompt: string;directory?:string;choices?: string[];questions?:StructuredQuestion[];autoResolutionMs?:number }>
+  | Envelope<'request.created', { runId: string; requestId:string; kind: 'approval' | 'clarification' | 'elicitation'; prompt: string;directory?:string;choices?: string[];questions?:StructuredQuestion[];elicitation?:McpElicitation;autoResolutionMs?:number }>
   | Envelope<'request.resolved', { runId: string; requestId:string; resolution: string }>
   | Envelope<'run.selected', { responseSlotId: string; runId: string }>
   | Envelope<'room.participant.updated', RoomPersona>
@@ -306,7 +310,7 @@ export function isServerRoomEvent(value: unknown): value is ServerRoomEvent {
     case 'run.upstream_status': return typeof payload.runId === 'string' && isUpstreamStatusEvent(payload);
     case 'run.usage': return typeof payload.runId==='string'&&isTokenUsage(payload.usage);
     case 'tool.updated': return typeof payload.runId === 'string' && isRecord(payload.tool) && strings(payload.tool, 'id', 'name', 'detail', 'status') && (payload.tool.input === undefined || typeof payload.tool.input === 'string') && toolStatuses.has(payload.tool.status as ToolActivity['status']);
-    case 'request.created': return strings(payload, 'runId', 'requestId', 'kind', 'prompt') && (payload.kind === 'approval' || payload.kind === 'clarification') && (payload.directory===undefined||typeof payload.directory==='string') && (payload.choices===undefined||(Array.isArray(payload.choices)&&payload.choices.every(choice=>typeof choice==='string'))) && (payload.questions===undefined||isStructuredQuestions(payload.questions)) && (payload.autoResolutionMs===undefined||Number.isSafeInteger(payload.autoResolutionMs));
+    case 'request.created': return strings(payload, 'runId', 'requestId', 'kind', 'prompt') && ['approval','clarification','elicitation'].includes(String(payload.kind)) && (payload.directory===undefined||typeof payload.directory==='string') && (payload.choices===undefined||(Array.isArray(payload.choices)&&payload.choices.every(choice=>typeof choice==='string'))) && (payload.questions===undefined||isStructuredQuestions(payload.questions)) && (payload.elicitation===undefined||isMcpElicitation(payload.elicitation)) && (payload.kind==='elicitation'?payload.elicitation!==undefined:payload.elicitation===undefined) && (payload.autoResolutionMs===undefined||Number.isSafeInteger(payload.autoResolutionMs));
     case 'request.resolved': return strings(payload, 'runId', 'requestId', 'resolution');
     case 'run.selected': return strings(payload, 'responseSlotId', 'runId');
     case 'room.participant.updated': return isRoomPersona(payload);
@@ -329,6 +333,9 @@ function isRunExecutionProfile(value:unknown):value is RunExecutionProfileSnapsh
 function isRoomPersona(value:Record<string,unknown>):boolean{return isRecord(value.persona)&&typeof value.persona.id==='string'&&(value.reasoning_effort_override===null||typeof value.reasoning_effort_override==='string');}
 function tokenCount(value:unknown){return Number.isSafeInteger(value)&&Number(value)>=0;}
 function isStructuredQuestions(value:unknown):value is StructuredQuestion[]{return Array.isArray(value)&&value.length>0&&value.length<=4&&value.every(question=>isRecord(question)&&strings(question,'id','header','question')&&typeof question.isOther==='boolean'&&typeof question.isSecret==='boolean'&&(question.multiSelect===undefined||typeof question.multiSelect==='boolean')&&(question.options===undefined||(Array.isArray(question.options)&&question.options.every(option=>isRecord(option)&&typeof option.label==='string'&&(option.description===undefined||typeof option.description==='string')))));}
+function isMcpElicitation(value:unknown):value is McpElicitation{if(!isRecord(value)||!strings(value,'mode','serverName','message'))return false;if(value.mode==='url')return strings(value,'url','elicitationId')&&safeHttpUrl(value.url);return(value.mode==='form'||value.mode==='openai/form')&&isJsonValue(value.requestedSchema,0);}
+function isJsonValue(value:unknown,depth:number):value is JsonValue{if(depth>12)return false;if(value===null||typeof value==='string'||typeof value==='boolean')return true;if(typeof value==='number')return Number.isFinite(value);if(Array.isArray(value))return value.length<=256&&value.every(item=>isJsonValue(item,depth+1));return isRecord(value)&&Object.keys(value).length<=256&&Object.values(value).every(item=>isJsonValue(item,depth+1));}
+function safeHttpUrl(value:unknown){try{const url=new URL(String(value));return(url.protocol==='http:'||url.protocol==='https:')&&!url.username&&!url.password;}catch{return false;}}
 
 function strings(value: Record<string, unknown>, ...keys: string[]) {
   return keys.every(key => typeof value[key] === 'string');

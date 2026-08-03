@@ -64,6 +64,17 @@ describe('ConnectorRunAdapter',()=>{
     expect(client.resolve).toHaveBeenCalledWith('run-1','question-1','SVG');
   });
 
+  it('maps and resolves an MCP elicitation with its structured content intact',async()=>{
+    const pending={id:'elicit-1',kind:'elicitation' as const,prompt:'Choose workspace',elicitation:{mode:'form' as const,serverName:'nodexium',message:'Choose workspace',requestedSchema:{type:'object',properties:{workspace:{type:'string'}}}}},execution={...connectorContractFixtures.execution,cursor:2,pendingRequests:[]},client=clientFixture(execution,[]),adapter=new ConnectorRunAdapter(client);
+    vi.mocked(client.events).mockImplementation(async function*(){yield event(3,'request.opened',{request:pending});});
+    vi.mocked(client.resolve).mockResolvedValue({execution:{...execution,cursor:4,pendingRequests:[]},request:pending});
+    await adapter.createRun(input());const stream=adapter.stream('run-1','local-run',new AbortController().signal)[Symbol.asyncIterator]();
+    await expect(stream.next()).resolves.toMatchObject({value:{events:[{type:'request.created',payload:{kind:'elicitation',elicitation:{mode:'form'}}}],status:'waiting_clarification'}});
+    await expect(adapter.elicit('run-1','elicit-1',{action:'accept',content:{workspace:'main'}})).resolves.toMatchObject({cursor:2});
+    expect(client.resolve).toHaveBeenCalledWith('run-1','elicit-1',{elicitation:{action:'accept',content:{workspace:'main'}}});
+    await stream.return?.();
+  });
+
   it('reattaches from the persisted cursor while restoring pending requests',async()=>{
     const pending={id:'request-recovered',kind:'approval' as const,prompt:'Allow?',choices:['once','deny']},execution={...connectorContractFixtures.execution,cursor:9,pendingRequests:[pending]},client=clientFixture(execution,[]),adapter=new ConnectorRunAdapter(client);vi.mocked(client.resolve).mockResolvedValue({execution,request:pending});adapter.reattach({checkpoint:{executionId:'run-1',connectorEpoch:'epoch-1',cursor:7},pendingRequests:[pending]});for await(const _ of adapter.stream('run-1','local-run',new AbortController().signal))void _;expect(client.events).toHaveBeenCalledWith('run-1',expect.objectContaining({after:7,connectorEpoch:'epoch-1'}));await adapter.approve('run-1','request-recovered','once');expect(client.resolve).toHaveBeenCalledWith('run-1','request-recovered','once');
   });

@@ -47,4 +47,23 @@ describe('RunRequest structured clarification carousel',()=>{
 
     expect(resolve).toHaveBeenCalledWith({answers:{stack:['React'],sections:['Hero','Music'],content:['Ready']}});
   });
+
+  it('renders an MCP form and submits typed structured content',async()=>{
+    const user=userEvent.setup(),resolve=vi.fn();
+    render(<RunRequest request={{id:'elicit-form',kind:'elicitation',prompt:'Configure export',elicitation:{mode:'form',serverName:'nodexium',message:'Configure export',requestedSchema:{type:'object',properties:{title:{type:'string',title:'Title'},count:{type:'integer',title:'Count'},public:{type:'boolean',title:'Public'},format:{type:'string',title:'Format',enum:['md','html']}},required:['title','format']}}}} resolve={resolve}/>);
+    await user.type(screen.getByLabelText(/Title/),'Harness plan');
+    await user.type(screen.getByLabelText(/Count/),'2');
+    await user.selectOptions(screen.getByLabelText(/Public/),'true');
+    await user.selectOptions(screen.getByLabelText(/Format/),'md');
+    await user.click(screen.getByRole('button',{name:'Submit'}));
+    expect(resolve).toHaveBeenCalledWith({elicitation:{action:'accept',content:{title:'Harness plan',count:2,public:true,format:'md'}}});
+  });
+
+  it('renders an MCP URL flow with explicit continue and decline actions',async()=>{
+    const user=userEvent.setup(),resolve=vi.fn();
+    render(<RunRequest request={{id:'elicit-url',kind:'elicitation',prompt:'Connect Nodexium',elicitation:{mode:'url',serverName:'nodexium',message:'Connect Nodexium',url:'https://nodexium.example/connect',elicitationId:'flow-1'}}} resolve={resolve}/>);
+    expect(screen.getByRole('link',{name:/Open secure flow/}).getAttribute('href')).toBe('https://nodexium.example/connect');
+    await user.click(screen.getByRole('button',{name:'Continue'}));
+    expect(resolve).toHaveBeenCalledWith({elicitation:{action:'accept',content:null}});
+  });
 });

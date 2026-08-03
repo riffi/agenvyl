@@ -85,8 +85,29 @@ function sanitizeRequest(request: ConnectorRequestSnapshot): ConnectorRequestSna
     ...(safeExternalDirectory(request.directory)?{directory:safeExternalDirectory(request.directory)}:{}),
     ...(request.choices ? { choices: request.choices.slice(0, 32).map(choice => redactConnectorText(choice, 200)).filter(Boolean) } : {}),
     ...(request.questions ? { questions: request.questions.slice(0,4).map(question=>({id:safeIdentifier(question.id,'question'),header:redactConnectorText(question.header,128)||'Question',question:redactConnectorText(question.question,2_000)||'Agent requests input',isOther:question.isOther,isSecret:question.isSecret,...(question.multiSelect===undefined?{}:{multiSelect:question.multiSelect}),...(question.options?{options:question.options.slice(0,10).map(option=>({label:redactConnectorText(option.label,300)||'Option',...(option.description?{description:redactConnectorText(option.description,500)}:{})}))}:{})})) } : {}),
+    ...(request.elicitation ? { elicitation: sanitizeElicitation(request.elicitation) } : {}),
     ...(request.autoResolutionMs===undefined?{}:{autoResolutionMs:request.autoResolutionMs}),
     ...(request.resolution ? { resolution: { outcome: request.resolution.outcome, ...(request.resolution.value === undefined ? {} : { value: redactConnectorText(request.resolution.value, 2_000) }) } } : {}),
+  };
+}
+
+function sanitizeElicitation(elicitation: NonNullable<ConnectorRequestSnapshot['elicitation']>): NonNullable<ConnectorRequestSnapshot['elicitation']> {
+  const common = {
+    serverName: redactConnectorText(elicitation.serverName, 128) || 'mcp',
+    message: redactConnectorText(elicitation.message, 8_000) || 'MCP server requests input',
+  };
+  if (elicitation.mode === 'url') {
+    return {
+      mode: 'url',
+      ...common,
+      url: elicitation.url,
+      elicitationId: safeIdentifier(elicitation.elicitationId, 'elicitation'),
+    };
+  }
+  return {
+    mode: elicitation.mode,
+    ...common,
+    requestedSchema: structuredClone(elicitation.requestedSchema),
   };
 }
 

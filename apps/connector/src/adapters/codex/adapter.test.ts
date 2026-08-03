@@ -24,6 +24,26 @@ describe('Codex connector adapter',()=>{
     client.emit({id:7,method:'item/commandExecution/requestApproval',params:{threadId:'thread-1',turnId:'turn-1',command:'npm test'}});const approval=await iterator.next();expect(approval).toMatchObject({value:{type:'request.opened',payload:{request:{kind:'approval',choices:['once','session','deny']}}}});await adapter.resolveRequest(execution,(approval.value as Extract<typeof approval.value,{type:'request.opened'}>).payload.request,{resolution:'session'});expect(client.responses.at(-1)).toEqual({id:7,result:{decision:'acceptForSession'}});
     client.emit({id:'q1',method:'item/tool/requestUserInput',params:{threadId:'thread-1',turnId:'turn-1',questions:[{id:'format',header:'Format',question:'Which format?',isOther:true,isSecret:false,options:[{label:'SVG',description:'Vector'}]},{id:'token',header:'Token',question:'Secret?',isOther:false,isSecret:true,options:null}]}});const clarification=await iterator.next();expect(clarification).toMatchObject({value:{type:'request.opened',payload:{request:{kind:'clarification',questions:[{id:'format',isOther:true},{id:'token',isSecret:true}]}}}});await adapter.resolveRequest(execution,(clarification.value as Extract<typeof clarification.value,{type:'request.opened'}>).payload.request,{answers:{format:['SVG'],token:['secret']}});expect(client.responses.at(-1)).toEqual({id:'q1',result:{answers:{format:{answers:['SVG']},token:{answers:['secret']}}}});
     client.emit({method:'turn/completed',params:{threadId:'thread-1',turn:{id:'turn-1',status:'completed'}}});expect(await iterator.next()).toMatchObject({value:{type:'execution.completed'}});expect(await iterator.next()).toEqual({value:undefined,done:true});});
+  it('round-trips MCP form and URL elicitations without failing the execution',async()=>{
+    const client=new FakeAppServer(),adapter=new CodexConnectorAdapter({client}),execution=await adapter.start(input()),iterator=adapter.events(execution)[Symbol.asyncIterator]();
+    client.emit({id:'form-1',method:'mcpServer/elicitation/request',params:{threadId:'thread-1',turnId:'turn-1',serverName:'nodexium',mode:'form',message:'Confirm workspace',requestedSchema:{type:'object',properties:{workspace:{type:'string'}},required:['workspace']}}});
+    const form=await iterator.next();expect(form).toMatchObject({value:{type:'request.opened',payload:{request:{kind:'elicitation',prompt:'Confirm workspace',elicitation:{mode:'form',serverName:'nodexium'}}}}});
+    if(!form.value||form.value.type!=='request.opened')throw new Error('Expected form elicitation');
+    await expect(adapter.resolveRequest(execution,form.value.payload.request,{elicitation:{action:'accept',content:{workspace:'main'}}})).resolves.toEqual({outcome:'answered'});
+    expect(client.responses.at(-1)).toEqual({id:'form-1',result:{action:'accept',content:{workspace:'main'},_meta:null}});
+
+    client.emit({id:'url-1',method:'mcpServer/elicitation/request',params:{threadId:'thread-1',turnId:'turn-1',serverName:'nodexium',mode:'url',message:'Connect account',url:'https://nodexium.example/connect?id=1',elicitationId:'flow-1'}});
+    const url=await iterator.next();expect(url).toMatchObject({value:{type:'request.opened',payload:{request:{kind:'elicitation',elicitation:{mode:'url',url:'https://nodexium.example/connect?id=1'}}}}});
+    if(!url.value||url.value.type!=='request.opened')throw new Error('Expected URL elicitation');
+    await expect(adapter.resolveRequest(execution,url.value.payload.request,{elicitation:{action:'cancel',content:null}})).resolves.toEqual({outcome:'cancelled'});
+    expect(client.responses.at(-1)).toEqual({id:'url-1',result:{action:'cancel',content:null,_meta:null}});
+  });
+  it('safely declines malformed MCP elicitations and keeps the turn active',async()=>{
+    const client=new FakeAppServer(),adapter=new CodexConnectorAdapter({client}),execution=await adapter.start(input());
+    client.emit({id:'bad-1',method:'mcpServer/elicitation/request',params:{threadId:'thread-1',turnId:'turn-1',serverName:'nodexium',mode:'url',message:'Open',url:'javascript:alert(1)',elicitationId:'flow-1'}});
+    expect(client.responses.at(-1)).toEqual({id:'bad-1',result:{action:'decline',content:null,_meta:null}});
+    await expect(adapter.inspect(execution)).resolves.toEqual({status:'running'});
+  });
   it('supports concurrent threads and interrupts only the selected turn',async()=>{const client=new FakeAppServer(),adapter=new CodexConnectorAdapter({client});const first=await adapter.start(input('one')),second=await adapter.start(input('two'));await adapter.stop(second);expect(client.requests.at(-1)).toEqual({method:'turn/interrupt',params:{threadId:'thread-2',turnId:'turn-2'}});expect(await adapter.inspect(first)).toEqual({status:'running'});});
   it('force closes a lone app-server when an interrupted turn never settles',async()=>{
     vi.useFakeTimers();

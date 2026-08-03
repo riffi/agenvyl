@@ -62,6 +62,15 @@ describe("route validation contracts", () => {
     await app.close();
   });
 
+  it("accepts bounded MCP elicitation answers and rejects invalid decline content",async()=>{
+    const app=await buildApp({databaseUrl:testDatabaseUrl("validation_elicitation"),distPath:"missing-dist",fetch:vi.fn<typeof fetch>()});
+    const accepted=await app.inject({method:"POST",url:"/api/v1/runs/missing/request",payload:{elicitation:{action:"accept",content:{workspace:"main",confirm:true}}}});
+    const rejected=await app.inject({method:"POST",url:"/api/v1/runs/missing/request",payload:{elicitation:{action:"decline",content:{unexpected:true}}}});
+    expect(accepted.statusCode).toBe(404);expect(accepted.json()).toMatchObject({error:"not_found"});
+    expect(rejected.statusCode).toBe(400);expect(rejected.json()).toMatchObject({error:"validation_error"});
+    await app.close();
+  });
+
   it("accepts only the one-message plan and immutable implementation intents", async () => {
     const app = await buildApp({
       databaseUrl: testDatabaseUrl("validation_execution_intent"),

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { isConnectorExecutionEvent } from '@agenvyl/connector-contract';
 import { redactConnectorText, safeAdapterError, sanitizeAdapterEvent } from './safety.js';
 
 describe('Connector safety boundary', () => {
@@ -46,6 +47,26 @@ describe('Connector safety boundary', () => {
       payload:{request:{directory:'C:\\work'}},
     });
     expect(sanitizeAdapterEvent({type:'request.opened',payload:{request:{id:'request-directory',kind:'approval',prompt:'Add directory?',directory:'C:\\work\\..\\secret',choices:['allow_directory','deny']}}})).not.toHaveProperty('payload.request.directory');
+
+    const elicitation = sanitizeAdapterEvent({
+      type: 'request.opened',
+      payload: { request: {
+        id: 'elicitation-1',
+        kind: 'elicitation',
+        prompt: 'Choose a workspace',
+        elicitation: {
+          mode: 'form',
+          serverName: 'nodexium',
+          message: 'Choose a workspace',
+          requestedSchema: { type: 'object', properties: { workspace_id: { type: 'string' } }, required: ['workspace_id'] },
+        },
+      } },
+    });
+    expect(elicitation).toMatchObject({ payload: { request: { kind: 'elicitation', elicitation: { mode: 'form', serverName: 'nodexium' } } } });
+    expect(isConnectorExecutionEvent({
+      apiVersion: 'v2', connectorEpoch: 'epoch-1', executionId: 'execution-1', cursor: 1,
+      occurredAt: '2026-08-03T00:00:00.000Z', ...elicitation,
+    })).toBe(true);
 
     expect(sanitizeAdapterEvent({ type: 'execution.failed', payload: { error: { code: 'INVALID CODE', message: 'Bearer secret-token-value' } } })).toEqual({
       type: 'execution.failed', payload: { error: { code: 'adapter_execution_failed', message: 'Bearer [REDACTED]' } },

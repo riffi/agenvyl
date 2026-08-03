@@ -15,7 +15,7 @@ export type StartRunInput = {
 
 export type RunCheckpoint = { executionId: string; connectorEpoch: string; cursor: number };
 export type RunHandle = { id: string; checkpoint?: RunCheckpoint; harnessType?:string; adapterGeneration?:number };
-export type ReattachRunInput={checkpoint:RunCheckpoint;pendingRequests:Array<{id:string;kind:'approval'|'clarification';prompt:string;directory?:string;choices?:string[];questions?:import('@agenvyl/contracts').StructuredQuestion[];autoResolutionMs?:number}>};
+export type ReattachRunInput={checkpoint:RunCheckpoint;pendingRequests:import('@agenvyl/contracts').RunRequest[]};
 
 export type MappedRunEvent = {
   type: 'run.status' | 'run.upstream_status' | 'run.delta' | 'run.reasoning.delta' | 'run.usage' | 'tool.updated' | 'request.created' | 'request.resolved';
@@ -34,6 +34,7 @@ export interface RunGateway {
   stop(runId: string): Promise<RunCheckpoint | undefined>;
   approve(runId: string, requestId:string, choice: ApprovalChoice): Promise<RunCheckpoint | undefined>;
   clarify?(runId: string, requestId:string, resolution: import('@agenvyl/contracts').RunRequestResolution|string): Promise<RunCheckpoint | undefined>;
+  elicit?(runId:string,requestId:string,answer:import('@agenvyl/contracts').McpElicitationAnswer):Promise<RunCheckpoint|undefined>;
 }
 
 export interface RunEventStream {

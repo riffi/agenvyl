@@ -15,6 +15,9 @@ describe('Connector v1 contract fixtures', () => {
     expect(isConnectorExecutionEvent({...connectorContractFixtures.textEvent,type:'execution.upstream_status',payload:{state:'retrying',reason:'rate_limited',retryable:true,attempt:2,retryAt:'2026-07-17T00:00:05.000Z'}})).toBe(true);
     expect(isExecutionSnapshot({...connectorContractFixtures.execution,upstreamStatus:{state:'waiting_upstream',reason:'awaiting_response',retryable:true}})).toBe(true);
     expect(isResolveConnectorRequest({ resolution: 'once' })).toBe(true);
+    expect(isResolveConnectorRequest({elicitation:{action:'accept',content:{workspace:'main'}}})).toBe(true);
+    expect(isResolveConnectorRequest({elicitation:{action:'decline',content:null}})).toBe(true);
+    expect(isConnectorExecutionEvent({...connectorContractFixtures.textEvent,type:'request.opened',payload:{request:{id:'elicit-1',kind:'elicitation',prompt:'Choose',elicitation:{mode:'form',serverName:'nodexium',message:'Choose',requestedSchema:{type:'object',properties:{workspace:{type:'string'}}}}}}})).toBe(true);
   });
 
   it('rejects malformed epochs, cursors and payloads', () => {
@@ -34,6 +37,8 @@ describe('Connector v1 contract fixtures', () => {
     expect(isConnectorExecutionEvent({...connectorContractFixtures.textEvent,type:'execution.upstream_status',payload:{state:'retrying',reason:'vendor_secret',retryable:true}})).toBe(false);
     expect(isResolveConnectorRequest({ resolution: ' ' })).toBe(false);
     expect(isResolveConnectorRequest({ resolution: 'x'.repeat(2_001) })).toBe(false);
+    expect(isResolveConnectorRequest({elicitation:{action:'decline',content:{}}})).toBe(false);
+    expect(isConnectorExecutionEvent({...connectorContractFixtures.textEvent,type:'request.opened',payload:{request:{id:'elicit-1',kind:'elicitation',prompt:'Open',elicitation:{mode:'url',serverName:'nodexium',message:'Open',url:'javascript:alert(1)',elicitationId:'flow'}}}})).toBe(false);
   });
 
   it('accepts boolean managed ownership and rejects non-boolean values',()=>{

@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, CircleHelp, TriangleAlert } from 'lucide-rea
 import type { RunRequest as RequestSnapshot, RunRequestResolution, StructuredQuestion } from '@agenvyl/contracts';
 import { Button, Input } from '../../shared/ui';
 import styles from './Timeline.module.css';
+import {RunElicitation} from './RunElicitation';
 
 export const RunRequest = ({ request, resolve }: { request:RequestSnapshot; resolve:(value:RunRequestResolution|string)=>Promise<void>|void }) => {
   const [reply,setReply]=useState('');
@@ -16,6 +17,7 @@ export const RunRequest = ({ request, resolve }: { request:RequestSnapshot; reso
 
   if(request.resolved)return <RequestFrame request={request}><small>Response: {request.resolved}</small></RequestFrame>;
   const submit=async(value:RunRequestResolution|string)=>{setSubmitting(true);setError(undefined);try{await resolve(value)}catch(reason){setError(reason instanceof Error?reason.message:String(reason));setSubmitting(false)}};
+  if(request.kind==='elicitation'&&request.elicitation)return <RequestFrame request={request}><RunElicitation elicitation={request.elicitation} submitting={submitting} onSubmit={answer=>void submit({elicitation:answer})}/>{error&&<small role="alert">{error}</small>}</RequestFrame>;
   if(request.kind==='approval'){
     const choices=request.choices?.length?request.choices:['approved','denied'];
     return <RequestFrame request={request}><div>{choices.map((choice,index)=><Button key={choice} disabled={submitting} variant={index===0?'primary':undefined} size="sm" onClick={()=>void submit(choice)}>{approvalLabel(choice)}</Button>)}</div>{error&&<small role="alert">{error}</small>}</RequestFrame>;
@@ -39,7 +41,7 @@ export const RunRequest = ({ request, resolve }: { request:RequestSnapshot; reso
 };
 
 const RequestFrame = ({request,children}:{request:RequestSnapshot;children:React.ReactNode}) => <div className={`${styles.request} ${styles[request.kind]??''}`}>
-  <strong>{request.kind==='approval'?<><TriangleAlert/> Action approval</>:<><CircleHelp/> Agent clarification</>}</strong>
+  <strong>{request.kind==='approval'?<><TriangleAlert/> Action approval</>:request.kind==='elicitation'?<><CircleHelp/> External service request</>:<><CircleHelp/> Agent clarification</>}</strong>
   <p>{request.prompt}</p>
   {request.directory&&<p><code>{request.directory}</code></p>}
   {children}

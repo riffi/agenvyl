@@ -443,6 +443,7 @@ function normalizeRequestAnswer(answer: ConnectorRequestAnswer): ConnectorReques
     if (!resolution) throw new RegistryError('invalid_resolution', 'Resolution must not be empty', 400);
     return { resolution };
   }
+  if('elicitation'in answer)return{elicitation:structuredClone(answer.elicitation)};
   const entries = Object.entries(answer.answers).sort(([left], [right]) => left.localeCompare(right));
   if (!entries.length) throw new RegistryError('invalid_resolution', 'Answer map must not be empty', 400);
   return { answers: Object.fromEntries(entries.map(([id, values]) => [id, values.map(value => value.trim())])) };

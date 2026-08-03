@@ -910,6 +910,26 @@
   flex: 1;
   min-width: 0;
 }
+.elicitation-flow,
+.elicitation-form { display:grid!important;gap:10px; }
+.elicitation-source { display:flex;gap:6px;align-items:center;margin:0!important;color:#8a6d3b;font-size:10px;font-weight:650!important; }
+.elicitation-source svg { width:14px;height:14px; }
+.elicitation-link { display:inline-flex;width:fit-content;gap:6px;align-items:center;padding:8px 10px;border:1px solid #d6a84b;border-radius:6px;background:#fff;color:#7c5700;text-decoration:none; }
+.elicitation-link:hover { border-color:#9a6700;color:#5f4300; }
+.elicitation-link svg { width:13px;height:13px; }
+.elicitation-flow>small { color:#64748b;font-weight:400; }
+.elicitation-actions { display:flex;flex-wrap:wrap;gap:6px; }
+.elicitation-actions button { margin-right:0; }
+.elicitation-field { display:grid;gap:5px;padding:9px;border:1px solid #fde68a;border-radius:6px;background:#fffdf6;font-weight:500; }
+.elicitation-field>span:first-child { color:#3f3a2f; }
+.elicitation-field sup { margin-left:2px;color:#b45309; }
+.elicitation-field>small { color:#64748b;font-weight:400;line-height:1.35; }
+.elicitation-field input,
+.elicitation-field select { width:100%;margin:0; }
+.elicitation-options { display:grid;gap:7px; }
+.elicitation-options label { display:flex;gap:7px;align-items:center;font-weight:400; }
+.elicitation-options input[type='checkbox'] { width:14px;min-width:14px;height:14px;margin:0;padding:0;accent-color:#b7791f; }
+.elicitation-unsupported { padding:9px;margin:0!important;border-left:3px solid #d97706;background:#fff7ed;color:#7c2d12;font-size:11px; }
 .cancel {
   font-size: 10px;
   background: transparent;

@@ -55,6 +55,14 @@ export class ConnectorRunAdapter implements RunGateway,RunEventStream,RunRecover
     return this.controlCheckpoint(result.execution);
   }
 
+  async elicit(executionId:string,requestId:string,answer:import('@agenvyl/contracts').McpElicitationAnswer):Promise<RunCheckpoint>{
+    const state=this.executions.get(executionId);
+    const request=state?.pendingRequests.get(requestId);
+    if(!request||request.kind!=='elicitation')throw new Error('Connector has no matching active elicitation request for this execution');
+    const result=await this.connector.resolve(executionId,request.id,{elicitation:answer});
+    return this.controlCheckpoint(result.execution);
+  }
+
   async *stream(executionId:string,localRunId:string,signal:AbortSignal):AsyncIterable<RunEventMapping>{
     const state=this.executions.get(executionId);
     if(!state)throw new Error('Connector execution state is not initialized');
@@ -95,7 +103,7 @@ function mapConnectorEvent(localRunId:string,event:ConnectorExecutionEvent):RunE
     case'output.reasoning.delta':return{events:[{type:'run.reasoning.delta',payload:{runId:localRunId,text:event.payload.text}}]};
     case'usage.updated':return{events:[{type:'run.usage',payload:{runId:localRunId,usage:event.payload.usage}}]};
     case'tool.started':case'tool.updated':case'tool.completed':case'tool.failed':case'tool.cancelled':return{events:[{type:'tool.updated',payload:{runId:localRunId,tool:{id:event.payload.toolId,name:event.payload.name,detail:event.payload.safeSummary,...(event.payload.safeInput===undefined?{}:{input:event.payload.safeInput}),status:event.type==='tool.started'?'started':event.type==='tool.completed'?'completed':event.type==='tool.failed'?'failed':event.type==='tool.cancelled'?'cancelled':'progress'}}}]};
-    case'request.opened':return{events:[{type:'request.created',payload:{runId:localRunId,requestId:event.payload.request.id,kind:event.payload.request.kind,prompt:event.payload.request.prompt,...(event.payload.request.directory?{directory:event.payload.request.directory}:{}),...(event.payload.request.choices?{choices:event.payload.request.choices}:{}),...(event.payload.request.questions?{questions:event.payload.request.questions}:{}),...(event.payload.request.autoResolutionMs?{autoResolutionMs:event.payload.request.autoResolutionMs}:{})}}],status:event.payload.request.kind==='approval'?'waiting_approval':'waiting_clarification'};
+    case'request.opened':return{events:[{type:'request.created',payload:{runId:localRunId,requestId:event.payload.request.id,kind:event.payload.request.kind,prompt:event.payload.request.prompt,...(event.payload.request.directory?{directory:event.payload.request.directory}:{}),...(event.payload.request.choices?{choices:event.payload.request.choices}:{}),...(event.payload.request.questions?{questions:event.payload.request.questions}:{}),...(event.payload.request.elicitation?{elicitation:event.payload.request.elicitation}:{}),...(event.payload.request.autoResolutionMs?{autoResolutionMs:event.payload.request.autoResolutionMs}:{})}}],status:event.payload.request.kind==='approval'?'waiting_approval':'waiting_clarification'};
     case'request.resolved':return{events:[{type:'request.resolved',payload:{runId:localRunId,requestId:event.payload.requestId,resolution:event.payload.outcome}}]};
     case'execution.completed':return{events:[],terminal:{status:'completed'}};
     case'execution.cancelled':return{events:[],terminal:{status:'cancelled'}};
