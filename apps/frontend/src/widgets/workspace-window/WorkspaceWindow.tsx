@@ -100,6 +100,7 @@ export const WorkspaceWindow = ({
     document.body.style.overflow = 'hidden';
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
+      if (document.querySelector('.yarl__root')) return;
       if (operation) {
         setOperation(undefined);
         return;

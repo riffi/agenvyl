@@ -60,39 +60,6 @@
 .error { border-style: solid; border-color: #fecaca; background: #fef2f2; color: #b91c1c; }
 .error strong { font-size: 11px; }
 
-.lightbox {
-  --yarl__color_backdrop: #080b12f2;
-  --yarl__color_button: #f8fafc;
-  --yarl__color_button_active: #fff;
-  --yarl__color_button_disabled: #94a3b866;
-}
-
-.lightbox :global(.yarl__slide_image) {
-  border-radius: 5px;
-  box-shadow: 0 16px 52px #0009;
-}
-
-.lightbox :global(.yarl__slide_title) {
-  font-size: 13px;
-  font-weight: 500;
-  text-align: center;
-}
-
-.lightboxAction {
-  width: 48px;
-  height: 48px;
-  display: grid;
-  place-items: center;
-  border: 0;
-  background: transparent;
-  color: #fff;
-  cursor: pointer;
-  filter: drop-shadow(2px 2px 2px #0008);
-}
-
-.lightboxAction:hover { color: #dbe4ff; }
-.lightboxAction svg { width: 22px; }
-
 @media (max-width: 767px) {
   .image { border-radius: 6px; }
 }

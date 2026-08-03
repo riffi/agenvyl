@@ -6,4 +6,5 @@ export { Drawer } from './Drawer';
 export { EmptyState } from './EmptyState';
 export { Input, Select, TextArea } from './FormControls';
 export { IconButton } from './IconButton';
+export { ImageLightbox, type ImageLightboxAction } from './ImageLightbox';
 export { Spinner } from './Spinner';

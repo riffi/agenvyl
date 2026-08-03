@@ -1,23 +1,15 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { Download, FolderOpen, Image as ImageIcon, ImageOff } from 'lucide-react';
+import { FolderOpen, Image as ImageIcon, ImageOff } from 'lucide-react';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import Lightbox from 'yet-another-react-lightbox';
-import Captions from 'yet-another-react-lightbox/plugins/captions';
-import Counter from 'yet-another-react-lightbox/plugins/counter';
-import Zoom from 'yet-another-react-lightbox/plugins/zoom';
-import 'yet-another-react-lightbox/styles.css';
-import 'yet-another-react-lightbox/plugins/captions.css';
-import 'yet-another-react-lightbox/plugins/counter.css';
 import type { RunEmbedError, WorkspaceAttachment } from '@agenvyl/contracts';
 import type { Persona } from '../../entities/persona';
 import type { Run } from '../../entities/run';
+import { ImageLightbox, type ImageLightboxAction } from '../../shared/ui';
 import styles from './MarkdownAnswer.module.css';
 import { MentionLink, remarkPersonaMentions } from './mentions';
 
 const terminalStatuses = new Set<Run['status']>(['completed', 'failed', 'cancelled']);
-const lightboxPlugins = [Captions, Counter, Zoom];
-
 type MarkdownAnswerProps = {
   text: string;
   run: Run;
@@ -43,14 +35,7 @@ export const MarkdownAnswer = memo(({
       : []),
     [run.embeds],
   );
-  const slides = useMemo(
-    () => galleryImages.map(({ attachment }) => ({
-      src: attachment.preview_url,
-      alt: attachment.name,
-      title: attachment.name,
-    })),
-    [galleryImages],
-  );
+  const galleryAttachments = useMemo(() => galleryImages.map(item => item.attachment), [galleryImages]);
 
   const openGallery = (path: string, trigger: HTMLButtonElement) => {
     const index = galleryImages.findIndex(image => image.path === path);
@@ -64,13 +49,17 @@ export const MarkdownAnswer = memo(({
     skipRestoreRef.current = false;
     setOpenIndex(null);
   };
-  const showWorkspace = () => {
-    const attachment = galleryImages[openIndex ?? -1]?.attachment;
-    if (!attachment || !openWorkspace) return;
-    skipRestoreRef.current = true;
-    setOpenIndex(null);
-    openWorkspace(attachment);
-  };
+  const lightboxActions: ImageLightboxAction[] = openWorkspace ? [{
+    key: 'workspace',
+    label: 'Open image in Workspace',
+    title: 'Open in Workspace',
+    icon: <FolderOpen />,
+    onSelect: attachment => {
+      skipRestoreRef.current = true;
+      setOpenIndex(null);
+      openWorkspace(attachment);
+    },
+  }] : [];
 
   useEffect(() => {
     if (openIndex !== null || !openerRef.current || skipRestoreRef.current) {
@@ -156,32 +145,7 @@ export const MarkdownAnswer = memo(({
     >
       {text}
     </Markdown>
-    <Lightbox
-      className={styles.lightbox}
-      open={openIndex !== null}
-      close={closeGallery}
-      index={openIndex ?? 0}
-      slides={slides}
-      plugins={lightboxPlugins}
-      carousel={{ finite: true, imageFit: 'contain' }}
-      controller={{ aria: true, closeOnBackdropClick: true }}
-      captions={{ descriptionTextAlign: 'center', descriptionMaxLines: 2, showToggle: false }}
-      counter={{ separator: ' of ' }}
-      toolbar={{ buttons: [
-        ...(openWorkspace ? [<button key="workspace" className={styles.lightboxAction} type="button" onClick={showWorkspace} aria-label="Open image in Workspace" title="Open in Workspace"><FolderOpen /></button>] : []),
-        galleryImages[openIndex ?? -1]?.attachment
-          ? <a key="download" className={styles.lightboxAction} href={galleryImages[openIndex ?? 0].attachment.url} download aria-label="Download image" title="Download"><Download /></a>
-          : null,
-        'close',
-      ] }}
-      labels={{
-        Close: 'Close viewer',
-        Next: 'Next image',
-        Previous: 'Previous image',
-        'Zoom in': 'Zoom in',
-        'Zoom out': 'Zoom out',
-      }}
-    />
+    <ImageLightbox attachments={galleryAttachments} index={openIndex} actions={lightboxActions} onIndexChange={setOpenIndex} onClose={closeGallery} />
   </>;
 });
 

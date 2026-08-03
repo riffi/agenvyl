@@ -51,6 +51,26 @@ afterEach(() => {
 });
 
 describe('WorkspaceWindow', () => {
+  it('keeps the workspace open when Escape closes an image lightbox', () => {
+    const onClose = vi.fn();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><WorkspaceWindow
+      request={{ origin: 'workspace', treeVisible: false }}
+      roomId="room"
+      fake
+      onClose={onClose}
+      onRequestChange={vi.fn()}
+    /></QueryClientProvider>);
+    const lightbox = document.createElement('div');
+    lightbox.className = 'yarl__root';
+    document.body.append(lightbox);
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(onClose).not.toHaveBeenCalled();
+    lightbox.remove();
+  });
+
   it('opens an exact artifact with a single compact header and contextual actions', async () => {
     const latest = version('version-2', '2026-07-23T10:00:00.000Z');
     const older = version('version-1', '2026-07-22T10:00:00.000Z');

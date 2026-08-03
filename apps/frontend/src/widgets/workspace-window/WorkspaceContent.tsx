@@ -1,9 +1,10 @@
-import { useMemo } from 'react';
-import { ChevronLeft, ChevronRight, Download, File } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, Download, Expand, File } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { WorkspaceAttachment } from '@agenvyl/contracts';
 import { IsolatedHtmlPreview } from '../../shared/features';
+import { ImageLightbox } from '../../shared/ui';
 import type { WorkspaceEncoding, WorkspaceViewMode } from './workspaceModel';
 import { decodeWorkspaceBytes, SOURCE_PREVIEW_LIMIT } from './workspaceText';
 import { isTextWorkspaceItem, workspaceModesFor } from './workspaceModel';
@@ -50,7 +51,7 @@ export const WorkspaceContent = ({
   if (effectiveMode === 'source') return <SourceViewer attachment={attachment} encoding={encoding} onEncodingChange={onEncodingChange} />;
   if (renderer.id === 'html') return <IsolatedHtmlPreview className={styles.frame} title={attachment.name} previewUrl={attachment.preview_url} />;
   if (renderer.id === 'markdown') return <RenderedMarkdown attachment={attachment} encoding={encoding} />;
-  if (renderer.id === 'svg') return <ImageViewer attachment={attachment} />;
+  if (renderer.id === 'svg') return <ImageGallery attachment={attachment} />;
   if (renderer.id === 'image') return <ImageGallery attachment={attachment} gallery={gallery} onNavigate={onGalleryNavigate} />;
   if (renderer.id === 'pdf') return <iframe className={styles.frame} title={attachment.name} src={attachment.preview_url} sandbox="" />;
   return <div className={styles.unsupported}><File /><strong>Preview unavailable</strong><span>{attachment.mime_type}</span><a href={attachment.url} download><Download />Download file</a></div>;
@@ -67,9 +68,6 @@ const RenderedMarkdown = ({ attachment, encoding }: { attachment: WorkspaceAttac
   return <div className={styles.documentCanvas}><article className={styles.markdown}><Markdown remarkPlugins={[remarkGfm]} skipHtml>{text}</Markdown></article></div>;
 };
 
-const ImageViewer = ({ attachment }: { attachment: WorkspaceAttachment }) =>
-  <div className={styles.imageCanvas}><img src={attachment.preview_url} alt={attachment.name} /></div>;
-
 const ImageGallery = ({
   attachment,
   gallery,
@@ -81,11 +79,31 @@ const ImageGallery = ({
 }) => {
   const images = (gallery?.length ? gallery : [attachment]).filter(item => item.mime_type.startsWith('image/'));
   const index = Math.max(0, images.findIndex(item => item.version_id === attachment.version_id));
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const openerRef = useRef<HTMLButtonElement>(null);
+  const restoreFocusRef = useRef(false);
   const navigate = (offset: number) => onNavigate?.(images[index + offset]);
+  const openLightbox = () => {
+    restoreFocusRef.current = true;
+    setOpenIndex(index);
+  };
+  const closeLightbox = () => {
+    setOpenIndex(null);
+  };
+  useEffect(() => {
+    if (openIndex !== null || !restoreFocusRef.current) return;
+    restoreFocusRef.current = false;
+    const timeout = setTimeout(() => openerRef.current?.focus({ preventScroll: true }), 0);
+    return () => clearTimeout(timeout);
+  }, [openIndex]);
   return <div className={styles.imageCanvas}>
     {index > 0 && <button className={`${styles.galleryArrow} ${styles.galleryPrevious}`} onClick={() => navigate(-1)} aria-label="Previous image"><ChevronLeft /></button>}
-    <img src={attachment.preview_url} alt={attachment.name} />
+    <button ref={openerRef} className={styles.imageStage} type="button" onClick={openLightbox} aria-label={`Open image “${attachment.name}” in full-screen view`} title="Open full-screen viewer">
+      <img src={attachment.preview_url} alt={attachment.name} />
+      <span className={styles.imageInspect}><Expand />Inspect</span>
+    </button>
     {index < images.length - 1 && <button className={`${styles.galleryArrow} ${styles.galleryNext}`} onClick={() => navigate(1)} aria-label="Next image"><ChevronRight /></button>}
     {images.length > 1 && <span className={styles.galleryCounter}>Image {index + 1} of {images.length}</span>}
+    <ImageLightbox attachments={images} index={openIndex} onIndexChange={setOpenIndex} onClose={closeLightbox} />
   </div>;
 };
