@@ -27,7 +27,7 @@ export class ConnectorRunAdapter implements RunGateway,RunEventStream,RunRecover
       input:{systemPrompt:input.instructions,history:input.conversationHistory??[],message:input.input},
     });
     this.remember(execution);
-    return{id:execution.executionId,checkpoint:checkpoint(execution)};
+    return{id:execution.executionId,checkpoint:checkpoint(execution),harnessType:execution.harnessType,adapterGeneration:execution.adapterGeneration};
   }
 
   reattach(input:ReattachRunInput){

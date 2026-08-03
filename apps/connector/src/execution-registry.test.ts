@@ -17,12 +17,7 @@ afterAll(async () => { await rm(workspaceRoot, { recursive: true, force: true })
 describe('ExecutionRegistry live subscriptions', () => {
   it('delivers events emitted after replay capture without a cursor gap', async () => {
     const adapter = new LiveAdapter();
-    const registry = new ExecutionRegistry(
-      'epoch-test',
-      new Map([['local-hermes', 'hermes']]),
-      new Map([['local-hermes', adapter]]),
-      new WorkspacePolicy([workspaceRoot]),
-    );
+    const registry = createRegistry(adapter);
     const request = structuredClone(connectorContractFixtures.startExecution) as StartExecutionRequest;
     registry.start(request);
     await waitFor(() => registry.inspect(request.executionId).upstreamStatus?.state === 'waiting_upstream');
@@ -42,12 +37,7 @@ describe('ExecutionRegistry live subscriptions', () => {
 
   it('coalesces micro text deltas before assigning durable cursors', async () => {
     const adapter = new LiveAdapter();
-    const registry = new ExecutionRegistry(
-      'epoch-test',
-      new Map([['local-hermes', 'hermes']]),
-      new Map([['local-hermes', adapter]]),
-      new WorkspacePolicy([workspaceRoot]),
-    );
+    const registry = createRegistry(adapter);
     const request = structuredClone(connectorContractFixtures.startExecution) as StartExecutionRequest;
     registry.start(request);
     await waitFor(() => registry.inspect(request.executionId).status === 'running');
@@ -70,12 +60,7 @@ describe('ExecutionRegistry live subscriptions', () => {
 
   it('keeps reasoning and answer deltas in separate durable channels', async () => {
     const adapter = new LiveAdapter();
-    const registry = new ExecutionRegistry(
-      'epoch-test',
-      new Map([['local-hermes', 'hermes']]),
-      new Map([['local-hermes', adapter]]),
-      new WorkspacePolicy([workspaceRoot]),
-    );
+    const registry = createRegistry(adapter);
     const request = structuredClone(connectorContractFixtures.startExecution) as StartExecutionRequest;
     registry.start(request);
     await waitFor(() => registry.inspect(request.executionId).status === 'running');
@@ -102,12 +87,7 @@ describe('ExecutionRegistry live subscriptions', () => {
 
   it('flushes buffered text before a non-text event', async () => {
     const adapter = new LiveAdapter();
-    const registry = new ExecutionRegistry(
-      'epoch-test',
-      new Map([['local-hermes', 'hermes']]),
-      new Map([['local-hermes', adapter]]),
-      new WorkspacePolicy([workspaceRoot]),
-    );
+    const registry = createRegistry(adapter);
     const request = structuredClone(connectorContractFixtures.startExecution) as StartExecutionRequest;
     registry.start(request);
     await waitFor(() => registry.inspect(request.executionId).status === 'running');
@@ -130,7 +110,7 @@ describe('ExecutionRegistry live subscriptions', () => {
   });
 
   it('applies waiting and one-shot recovery to a generic Hermes output path',async()=>{
-    const adapter=new LiveAdapter(),registry=new ExecutionRegistry('epoch-test',new Map([['local-hermes','hermes']]),new Map([['local-hermes',adapter]]),new WorkspacePolicy([workspaceRoot]));
+    const adapter=new LiveAdapter(),registry=createRegistry(adapter);
     const request=structuredClone(connectorContractFixtures.startExecution) as StartExecutionRequest;
     registry.start(request);
     await waitFor(()=>registry.inspect(request.executionId).upstreamStatus?.state==='waiting_upstream');
@@ -152,7 +132,7 @@ describe('ExecutionRegistry live subscriptions', () => {
   });
 
   it('stores generic upstream degradation in snapshots and replays recovery without changing lifecycle',async()=>{
-    const adapter=new LiveAdapter(),registry=new ExecutionRegistry('epoch-test',new Map([['local-hermes','hermes']]),new Map([['local-hermes',adapter]]),new WorkspacePolicy([workspaceRoot]));
+    const adapter=new LiveAdapter(),registry=createRegistry(adapter);
     const request=structuredClone(connectorContractFixtures.startExecution) as StartExecutionRequest;registry.start(request);await waitFor(()=>registry.inspect(request.executionId).status==='running');
     adapter.emit({type:'execution.upstream_status',payload:{state:'retrying',reason:'provider_timeout',retryable:true,attempt:1,retryAt:'2026-07-20T12:00:00.000Z'}});
     await waitFor(()=>registry.inspect(request.executionId).upstreamStatus?.state==='retrying');
@@ -183,12 +163,7 @@ describe('ExecutionRegistry live subscriptions', () => {
         throw new Error('fixture stream failure');
       },
     };
-    const registry = new ExecutionRegistry(
-      'epoch-test',
-      new Map([['local-hermes', 'hermes']]),
-      new Map([['local-hermes', adapter]]),
-      new WorkspacePolicy([workspaceRoot]),
-    );
+    const registry = createRegistry(adapter);
     const request = structuredClone(connectorContractFixtures.startExecution) as StartExecutionRequest;
     registry.start(request);
     await waitFor(() => registry.inspect(request.executionId).status === 'failed');
@@ -251,4 +226,11 @@ async function collect<T>(source: AsyncIterable<T>) {
   const values: T[] = [];
   for await (const value of source) values.push(value);
   return values;
+}
+
+function createRegistry(adapter:ConnectorAdapter){
+  return new ExecutionRegistry('epoch-test',instanceId=>{
+    if(instanceId!=='local-hermes')throw new Error('unexpected instance');
+    return{adapter,harnessType:'hermes',adapterGeneration:1,release:()=>undefined};
+  },new WorkspacePolicy([workspaceRoot]));
 }

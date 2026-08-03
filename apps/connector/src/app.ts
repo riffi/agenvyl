@@ -13,7 +13,8 @@ import {
   type ConnectorDiscovery,
 } from '@agenvyl/connector-contract';
 import type { ConnectorAdapter } from './adapter.js';
-import type { ConnectorConfig } from './config.js';
+import { AdapterGenerationManager, type PreparedAdapterRuntime } from './adapter-generations.js';
+import { normalizeConnectorInstances, type ConnectorConfig } from './config.js';
 import { ExecutionRegistry, RegistryError } from './execution-registry.js';
 import { WorkspacePolicy, WorkspacePolicyError } from './workspace-policy.js';
 
@@ -22,30 +23,34 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
   startedAt?: string;
   logger?: boolean;
   adapters?: ReadonlyMap<string, ConnectorAdapter>;
+  releaseInitialRuntime?:()=>Promise<void>|void;
   replayLimit?: number;
   now?: () => string;
   discover?:()=>Promise<ConnectorDiscovery>;
-  configureInstances?:(instances:ConnectorConfig['instances'])=>Promise<ReadonlyMap<string,ConnectorAdapter>>;
+  configureInstances?:(instances:ConnectorConfig['instances'])=>Promise<ReadonlyMap<string,ConnectorAdapter>|PreparedAdapterRuntime>;
   persistInstances?:(instances:ConnectorConfig['instances'])=>Promise<void>;
 } = {}) {
   const app = Fastify({ logger: options.logger ? { redact: ['req.headers.authorization', 'req.headers.x-api-key'] } : false });
   const connectorEpoch = options.connectorEpoch ?? randomUUID(), startedAt = options.startedAt ?? new Date().toISOString();
+  config.instances = normalizeConnectorInstances(config.instances);
   let enabledInstances = config.instances.filter(instance => instance.enabled);
-  const adapters = new Map(options.adapters ?? new Map<string, ConnectorAdapter>());
-  const instanceTypes=new Map(enabledInstances.map(instance => [instance.id,instance.type]));
-  const hasAdapter = (instance: ConnectorConfig['instances'][number]) => adapters.get(instance.id)?.type === instance.type;
+  const generations = new AdapterGenerationManager(config.instances, {
+    adapters: options.adapters ?? new Map<string, ConnectorAdapter>(),
+    release: options.releaseInitialRuntime,
+  }, app.log);
+  let configurationQueue = Promise.resolve();
+  const hasAdapter = (instance: ConnectorConfig['instances'][number]) => generations.current.adapters.get(instance.id)?.type === instance.type;
   const workspacePolicy = new WorkspacePolicy(config.workspaces.roots);
   const isReady = (instance: ConnectorConfig['instances'][number]) => hasAdapter(instance) && workspacePolicy.configured;
   const registry = new ExecutionRegistry(
     connectorEpoch,
-    instanceTypes,
-    adapters,
+    instanceId => generations.acquire(instanceId),
     workspacePolicy,
     options.replayLimit,
     options.now,
   );
 
-  app.addHook('onClose',async()=>{await Promise.allSettled([...new Set(adapters.values())].map(adapter=>adapter.close?.()));});
+  app.addHook('onClose',async()=>{await configurationQueue;await generations.close();});
 
   app.addHook('onRequest', async (request, reply) => {
     if (authorized(request, config.token)) return;
@@ -68,7 +73,7 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
     apiVersion: CONNECTOR_API_VERSION,
     connectorEpoch,
     instances: enabledInstances.map(instance => {
-      const adapter = adapters.get(instance.id);
+      const adapter = generations.current.adapters.get(instance.id);
       const ownership=instance.type==='opencode'&&instance.managed!==undefined?{managed:instance.managed}:{};
       if (adapter?.type !== instance.type) {
         return { id: instance.id, type: instance.type, status: 'unavailable' as const, capabilities: [],...ownership, error: { code: 'adapter_not_loaded', message: 'Adapter module is not loaded in this Connector build' } };
@@ -86,23 +91,35 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
   app.put('/v2/instances',async(request,reply)=>{
     if(!isConfigureConnectorInstancesRequest(request.body))return reply.code(400).send({apiVersion:CONNECTOR_API_VERSION,error:'invalid_request',message:'Connector instances do not match the v2 contract'});
     if(!options.configureInstances||!options.persistInstances)return reply.code(503).send({apiVersion:CONNECTOR_API_VERSION,error:'configuration_unavailable',message:'Connector configuration is unavailable'});
-    const instances=structuredClone(request.body.instances) as ConnectorConfig['instances'];
-    const previous=structuredClone(config.instances);
-    try{
-      const configured=await options.configureInstances(instances);
-      await options.persistInstances(instances);
-      config.instances=instances;enabledInstances=instances.filter(instance=>instance.enabled);
-      const previousAdapters=[...new Set(adapters.values())];adapters.clear();for(const [id,adapter] of configured)adapters.set(id,adapter);
-      await Promise.allSettled(previousAdapters.filter(adapter=>![...configured.values()].includes(adapter)).map(adapter=>adapter.close?.()));
-      instanceTypes.clear();for(const instance of enabledInstances)instanceTypes.set(instance.id,instance.type);
-      return{apiVersion:CONNECTOR_API_VERSION,instances};
-    }catch(error){app.log.error({err:error},'Connector configuration failed');await options.configureInstances(previous).catch(()=>undefined);await options.persistInstances(previous).catch(()=>undefined);return reply.code(409).send({apiVersion:CONNECTOR_API_VERSION,error:'configuration_failed',message:'Connector configuration could not be applied'});}
+    const instances=normalizeConnectorInstances(request.body.instances);
+    const operation=configurationQueue.then(async()=>{
+      if(generations.matchesCurrent(instances))return{ok:true as const};
+      let candidate:ReturnType<typeof generations.candidate>|undefined;
+      try{
+        const configured=await options.configureInstances!(instances);
+        const runtime=isPreparedRuntime(configured)?configured:{adapters:configured};
+        candidate=generations.candidate(instances,runtime);
+        await options.persistInstances!(instances);
+        generations.activate(candidate);
+        config.instances=structuredClone(instances);
+        enabledInstances=instances.filter(instance=>instance.enabled);
+        return{ok:true as const};
+      }catch(error){
+        if(candidate)await generations.discard(candidate);
+        app.log.error({err:error},'Connector configuration failed');
+        return{ok:false as const};
+      }
+    });
+    configurationQueue=operation.then(()=>undefined,()=>undefined);
+    const result=await operation;
+    if(!result.ok)return reply.code(409).send({apiVersion:CONNECTOR_API_VERSION,error:'configuration_failed',message:'Connector configuration could not be applied'});
+    return{apiVersion:CONNECTOR_API_VERSION,instances};
   });
 
   app.get<{ Params: { id: string } }>('/v2/instances/:id/catalog', async (request, reply) => {
     const instance=enabledInstances.find(candidate=>candidate.id===request.params.id);
     if (!instance) return reply.code(404).send({ apiVersion: CONNECTOR_API_VERSION, error: 'instance_not_found', message: 'Connector instance not found' });
-    const adapter=adapters.get(instance.id);
+    const adapter=generations.current.adapters.get(instance.id);
     if(adapter?.type!==instance.type||!adapter.catalog)return reply.code(503).send({ apiVersion: CONNECTOR_API_VERSION, error: 'catalog_unavailable', message: 'Connector instance does not provide catalog discovery' });
     try{const catalog=await adapter.catalog();return{apiVersion:CONNECTOR_API_VERSION,connectorEpoch,instanceId:instance.id,...catalog} satisfies ConnectorCatalog;}
     catch{return reply.code(503).send({apiVersion:CONNECTOR_API_VERSION,error:'catalog_unavailable',message:'Connector instance catalog is unavailable'});}
@@ -171,6 +188,10 @@ function error(reply: { code(statusCode: number): { send(payload: unknown): unkn
 
 async function* asServerSentEvents(events: AsyncIterable<ConnectorExecutionEvent>) {
   for await (const event of events) yield `id: ${event.cursor}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
+}
+
+function isPreparedRuntime(value:ReadonlyMap<string,ConnectorAdapter>|PreparedAdapterRuntime):value is PreparedAdapterRuntime{
+  return typeof value==='object'&&value!==null&&'adapters' in value;
 }
 
 function authorized(request: FastifyRequest, token: string) {

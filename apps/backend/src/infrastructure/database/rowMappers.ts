@@ -36,7 +36,7 @@ export function toRoomEvent(row: DatabaseRow): RoomEvent {
 export function toTimelineRun(row: DatabaseRow, tools: ToolActivity[], request?: Run['request'],artifacts:RunArtifact[]=[],embeds:RunEmbed[]=[]): Run {
   const connector=connectorRunState(row);
   return {
-    id:text(row.id),messageId:text(row.message_id),agent:text(row.persona_handle),requestedModel:text(row.requested_model),harnessInstanceId:text(row.harness_instance_id),harnessType:text(row.harness_type),modelId:text(row.model_id),executionProfile:runExecutionProfile(row.execution_profile),status:runStatus(row.status),text:text(row.text),reasoning:text(row.reasoning),tools,
+    id:text(row.id),messageId:text(row.message_id),agent:text(row.persona_handle),requestedModel:text(row.requested_model),harnessInstanceId:text(row.harness_instance_id),harnessType:text(row.harness_type),...(row.adapter_generation==null?{}:{adapterGeneration:number(row.adapter_generation)}),modelId:text(row.model_id),executionProfile:runExecutionProfile(row.execution_profile),status:runStatus(row.status),text:text(row.text),reasoning:text(row.reasoning),tools,
     ...(row.upstream_status && typeof row.upstream_status === 'object' ? { upstreamStatus: row.upstream_status as Run['upstreamStatus'] } : {}),
     ...(row.usage&&typeof row.usage==='object'?{usage:row.usage as Run['usage']}:{}),
     ...(connector ? { connector } : {}),

@@ -120,8 +120,17 @@ the same host harnesses and canonical workspace tree.
 
 `GET /v2/discovery` reports CLI and endpoint readiness without returning
 credentials. `PUT /v2/instances` validates and atomically persists the selected
-non-secret instance configuration, then applies managed adapter lifecycle
-changes.
+non-secret instance configuration. Requests are serialized, and an identical
+ordered instance list is idempotent.
+
+Each successful configuration change creates a new adapter generation. New
+executions use the new generation while existing executions remain pinned to
+the adapter and harness type with which they started. The old generation drains
+until all of its executions reach a terminal state; there is no forced
+retirement timeout. Connector-managed OpenCode processes are reference-counted
+by endpoint and remain alive while any generation still uses them. Preparation
+or persistence failure disposes only the candidate generation and leaves the
+current configuration active.
 
 The per-instance catalog returns only models and controls the adapter can
 represent safely. Unknown or incompatible upstream responses fail closed.
@@ -142,6 +151,12 @@ Connector owns ephemeral processes, active execution state, and replay buffers.
 Core owns durable product state. Connector assigns a process-lifetime epoch; a
 restart changes the epoch, so Core never assumes that an older process remains
 alive.
+
+Every execution snapshot includes a positive `adapterGeneration`. The pair
+`connectorEpoch` and `adapterGeneration` identifies the adapter configuration
+that accepted the execution. Core stores the generation and the actual pinned
+harness type with the run; historical runs created before this metadata was
+introduced have no generation value.
 
 Same-epoch Core restarts can inspect an execution and resume from the last
 durable Connector cursor. Adapter diagnostics, tool summaries, and request text

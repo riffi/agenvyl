@@ -16,15 +16,18 @@ try {
     return operation;
   };
   const adapterOptions={claudePermissionBridge:claudePermissions,grantOpenCodeExternalDirectoryRoot};
-  await managed.apply(config.instances);
-  const adapters = buildConfiguredAdapters(config,process.env,fetch,adapterOptions);
-  const app = buildConnectorApp(config, { logger: true, adapters,discover:()=>discoverHarnesses(),configureInstances:async instances=>{await managed.apply(instances);return buildConfiguredAdapters({...config,instances},process.env,fetch,adapterOptions);},persistInstances:instances=>saveConnectorInstances(config,instances) });
+  const initialManagedLease=await managed.acquire(config.instances);
+  let app:ReturnType<typeof buildConnectorApp>;
+  try{
+    const adapters = buildConfiguredAdapters(config,process.env,fetch,adapterOptions);
+    app = buildConnectorApp(config, { logger: true, adapters,releaseInitialRuntime:initialManagedLease.release,discover:()=>discoverHarnesses(),configureInstances:async instances=>{const lease=await managed.acquire(instances);try{return{adapters:buildConfiguredAdapters({...config,instances},process.env,fetch,adapterOptions),release:lease.release};}catch(error){lease.release();throw error;}},persistInstances:instances=>saveConnectorInstances(config,instances) });
+  }catch(error){initialManagedLease.release();managed.close();await claudePermissions.close();throw error;}
   let closing = false;
   const shutdown = async () => {
     if (closing) return;
     closing = true;
-    managed.close();
     await app.close();
+    managed.close();
     await claudePermissions.close();
   };
   process.once('SIGINT', () => void shutdown());

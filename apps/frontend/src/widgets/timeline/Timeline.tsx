@@ -6,7 +6,7 @@ import {HarnessIcon,type HarnessCatalog} from '../../entities/harness';
 import type { Persona } from '../../entities/persona';
 import type { RoomState } from '../../entities/room';
 import {roomsApi} from '../../entities/room';
-import type { Run } from '../../entities/run';
+import {RunFailureNotice,type Run} from '../../entities/run';
 import type { RoomGateway } from '../../features/room-session';
 import { Alert, Avatar, EmptyState, IconButton } from '../../shared/ui';
 import styles from './Timeline.module.css';
@@ -183,7 +183,7 @@ function RunCard({
           {run.status === "streaming" && <i className={styles.cursor} />}
         </div>
         {isLongAnswer(run.text)&&run.status==='completed'&&<button className={`${styles['answer-toggle']} ${collapsed?styles.expand:styles.collapse}`} type="button" onClick={toggleCollapsed} aria-expanded={!collapsed}>{collapsed?<><span>Expand response</span><ChevronDown/></>:<><span>Collapse response</span><ChevronUp/></>}</button>}
-        {run.error && <Alert tone="error">{run.error}</Alert>}
+        {run.status==='failed'&&<RunFailureNotice errorCode={run.errorCode} error={run.error}/>}
         {run.request&&!run.request.resolved&&<RunRequest key={`${run.id}:${run.request.prompt}:${run.request.questions?.map(question=>question.id).join(',')??''}`} request={run.request} resolve={resolve}/>}
         <RunFiles files={changedFiles} openWorkspace={openWorkspace}/>
         {hasActivity&&<div className={styles['run-meta-row']}>

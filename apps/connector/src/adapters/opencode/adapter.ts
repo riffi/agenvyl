@@ -307,7 +307,7 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
         }
         if (event.type === 'session.error') {
           await this.cleanupSession(execution.upstreamId,active,false).catch(()=>undefined);
-          yield { type: 'execution.failed' as const, payload: { error: { code: 'opencode_execution_failed', message: 'OpenCode execution failed' } } };
+          yield normalizeSessionFailure(event);
           return;
         }
         if (event.type === 'session.idle' || isIdleStatus(event)) {
@@ -481,6 +481,20 @@ function completionEvent(active:ActiveSession):AdapterExecutionEvent{
 }
 
 function failed(code:string,message:string):AdapterExecutionEvent{return{type:'execution.failed',payload:{error:{code,message}}};}
+
+function normalizeSessionFailure(event:Record<string,unknown>):AdapterExecutionEvent{
+  const properties=asRecord(event.properties),error=asRecord(properties?.error),data=asRecord(error?.data);
+  const statusValue=data?.statusCode??error?.statusCode,status=typeof statusValue==='number'&&Number.isInteger(statusValue)?statusValue:undefined;
+  const evidence=[data?.message,error?.message,data?.responseBody]
+    .filter((value):value is string=>typeof value==='string').map(value=>value.slice(0,4_000).toLowerCase()).join(' ');
+  if((evidence.includes('hosted in china')&&evidence.includes('opt in'))||evidence.includes('regionerror'))return failed('provider_region_opt_in_required','This model requires China hosting to be enabled in OpenCode Go settings.');
+  if(status===401||status===403||evidence.includes('invalid api key')||evidence.includes('authentication failed')||evidence.includes('unauthorized'))return failed('provider_authentication_failed','The model provider rejected authentication. Check the OpenCode provider credentials, then run again.');
+  if(status===429||evidence.includes('rate limit'))return failed('provider_rate_limited','The model provider rate-limited this request. Wait a moment, then run again.');
+  if(status===402||evidence.includes('insufficient credit')||evidence.includes('quota exceeded')||evidence.includes('billing'))return failed('provider_quota_exceeded','The model provider account has no available quota. Check its plan or credits, then run again.');
+  if(status===404&&(evidence.includes('model')||evidence.includes('not found')))return failed('provider_model_unavailable','The selected model is not available from the provider. Choose another model or refresh the harness catalog.');
+  if(status!==undefined&&status>=500)return failed('provider_unavailable','The model provider is temporarily unavailable. Wait a moment, then run again.');
+  return failed('opencode_execution_failed','OpenCode execution failed');
+}
 
 function sdkClient(baseUrl: string, request: typeof fetch, username?: string, password?: string): OpenCodeClientPort {
   const client = createOpencodeClient({ baseUrl, fetch: authenticatedFetch(request, username, password) });

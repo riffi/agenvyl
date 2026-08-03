@@ -259,7 +259,7 @@ describe('RunExecutor', () => {
 
     expect(startRequest).toMatchObject({executionId:runId,harnessInstanceId:'local-hermes',modelId:'sol',executionProfile:{workflowMode:'work',reasoningEffort:null,permissionProfileId:null,agentVariantId:null,planEnforcement:null},workspace:{roomId:'demo-room',relativePath:'.'},input:{message:'[Human user: User (@user); recipient: @architect]\nhello'}});
     expect(streamOptions).toMatchObject({executionId:runId,after:2,connectorEpoch:'epoch-1'});
-    expect((await database.sql`SELECT upstream_run_id,connector_execution_id,connector_epoch,connector_cursor,upstream_metadata,status,text FROM agent_runs WHERE id=${runId}`)[0]).toEqual({upstream_run_id:null,connector_execution_id:runId,connector_epoch:'epoch-1',connector_cursor:'4',upstream_metadata:{harnessType:'hermes'},status:'completed',text:'Hello'});
+    expect((await database.sql`SELECT upstream_run_id,connector_execution_id,connector_epoch,connector_cursor,harness_type,adapter_generation,upstream_metadata,status,text FROM agent_runs WHERE id=${runId}`)[0]).toEqual({upstream_run_id:null,connector_execution_id:runId,connector_epoch:'epoch-1',connector_cursor:'4',harness_type:'hermes',adapter_generation:'1',upstream_metadata:{harnessType:'hermes',adapterGeneration:1},status:'completed',text:'Hello'});
     await executor.shutdown();await database.close();
   });
 

@@ -32,7 +32,7 @@ describe("PostgreSQL repositories", () => {
         await p.database
           .sql`SELECT version FROM schema_migrations ORDER BY version`
       ).map((row) => row.version),
-    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]);
+    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]);
     expect(
       await p.database.sql`SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='personas' AND column_name='role'`,
     ).toEqual([]);
@@ -112,7 +112,7 @@ describe("PostgreSQL repositories", () => {
         await repositories.database
           .sql`SELECT version FROM schema_migrations ORDER BY version`
       ).map((row) => row.version),
-    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]);
+    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]);
     expect(
       await repositories.database.sql`SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='personas' AND column_name='role'`,
     ).toEqual([]);
@@ -310,7 +310,7 @@ describe("PostgreSQL repositories", () => {
         connectorEpoch: "epoch-1",
         cursor: 2,
       };
-    await p.runs.bindConnectorExecution(runId, checkpoint);
+    await p.runs.bindConnectorExecution(runId, checkpoint,{harnessType:'hermes',adapterGeneration:7});
     const transition = { ...checkpoint, cursor: 3 },
       mapped = [
         {
@@ -336,9 +336,9 @@ describe("PostgreSQL repositories", () => {
     expect(
       (
         await p.database
-          .sql`SELECT connector_cursor,reasoning,text FROM agent_runs WHERE id=${runId}`
+          .sql`SELECT connector_cursor,adapter_generation,reasoning,text FROM agent_runs WHERE id=${runId}`
       )[0],
-    ).toEqual({ connector_cursor: "3", reasoning: "think", text: "once" });
+    ).toEqual({ connector_cursor: "3", adapter_generation:"7", reasoning: "think", text: "once" });
     expect(
       (await p.roomEvents.replay("demo-room", 0)).filter(
         (event) => event.type === "run.delta",
@@ -640,6 +640,10 @@ describe("PostgreSQL repositories", () => {
     });
     await p.roomEvents.append("demo-room", "tool.updated", {
       runId,
+      tool: {id:"tool-2",name:"search",detail:"query",status:"started"},
+    });
+    await p.roomEvents.append("demo-room", "tool.updated", {
+      runId,
       tool: {
         id: "tool-1",
         name: "read_file",
@@ -648,6 +652,7 @@ describe("PostgreSQL repositories", () => {
       },
     });
     const timeline = await p.rooms.timeline("demo-room", undefined, 10);
+    expect(timeline?.runs[0].tools.map(tool=>tool.id)).toEqual(["tool-1","tool-2"]);
     expect(timeline?.runs[0].tools[0]).toMatchObject({
       id: "tool-1",
       input: '{"path":"src/app.ts"}',

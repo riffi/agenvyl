@@ -4,14 +4,15 @@ import type {
 } from "../../infrastructure/database/Database.js";
 import type { PersonaRepository } from "../personas/personas.repository.js";
 import type { Room } from "../../types.js";
-import type {
-  PlanVersionRef,
-  Persona,
-  RoomExecutionState,
-  RoomPersona,
-  Run,
-  StructuredQuestion,
-  ToolActivity,
+import {
+  upsertToolActivity,
+  type PlanVersionRef,
+  type Persona,
+  type RoomExecutionState,
+  type RoomPersona,
+  type Run,
+  type StructuredQuestion,
+  type ToolActivity,
 } from "@agenvyl/contracts";
 import {
   number,
@@ -88,7 +89,7 @@ export class RoomRepository {
             toMessage(row, attachmentMap.get(text(row.id)) ?? []),
           );
         const runRows = messageIds.length
-          ? await tx`SELECT r.id,r.message_id,r.persona_handle,r.requested_model,r.harness_instance_id,r.harness_type,r.model_id,r.execution_profile,r.status,r.upstream_status,r.usage,r.text,r.reasoning,r.error,r.error_code,r.retry_of_run_id,r.response_slot_id,r.connector_execution_id,r.connector_epoch,r.connector_cursor,(ROW_NUMBER() OVER(PARTITION BY r.response_slot_id ORDER BY r.created_at,r.id))::int attempt_number,r.created_at,w.base_snapshot_id,w.result_snapshot_id,w.published_snapshot_id,w.capture_status workspace_capture_status,w.publish_status workspace_publish_status,w.conflict_count workspace_conflict_count,w.errors workspace_errors FROM agent_runs r LEFT JOIN run_workspace_results w ON w.run_id=r.id WHERE r.message_id=ANY(${messageIds}) ORDER BY r.created_at,r.id`
+          ? await tx`SELECT r.id,r.message_id,r.persona_handle,r.requested_model,r.harness_instance_id,r.harness_type,r.adapter_generation,r.model_id,r.execution_profile,r.status,r.upstream_status,r.usage,r.text,r.reasoning,r.error,r.error_code,r.retry_of_run_id,r.response_slot_id,r.connector_execution_id,r.connector_epoch,r.connector_cursor,(ROW_NUMBER() OVER(PARTITION BY r.response_slot_id ORDER BY r.created_at,r.id))::int attempt_number,r.created_at,w.base_snapshot_id,w.result_snapshot_id,w.published_snapshot_id,w.capture_status workspace_capture_status,w.publish_status workspace_publish_status,w.conflict_count workspace_conflict_count,w.errors workspace_errors FROM agent_runs r LEFT JOIN run_workspace_results w ON w.run_id=r.id WHERE r.message_id=ANY(${messageIds}) ORDER BY r.created_at,r.id`
           : [];
         const runIds = runRows.map((row) => text(row.id));
         const eventRows = runIds.length
@@ -107,21 +108,7 @@ export class RoomRepository {
           const extra = extras.get(runId) ?? { tools: [] },
             tool = payload.tool;
           if (event.type === "tool.updated" && isTool(tool)) {
-            const prior = extra.tools.find((item) => item.id === tool.id),
-              merged = {
-                ...prior,
-                ...tool,
-                detail: tool.detail || prior?.detail || "",
-                ...(tool.input
-                  ? { input: tool.input }
-                  : prior?.input
-                    ? { input: prior.input }
-                    : {}),
-              };
-            extra.tools = [
-              ...extra.tools.filter((item) => item.id !== tool.id),
-              merged,
-            ];
+            extra.tools = upsertToolActivity(extra.tools,tool);
           }
           if (
             event.type === "request.created" &&

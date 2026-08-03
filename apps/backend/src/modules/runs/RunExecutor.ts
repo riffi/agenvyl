@@ -288,9 +288,10 @@ export class RunExecutor {
       });
       const upstreamRunId=handle.id;
       run.upstreamRunId = upstreamRunId;
+      if(handle.harnessType)run.harnessType=handle.harnessType;
       if(handle.checkpoint)run.connectorExecutionId=handle.checkpoint.executionId;
       this.logger.info({runId:run.id,roomId:run.roomId,correlationId:run.correlationId,upstreamRunId,transition:'upstream_started'},'Upstream run started');
-      if(handle.checkpoint)await runs.bindConnectorExecution(run.id,handle.checkpoint,{harnessType:run.harnessType});
+      if(handle.checkpoint)await runs.bindConnectorExecution(run.id,handle.checkpoint,{harnessType:run.harnessType,adapterGeneration:handle.adapterGeneration});
       else await runs.setUpstream(run.id, upstreamRunId);
 
       if(handle.checkpoint){run.executionDeadlineAt=await runs.ensureExecutionDeadline(run.id,this.runTimeoutMs);if(!run.executionDeadlineAt)throw new Error('Could not persist execution deadline');await this.dependencies.roomWorkspace?.renewRunWorkspaceLease(run.id,run.executionDeadlineAt);this.armDeadline(run);if(run.terminal)return;}

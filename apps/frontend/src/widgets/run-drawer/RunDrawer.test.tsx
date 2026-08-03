@@ -27,6 +27,12 @@ describe('RunDrawer lifecycle snapshot',()=>{
     expect(html).not.toContain('connector_cursor');
   });
 
+  it('shows actionable guidance for a normalized provider failure',()=>{
+    const html=renderToStaticMarkup(<RunDrawer run={{...run,status:'failed',errorCode:'provider_region_opt_in_required',error:'This model requires China hosting to be enabled in OpenCode Go settings.'}} persona={persona} close={vi.fn()}/>);
+    expect(html).toContain('Model requires additional setup');
+    expect(html).toContain('Enable it in the OpenCode Go workspace settings');
+  });
+
   it('shows only the normalized immutable token counters',()=>{
     const html=renderToStaticMarkup(<RunDrawer run={{...run,usage:{inputTokens:1234,outputTokens:56,reasoningTokens:7}}} persona={persona} close={vi.fn()}/>);
     expect(html).toContain('Input tokens');expect(html).toContain('1,234');expect(html).toContain('Output tokens');expect(html).toContain('56');expect(html).toContain('Total tokens');expect(html).toContain('not reported');expect(html).not.toContain('cost');

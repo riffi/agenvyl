@@ -12,4 +12,13 @@ describe('tool activity state',()=>{
     const completed=roomReducer(started,event(2,{runId:run.id,tool:{id:'tool-1',name:'read_file',detail:'',status:'completed'}}));
     expect(completed.runs[run.id].tools[0]).toEqual({id:'tool-1',name:'read_file',input:'{"path":"src/app.ts"}',detail:'src/app.ts',status:'completed'});
   });
+
+  it('updates an existing tool without moving it behind later calls',()=>{
+    const run:Run={id:'run-order',messageId:'message-1',agent:'coder',harnessInstanceId:'local-hermes',harnessType:'hermes',modelId:'sol',executionProfile:{workflowMode:'work',requestedReasoningEffort:null,reasoningEffort:null,reasoningEffortFallback:false,reasoningEffortSource:'auto',planEnforcement:null,permissionProfileId:null,agentVariantId:null,implementationPlanVersionId:null},status:'streaming',text:'',tools:[]};
+    let state={...initialState,runs:{[run.id]:run},runOrder:[run.id]};
+    state=roomReducer(state,event(1,{runId:run.id,tool:{id:'tool-1',name:'search',detail:'first',status:'started'}}));
+    state=roomReducer(state,event(2,{runId:run.id,tool:{id:'tool-2',name:'read',detail:'second',status:'started'}}));
+    state=roomReducer(state,event(3,{runId:run.id,tool:{id:'tool-1',name:'search',detail:'done',status:'completed'}}));
+    expect(state.runs[run.id].tools.map(tool=>[tool.id,tool.status])).toEqual([['tool-1','completed'],['tool-2','started']]);
+  });
 });

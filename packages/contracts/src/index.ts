@@ -49,6 +49,15 @@ export type ToolActivity = {
   status: 'started' | 'progress' | 'completed';
 };
 
+export function upsertToolActivity(tools:ToolActivity[],incoming:ToolActivity):ToolActivity[]{
+  const index=tools.findIndex(tool=>tool.id===incoming.id);
+  const prior=index<0?undefined:tools[index];
+  const{input:_input,...withoutInput}=incoming;
+  const merged:ToolActivity={...prior,...withoutInput,detail:incoming.detail||prior?.detail||'',...(incoming.input?{input:incoming.input}:prior?.input?{input:prior.input}:{})};
+  if(index<0)return[...tools,merged];
+  return tools.map((tool,toolIndex)=>toolIndex===index?merged:tool);
+}
+
 export type Message = {
   id: string;
   text: string;
@@ -84,6 +93,7 @@ export type Run = {
   requestedModel?: string;
   harnessInstanceId: string;
   harnessType: string;
+  adapterGeneration?: number;
   modelId: string;
   executionProfile: RunExecutionProfileSnapshot;
   status: RunStatus;
@@ -277,7 +287,7 @@ export function isServerRoomEvent(value: unknown): value is ServerRoomEvent {
   const payload = value.payload;
   switch (value.type) {
     case 'message.created': return typeof payload.id === 'string' && typeof payload.text === 'string' && Array.isArray(payload.targets) && Array.isArray(payload.runIds) && (payload.attachments===undefined||Array.isArray(payload.attachments)) && isRecord(payload.author) && strings(payload.author,'profileId','displayName','handle') && typeof payload.addressedToAll==='boolean';
-    case 'run.created': return typeof payload.id === 'string' && typeof payload.messageId === 'string' && typeof payload.agent === 'string' && (payload.requestedModel === undefined || typeof payload.requestedModel === 'string') && strings(payload,'harnessInstanceId','harnessType','modelId') && isRunExecutionProfile(payload.executionProfile) && typeof payload.status === 'string' && runStatuses.has(payload.status as RunStatus) && (payload.upstreamStatus===undefined||(isRecord(payload.upstreamStatus)&&payload.upstreamStatus.state!=='recovered'&&isUpstreamStatusEvent(payload.upstreamStatus))) && (payload.usage===undefined||isTokenUsage(payload.usage)) && typeof payload.text === 'string' && (payload.reasoning===undefined||typeof payload.reasoning==='string') && Array.isArray(payload.tools) && (payload.artifacts===undefined||Array.isArray(payload.artifacts)) && (payload.embeds===undefined||Array.isArray(payload.embeds)) && (payload.workspaceResult===undefined||isRunWorkspaceResult(payload.workspaceResult));
+    case 'run.created': return typeof payload.id === 'string' && typeof payload.messageId === 'string' && typeof payload.agent === 'string' && (payload.requestedModel === undefined || typeof payload.requestedModel === 'string') && strings(payload,'harnessInstanceId','harnessType','modelId') && (payload.adapterGeneration===undefined||(Number.isSafeInteger(payload.adapterGeneration)&&Number(payload.adapterGeneration)>0)) && isRunExecutionProfile(payload.executionProfile) && typeof payload.status === 'string' && runStatuses.has(payload.status as RunStatus) && (payload.upstreamStatus===undefined||(isRecord(payload.upstreamStatus)&&payload.upstreamStatus.state!=='recovered'&&isUpstreamStatusEvent(payload.upstreamStatus))) && (payload.usage===undefined||isTokenUsage(payload.usage)) && typeof payload.text === 'string' && (payload.reasoning===undefined||typeof payload.reasoning==='string') && Array.isArray(payload.tools) && (payload.artifacts===undefined||Array.isArray(payload.artifacts)) && (payload.embeds===undefined||Array.isArray(payload.embeds)) && (payload.workspaceResult===undefined||isRunWorkspaceResult(payload.workspaceResult));
     case 'run.delta': case 'run.reasoning.delta': return strings(payload, 'runId', 'text');
     case 'run.status': return strings(payload, 'runId', 'status') && runStatuses.has(payload.status as RunStatus) && (payload.error===undefined||typeof payload.error==='string') && (payload.errorCode===undefined||typeof payload.errorCode==='string');
     case 'run.upstream_status': return typeof payload.runId === 'string' && isUpstreamStatusEvent(payload);

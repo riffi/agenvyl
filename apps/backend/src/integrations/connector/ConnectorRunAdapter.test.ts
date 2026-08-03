@@ -9,7 +9,7 @@ describe('ConnectorRunAdapter',()=>{
     const streamed=[event(3,'execution.upstream_status',{state:'retrying',reason:'rate_limited',retryable:true,attempt:2}),event(4,'execution.upstream_status',{state:'recovered',reason:'rate_limited',retryable:false,attempt:2}),event(5,'output.reasoning.delta',{text:'Thinking'}),event(6,'output.text.delta',{text:'Hello'}),event(7,'tool.started',{toolId:'tool-1',name:'read_file',safeSummary:'Reading',safeInput:'{"path":"src/app.ts"}'}),event(8,'usage.updated',{usage:{inputTokens:20,outputTokens:5,totalTokens:25}}),event(9,'execution.completed',{})];
     const client=clientFixture(execution,streamed),adapter=new ConnectorRunAdapter(client);
     const handle=await adapter.createRun(input());
-    expect(handle).toEqual({id:'run-1',checkpoint:{executionId:'run-1',connectorEpoch:'epoch-1',cursor:2}});
+    expect(handle).toEqual({id:'run-1',checkpoint:{executionId:'run-1',connectorEpoch:'epoch-1',cursor:2},harnessType:'hermes',adapterGeneration:1});
     expect(client.start).toHaveBeenCalledWith({executionId:'run-1',harnessInstanceId:'local-hermes',modelId:'sol',executionProfile:{workflowMode:'work',reasoningEffort:null,permissionProfileId:null,agentVariantId:null,planEnforcement:null},workspace:{roomId:'room-1',relativePath:'.'},input:{systemPrompt:'Be useful.',history:[{role:'user',content:'Earlier'}],message:'Continue'}});
 
     const mappings=[];for await(const mapping of adapter.stream('run-1','local-run',new AbortController().signal))mappings.push(mapping);

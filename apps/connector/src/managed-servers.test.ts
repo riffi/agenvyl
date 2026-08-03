@@ -8,10 +8,21 @@ describe('managed harness servers',()=>{
     const spawnProcess=vi.fn() as unknown as typeof spawn;
     const servers=new ManagedHarnessServers({},request,spawnProcess);
 
-    await servers.apply([{id:'local-opencode',type:'opencode',enabled:true,endpoint:'http://127.0.0.1:4096',managed:true}]);
+    const lease=await servers.acquire([{id:'local-opencode',type:'opencode',enabled:true,endpoint:'http://127.0.0.1:4096',managed:true}]);
 
     expect(request).toHaveBeenCalledWith('http://127.0.0.1:4096/',expect.objectContaining({signal:expect.any(AbortSignal)}));
     expect(spawnProcess).not.toHaveBeenCalled();
+    lease.release();
+  });
+
+  it('keeps an owned process alive until the final generation lease is released',async()=>{
+    const request=vi.fn<typeof fetch>().mockResolvedValueOnce(new Response('',{status:503})).mockResolvedValue(new Response('',{status:200}));
+    const child={exitCode:null,kill:vi.fn(),once:vi.fn()} as unknown as import('node:child_process').ChildProcess;
+    const spawnProcess=vi.fn(()=>child) as unknown as typeof spawn;
+    const servers=new ManagedHarnessServers({AGENVYL_CONNECTOR_OPENCODE_COMMAND:process.execPath},request,spawnProcess),instances=[{id:'local-opencode',type:'opencode' as const,enabled:true,endpoint:'http://127.0.0.1:4096',managed:true}];
+    const first=await servers.acquire(instances),second=await servers.acquire(instances);
+    first.release();expect(child.kill).not.toHaveBeenCalled();
+    second.release();expect(child.kill).toHaveBeenCalledTimes(1);
   });
 
   it('treats server errors and connection failures as unavailable',async()=>{

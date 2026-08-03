@@ -28,7 +28,7 @@ export async function loadConnectorConfig(options: { path?: string; env?: NodeJS
   if (document.version !== 1) throw new Error('Connector config version must be 1');
   const listen = parseListen(document.listen);
   const workspaces = parseWorkspaces(document.workspaces, env.AGENVYL_WORKSPACE_ROOT ?? paths.workspaces);
-  const instances = parseInstances(document.instances);
+  const instances = normalizeConnectorInstances(document.instances);
   return { version: 1, listen, workspaces, instances, token, path };
 }
 
@@ -51,7 +51,7 @@ export async function addOpenCodeExternalDirectoryRoot(config:ConnectorConfig,in
   const instances=config.instances.map(candidate=>candidate.id===instanceId
     ?{...candidate,externalDirectoryRoots:[...(candidate.externalDirectoryRoots??[]),root]}
     :candidate);
-  parseInstances(instances);
+  normalizeConnectorInstances(instances);
   await saveConnectorInstances(config,instances);
   config.instances=instances;
   return true;
@@ -67,7 +67,7 @@ function parseListen(value: unknown) {
   return { host, port: Number(port) };
 }
 
-function parseInstances(value: unknown): ConnectorInstanceConfig[] {
+export function normalizeConnectorInstances(value: unknown): ConnectorInstanceConfig[] {
   if (value === undefined) return [];
   if (!Array.isArray(value)) throw new Error('instances must be an array');
   const seen = new Set<string>();
@@ -87,7 +87,7 @@ function parseInstances(value: unknown): ConnectorInstanceConfig[] {
     if(item.allowSubscriptionOAuth!==undefined&&(item.type!=='claude'||typeof item.allowSubscriptionOAuth!=='boolean'))throw new Error(`instances[${index}].allowSubscriptionOAuth is invalid`);
     if(item.type==='codex'&&item.endpoint!==undefined)throw new Error(`instances[${index}].endpoint is invalid for Codex`);
     if(item.type==='claude'&&item.endpoint!==undefined)throw new Error(`instances[${index}].endpoint is invalid for Claude`);
-    return { id: item.id, type: item.type, enabled: item.enabled ?? true, ...(item.endpoint?{endpoint:String(item.endpoint)}:{}), ...(item.managed!==undefined?{managed:item.managed}:{}), ...(externalDirectoryRoots?{externalDirectoryRoots}:{}),...(item.permissionMode?{permissionMode:item.permissionMode}:{}),...(item.allowDangerFullAccess!==undefined?{allowDangerFullAccess:item.allowDangerFullAccess}:{}),...(item.allowSubscriptionOAuth!==undefined?{allowSubscriptionOAuth:item.allowSubscriptionOAuth}:{}) };
+    return { id: item.id, type: item.type, enabled: item.enabled ?? true, ...(item.endpoint?{endpoint:new URL(String(item.endpoint)).toString()}:{}), ...(item.managed!==undefined?{managed:item.managed}:{}), ...(externalDirectoryRoots?{externalDirectoryRoots}:{}),...(item.permissionMode?{permissionMode:item.permissionMode}:{}),...(item.allowDangerFullAccess!==undefined?{allowDangerFullAccess:item.allowDangerFullAccess}:{}),...(item.allowSubscriptionOAuth!==undefined?{allowSubscriptionOAuth:item.allowSubscriptionOAuth}:{}) };
   });
 }
 

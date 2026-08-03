@@ -54,6 +54,27 @@ describe('HermesConnectorAdapter', () => {
     expect(JSON.stringify(events)).not.toContain('raw-secret');
   });
 
+  it('assigns distinct FIFO lifecycle ids to repeated id-less tools',async()=>{
+    const stream=sse([
+      {event:'tool.started',name:'search',preview:'first'},
+      {event:'tool.started',name:'search',preview:'second'},
+      {event:'tool.updated',name:'search',detail:'first update'},
+      {event:'tool.completed',name:'search',detail:'first done'},
+      {event:'tool.completed',name:'search',detail:'second done'},
+      {event:'tool.completed',name:'search',detail:'orphan'},
+      {event:'run.completed'},
+    ]),adapter=new HermesConnectorAdapter({baseUrl:'http://localhost:8642',request:fetchMock([new Response(stream,{status:200})]).request});
+    const events=await collect(adapter.events({upstreamId:'same-run'})),tools=events.filter(event=>event.type.startsWith('tool.'));
+    expect(tools.map(event=>event.payload.toolId)).toEqual([
+      expect.stringMatching(/^hermes-tool-[a-f0-9]{16}-1$/),
+      expect.stringMatching(/^hermes-tool-[a-f0-9]{16}-2$/),
+      tools[0]?.payload.toolId,
+      tools[0]?.payload.toolId,
+      tools[1]?.payload.toolId,
+      expect.stringMatching(/^hermes-tool-[a-f0-9]{16}-3$/),
+    ]);
+  });
+
   it('inspects status and stops an upstream execution', async () => {
     const mock = fetchMock([jsonResponse({ status: 'waiting_for_approval' }), jsonResponse({ ok: true })]);
     const adapter = new HermesConnectorAdapter({ baseUrl: 'http://localhost:8642', request: mock.request });

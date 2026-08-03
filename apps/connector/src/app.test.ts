@@ -74,6 +74,39 @@ describe('Connector shell', () => {
     await app.close();
   });
 
+  it('drains adapter generations without changing active execution snapshots',async()=>{
+    const initial=new ControlledAdapter(),replacement=new ControlledAdapter(),value=structuredClone(config),configured:unknown[]=[];
+    const app=buildConnectorApp(value,{connectorEpoch:'epoch-test',adapters:new Map([['local-hermes',initial]]),configureInstances:async instances=>{configured.push(structuredClone(instances));return new Map([['local-hermes',replacement]]);},persistInstances:async()=>undefined});
+    const first={...structuredClone(connectorContractFixtures.startExecution),executionId:'generation-one'} as StartExecutionRequest;
+    await app.inject({method:'POST',url:'/v2/executions',headers:auth,payload:first});await waitForStatus(app,first.executionId,'running');
+    initial.emit(first.executionId,{type:'request.opened',payload:{request:{id:'generation-approval',kind:'approval',prompt:'Allow?',choices:['once','deny']}}});await waitForStatus(app,first.executionId,'waiting_for_user');
+    const changed=value.instances.map(instance=>instance.id==='local-hermes'?{...instance,endpoint:'http://127.0.0.1:8642'}:instance);
+    expect((await app.inject({method:'PUT',url:'/v2/instances',headers:auth,payload:{instances:changed}})).statusCode).toBe(200);
+    expect(initial.closeCount).toBe(0);
+    expect((await app.inject({url:`/v2/executions/${first.executionId}`,headers:auth})).json().execution).toMatchObject({harnessType:'hermes',adapterGeneration:1});
+    expect((await app.inject({method:'POST',url:`/v2/executions/${first.executionId}/requests/generation-approval/resolve`,headers:auth,payload:{resolution:'once'}})).statusCode).toBe(200);
+    expect(initial.resolutions).toHaveLength(1);expect(replacement.resolutions).toHaveLength(0);
+    const second={...first,executionId:'generation-two'};
+    await app.inject({method:'POST',url:'/v2/executions',headers:auth,payload:second});await waitForStatus(app,second.executionId,'running');
+    expect((await app.inject({url:`/v2/executions/${second.executionId}`,headers:auth})).json().execution).toMatchObject({adapterGeneration:2});
+    await app.inject({method:'PUT',url:'/v2/instances',headers:auth,payload:{instances:changed}});
+    expect(configured).toHaveLength(1);
+    expect((await app.inject({method:'POST',url:`/v2/executions/${first.executionId}/stop`,headers:auth})).statusCode).toBe(200);await waitForStatus(app,first.executionId,'cancelled');expect(initial.stopCount).toBe(1);expect(replacement.stopCount).toBe(0);expect((await app.inject({url:`/v2/executions/${first.executionId}/events?after=0`,headers:auth})).statusCode).toBe(200);await waitFor(()=>initial.closeCount===1);
+    await app.close();expect(replacement.closeCount).toBe(1);
+  });
+
+  it('serializes reconfiguration and discards an unpersisted candidate',async()=>{
+    const initial=new ControlledAdapter(),candidates:ControlledAdapter[]=[],value=structuredClone(config);let active=0,maxActive=0,persistCalls=0;
+    const app=buildConnectorApp(value,{adapters:new Map([['local-hermes',initial]]),configureInstances:async()=>{active+=1;maxActive=Math.max(maxActive,active);await new Promise(resolve=>setTimeout(resolve,5));active-=1;const adapter=new ControlledAdapter();candidates.push(adapter);return new Map([['local-hermes',adapter]]);},persistInstances:async()=>{persistCalls+=1;if(persistCalls===1)throw new Error('fixture persist failure');}});
+    const first=value.instances.map(instance=>instance.id==='local-hermes'?{...instance,endpoint:'http://127.0.0.1:8643'}:instance),second=value.instances.map(instance=>instance.id==='local-hermes'?{...instance,endpoint:'http://127.0.0.1:8644'}:instance);
+    const failed=app.inject({method:'PUT',url:'/v2/instances',headers:auth,payload:{instances:first}}),succeeded=app.inject({method:'PUT',url:'/v2/instances',headers:auth,payload:{instances:second}});
+    expect((await failed).statusCode).toBe(409);expect((await succeeded).statusCode).toBe(200);expect(maxActive).toBe(1);expect(candidates[0]?.closeCount).toBe(1);
+    const run={...structuredClone(connectorContractFixtures.startExecution),executionId:'serialized-generation'} as StartExecutionRequest;
+    await app.inject({method:'POST',url:'/v2/executions',headers:auth,payload:run});await waitForStatus(app,run.executionId,'running');
+    expect((await app.inject({url:`/v2/executions/${run.executionId}`,headers:auth})).json().execution.adapterGeneration).toBe(2);
+    await app.close();expect(initial.closeCount).toBe(1);expect(candidates[1]?.closeCount).toBe(1);
+  });
+
   it('fails closed until adapters implement catalog and execution lifecycle', async () => {
     const app = buildConnectorApp(config);
     expect((await app.inject({ url: '/v2/instances/missing/catalog', headers: auth })).statusCode).toBe(404);
@@ -319,6 +352,7 @@ class ControlledAdapter implements ConnectorAdapter {
   readonly queues = new Map<string, AsyncEventQueue>();
   startCount = 0;
   stopCount = 0;
+  closeCount = 0;
   lastRequest?: AdapterStartExecutionRequest;
   resolutions: Array<{ upstreamId: string; requestId: string; resolution: string }> = [];
 
@@ -340,6 +374,7 @@ class ControlledAdapter implements ConnectorAdapter {
   }
 
   async stop() { this.stopCount += 1; }
+  async close(){this.closeCount+=1;}
 
   async resolveRequest(execution: AdapterExecution, request: import('@agenvyl/connector-contract').ConnectorRequestSnapshot, resolution: string) {
     this.resolutions.push({ upstreamId: execution.upstreamId, requestId: request.id, resolution });
@@ -391,3 +426,5 @@ function sequenceClock() {
   let second = 0;
   return () => `2026-07-17T00:00:${String(second++).padStart(2, '0')}.000Z`;
 }
+
+async function waitFor(predicate:()=>boolean){for(let attempt=0;attempt<50;attempt+=1){if(predicate())return;await new Promise(resolve=>setTimeout(resolve,1));}throw new Error('Condition was not reached');}

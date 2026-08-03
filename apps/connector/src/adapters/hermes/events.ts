@@ -1,13 +1,14 @@
 import type { AdapterExecutionEvent } from '../../adapter.js';
 import type {TokenUsage} from '@agenvyl/connector-contract';
 import { redactConnectorText } from '../../safety.js';
+import {createHash} from 'node:crypto';
 
 export type HermesMappedEvent =
   | { kind: 'event'; event: AdapterExecutionEvent; before?:AdapterExecutionEvent }
   | { kind: 'approval-request'; prompt: string; choices: string[] }
   | { kind: 'unsupported-interaction' };
 
-export function mapHermesEvent(upstreamId: string, eventName: string | undefined, data: string): HermesMappedEvent | undefined {
+export function mapHermesEvent(eventName: string | undefined, data: string,tools:HermesToolLifecycle): HermesMappedEvent | undefined {
   if (data === '[DONE]') return undefined;
   let decoded: unknown;
   try { decoded = JSON.parse(data) as unknown; } catch { return undefined; }
@@ -21,10 +22,11 @@ export function mapHermesEvent(upstreamId: string, eventName: string | undefined
   }
   if (type.startsWith('tool.')) {
     const name = stringValue(decoded.tool_name) ?? stringValue(decoded.name) ?? stringValue(decoded.tool) ?? 'tool';
-    const toolId = stringValue(decoded.tid) ?? stringValue(decoded.tool_call_id) ?? stringValue(decoded.tool_use_id)
-      ?? stringValue(decoded.call_id) ?? stringValue(decoded.id) ?? `${upstreamId}:${name}`;
+    const explicitId = stringValue(decoded.tid) ?? stringValue(decoded.tool_call_id) ?? stringValue(decoded.tool_use_id)
+      ?? stringValue(decoded.call_id) ?? stringValue(decoded.id);
     const safeSummary = redactConnectorText(stringValue(decoded.preview) ?? stringValue(decoded.detail) ?? stringValue(decoded.delta) ?? '');
     const normalizedType = type === 'tool.started' ? 'tool.started' : type === 'tool.completed' ? 'tool.completed' : 'tool.updated';
+    const toolId=tools.resolve(normalizedType,name,explicitId);
     return { kind: 'event', event: { type: normalizedType, payload: { toolId, name, safeSummary } } };
   }
   if (type === 'run.completed') {const usage=tokenUsage(decoded.usage);return { kind: 'event',...(usage?{before:{type:'usage.updated',payload:{usage}} as AdapterExecutionEvent}:{}), event: { type: 'execution.completed', payload: {} } };}
@@ -41,6 +43,34 @@ export function mapHermesEvent(upstreamId: string, eventName: string | undefined
   }
   if (type === 'clarification.request') return { kind: 'unsupported-interaction' };
   return undefined;
+}
+
+export class HermesToolLifecycle{
+  private readonly activeByName=new Map<string,string[]>();
+  private sequence=0;
+  private readonly executionHash:string;
+  constructor(upstreamId:string){this.executionHash=createHash('sha256').update(upstreamId).digest('hex').slice(0,16);}
+  resolve(type:'tool.started'|'tool.updated'|'tool.completed',name:string,explicitId?:string){
+    const active=this.activeByName.get(name)??[];
+    if(type==='tool.started'){
+      const id=explicitId??this.syntheticId();
+      if(!active.includes(id))active.push(id);
+      this.activeByName.set(name,active);
+      return id;
+    }
+    if(explicitId){
+      if(type==='tool.completed')this.remove(active,explicitId,name);
+      else if(!active.includes(explicitId)){active.push(explicitId);this.activeByName.set(name,active);}
+      return explicitId;
+    }
+    const current=active[0];
+    if(current){if(type==='tool.completed')this.remove(active,current,name);return current;}
+    const id=this.syntheticId();
+    if(type==='tool.updated')this.activeByName.set(name,[id]);
+    return id;
+  }
+  private syntheticId(){this.sequence+=1;return`hermes-tool-${this.executionHash}-${this.sequence}`;}
+  private remove(active:string[],id:string,name:string){const index=active.indexOf(id);if(index>=0)active.splice(index,1);if(active.length)this.activeByName.set(name,active);else this.activeByName.delete(name);}
 }
 
 const approvalChoices = new Set(['once', 'session', 'always', 'deny']);

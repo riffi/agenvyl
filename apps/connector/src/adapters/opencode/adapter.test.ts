@@ -199,6 +199,16 @@ describe('OpenCodeConnectorAdapter', () => {
     expect(JSON.stringify(normalized)).not.toContain('raw final body');
   });
 
+  it('turns a provider region failure into safe actionable guidance',async()=>{
+    const client=fixtureClient();client.subscribe=vi.fn().mockResolvedValue(events([
+      {type:'session.error',properties:{sessionID:'session-1',error:{name:'APIError',data:{statusCode:403,message:'The latest version is only available hosted in China and requires explicit opt in: https://opencode.ai/workspace/private/go',responseHeaders:{authorization:'Bearer secret-token'},responseBody:'{"type":"error","error":{"type":"RegionError"}}'}}}},
+    ]));
+    const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client}),normalized=await collect(adapter.events(await adapter.start(startRequest())));
+    expect(normalized).toEqual([{type:'execution.failed',payload:{error:{code:'provider_region_opt_in_required',message:'This model requires China hosting to be enabled in OpenCode Go settings.'}}}]);
+    expect(JSON.stringify(normalized)).not.toContain('private');
+    expect(JSON.stringify(normalized)).not.toContain('secret-token');
+  });
+
   it('normalizes native tool states without exposing inputs, outputs, metadata, or errors', async () => {
     const client = fixtureClient();
     client.subscribe = vi.fn().mockResolvedValue(events([

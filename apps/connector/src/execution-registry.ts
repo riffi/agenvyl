@@ -11,6 +11,7 @@ import type {
 import {createHash} from 'node:crypto';
 import { CONNECTOR_API_VERSION } from '@agenvyl/connector-contract';
 import type { AdapterExecution, AdapterExecutionEvent, ConnectorAdapter } from './adapter.js';
+import { AdapterGenerationError, type AdapterGenerationBinding } from './adapter-generations.js';
 import { safeAdapterError, sanitizeAdapterEvent } from './safety.js';
 import { WorkspacePolicy } from './workspace-policy.js';
 
@@ -38,6 +39,9 @@ type ExecutionRecord = {
   requestKey: string;
   workspacePath: string;
   adapter: ConnectorAdapter;
+  harnessType: string;
+  adapterGeneration: number;
+  releaseGeneration?: () => void;
   upstream?: AdapterExecution;
   startPromise: Promise<void>;
   status: ExecutionStatus;
@@ -56,8 +60,7 @@ export class ExecutionRegistry {
 
   constructor(
     private readonly connectorEpoch: string,
-    private readonly instanceTypes: ReadonlyMap<string, string>,
-    private readonly adapters: ReadonlyMap<string, ConnectorAdapter>,
+    private readonly acquireAdapter: (instanceId: string) => AdapterGenerationBinding,
     private readonly workspacePolicy: WorkspacePolicy,
     private readonly replayLimit = 1_000,
     private readonly now: () => string = () => new Date().toISOString(),
@@ -73,18 +76,29 @@ export class ExecutionRegistry {
       return { execution: this.snapshot(existing), created: false };
     }
 
-    const harnessType = this.instanceTypes.get(request.harnessInstanceId);
-    if (!harnessType) throw new RegistryError('instance_not_found', 'Connector instance not found', 404);
-    const adapter = this.adapters.get(request.harnessInstanceId);
-    if (!adapter) throw new RegistryError('instance_unavailable', 'Connector instance adapter is not loaded', 503);
-    if (adapter.type !== harnessType) throw new RegistryError('adapter_type_mismatch', 'Connector adapter type does not match instance configuration', 500);
-    const workspacePath = this.workspacePolicy.resolve(request.workspace.roomId, request.workspace.relativePath);
+    let binding: AdapterGenerationBinding;
+    try {
+      binding = this.acquireAdapter(request.harnessInstanceId);
+    } catch (error) {
+      if (error instanceof AdapterGenerationError) throw new RegistryError(error.code, error.message, error.statusCode);
+      throw error;
+    }
+    let workspacePath: string;
+    try {
+      workspacePath = this.workspacePolicy.resolve(request.workspace.roomId, request.workspace.relativePath);
+    } catch (error) {
+      binding.release();
+      throw error;
+    }
 
     const record: ExecutionRecord = {
       request: structuredClone(request),
       requestKey,
       workspacePath,
-      adapter,
+      adapter: binding.adapter,
+      harnessType: binding.harnessType,
+      adapterGeneration: binding.adapterGeneration,
+      releaseGeneration: binding.release,
       status: 'queued',
       cursor: 0,
       events: [],
@@ -279,6 +293,8 @@ export class ExecutionRegistry {
     this.append(record, type, payload);
     for (const listener of record.listeners) listener(null);
     record.listeners.clear();
+    record.releaseGeneration?.();
+    record.releaseGeneration = undefined;
   }
 
   private fail(record: ExecutionRecord, code: string, message: string) {
@@ -307,7 +323,8 @@ export class ExecutionRegistry {
       executionId: record.request.executionId,
       connectorEpoch: this.connectorEpoch,
       harnessInstanceId: record.request.harnessInstanceId,
-      harnessType: this.instanceTypes.get(record.request.harnessInstanceId) ?? record.adapter.type,
+      harnessType: record.harnessType,
+      adapterGeneration: record.adapterGeneration,
       modelId: record.request.modelId,
       executionProfile: structuredClone(record.request.executionProfile),
       status: record.status,

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { ExecutionStatus } from '@agenvyl/connector-contract';
 import type { AdapterExecution, AdapterStartExecutionRequest, ConnectorAdapter } from '../../adapter.js';
-import { mapHermesEvent } from './events.js';
+import { HermesToolLifecycle, mapHermesEvent } from './events.js';
 import { parseSse } from './parse-sse.js';
 
 export type HermesAdapterOptions = { baseUrl: string; token?: string; request?: typeof fetch };
@@ -15,6 +15,7 @@ export class HermesConnectorAdapter implements ConnectorAdapter {
   private readonly streams = new Map<string, AbortController>();
   private readonly pendingRequests = new Map<string, { upstreamId: string }>();
   private readonly requestCounters = new Map<string, number>();
+  private readonly toolLifecycles=new Map<string,HermesToolLifecycle>();
 
   constructor(options: HermesAdapterOptions) {
     this.baseUrl = normalizeBaseUrl(options.baseUrl);
@@ -61,11 +62,13 @@ export class HermesConnectorAdapter implements ConnectorAdapter {
     const controller = new AbortController();
     this.streams.get(execution.upstreamId)?.abort();
     this.streams.set(execution.upstreamId, controller);
+    const toolLifecycle=this.toolLifecycles.get(execution.upstreamId)??new HermesToolLifecycle(execution.upstreamId);
+    this.toolLifecycles.set(execution.upstreamId,toolLifecycle);
     try {
       const response = await this.request(`${this.runUrl(execution.upstreamId)}/events`, { headers: this.headers(), signal: controller.signal });
       if (!response.ok || !response.body) throw httpError('event stream', response.status);
       for await (const item of parseSse(response.body)) {
-        const mapped = mapHermesEvent(execution.upstreamId, item.event, item.data);
+        const mapped = mapHermesEvent(item.event, item.data,toolLifecycle);
         if (!mapped) continue;
         if (mapped.kind === 'approval-request') {
           const requestId = this.nextRequestId(execution.upstreamId);
@@ -76,12 +79,14 @@ export class HermesConnectorAdapter implements ConnectorAdapter {
         if (mapped.kind === 'unsupported-interaction') {
           try { await this.stopUpstream(execution.upstreamId); } catch { /* preserve the stable interaction error */ }
           yield { type: 'execution.failed' as const, payload: { error: { code: 'unsupported_interaction', message: 'Hermes requested an interaction that this Connector version does not support' } } };
+          this.toolLifecycles.delete(execution.upstreamId);
           return;
         }
         if(mapped.before)yield mapped.before;
         yield mapped.event;
         if (mapped.event.type.startsWith('execution.')) {
           this.clearPending(execution.upstreamId);
+          this.toolLifecycles.delete(execution.upstreamId);
           return;
         }
       }
@@ -97,7 +102,10 @@ export class HermesConnectorAdapter implements ConnectorAdapter {
     await this.stopUpstream(execution.upstreamId);
     this.streams.get(execution.upstreamId)?.abort();
     this.clearPending(execution.upstreamId);
+    this.toolLifecycles.delete(execution.upstreamId);
   }
+
+  async close(){for(const stream of this.streams.values())stream.abort();this.streams.clear();this.pendingRequests.clear();this.requestCounters.clear();this.toolLifecycles.clear();}
 
   async resolveRequest(execution: AdapterExecution, request: import('@agenvyl/connector-contract').ConnectorRequestSnapshot, answer: import('@agenvyl/connector-contract').ConnectorRequestAnswer|string) {
     const pending = this.pendingRequests.get(request.id);

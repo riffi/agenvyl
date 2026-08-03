@@ -59,6 +59,12 @@ client-facing alias. Hermes automatically includes `primary`, `review`, and
 `build` in authenticated `GET /v1/models`; when Agenvyl uses an alias, Hermes
 routes it to the configured provider and upstream model.
 
+Hermes tool events are normalized into stable Agenvyl lifecycles. Native tool
+call IDs are preserved. When an event has no ID, Connector assigns an opaque ID
+unique within the execution; updates and completions are matched FIFO to the
+oldest active call with the same tool name. This keeps repeated and interleaved
+calls distinct without exposing tool arguments.
+
 Do not copy the placeholder provider or model IDs literally. Use provider names
 and models already configured and working in your Hermes installation.
 
@@ -165,4 +171,3 @@ If Hermes is unavailable or has no models:
 
 Never post the API key, Agenvyl Connector token, provider credentials, or an
 unredacted environment dump in an issue.
-

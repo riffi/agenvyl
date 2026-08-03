@@ -14,7 +14,7 @@ export type StartRunInput = {
 };
 
 export type RunCheckpoint = { executionId: string; connectorEpoch: string; cursor: number };
-export type RunHandle = { id: string; checkpoint?: RunCheckpoint };
+export type RunHandle = { id: string; checkpoint?: RunCheckpoint; harnessType?:string; adapterGeneration?:number };
 export type ReattachRunInput={checkpoint:RunCheckpoint;pendingRequests:Array<{id:string;kind:'approval'|'clarification';prompt:string;directory?:string;choices?:string[];questions?:import('@agenvyl/contracts').StructuredQuestion[];autoResolutionMs?:number}>};
 
 export type MappedRunEvent = {

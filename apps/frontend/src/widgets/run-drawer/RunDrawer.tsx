@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Ban, Check, CheckCircle2, CircleHelp, CircleX, Clock3, Copy, LoaderCircle, Settings2, TriangleAlert, Wrench } from 'lucide-react';
 import type { HarnessCatalog } from '../../entities/harness';
 import type { Persona } from '../../entities/persona';
-import type { Run, RunStatus, ToolActivity } from '../../entities/run';
+import {RunFailureNotice,type Run,type RunStatus,type ToolActivity} from '../../entities/run';
 import { Avatar, Drawer } from '../../shared/ui';
 import styles from './RunDrawer.module.css';
 
@@ -94,7 +94,7 @@ export function RunDrawer({run,persona,harnessCatalog,close}:{run?:Run;persona?:
 
         {run.connector&&<section className={`${styles['connector-card']} ${styles[run.connector.state]}`}><Settings2/><span><strong>{connectorStateCopy[run.connector.state]}</strong><small>{run.connector.checkpointed?'State confirmed by a durable checkpoint in Core.':'No durable checkpoint was created.'}</small></span></section>}
 
-        {run.error&&<section className={styles['error-card']}><CircleX/><span><strong>What happened</strong><p>{run.error}</p></span></section>}
+        {run.status==='failed'&&<RunFailureNotice errorCode={run.errorCode} error={run.error}/>}
 
         {run.request&&<section className={styles['request-card']}>
           {run.request.kind==='approval'?<TriangleAlert/>:<CircleHelp/>}

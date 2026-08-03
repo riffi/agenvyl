@@ -171,6 +171,7 @@ export type ExecutionSnapshot = {
   connectorEpoch: string;
   harnessInstanceId: string;
   harnessType: string;
+  adapterGeneration: number;
   modelId: string;
   executionProfile: StartExecutionRequest['executionProfile'];
   status: ExecutionStatus;
@@ -231,6 +232,7 @@ export const connectorContractFixtures = {
   },
   execution: {
     apiVersion: 'v2', executionId: 'run-1', connectorEpoch: 'epoch-1', harnessInstanceId: 'local-hermes', harnessType: 'hermes',
+    adapterGeneration: 1,
     modelId: 'sol', executionProfile: {workflowMode:'work',reasoningEffort:null,permissionProfileId:null,agentVariantId:null,planEnforcement:null}, status: 'running', cursor: 3, earliestReplayableCursor: 1, pendingRequests: [],
   },
   textEvent: {
@@ -318,7 +320,8 @@ export function isConnectorRequestCommandResult(value:unknown):value is Connecto
 
 export function isExecutionSnapshot(value: unknown): value is ExecutionSnapshot {
   if (!isRecord(value) || value.apiVersion !== CONNECTOR_API_VERSION || !strings(value, 'executionId', 'connectorEpoch', 'harnessInstanceId', 'harnessType', 'modelId', 'status')) return false;
-  return executionStatuses.has(String(value.status)) && isExecutionProfile(value.executionProfile) && integers(value, 'cursor', 'earliestReplayableCursor')
+  return executionStatuses.has(String(value.status)) && isExecutionProfile(value.executionProfile) && integers(value, 'cursor', 'earliestReplayableCursor', 'adapterGeneration')
+    && Number(value.adapterGeneration) > 0
     && Number(value.earliestReplayableCursor) <= Number(value.cursor) + 1 && Array.isArray(value.pendingRequests) && value.pendingRequests.every(isRequest)
     && (value.usage === undefined || isTokenUsage(value.usage))
     && (value.upstreamStatus === undefined || isUpstreamStatus(value.upstreamStatus))
