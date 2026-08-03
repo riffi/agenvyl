@@ -1,3 +1,4 @@
+.backdrop{position:fixed;z-index:39;inset:0;background:#0f172a66;backdrop-filter:blur(1px)}
 .drawer { position:fixed;z-index:40;top:0;right:0;bottom:0;width:min(460px,100vw);display:flex;visibility:hidden;pointer-events:none;transform:translateX(100%);flex-direction:column;background:white;box-shadow:-8px 0 30px #0002;transition:transform .25s ease,visibility 0s linear .25s; }
 .open { visibility:visible;pointer-events:auto;transform:translateX(0);transition:transform .25s ease; }
 .wide { width:min(540px,100vw); }

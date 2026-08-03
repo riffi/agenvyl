@@ -1,7 +1,9 @@
 import {describe,expect,it} from 'vitest';
-import {addHarnessDraft,configurationOf,harnessCandidateDetail,harnessCandidateState,validDraft,type HarnessDraft} from './harnessSettingsModel';
+import type {HarnessSettingsInstance} from '@agenvyl/contracts';
+import {addHarnessDraft,configurationOf,groupHarnessInstances,harnessSettingsSummary,healthStatus,validDraft,type HarnessDraft} from './harnessSettingsModel';
 
 const opencode:HarnessDraft={id:'local-opencode',type:'opencode',enabled:true,endpoint:'http://127.0.0.1:4096',managed:true,status:'healthy',capabilities:[],personas:[]};
+const saved=(patch:Partial<HarnessSettingsInstance>={}):HarnessSettingsInstance=>({...opencode,status:'healthy',...patch});
 
 describe('harness settings model',()=>{
   it('creates unique instances of the same harness type from discovery defaults',()=>{
@@ -21,11 +23,16 @@ describe('harness settings model',()=>{
     expect(validDraft([{...opencode,externalDirectoryRoots:['/srv/shared','/srv/shared/']}])).toBe(false);
   });
 
-  it('keeps discovery readiness separate from saved connection state',()=>{
-    const ready={type:'codex',label:'Codex',cli:{found:true,command:'codex',version:'0.145.0',compatible:true},safeToSelect:true,supportsManagedServer:false} as const;
-    expect(harnessCandidateState(ready,false)).toBe('ready');
-    expect(harnessCandidateState(ready,true)).toBe('connected');
-    expect(harnessCandidateState({...ready,safeToSelect:false,warning:'Run codex login.'},false)).toBe('setup');
-    expect(harnessCandidateDetail({...ready,safeToSelect:false,warning:'Run codex login.'},'setup')).toBe('Run codex login.');
+  it('separates disabled configuration from health and summarizes operational issues',()=>{
+    const disabled=saved({enabled:false,status:'disabled'});
+    expect(healthStatus(disabled)).toBeNull();
+    expect(harnessSettingsSummary([saved(),saved({id:'degraded',status:'degraded'}),{...disabled,id:'off'}])).toEqual({configured:3,healthy:1,issues:1,disabled:1});
+  });
+
+  it('preserves runtime group order while prioritizing issues and disabled instances',()=>{
+    const instances=[saved(),saved({id:'local-hermes',type:'hermes'}),saved({id:'open-unavailable',status:'unavailable'}),saved({id:'open-disabled',enabled:false,status:'disabled'})];
+    const groups=groupHarnessInstances(instances);
+    expect(groups.map(group=>group.type)).toEqual(['opencode','hermes']);
+    expect(groups[0]).toMatchObject({grouped:true,instances:[{id:'open-unavailable'},{id:'local-opencode'},{id:'open-disabled'}]});
   });
 });

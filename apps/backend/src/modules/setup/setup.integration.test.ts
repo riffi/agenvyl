@@ -8,13 +8,16 @@ describe('setup API',()=>{
     const response=await app.inject('/api/v1/harness-settings');
     expect(response.statusCode).toBe(503);
     expect(response.json()).toEqual({error:'connector_unavailable',message:'Connector settings are unavailable'});
+    const test=await app.inject({method:'POST',url:'/api/v1/harness-settings/test',payload:{instance:{id:'local-hermes',type:'hermes',enabled:true}}});
+    expect(test.statusCode).toBe(503);expect(test.json()).toEqual({error:'connector_unavailable',message:'Connector connection testing is unavailable'});
     await app.close();
   });
 
   it('bootstraps a fresh zero-harness installation atomically and idempotently',async()=>{
-    const request=vi.fn<typeof fetch>(async url=>{const path=new URL(String(url)).pathname;if(path==='/v2/discovery')return Response.json({apiVersion:'v2',candidates:[]});if(path==='/v2/instances')return Response.json({apiVersion:'v2',connectorEpoch:'epoch',instances:[]});if(path==='/v2/configuration')return Response.json({apiVersion:'v2',instances:[]});return new Response('{}',{status:404});});
+    const request=vi.fn<typeof fetch>(async(url,init)=>{const path=new URL(String(url)).pathname;if(path==='/v2/discovery')return Response.json({apiVersion:'v2',candidates:[]});if(path==='/v2/instances/test'&&init?.method==='POST')return Response.json({apiVersion:'v2',instanceId:'local-hermes',status:'healthy',capabilities:['model_catalog']});if(path==='/v2/instances')return Response.json({apiVersion:'v2',connectorEpoch:'epoch',instances:[]});if(path==='/v2/configuration')return Response.json({apiVersion:'v2',instances:[]});return new Response('{}',{status:404});});
     const databaseUrl=testDatabaseUrl('setup_api'),app=await buildApp({databaseUrl,connectorUrl:'http://connector.test',connectorToken:'x'.repeat(32),fetch:request,distPath:'missing-dist',legacySeed:false,logger:false});
     const setup=(await app.inject('/api/v1/setup')).json();expect(setup).toMatchObject({completed:false,instances:[],candidates:[],workspaceRoot:expect.any(String)});
+    const tested=await app.inject({method:'POST',url:'/api/v1/harness-settings/test',payload:{instance:{id:'local-hermes',type:'hermes',enabled:false}}});expect(tested.statusCode).toBe(200);expect(tested.json()).toMatchObject({instanceId:'local-hermes',status:'healthy'});
     expect((await app.inject({method:'PUT',url:'/api/v1/setup/harnesses',payload:{instances:[{id:'local-antigravity',type:'antigravity',enabled:true}]}})).statusCode).toBe(400);
     const payload={locale:'ru',workspace_root:setup.workspaceRoot,profile:{display_name:'Владимир',handle:'vladimir'},room_title:'Первая комната',route:null};
     const first=await app.inject({method:'POST',url:'/api/v1/setup/complete',payload});expect(first.statusCode).toBe(200);

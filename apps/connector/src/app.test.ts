@@ -218,6 +218,27 @@ describe('Connector shell', () => {
     await app.close();
   });
 
+  it('tests a temporary instance without persisting or activating it and always cleans up',async()=>{
+    const active=new ControlledAdapter(),temporary:ControlledAdapter[]=[];let releases=0,persists=0;
+    const app=buildConnectorApp(config,{adapters:new Map([['local-hermes',active]]),configureInstances:async instances=>{
+      const adapter=new ControlledAdapter();temporary.push(adapter);
+      return{adapters:new Map([[instances[0]!.id,adapter]]),release:()=>{releases+=1;}};
+    },persistInstances:async()=>{persists+=1;}});
+    const payload={instance:{id:'probe-hermes',type:'hermes',enabled:false,endpoint:'http://127.0.0.1:8642'}};
+    const success=await app.inject({method:'POST',url:'/v2/instances/test',headers:auth,payload});
+    expect(success.statusCode).toBe(200);expect(success.json()).toMatchObject({instanceId:'probe-hermes',status:'healthy',capabilities:['model_catalog','text_streaming']});
+    expect(temporary[0]?.closeCount).toBe(1);expect(releases).toBe(1);expect(persists).toBe(0);
+    expect((await app.inject({url:'/v2/configuration',headers:auth})).json().instances).toEqual(config.instances);
+    expect((await app.inject({url:'/v2/instances',headers:auth})).json().instances[0]).toMatchObject({id:'local-hermes'});
+
+    const failing=new ControlledAdapter();failing.catalog=async()=>{throw new Error('secret authentication detail');};
+    const failedApp=buildConnectorApp(config,{configureInstances:async()=>({adapters:new Map([['probe-hermes',failing]]),release:()=>{releases+=1;}})});
+    const failure=await failedApp.inject({method:'POST',url:'/v2/instances/test',headers:auth,payload});
+    expect(failure.statusCode).toBe(200);expect(failure.body).not.toContain('secret');expect(failure.json()).toMatchObject({status:'unavailable',error:{code:'connection_test_failed'}});
+    expect(failing.closeCount).toBe(1);expect(releases).toBe(2);
+    await failedApp.close();await app.close();
+  });
+
   it('keeps cancellation terminal when an adapter completes late', async () => {
     const adapter = new ControlledAdapter();
     const app = buildConnectorApp(config, { connectorEpoch: 'epoch-test', adapters: new Map([['local-hermes', adapter]]) });

@@ -5,12 +5,14 @@ import {
   CONNECTOR_API_VERSION,
   isResolveConnectorRequest,
   isConfigureConnectorInstancesRequest,
+  isTestConnectorInstanceRequest,
   isStartExecutionRequest,
   type ConnectorExecutionEvent,
   type ConnectorHealth,
   type ConnectorInstanceList,
   type ConnectorCatalog,
   type ConnectorDiscovery,
+  type TestConnectorInstanceResult,
 } from '@agenvyl/connector-contract';
 import type { ConnectorAdapter } from './adapter.js';
 import { AdapterGenerationManager, type PreparedAdapterRuntime } from './adapter-generations.js';
@@ -118,6 +120,26 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
     return{apiVersion:CONNECTOR_API_VERSION,instances};
   });
 
+  app.post('/v2/instances/test',async(request,reply)=>{
+    if(!isTestConnectorInstanceRequest(request.body))return reply.code(400).send({apiVersion:CONNECTOR_API_VERSION,error:'invalid_request',message:'Connector instance does not match the v2 contract'});
+    if(!options.configureInstances)return reply.code(503).send({apiVersion:CONNECTOR_API_VERSION,error:'configuration_unavailable',message:'Connector connection testing is unavailable'});
+    const instance=normalizeConnectorInstances([{...request.body.instance,enabled:true}])[0]!;
+    let runtime:PreparedAdapterRuntime|undefined;
+    try{
+      const configured=await options.configureInstances([instance]);
+      runtime=isPreparedRuntime(configured)?configured:{adapters:configured};
+      const adapter=runtime.adapters.get(instance.id);
+      if(adapter?.type!==instance.type||!adapter.catalog)throw new Error('Adapter catalog is unavailable');
+      await adapter.catalog();
+      return{apiVersion:CONNECTOR_API_VERSION,instanceId:instance.id,status:'healthy',capabilities:[...adapter.capabilities]} satisfies TestConnectorInstanceResult;
+    }catch{
+      app.log.warn({instanceId:instance.id,harnessType:instance.type},'Harness connection test failed');
+      return{apiVersion:CONNECTOR_API_VERSION,instanceId:instance.id,status:'unavailable',capabilities:[],error:{code:'connection_test_failed',message:'Harness connection test failed'}} satisfies TestConnectorInstanceResult;
+    }finally{
+      if(runtime)await closePreparedRuntime(runtime,app.log);
+    }
+  });
+
   app.get<{ Params: { id: string } }>('/v2/instances/:id/catalog', async (request, reply) => {
     const instance=enabledInstances.find(candidate=>candidate.id===request.params.id);
     if (!instance) return reply.code(404).send({ apiVersion: CONNECTOR_API_VERSION, error: 'instance_not_found', message: 'Connector instance not found' });
@@ -212,6 +234,14 @@ function nextBeforeHeartbeat<T>(pending:Promise<IteratorResult<T>>,heartbeatMs:n
 
 function isPreparedRuntime(value:ReadonlyMap<string,ConnectorAdapter>|PreparedAdapterRuntime):value is PreparedAdapterRuntime{
   return typeof value==='object'&&value!==null&&'adapters' in value;
+}
+
+async function closePreparedRuntime(runtime:PreparedAdapterRuntime,logger:{warn(data:Record<string,unknown>,message:string):void}){
+  const adapters=[...new Set(runtime.adapters.values())];
+  const operations=[...adapters.filter(adapter=>adapter.close).map(adapter=>()=>adapter.close!()),...(runtime.release?[()=>runtime.release!()]:[])];
+  const results=await Promise.allSettled(operations.map(operation=>Promise.resolve().then(operation)));
+  const failures=results.filter(result=>result.status==='rejected');
+  if(failures.length)logger.warn({failures:failures.length},'Temporary harness test runtime cleanup failed');
 }
 
 function authorized(request: FastifyRequest, token: string) {

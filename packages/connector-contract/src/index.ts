@@ -105,6 +105,14 @@ export type ConnectorDiscovery = {
   candidates: HarnessDiscoveryCandidate[];
 };
 export type ConfigureConnectorInstancesRequest = { instances: ConnectorInstanceConfiguration[] };
+export type TestConnectorInstanceRequest = { instance: ConnectorInstanceConfiguration };
+export type TestConnectorInstanceResult = {
+  apiVersion: ConnectorApiVersion;
+  instanceId: string;
+  status: 'healthy' | 'unavailable';
+  capabilities: ConnectorCapability[];
+  error?: ConnectorError;
+};
 export type ConnectorConfigurationResult = {
   apiVersion: ConnectorApiVersion;
   instances: ConnectorInstanceConfiguration[];
@@ -409,6 +417,17 @@ function isRequest(value: unknown): value is ConnectorRequestSnapshot {
   if(value.kind!=='elicitation'&&value.elicitation!==undefined)return false;
   if(value.autoResolutionMs!==undefined&&(!Number.isSafeInteger(value.autoResolutionMs)||Number(value.autoResolutionMs)<0))return false;
   return value.resolution === undefined || (isRecord(value.resolution) && typeof value.resolution.outcome === 'string' && requestResolutions.has(value.resolution.outcome) && (value.resolution.value === undefined || typeof value.resolution.value === 'string'));
+}
+
+export function isTestConnectorInstanceRequest(value:unknown):value is TestConnectorInstanceRequest {
+  return isRecord(value)&&isConfigureConnectorInstancesRequest({instances:[value.instance]});
+}
+
+export function isTestConnectorInstanceResult(value:unknown):value is TestConnectorInstanceResult {
+  return isRecord(value)&&value.apiVersion===CONNECTOR_API_VERSION&&strings(value,'instanceId','status')
+    &&(value.status==='healthy'||value.status==='unavailable')
+    &&Array.isArray(value.capabilities)&&value.capabilities.every(capability=>typeof capability==='string'&&capabilities.has(capability))
+    &&(value.error===undefined||isError(value.error));
 }
 function isQuestion(value:unknown){return isRecord(value)&&strings(value,'id','header','question')&&typeof value.isOther==='boolean'&&typeof value.isSecret==='boolean'&&(value.multiSelect===undefined||typeof value.multiSelect==='boolean')&&(value.options===undefined||(Array.isArray(value.options)&&value.options.every(option=>isRecord(option)&&typeof option.label==='string'&&(option.description===undefined||typeof option.description==='string'))));}
 function isElicitation(value:unknown):value is ConnectorElicitation{

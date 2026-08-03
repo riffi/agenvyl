@@ -1,5 +1,5 @@
-import type {CompleteSetupRequest,ConfigureSetupHarnessesRequest,HarnessSettingsState,SetupState} from '@agenvyl/contracts';
-import {isConfigureConnectorInstancesRequest} from '@agenvyl/connector-contract';
+import type {CompleteSetupRequest,ConfigureSetupHarnessesRequest,HarnessSettingsState,SetupState,TestHarnessInstanceRequest,TestHarnessInstanceResult} from '@agenvyl/contracts';
+import {isConfigureConnectorInstancesRequest,isTestConnectorInstanceRequest} from '@agenvyl/connector-contract';
 import type {FastifyBaseLogger} from 'fastify';
 import type {Database} from '../../infrastructure/database/Database.js';
 import type {HttpConnectorClient} from '../../integrations/connector/HttpConnectorClient.js';
@@ -78,6 +78,16 @@ export class SetupService{
     this.catalogCache.invalidate();
     this.discoveryCache.invalidate();
     return configured;
+  }
+  async testHarness(input:TestHarnessInstanceRequest):Promise<TestHarnessInstanceResult>{
+    if(!isTestConnectorInstanceRequest(input))throw new AppError('invalid_harness_instance',400,'Harness instance is invalid');
+    if(input.instance.type==='antigravity'&&!input.instance.permissionMode)throw new AppError('agy_confirmation_required',400,'AGY requires an explicit permission mode');
+    try{
+      const{apiVersion:_apiVersion,...result}=await this.connector.testInstance(input);
+      return result;
+    }catch{
+      throw new AppError('connector_unavailable',503,'Connector connection testing is unavailable');
+    }
   }
   async complete(input:CompleteSetupRequest){
     validate(input);
