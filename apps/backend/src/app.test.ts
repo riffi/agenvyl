@@ -1171,6 +1171,55 @@ describe("Runs API backend", () => {
     await app.close();
   });
 
+  it("requires confirmation and atomically clears every room reasoning override when changing a persona model", async () => {
+    const file = db(),
+      app = await buildApp({
+        databaseUrl: file,
+        fetch: personaCatalogFetch(catalog.data),
+        distPath: "missing-dist",
+      }),
+      sql = connectTestDatabase(file);
+    await sql`UPDATE room_participants SET reasoning_effort_override='medium' WHERE persona_id='persona-architect'`;
+    await sql`INSERT INTO rooms(id,title,created_at) VALUES('reasoning-reset-room','Another chat',now())`;
+    await sql`INSERT INTO room_participants(room_id,persona_id,reasoning_effort_override) VALUES('reasoning-reset-room','persona-architect','max')`;
+
+    const warning = await app.inject({
+      method: "PUT",
+      url: "/api/v1/personas/persona-architect",
+      payload: { requested_model: "gpt" },
+    });
+    expect(warning.statusCode).toBe(409);
+    expect(warning.json()).toMatchObject({
+      error: "room_reasoning_reset_required",
+      affected_room_count: 2,
+    });
+    expect(
+      (await sql`SELECT requested_model FROM personas WHERE id='persona-architect'`)[0]
+        ?.requested_model,
+    ).toBe("sol");
+    expect(
+      (
+        await sql`SELECT reasoning_effort_override FROM room_participants WHERE persona_id='persona-architect'`
+      )[0]?.reasoning_effort_override,
+    ).toBe("medium");
+
+    const updated = await app.inject({
+      method: "PUT",
+      url: "/api/v1/personas/persona-architect",
+      payload: {
+        requested_model: "gpt",
+        reset_room_reasoning_overrides: true,
+      },
+    });
+    expect(updated.statusCode, updated.body).toBe(200);
+    expect(updated.json().requested_model).toBe("gpt");
+    expect(
+      await sql`SELECT reasoning_effort_override FROM room_participants WHERE persona_id='persona-architect' AND reasoning_effort_override IS NOT NULL`,
+    ).toHaveLength(0);
+    await sql.end();
+    await app.close();
+  });
+
   it("renames a persona handle with normalization and conflict validation", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()

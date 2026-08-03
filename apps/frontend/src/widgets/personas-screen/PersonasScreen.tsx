@@ -6,6 +6,7 @@ import {HarnessIcon,personaModelName,type HarnessCatalog,type HarnessCatalogItem
 import type {PersonaGroup} from '../../entities/persona-group';
 import { personaKeys, personasApi, type Persona } from '../../entities/persona';
 import { roomsApi } from '../../entities/room';
+import {ApiError} from '../../shared/api';
 import { Alert, Avatar, Button, Dialog, Input, Select, Spinner, TextArea } from '../../shared/ui';
 import {PersonaCatalog} from './PersonaCatalog';
 import styles from './PersonasScreen.module.css';
@@ -165,6 +166,7 @@ export function PersonasScreen({
   const [snapshot,setSnapshot]=useState<Persona>();
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string>();
+  const [reasoningResetConfirmation,setReasoningResetConfirmation]=useState<{affectedRoomCount:number}>();
   const creating=selectedPersonaId==='new';
   const [pendingNavigation,setPendingNavigation]=useState<{label:string}|undefined>();
   const [lifecycleConfirmation,setLifecycleConfirmation]=useState<'archive'|'restore'|'delete'>();
@@ -191,7 +193,7 @@ export function PersonasScreen({
   useEffect(()=>{if(creating&&form?.id!==""){const empty=newPersonaDraft(harnessCatalog);setForm(empty);setSnapshot(empty)}},[creating,form?.id,harnessCatalog]);
   useEffect(()=>{const warn=(event:BeforeUnloadEvent)=>{if(dirty){event.preventDefault();event.returnValue=''}};addEventListener('beforeunload',warn);return()=>removeEventListener('beforeunload',warn)},[dirty]);
   const edit=(patch:Partial<Persona>)=>setForm(current=>current?{...current,...patch}:current);
-  const save = async ():Promise<boolean> => {
+  const save = async (resetRoomReasoningOverrides=false):Promise<boolean> => {
     if (!form || !real) return false;
     const handle=form.handle.trim().replace(/^@/,'').toLowerCase();
     if(!/^[a-z0-9][a-z0-9_-]*$/.test(handle)){setSaveError('Handle must start with a letter or digit and contain only a-z, 0-9, _, or -.');return false;}
@@ -221,7 +223,10 @@ export function PersonasScreen({
     setSaving(true);
     setSaveError(undefined);
     try {
-      const input=personaInputFromDraft({...form,handle});
+      const input={
+        ...personaInputFromDraft({...form,handle}),
+        ...(resetRoomReasoningOverrides?{reset_room_reasoning_overrides:true}:{}),
+      };
       const saved = creating?await personasApi.create(input):await personasApi.update(form.id,input);
       setForm(saved);
       setSnapshot(saved);
@@ -229,6 +234,11 @@ export function PersonasScreen({
       if(creating)onSelectPersona(saved.id,{replace:true});
       return true;
     } catch (e) {
+      const affectedRoomCount=reasoningResetRoomCount(e);
+      if(affectedRoomCount!==undefined){
+        setReasoningResetConfirmation({affectedRoomCount});
+        return false;
+      }
       setSaveError(e instanceof Error ? e.message : String(e));
       return false;
     } finally {
@@ -241,6 +251,11 @@ export function PersonasScreen({
   const requestNavigation=(label:string,action:()=>void)=>{if(!dirty){action();return}pendingNavigationRef.current=action;setPendingNavigation({label})};
   useEffect(()=>{registerNavigationGuard(requestNavigation);return()=>registerNavigationGuard(undefined)});
   const finishNavigation=()=>{const action=pendingNavigationRef.current;pendingNavigationRef.current=undefined;setPendingNavigation(undefined);setForm(snapshot);action?.()};
+  const confirmReasoningReset=async()=>{
+    const saved=await save(true);
+    setReasoningResetConfirmation(undefined);
+    if(saved&&pendingNavigation)finishNavigation();
+  };
   useEffect(()=>{const previous=routeSelectionRef.current;if(selectedPersonaId===previous)return;if(dirty&&form&&(previous===(form.id||'new'))){onSelectPersona(previous,{replace:true});requestNavigation(`agent “${personas.find(persona=>persona.id===selectedPersonaId)?.name??'previously selected'}”`,()=>onSelectPersona(selectedPersonaId));return}routeSelectionRef.current=selectedPersonaId},[selectedPersonaId,dirty,form,onSelectPersona,personas]);
   const toggleMembership=async()=>{if(!form||!real)return;setSaving(true);setSaveError(undefined);const present=roomPersonaIds.has(form.id);try{await (present?roomsApi.removeParticipant(roomId,form.id):roomsApi.addParticipant(roomId,form.id));await onChanged();}catch(error){setSaveError(error instanceof Error?error.message:String(error));}finally{setSaving(false);}};
   const lifecycle = async (action:'archive'|'restore'|'delete') => {
@@ -316,7 +331,8 @@ export function PersonasScreen({
           </>
         )}
       </div>
-      <div ui-spec-block-id="unsaved_changes_guard"><Dialog open={Boolean(pendingNavigation)} title="You have unsaved changes" description={`You changed agent “${form?.name||form?.handle||'New agent'}”. What should happen before navigating to ${pendingNavigation?.label??'another screen'}?`} onClose={()=>{pendingNavigationRef.current=undefined;setPendingNavigation(undefined)}} footer={<><Button onClick={()=>{pendingNavigationRef.current=undefined;setPendingNavigation(undefined)}}>Stay</Button><Button variant="danger" onClick={finishNavigation}>Discard and continue</Button><Button variant="primary" disabled={saving} onClick={async()=>{if(await save())finishNavigation()}}>Save and continue</Button></>}><p className={styles['dialog-message']}>Unsaved changes will be lost if you continue without saving.</p></Dialog></div>
+      <div ui-spec-block-id="unsaved_changes_guard"><Dialog open={Boolean(pendingNavigation)&&!reasoningResetConfirmation} title="You have unsaved changes" description={`You changed agent “${form?.name||form?.handle||'New agent'}”. What should happen before navigating to ${pendingNavigation?.label??'another screen'}?`} onClose={()=>{pendingNavigationRef.current=undefined;setPendingNavigation(undefined)}} footer={<><Button onClick={()=>{pendingNavigationRef.current=undefined;setPendingNavigation(undefined)}}>Stay</Button><Button variant="danger" onClick={finishNavigation}>Discard and continue</Button><Button variant="primary" disabled={saving} onClick={async()=>{if(await save())finishNavigation()}}>Save and continue</Button></>}><p className={styles['dialog-message']}>Unsaved changes will be lost if you continue without saving.</p></Dialog></div>
+      <Dialog open={Boolean(reasoningResetConfirmation)} title="Reset reasoning settings in chats?" description="Changing the model clears chat-specific reasoning settings." onClose={()=>setReasoningResetConfirmation(undefined)} footer={<><Button disabled={saving} onClick={()=>setReasoningResetConfirmation(undefined)}>Cancel</Button><Button variant="primary" disabled={saving} onClick={()=>void confirmReasoningReset()}>{saving?'Changing model…':'Reset and change model'}</Button></>}><p className={styles['dialog-message']}>{reasoningResetConfirmation?.affectedRoomCount===1?'One chat uses a custom reasoning setting.':`${reasoningResetConfirmation?.affectedRoomCount??0} chats use custom reasoning settings.`} They will switch to Auto. Existing messages and running tasks won’t change.</p></Dialog>
       <Dialog open={Boolean(lifecycleConfirmation)} title={lifecycleConfirmation==='delete'?'Permanently delete agent?':lifecycleConfirmation==='archive'?'Archive agent?':'Restore agent?'} description={lifecycleConfirmation==='delete'?'This action cannot be undone.':undefined} onClose={()=>setLifecycleConfirmation(undefined)} footer={<><Button onClick={()=>setLifecycleConfirmation(undefined)}>Cancel</Button><Button variant={lifecycleConfirmation==='delete'?'danger':'primary'} disabled={saving} onClick={()=>lifecycleConfirmation&&void lifecycle(lifecycleConfirmation)}>{saving?'Working…':lifecycleConfirmation==='delete'?'Delete permanently':lifecycleConfirmation==='archive'?'Archive':'Restore'}</Button></>}><p className={styles['dialog-message']}>{lifecycleConfirmation==='delete'?`@${form?.handle} will be permanently deleted.`:lifecycleConfirmation==='archive'?'The agent will disappear from the active catalog but can be restored later.':'The agent will return to the active catalog.'}</p></Dialog>
     </section>
   );
@@ -324,3 +340,8 @@ export function PersonasScreen({
 
 const harnessDisplayName=(type:string)=>({antigravity:'Antigravity',claude:'Claude',codex:'Codex',hermes:'Hermes',opencode:'OpenCode'}[type]??type);
 const cachedModelsMessage=(value:string|null)=>`Previously loaded models${value?` from ${new Date(value).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`:''} are still available.`;
+const reasoningResetRoomCount=(error:unknown)=>{
+  if(!(error instanceof ApiError)||error.code!=='room_reasoning_reset_required'||!error.details||typeof error.details!=='object')return undefined;
+  const count=(error.details as Record<string,unknown>).affected_room_count;
+  return typeof count==='number'&&Number.isInteger(count)&&count>0?count:undefined;
+};

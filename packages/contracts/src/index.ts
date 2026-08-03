@@ -228,7 +228,9 @@ export type PersonaInput = Pick<Persona, 'handle' | 'name' | 'color' | 'group_id
   system_prompt: string;
   room_id?: string;
 };
-export type UpdatePersonaRequest = Partial<PersonaInput>;
+export type UpdatePersonaRequest = Partial<PersonaInput> & {
+  reset_room_reasoning_overrides?: boolean;
+};
 
 type Envelope<T extends string, P> = {
   id: string;

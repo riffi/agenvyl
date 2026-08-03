@@ -88,7 +88,7 @@ export class PersonaRepository {
         room_id: string;
         reasoning_effort_override: string;
       }>;
-    }) => void,
+    }) => { resetReasoningOverrides?: boolean } | void,
   ) {
     const updated = await this.database.transaction(async (tx) => {
       await tx`SELECT r.id FROM rooms r JOIN room_participants rp ON rp.room_id=r.id WHERE rp.persona_id=${id} ORDER BY r.id FOR UPDATE OF r`;
@@ -99,7 +99,7 @@ export class PersonaRepository {
       const participantRows =
         await tx`SELECT room_id,reasoning_effort_override FROM room_participants WHERE persona_id=${id} ORDER BY room_id FOR UPDATE`;
       const old = toPersona(oldRow);
-      validateLocked?.({
+      const lockedValidation = validateLocked?.({
         current: old,
         overrides: participantRows
           .filter((row) => typeof row.reasoning_effort_override === "string")
@@ -110,6 +110,8 @@ export class PersonaRepository {
       });
       const prior = await this.version(old.current_version_id, tx);
       if (!prior) return false;
+      if (lockedValidation?.resetReasoningOverrides)
+        await tx`UPDATE room_participants SET reasoning_effort_override=NULL WHERE persona_id=${id} AND reasoning_effort_override IS NOT NULL`;
       const now = new Date().toISOString(),
         vid = crypto.randomUUID(),
         requestedModel =

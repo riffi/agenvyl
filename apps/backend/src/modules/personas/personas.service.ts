@@ -109,6 +109,9 @@ export class PersonasService {
   }
   async update(id: string, input: Record<string, unknown>) {
     const normalized = { ...input };
+    const resetRoomReasoningOverrides =
+      normalized.reset_room_reasoning_overrides === true;
+    delete normalized.reset_room_reasoning_overrides;
     delete normalized.harness_type;
     if (typeof normalized.handle === "string") {
       const handle = normalizeHandle(normalized.handle);
@@ -169,30 +172,21 @@ export class PersonasService {
       });
       assertSupportedEffort(proposedDefault, validated.reasoningEfforts);
       Object.assign(normalized, validated.selection);
-      if (
-        instanceId !== current.harness_instance_id ||
-        modelId !== current.model_id
-      ) {
-        validateLocked = ({ overrides }) => {
-          const conflicts = overrides.filter(
-            (item) =>
-              !validated.reasoningEfforts.includes(
-                item.reasoning_effort_override,
-              ),
+      validateLocked = ({ current: lockedCurrent, overrides }) => {
+        const modelChanged =
+          validated.selection.harness_instance_id !==
+            lockedCurrent.harness_instance_id ||
+          validated.selection.model_id !== lockedCurrent.model_id;
+        if (!modelChanged || !overrides.length) return;
+        if (!resetRoomReasoningOverrides)
+          throw new AppError(
+            "room_reasoning_reset_required",
+            409,
+            "Changing the model will reset room reasoning settings",
+            { affected_room_count: overrides.length },
           );
-          if (conflicts.length)
-            throw new AppError(
-              "reasoning_effort_conflict",
-              409,
-              "The selected model does not support existing room reasoning overrides",
-              {
-                supported_reasoning_efforts: validated.reasoningEfforts,
-                default_reasoning_effort: proposedDefault,
-                rooms: conflicts,
-              },
-            );
-        };
-      }
+        return { resetReasoningOverrides: true };
+      };
     }
     try {
       const updated = await this.personas.update(

@@ -15,7 +15,7 @@ const catalog:HarnessCatalog={connectorEpoch:'epoch',cache,instances:[
   {id:'local-opencode',type:'opencode',status:'healthy',capabilities:[],models:[{id:'sol'}],controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[],agentVariants:[]},catalogCache:{state:'fresh',refreshedAt:cache.refreshedAt}},
 ]};
 
-afterEach(cleanup);
+afterEach(()=>{cleanup();vi.unstubAllGlobals()});
 
 describe('persona harness display',()=>{
   it('shows current harnesses in active and archived rows and the editor header',async()=>{
@@ -99,5 +99,50 @@ describe('persona harness display',()=>{
     expect(warning).toContain('Click Refresh to try again');
     expect(warning).not.toContain('local-claude');
     expect(warning).not.toContain('catalog');
+  });
+
+  it('confirms and retries a model change that resets chat reasoning settings',async()=>{
+    const client=new QueryClient({defaultOptions:{queries:{retry:false}}}),onChanged=vi.fn(async()=>undefined);
+    const request=vi.fn<typeof fetch>().mockImplementation(async(_input,init)=>{
+      if(init?.method==='PUT'){
+        const body=JSON.parse(String(init.body)) as Record<string,unknown>;
+        if(body.reset_room_reasoning_overrides===true)return new Response(JSON.stringify({...active,harness_instance_id:'local-opencode',harness_type:'opencode'}),{status:200});
+        return new Response(JSON.stringify({error:'room_reasoning_reset_required',message:'Changing the model will reset room reasoning settings',affected_room_count:3}),{status:409});
+      }
+      return new Response(JSON.stringify(active),{status:200});
+    });
+    vi.stubGlobal('fetch',request);
+    render(<QueryClientProvider client={client}><PersonasScreen
+      personas={[active]}
+      harnessCatalog={catalog}
+      harnessRefreshing={false}
+      onRefreshHarness={vi.fn(async()=>undefined)}
+      groups={[]}
+      loading={false}
+      onChanged={onChanged}
+      real
+      roomId="demo-room"
+      roomPersonaIds={new Set()}
+      selectedPersonaId={active.id}
+      onSelectPersona={vi.fn()}
+      openMenu={vi.fn()}
+      registerNavigationGuard={vi.fn()}
+    /></QueryClientProvider>);
+
+    await screen.findByDisplayValue('Active agent');
+    fireEvent.click(screen.getByRole('button',{name:'Harness instance'}));
+    fireEvent.click(screen.getByRole('option',{name:/local-opencode/}));
+    fireEvent.click(screen.getByRole('button',{name:'Save'}));
+
+    expect(await screen.findByRole('dialog',{name:'Reset reasoning settings in chats?'})).toBeTruthy();
+    expect(screen.getByText(/3 chats use custom reasoning settings/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button',{name:'Reset and change model'}));
+    await waitFor(()=>expect(onChanged).toHaveBeenCalledOnce());
+    const putBodies=request.mock.calls
+      .filter(([,init])=>init?.method==='PUT')
+      .map(([,init])=>JSON.parse(String(init?.body)) as Record<string,unknown>);
+    expect(putBodies).toHaveLength(2);
+    expect(putBodies[0]).not.toHaveProperty('reset_room_reasoning_overrides');
+    expect(putBodies[1]).toMatchObject({reset_room_reasoning_overrides:true,harness_instance_id:'local-opencode'});
   });
 });

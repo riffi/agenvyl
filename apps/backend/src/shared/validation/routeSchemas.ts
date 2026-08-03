@@ -63,7 +63,10 @@ export const reorderGroupBodySchema=objectSchema({position:{type:'integer',minim
 export const updatePersonaBodySchema = {
   type: 'object',
   additionalProperties: true,
-  properties: createPersonaBodySchema.properties,
+  properties: {
+    ...createPersonaBodySchema.properties,
+    reset_room_reasoning_overrides: { type: 'boolean' },
+  },
   not: { required: ['role'] },
 } as const;
 
