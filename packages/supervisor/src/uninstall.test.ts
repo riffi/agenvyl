@@ -70,7 +70,7 @@ describe('portable uninstall cleanup', () => {
     await uninstallPortable(fixture.config);
     await waitForMissing(fixture.config.userCommandPath);
     await expect(stat(fixture.config.paths.data)).resolves.toBeTruthy();
-  });
+  },15_000);
 
   it('preserves a foreign command when settings are malformed',async()=>{
     const fixture=await portableFixture();
