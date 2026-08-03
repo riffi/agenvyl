@@ -29,9 +29,11 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
   discover?:()=>Promise<ConnectorDiscovery>;
   configureInstances?:(instances:ConnectorConfig['instances'])=>Promise<ReadonlyMap<string,ConnectorAdapter>|PreparedAdapterRuntime>;
   persistInstances?:(instances:ConnectorConfig['instances'])=>Promise<void>;
+  sseHeartbeatMs?:number;
 } = {}) {
   const app = Fastify({ logger: options.logger ? { redact: ['req.headers.authorization', 'req.headers.x-api-key'] } : false });
   const connectorEpoch = options.connectorEpoch ?? randomUUID(), startedAt = options.startedAt ?? new Date().toISOString();
+  const sseHeartbeatMs=Number.isSafeInteger(options.sseHeartbeatMs)&&Number(options.sseHeartbeatMs)>0?Number(options.sseHeartbeatMs):15_000;
   config.instances = normalizeConnectorInstances(config.instances);
   let enabledInstances = config.instances.filter(instance => instance.enabled);
   const generations = new AdapterGenerationManager(config.instances, {
@@ -153,7 +155,7 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
         .header('content-type', 'text/event-stream; charset=utf-8')
         .header('cache-control', 'no-cache')
         .header('connection', 'keep-alive')
-        .send(Readable.from(asServerSentEvents(events)));
+        .send(Readable.from(asServerSentEvents(events,sseHeartbeatMs)));
     } catch (caught) {
       return error(reply, caught);
     }
@@ -186,8 +188,26 @@ function error(reply: { code(statusCode: number): { send(payload: unknown): unkn
   return reply.code(issue.statusCode).send({ apiVersion: CONNECTOR_API_VERSION, error: issue.code, message: issue.message });
 }
 
-async function* asServerSentEvents(events: AsyncIterable<ConnectorExecutionEvent>) {
-  for await (const event of events) yield `id: ${event.cursor}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
+async function* asServerSentEvents(events:AsyncIterable<ConnectorExecutionEvent>,heartbeatMs:number){
+  const iterator=events[Symbol.asyncIterator]();
+  let pending=iterator.next();
+  try{
+    while(true){
+      const result=await nextBeforeHeartbeat(pending,heartbeatMs);
+      if(!result){yield`: heartbeat\n\n`;continue;}
+      if(result.done)return;
+      pending=iterator.next();
+      const event=result.value;
+      yield`id: ${event.cursor}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
+    }
+  }finally{await iterator.return?.();}
+}
+
+function nextBeforeHeartbeat<T>(pending:Promise<IteratorResult<T>>,heartbeatMs:number):Promise<IteratorResult<T>|undefined>{
+  return new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>resolve(undefined),heartbeatMs);
+    pending.then(result=>{clearTimeout(timer);resolve(result);},error=>{clearTimeout(timer);reject(error);});
+  });
 }
 
 function isPreparedRuntime(value:ReadonlyMap<string,ConnectorAdapter>|PreparedAdapterRuntime):value is PreparedAdapterRuntime{

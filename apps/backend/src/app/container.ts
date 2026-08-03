@@ -21,7 +21,9 @@ export async function createAppContainer(config: AppConfig, fetchImplementation?
   const {database,personas,userProfile,personaGroups,rooms,roomEvents,messages,runs,workspace,workspaceSnapshots,workspaceSlots}=await createRepositories(config.databaseUrl,{legacySeed:legacySeed??process.env.NODE_ENV==='test'});
   const eventBus = new RoomEventBus();
   const events = new RoomEventService(roomEvents,eventBus);
-  const connector=new HttpConnectorClient(config.connectorUrl,config.connectorToken,fetchImplementation);
+  const connector=new HttpConnectorClient(config.connectorUrl,config.connectorToken,fetchImplementation,{
+    onStreamRetry:details=>logger?.warn({connectorExecutionId:details.executionId,connectorCursor:details.cursor,attempt:details.attempt,delayMs:details.delayMs,err:details.error},'Connector event stream interrupted; reconnecting'),
+  });
   const harnessCatalogService=new HarnessCatalogService(connector,{logger});
   const connectorRuns=new ConnectorRunAdapter(connector);
   const activeRuns = new ActiveRunRegistry();

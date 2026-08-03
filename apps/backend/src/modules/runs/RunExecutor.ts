@@ -324,6 +324,7 @@ export class RunExecutor {
     } catch (error) {
       if (run.terminal) return;
       if (error instanceof Error && error.name === 'AbortError' && (run.stopping||(this.closing&&run.connectorExecutionId))) return;
+      this.logger.warn({runId:run.id,roomId:run.roomId,correlationId:run.correlationId,upstreamRunId:run.upstreamRunId,transition:'stream_failed',err:error},'Run failed before receiving a terminal lifecycle event');
       await this.terminal(run,'failed',error instanceof Error?error.message:String(error),error instanceof AppError?error.code:undefined);
     }
   }

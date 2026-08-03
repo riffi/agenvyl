@@ -78,6 +78,21 @@ describe('HttpConnectorClient', () => {
     expect(request.mock.calls[0]?.[0]).toBe('http://connector.test/v2/executions/run-1/events?after=2');
   });
 
+  it('reconnects interrupted streams from the last accepted cursor',async()=>{
+    const completed={...connectorContractFixtures.textEvent,cursor:4,type:'execution.completed' as const,payload:{}},retry=vi.fn();
+    const request=vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(interruptedSse(connectorContractFixtures.textEvent,new Error('UND_ERR_BODY_TIMEOUT')))
+      .mockResolvedValueOnce(sse(completed));
+    const client=new HttpConnectorClient('http://connector.test','x'.repeat(32),request,{streamReconnectDelaysMs:[0],onStreamRetry:retry});
+
+    await expect(collect(client.events('run-1',{after:2,connectorEpoch:'epoch-1',signal:new AbortController().signal}))).resolves.toEqual([connectorContractFixtures.textEvent,completed]);
+    expect(request.mock.calls.map(([url])=>url)).toEqual([
+      'http://connector.test/v2/executions/run-1/events?after=2',
+      'http://connector.test/v2/executions/run-1/events?after=3',
+    ]);
+    expect(retry).toHaveBeenCalledWith(expect.objectContaining({executionId:'run-1',cursor:3,attempt:1,delayMs:0,error:expect.any(Error)}));
+  });
+
   it('fails closed on cursor gaps, epoch changes and unavailable replay',async()=>{
     const token='x'.repeat(32),controller=new AbortController(),gap={...connectorContractFixtures.textEvent,cursor:4};
     const invalid=new HttpConnectorClient('http://connector.test',token,vi.fn<typeof fetch>().mockResolvedValue(sse(gap)));
@@ -90,4 +105,8 @@ describe('HttpConnectorClient', () => {
 });
 
 function sse(...events:Array<Record<string,unknown>>){return new Response(events.map(event=>`id: ${event.cursor}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join(''),{status:200,headers:{'content-type':'text/event-stream; charset=utf-8'}});}
+function interruptedSse(event:Record<string,unknown>,error:Error){
+  const encoded=new TextEncoder().encode(`id: ${event.cursor}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);let delivered=false;
+  return new Response(new ReadableStream<Uint8Array>({pull(controller){if(!delivered){delivered=true;controller.enqueue(encoded);return;}controller.error(error);}}),{status:200,headers:{'content-type':'text/event-stream; charset=utf-8'}});
+}
 async function collect<T>(events:AsyncIterable<T>){const result:T[]=[];for await(const event of events)result.push(event);return result;}

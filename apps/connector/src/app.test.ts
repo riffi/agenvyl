@@ -202,6 +202,22 @@ describe('Connector shell', () => {
     await app.close();
   });
 
+  it('keeps an idle event stream alive with SSE comments',async()=>{
+    const adapter=new ControlledAdapter(),app=buildConnectorApp(config,{connectorEpoch:'epoch-heartbeat',adapters:new Map([['local-hermes',adapter]]),sseHeartbeatMs:5});
+    const request={...structuredClone(connectorContractFixtures.startExecution),executionId:'run-heartbeat'} as StartExecutionRequest;
+    await app.inject({method:'POST',url:'/v2/executions',headers:auth,payload:request});
+    await waitForStatus(app,request.executionId,'running');
+    const inspected=await app.inject({url:`/v2/executions/${request.executionId}`,headers:auth}),after=inspected.json().execution.cursor;
+    const stream=app.inject({url:`/v2/executions/${request.executionId}/events?after=${after}`,headers:auth});
+    await new Promise(resolve=>setTimeout(resolve,20));
+    adapter.emit(request.executionId,{type:'execution.completed',payload:{}});
+    const response=await stream;
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toContain(': heartbeat\n\n');
+    expect(parseEvents(response.body).at(-1)?.type).toBe('execution.completed');
+    await app.close();
+  });
+
   it('keeps cancellation terminal when an adapter completes late', async () => {
     const adapter = new ControlledAdapter();
     const app = buildConnectorApp(config, { connectorEpoch: 'epoch-test', adapters: new Map([['local-hermes', adapter]]) });

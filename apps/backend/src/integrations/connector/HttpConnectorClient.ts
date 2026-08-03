@@ -4,10 +4,18 @@ import {parseSse} from '../../infrastructure/http/parseSse.js';
 
 const DEFAULT_REQUEST_TIMEOUT_MS=3_000;
 const METADATA_REQUEST_TIMEOUT_MS=30_000;
+const DEFAULT_STREAM_RECONNECT_DELAYS_MS=[250,500,1_000,2_000,4_000,5_000] as const;
+const terminalEventTypes=new Set<ConnectorExecutionEvent['type']>(['execution.completed','execution.failed','execution.cancelled']);
+const terminalExecutionStatuses=new Set<ExecutionSnapshot['status']>(['completed','failed','cancelled']);
+
+type HttpConnectorClientOptions={
+  streamReconnectDelaysMs?:readonly number[];
+  onStreamRetry?:(details:{executionId:string;cursor:number;attempt:number;delayMs:number;error:unknown})=>void;
+};
 
 export class ConnectorClientError extends Error {
-  constructor(readonly code: ConnectorLifecycleErrorCode, message: string, readonly status?: number) {
-    super(message);
+  constructor(readonly code: ConnectorLifecycleErrorCode, message: string, readonly status?: number,cause?:unknown) {
+    super(message,{cause});
     this.name = 'ConnectorClientError';
   }
 }
@@ -15,7 +23,7 @@ export class ConnectorClientError extends Error {
 export class HttpConnectorClient implements ConnectorExecutionClient {
   private readonly baseUrl: string;
 
-  constructor(baseUrl: string, private readonly token: string, private readonly request: typeof fetch = fetch) {
+  constructor(baseUrl:string,private readonly token:string,private readonly request:typeof fetch=fetch,private readonly options:HttpConnectorClientOptions={}) {
     const parsed = new URL(baseUrl);
     if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.search || parsed.hash) {
       throw new Error('Connector URL must be an HTTP(S) origin without credentials, query, or fragment');
@@ -73,20 +81,44 @@ export class HttpConnectorClient implements ConnectorExecutionClient {
 
   async *events(executionId:string,options:{after:number;connectorEpoch:string;signal:AbortSignal}):AsyncIterable<ConnectorExecutionEvent>{
     if(!Number.isSafeInteger(options.after)||options.after<0)throw new ConnectorClientError('connector_invalid_response','Connector event cursor must be a non-negative safe integer');
-    let response:Response;
-    try{response=await this.request(`${this.baseUrl}/v2/executions/${encodeURIComponent(executionId)}/events?after=${options.after}`,{headers:this.headers(),signal:options.signal});}
-    catch(error){if(options.signal.aborted)throw error;throw new ConnectorClientError('connector_unavailable','Connector is unavailable');}
-    if(!response.ok){throw await this.failure(response,'execution');}
-    if(!response.body||!response.headers.get('content-type')?.toLowerCase().includes('text/event-stream'))throw invalidResponse('Connector returned an invalid event stream');
     let cursor=options.after;
-    try{
-      for await(const item of parseSse(response.body)){
-        let value:unknown;try{value=JSON.parse(item.data) as unknown;}catch{throw invalidResponse('Connector returned an invalid event payload');}
-        if(!isConnectorExecutionEvent(value)||value.executionId!==executionId||value.connectorEpoch!==options.connectorEpoch||item.id!==String(value.cursor)||item.event!==value.type||value.cursor!==cursor+1)throw invalidResponse('Connector event stream violated cursor, epoch, or identity invariants');
-        cursor=value.cursor;yield value;
+    const delays=this.streamReconnectDelays();
+    let attempt=0,lastError:unknown;
+    while(true){
+      try{
+        const response=await this.openEventStream(executionId,cursor,options.signal);
+        for await(const item of parseSse(response.body!)){
+          let value:unknown;try{value=JSON.parse(item.data) as unknown;}catch{throw invalidResponse('Connector returned an invalid event payload');}
+          if(!isConnectorExecutionEvent(value)||value.executionId!==executionId||value.connectorEpoch!==options.connectorEpoch||item.id!==String(value.cursor)||item.event!==value.type||value.cursor!==cursor+1)throw invalidResponse('Connector event stream violated cursor, epoch, or identity invariants');
+          cursor=value.cursor;attempt=0;yield value;
+          if(terminalEventTypes.has(value.type))return;
+        }
+        const execution=await this.inspect(executionId);
+        if(execution.connectorEpoch!==options.connectorEpoch||execution.cursor<cursor)throw invalidResponse('Connector execution snapshot conflicts with the event stream checkpoint');
+        if(terminalExecutionStatuses.has(execution.status)&&execution.cursor===cursor)return;
+        lastError=new Error('Connector event stream ended before a terminal event');
+      }catch(error){
+        if(options.signal.aborted)throw error;
+        if(error instanceof ConnectorClientError&&error.code!=='connector_unavailable')throw error;
+        lastError=error;
       }
-    }catch(error){if(options.signal.aborted)throw error;if(error instanceof ConnectorClientError)throw error;throw new ConnectorClientError('connector_unavailable','Connector event stream failed');}
+      if(attempt>=delays.length)throw new ConnectorClientError('connector_unavailable','Connector event stream failed',undefined,lastError);
+      const delayMs=delays[attempt]!,retryAttempt=attempt+1;attempt=retryAttempt;
+      this.options.onStreamRetry?.({executionId,cursor,attempt:retryAttempt,delayMs,error:lastError});
+      await abortableDelay(delayMs,options.signal);
+    }
   }
+
+  private async openEventStream(executionId:string,after:number,signal:AbortSignal){
+    let response:Response;
+    try{response=await this.request(`${this.baseUrl}/v2/executions/${encodeURIComponent(executionId)}/events?after=${after}`,{headers:{...this.headers(),accept:'text/event-stream'},signal});}
+    catch(error){if(signal.aborted)throw error;throw new ConnectorClientError('connector_unavailable','Connector is unavailable',undefined,error);}
+    if(!response.ok)throw await this.failure(response,'execution');
+    if(!response.body||!response.headers.get('content-type')?.toLowerCase().includes('text/event-stream'))throw invalidResponse('Connector returned an invalid event stream');
+    return response;
+  }
+
+  private streamReconnectDelays(){const configured=this.options.streamReconnectDelaysMs;return configured?.length&&configured.every(delay=>Number.isSafeInteger(delay)&&delay>=0)?configured:DEFAULT_STREAM_RECONNECT_DELAYS_MS;}
 
   private async get(path: string, resource: 'health' | 'execution'|'discovery',timeoutMs=DEFAULT_REQUEST_TIMEOUT_MS) {
     return this.json(path,'GET',undefined,resource,timeoutMs);
@@ -122,6 +154,14 @@ export class HttpConnectorClient implements ConnectorExecutionClient {
 
 function invalidResponse(message:string){return new ConnectorClientError('connector_invalid_response',message);}
 async function safeJson(response:Response){try{return await response.json() as unknown;}catch{return undefined;}}
+function abortableDelay(ms:number,signal:AbortSignal){
+  if(signal.aborted)return Promise.reject(signal.reason);
+  return new Promise<void>((resolve,reject)=>{
+    const timer=setTimeout(()=>{signal.removeEventListener('abort',abort);resolve();},ms);
+    const abort=()=>{clearTimeout(timer);reject(signal.reason);};
+    signal.addEventListener('abort',abort,{once:true});
+  });
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
