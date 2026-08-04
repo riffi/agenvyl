@@ -19,4 +19,5 @@ describe('connector selection merge', () => {
     expect(mergeConnectorSelection(state, ['antigravity'], false)).toHaveLength(1);
     expect(mergeConnectorSelection(state, ['antigravity'], true)[1]).toEqual({id:'local-antigravity',type:'antigravity',enabled:true});
   });
+  it('enables Cursor only after its experimental confirmation',()=>{state.candidates.push({type:'cursor',label:'Cursor',cli:{found:true,version:'2026.01.16'},safeToSelect:true,requiresConfirmation:'cursor_experimental'});expect(mergeConnectorSelection(state,['cursor'],false,false,false).some(item=>item.type==='cursor')).toBe(false);expect(mergeConnectorSelection(state,['cursor'],false,false,true)).toContainEqual({id:'local-cursor',type:'cursor',enabled:true});});
 });

@@ -5,6 +5,7 @@ import { OpenCodeConnectorAdapter } from './opencode/adapter.js';
 import { AntigravityConnectorAdapter } from './antigravity/adapter.js';
 import { CodexConnectorAdapter } from './codex/adapter.js';
 import { ClaudeConnectorAdapter } from './claude/adapter.js';
+import { CursorConnectorAdapter } from './cursor/adapter.js';
 import type {ClaudePermissionBridgePort} from './claude/permission-bridge.js';
 
 export function buildConfiguredAdapters(config: ConnectorConfig, env: NodeJS.ProcessEnv = process.env, request: typeof fetch = fetch, options:{
@@ -52,6 +53,10 @@ export function buildConfiguredAdapters(config: ConnectorConfig, env: NodeJS.Pro
     env,
     allowSubscriptionOAuth:instance.allowSubscriptionOAuth,
     permissionBridge:options.claudePermissionBridge,
+  }));
+  for(const instance of config.instances.filter(candidate=>candidate.enabled&&candidate.type==='cursor'))adapters.set(instance.id,new CursorConnectorAdapter({
+    command:env.AGENVYL_CONNECTOR_CURSOR_COMMAND,
+    env,
   }));
   return adapters;
 }

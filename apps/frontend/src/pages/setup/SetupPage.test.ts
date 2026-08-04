@@ -44,7 +44,7 @@ describe('setup harness configuration',()=>{
     expect(html).not.toContain('data-harness-type');
   });
 
-  it('renders AGY and Claude confirmation phrases in the same options list',()=>{
+  it('renders AGY, Claude, and Cursor confirmation phrases in the same options list',()=>{
     const html=renderToStaticMarkup(createElement(ConnectorOptions,{
       selected:[],
       agy:true,
@@ -55,6 +55,9 @@ describe('setup harness configuration',()=>{
       claudeNeedsConfirmation:true,
       claudeOAuthConfirmation:'CLAUDE OAUTH',
       setClaudeOAuthConfirmation:()=>undefined,
+      cursorNeedsConfirmation:true,
+      cursorConfirmation:'CURSOR',
+      setCursorConfirmation:()=>undefined,
     }));
     expect(html).toContain('Confirm dangerous permission mode');
     expect(html).toContain('<em>AGY</em>');
@@ -62,6 +65,8 @@ describe('setup harness configuration',()=>{
     expect(html).toContain('Confirm subscription OAuth');
     expect(html).toContain('<em>Claude</em>');
     expect(html).toContain('placeholder="Type CLAUDE OAUTH"');
+    expect(html).toContain('Confirm experimental Cursor CLI');
+    expect(html).toContain('placeholder="Type CURSOR"');
   });
 
   it('does not preselect unavailable configured connectors during first setup',()=>{
@@ -75,12 +80,12 @@ describe('setup harness configuration',()=>{
       {type:'antigravity',label:'AGY',cli:{found:true,command:'agy'},safeToSelect:false,supportsManagedServer:false},
     ]};
 
-    expect(initialConnectorSelection(state)).toEqual({selected:['opencode'],agy:false,openCodeManaged:true,claudeOAuthConfirmed:false});
+    expect(initialConnectorSelection(state)).toEqual({selected:['opencode'],agy:false,openCodeManaged:true,claudeOAuthConfirmed:false,cursorConfirmed:false});
   });
 
   it('preserves configured selections after setup so unavailable connectors can be disabled explicitly',()=>{
     const state:SetupState={completed:true,locale:'en',workspaceRoot:'C:/workspaces',discoveryCache,instances:[{id:'local-hermes',type:'hermes',enabled:true,status:'unavailable'},{id:'local-antigravity',type:'antigravity',enabled:true,status:'healthy'}],candidates:[]};
-    expect(initialConnectorSelection(state)).toEqual({selected:['hermes'],agy:true,openCodeManaged:true,claudeOAuthConfirmed:false});
+    expect(initialConnectorSelection(state)).toEqual({selected:['hermes'],agy:true,openCodeManaged:true,claudeOAuthConfirmed:false,cursorConfirmed:false});
   });
 
   it('preserves managed OpenCode ownership after terminal setup made its endpoint reachable',()=>{

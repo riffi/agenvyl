@@ -5,7 +5,7 @@ installed and authenticated for your operating-system user.
 
 Open the Agenvyl control center and choose **Configure connectors**. During
 first-run setup, the same selection appears in the browser. Agenvyl can
-automatically detect Codex CLI, Claude Code, OpenCode, and AGY. Hermes is
+automatically detect Codex CLI, Claude Code, OpenCode, AGY, and Cursor CLI. Hermes is
 different: its HTTP API server must already be running.
 
 | Harness | Connection | Main safety boundary |
@@ -15,6 +15,7 @@ different: its HTTP API server must already be running.
 | [OpenCode](opencode.md) | Managed or existing OpenCode server | Permission profile and explicit external-directory allowlist |
 | [Antigravity / AGY](antigravity.md) | One `agy --print` process per attempt | Plan by default; edits require explicit opt-in |
 | [Hermes](hermes.md) | Existing authenticated HTTP API | Hermes host permissions and configured model routes |
+| [Cursor CLI](cursor.md) *(experimental)* | One headless `agent` process per attempt | Native Plan by default; Work requires explicit `--force` opt-in |
 
 Compare model controls, streaming, reasoning, tool activity, interactions, and
 run lifecycle behavior in the

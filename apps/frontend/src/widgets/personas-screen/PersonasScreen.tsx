@@ -118,6 +118,7 @@ export function HarnessRouteFields({form,catalog,error,onChange,onPermissionProf
     {selectedInstance?.type==='opencode'&&form.permission_profile_id==='auto-approve'&&<Alert tone="warning">Auto-approve confirms every OpenCode permission that is not explicitly denied during Work runs. External paths remain limited to this instance’s allowlist.</Alert>}
     {selectedInstance?.type==='codex'&&form.permission_profile_id==='danger-full-access'&&<Alert tone="warning">Full access applies to Work runs without sandboxing or approval prompts. Plan runs remain read-only.</Alert>}
     {selectedInstance?.type==='antigravity'&&form.permission_profile_id==='accept-edits'&&<Alert tone="warning">Accept edits lets AGY modify files without per-action approvals during Work runs. Plan runs remain read-only.</Alert>}
+    {selectedInstance?.type==='cursor'&&form.permission_profile_id==='accept-edits'&&<Alert tone="warning">Accept edits runs Cursor with --force and no per-action approval bridge. Cursor rules, MCP servers, and hooks remain active. Plan runs remain read-only.</Alert>}
     {form.harness_instance_id&&<details className={styles['model-technical']}><summary>Technical parameters</summary><p><b>Instance:</b> {form.harness_instance_id} · <b>Type:</b> {form.harness_type}</p><p><b>Model:</b> {(selectedModel?.label??form.model_id)||'unavailable'}{form.permission_profile_id&&<> · <b>Permissions:</b> {form.permission_profile_id}</>}{form.agent_variant_id&&<> · <b>Variant:</b> {form.agent_variant_id}</>}</p></details>}
   </>;
 }
@@ -205,6 +206,10 @@ export function PersonasScreen({
     }
     if(form?.harness_type==='antigravity'&&value==='accept-edits'&&form.permission_profile_id!=='accept-edits'){
       setDangerousPermissionConfirmation('agy-accept-edits');
+      return;
+    }
+    if(form?.harness_type==='cursor'&&value==='accept-edits'&&form.permission_profile_id!=='accept-edits'){
+      setDangerousPermissionConfirmation('cursor-accept-edits');
       return;
     }
     edit({permission_profile_id:value});
@@ -349,13 +354,13 @@ export function PersonasScreen({
       </div>
       <div ui-spec-block-id="unsaved_changes_guard"><Dialog open={Boolean(pendingNavigation)&&!reasoningResetConfirmation} title="You have unsaved changes" description={`You changed agent “${form?.name||form?.handle||'New agent'}”. What should happen before navigating to ${pendingNavigation?.label??'another screen'}?`} onClose={()=>{pendingNavigationRef.current=undefined;setPendingNavigation(undefined)}} footer={<><Button onClick={()=>{pendingNavigationRef.current=undefined;setPendingNavigation(undefined)}}>Stay</Button><Button variant="danger" onClick={finishNavigation}>Discard and continue</Button><Button variant="primary" disabled={saving} onClick={async()=>{if(await save())finishNavigation()}}>Save and continue</Button></>}><p className={styles['dialog-message']}>Unsaved changes will be lost if you continue without saving.</p></Dialog></div>
       <Dialog open={Boolean(reasoningResetConfirmation)} title="Reset reasoning settings in chats?" description="Changing the model clears chat-specific reasoning settings." onClose={()=>setReasoningResetConfirmation(undefined)} footer={<><Button disabled={saving} onClick={()=>setReasoningResetConfirmation(undefined)}>Cancel</Button><Button variant="primary" disabled={saving} onClick={()=>void confirmReasoningReset()}>{saving?'Changing model…':'Reset and change model'}</Button></>}><p className={styles['dialog-message']}>{reasoningResetConfirmation?.affectedRoomCount===1?'One chat uses a custom reasoning setting.':`${reasoningResetConfirmation?.affectedRoomCount??0} chats use custom reasoning settings.`} They will switch to Auto. Existing messages and running tasks won’t change.</p></Dialog>
-      <DangerousPermissionDialog permission={dangerousPermissionConfirmation} onCancel={()=>setDangerousPermissionConfirmation(undefined)} onConfirm={()=>{edit({permission_profile_id:dangerousPermissionConfirmation==='agy-accept-edits'?'accept-edits':'danger-full-access'});setDangerousPermissionConfirmation(undefined)}}/>
+      <DangerousPermissionDialog permission={dangerousPermissionConfirmation} onCancel={()=>setDangerousPermissionConfirmation(undefined)} onConfirm={()=>{edit({permission_profile_id:dangerousPermissionConfirmation==='codex-full-access'?'danger-full-access':'accept-edits'});setDangerousPermissionConfirmation(undefined)}}/>
       <Dialog open={Boolean(lifecycleConfirmation)} title={lifecycleConfirmation==='delete'?'Permanently delete agent?':lifecycleConfirmation==='archive'?'Archive agent?':'Restore agent?'} description={lifecycleConfirmation==='delete'?'This action cannot be undone.':undefined} onClose={()=>setLifecycleConfirmation(undefined)} footer={<><Button onClick={()=>setLifecycleConfirmation(undefined)}>Cancel</Button><Button variant={lifecycleConfirmation==='delete'?'danger':'primary'} disabled={saving} onClick={()=>lifecycleConfirmation&&void lifecycle(lifecycleConfirmation)}>{saving?'Working…':lifecycleConfirmation==='delete'?'Delete permanently':lifecycleConfirmation==='archive'?'Archive':'Restore'}</Button></>}><p className={styles['dialog-message']}>{lifecycleConfirmation==='delete'?`@${form?.handle} will be permanently deleted.`:lifecycleConfirmation==='archive'?'The agent will disappear from the active catalog but can be restored later.':'The agent will return to the active catalog.'}</p></Dialog>
     </section>
   );
 }
 
-const harnessDisplayName=(type:string)=>({antigravity:'Antigravity',claude:'Claude',codex:'Codex',hermes:'Hermes',opencode:'OpenCode'}[type]??type);
+const harnessDisplayName=(type:string)=>({antigravity:'Antigravity',claude:'Claude',codex:'Codex',cursor:'Cursor',hermes:'Hermes',opencode:'OpenCode'}[type]??type);
 const cachedModelsMessage=(value:string|null)=>`Previously loaded models${value?` from ${new Date(value).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`:''} are still available.`;
 const reasoningResetRoomCount=(error:unknown)=>{
   if(!(error instanceof ApiError)||error.code!=='room_reasoning_reset_required'||!error.details||typeof error.details!=='object')return undefined;

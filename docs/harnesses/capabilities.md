@@ -4,8 +4,8 @@ This page describes what the harness integrations on the current `main` branch
 actually pass through to Agenvyl. It is not a list of everything the upstream
 tools or models might support, and it is not a roadmap.
 
-Claude Code is experimental. Treat every entry in its column as part of an
-experimental integration, even where the individual capability is supported.
+Claude Code and Cursor CLI are experimental. Treat every entry in their columns
+as part of an experimental integration, even where a capability is supported.
 
 ## How to read the matrix
 
@@ -20,14 +20,14 @@ provider, account, or upstream version implements it identically.
 
 ## Configuration
 
-| Capability | Hermes | OpenCode | Codex CLI | Claude Code *(experimental)* | AGY |
-| --- | --- | --- | --- | --- | --- |
-| Model catalog and selection | ✅ `/v1/models` | ✅ Provider catalog | ✅ App-server catalog | ✅ CLI catalog | ✅ CLI catalog |
-| Plan workflow | ◐ Instruction-only Plan | ◐ Native with an upstream `plan` agent; otherwise instruction-only | ✅ Native Plan | ✅ Native Plan | ✅ Native Plan |
-| Work/edit workflow | ✅ Normal execution | ✅ Normal execution | ✅ Native Work | ✅ Native Work | ◐ Requires an `accept-edits` instance |
-| Reasoning effort control | — | ◐ Enabled model variants from the upstream catalog | ◐ Model-dependent levels | ◐ Model-dependent levels | — |
-| Permission profiles | — | ✅ Standard or Auto-approve; Plan forces Standard | ✅ Read only or workspace write; full access is opt-in | ✅ Ask before edits or accept edits | ◐ Plan-only or `accept-edits` instance ceiling |
-| Agent variants | — | ◐ Supplied by the upstream agent catalog | — | — | — |
+| Capability | Hermes | OpenCode | Codex CLI | Claude Code *(experimental)* | AGY | Cursor CLI *(experimental)* |
+| --- | --- | --- | --- | --- | --- | --- |
+| Model catalog and selection | ✅ `/v1/models` | ✅ Provider catalog | ✅ App-server catalog | ✅ CLI catalog | ✅ CLI catalog | ✅ CLI catalog |
+| Plan workflow | ◐ Instruction-only Plan | ◐ Native with an upstream `plan` agent; otherwise instruction-only | ✅ Native Plan | ✅ Native Plan | ✅ Native Plan | ✅ Native Plan |
+| Work/edit workflow | ✅ Normal execution | ✅ Normal execution | ✅ Native Work | ✅ Native Work | ◐ Requires `accept-edits` | ◐ Requires `accept-edits` |
+| Reasoning effort control | — | ◐ Enabled model variants | ◐ Model-dependent levels | ◐ Model-dependent levels | — | — |
+| Permission profiles | — | ✅ Standard or Auto-approve | ✅ Read only/workspace write/full access | ✅ Ask before edits or accept edits | ◐ Plan only or accept edits | ◐ Plan only or `--force` |
+| Agent variants | — | ◐ Upstream catalog | — | — | — | — |
 
 Plan workflow appears only when Agenvyl's experimental Plan Mode is enabled.
 For OpenCode, catalog agents marked hidden or as subagents are not offered as
@@ -41,23 +41,23 @@ permission profile.
 
 ## Output and observability
 
-| Capability | Hermes | OpenCode | Codex CLI | Claude Code *(experimental)* | AGY |
-| --- | --- | --- | --- | --- | --- |
-| Incremental answer streaming | ✅ | ✅ | ✅ | ✅ | — Final answer only |
-| Separate reasoning display | — | ✅ | ✅ | ✅ | — |
-| Tool activity | ✅ | ✅ | ✅ | ✅ | — |
-| Token usage | ✅ Basic totals | ✅ Includes available provider details | ✅ Includes available cache/reasoning details | ✅ Includes available cache details | — |
-| Upstream retry status | — Unknown retry events are not published | ✅ | — | ✅ | — |
+| Capability | Hermes | OpenCode | Codex CLI | Claude Code *(experimental)* | AGY | Cursor CLI *(experimental)* |
+| --- | --- | --- | --- | --- | --- | --- |
+| Incremental answer streaming | ✅ | ✅ | ✅ | ✅ | — Final answer only | ✅ |
+| Separate reasoning display | — | ✅ | ✅ | ✅ | — | — |
+| Tool activity | ✅ | ✅ | ✅ | ✅ | — | ✅ |
+| Token usage | ✅ Basic totals | ✅ Provider details | ✅ Cache/reasoning details | ✅ Cache details | — | — |
+| Upstream retry status | — | ✅ | — | ✅ | — | — |
 
 Usage fields vary by provider and model. `✅` means Agenvyl preserves the safe
 usage data it receives, not that every token category will always be present.
 
 ## Interaction
 
-| Capability | Hermes | OpenCode | Codex CLI | Claude Code *(experimental)* | AGY |
-| --- | --- | --- | --- | --- | --- |
-| Runtime approvals | ✅ | ✅ | ✅ | ✅ | — |
-| Structured clarifications | — Fails closed | ✅ Up to four questions, including multi-select | ✅ Up to four questions, including multi-select | ✅ Up to four questions, including multi-select | — Text questions only |
+| Capability | Hermes | OpenCode | Codex CLI | Claude Code *(experimental)* | AGY | Cursor CLI *(experimental)* |
+| --- | --- | --- | --- | --- | --- | --- |
+| Runtime approvals | ✅ | ✅ | ✅ | ✅ | — | — |
+| Structured clarifications | — Fails closed | ✅ Up to four questions | ✅ Up to four questions | ✅ Up to four questions | — Text only | — Text only |
 
 When an integration cannot safely represent an upstream interaction, it does
 not guess an answer. Hermes rejects unsupported clarification requests. AGY can
@@ -66,11 +66,11 @@ structured clarification.
 
 ## Lifecycle
 
-| Capability | Hermes | OpenCode | Codex CLI | Claude Code *(experimental)* | AGY |
-| --- | --- | --- | --- | --- | --- |
-| Cancellation | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Concurrent runs | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Event replay and Core reattach | ✅ Same Connector epoch | ✅ Same Connector epoch | ✅ Same Connector epoch | ✅ Same Connector epoch | ✅ Same Connector epoch |
+| Capability | Hermes | OpenCode | Codex CLI | Claude Code *(experimental)* | AGY | Cursor CLI *(experimental)* |
+| --- | --- | --- | --- | --- | --- | --- |
+| Cancellation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Concurrent runs | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Event replay and Core reattach | ✅ Same epoch | ✅ Same epoch | ✅ Same epoch | ✅ Same epoch | ✅ Same epoch | ✅ Same epoch |
 
 Replay and Core reattach work only while the same Connector process epoch is
 alive and the requested events remain replayable. If Connector restarts, Core
@@ -93,7 +93,7 @@ does not attach an old run to the new process: the run ends fail-closed.
 
 ## Connector contract vocabulary
 
-Connector instances advertise exactly eight formal `ConnectorCapability`
+Connector instances advertise exactly nine formal `ConnectorCapability`
 values:
 
 - `model_catalog`
@@ -103,6 +103,7 @@ values:
 - `tools`
 - `approvals`
 - `clarifications`
+- `elicitations`
 - `usage`
 
 The catalog supplies the available models and the concrete execution controls
@@ -126,10 +127,13 @@ npm run test:codex
 npm run test:e2e:codex
 npm run test:claude
 npm run test:e2e:claude
+npm run test:cursor
+npm run test:e2e:cursor
 npm exec vitest run apps/connector/src/adapters/antigravity/adapter.test.ts
 ```
 
-Opt-in live smoke scripts exist for Hermes, OpenCode, Codex, Claude, and AGY.
+Opt-in live smoke scripts exist for Hermes, OpenCode, Codex, Claude, AGY, and
+Cursor CLI.
 They require separately configured tools and credentials and are not run by
 the normal local check. See [Testing](../development/testing.md) for the safety
 rules. Passing fixtures or a live smoke check does not certify every model or

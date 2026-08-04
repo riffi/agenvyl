@@ -1,6 +1,6 @@
 import {Alert,Button,Dialog} from '../../shared/ui';
 
-export type DangerousPermission='codex-full-access'|'agy-accept-edits';
+export type DangerousPermission='codex-full-access'|'agy-accept-edits'|'cursor-accept-edits';
 
 const content:Record<DangerousPermission,{title:string;description:string;warning:string;confirmLabel:string}>={
   'codex-full-access':{
@@ -13,6 +13,12 @@ const content:Record<DangerousPermission,{title:string;description:string;warnin
     title:'Allow AGY to edit files?',
     description:'AGY will use its permission-bypass mode during Work runs.',
     warning:'AGY cannot ask for per-action approval. It may modify files and run commands in the room workspace without another confirmation. Only enable this for workspaces and instructions you trust.',
+    confirmLabel:'Allow edits',
+  },
+  'cursor-accept-edits':{
+    title:'Allow Cursor to edit files?',
+    description:'Cursor CLI will run with --force during Work runs.',
+    warning:'Cursor cannot ask Agenvyl for per-action approval. Cursor rules, MCP servers, and hooks remain active with the permissions of your operating-system account. Only enable this for trusted workspaces and instructions.',
     confirmLabel:'Allow edits',
   },
 };

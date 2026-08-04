@@ -28,3 +28,6 @@ instances:
   - id: local-antigravity
     type: antigravity
     enabled: false
+  - id: local-cursor
+    type: cursor
+    enabled: false

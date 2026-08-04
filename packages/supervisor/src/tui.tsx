@@ -144,14 +144,14 @@ function ControlCenter({ config, cliPath }: { config: SupervisorConfig; cliPath:
 }
 
 function ConnectorScreen({ config, locale, onBack }: { config: SupervisorConfig; locale: Locale; onBack: () => void }) {
-  const [state, setState] = useState<SetupState>(); const [selected, setSelected] = useState<HarnessType[]>([]); const [index, setIndex] = useState(0); const [confirm, setConfirm] = useState(''); const [agyPending, setAgyPending] = useState(false); const [claudePending,setClaudePending]=useState(false); const [claudeConfirmed,setClaudeConfirmed]=useState(false); const [message, setMessage] = useState(''); const [saving, setSaving] = useState(false);
-  useEffect(() => { void getSetupState(config).then(value => { setState(value); setSelected(value.instances.filter(item => item.enabled).map(item => item.type).filter((item): item is HarnessType => ['hermes', 'opencode', 'antigravity','codex','claude'].includes(item)));setClaudeConfirmed(value.instances.some(item=>item.type==='claude'&&item.allowSubscriptionOAuth)); }).catch(error => setMessage(errorMessage(error))); }, [config]);
+  const [state, setState] = useState<SetupState>(); const [selected, setSelected] = useState<HarnessType[]>([]); const [index, setIndex] = useState(0); const [confirm, setConfirm] = useState(''); const [agyPending, setAgyPending] = useState(false); const [claudePending,setClaudePending]=useState(false); const [cursorPending,setCursorPending]=useState(false); const [claudeConfirmed,setClaudeConfirmed]=useState(false); const [cursorConfirmed,setCursorConfirmed]=useState(false); const [message, setMessage] = useState(''); const [saving, setSaving] = useState(false);
+  useEffect(() => { void getSetupState(config).then(value => { setState(value); setSelected(value.instances.filter(item => item.enabled).map(item => item.type).filter((item): item is HarnessType => ['hermes', 'opencode', 'antigravity','codex','claude','cursor'].includes(item)));setClaudeConfirmed(value.instances.some(item=>item.type==='claude'&&item.allowSubscriptionOAuth));setCursorConfirmed(value.instances.some(item=>item.type==='cursor'&&item.enabled)); }).catch(error => setMessage(errorMessage(error))); }, [config]);
   useInput((input, key) => {
     if (!state || saving) { if (key.escape && !saving) onBack(); return; }
-    if (agyPending||claudePending) {
-      if (key.escape) { setAgyPending(false);setClaudePending(false); setConfirm(''); return; }
+    if (agyPending||claudePending||cursorPending) {
+      if (key.escape) { setAgyPending(false);setClaudePending(false);setCursorPending(false); setConfirm(''); return; }
       if (key.backspace || key.delete) setConfirm(value => value.slice(0, -1));
-      else if (key.return) {const phrase=claudePending?'CLAUDE OAUTH':'AGY';if(confirm===phrase){const type:HarnessType=claudePending?'claude':'antigravity';setSelected(value=>[...new Set<HarnessType>([...value,type])]);if(claudePending)setClaudeConfirmed(true);setAgyPending(false);setClaudePending(false);setConfirm('');}else setMessage(`Type exactly ${phrase} / Введите точно ${phrase}`);}
+      else if (key.return) {const phrase=claudePending?'CLAUDE OAUTH':cursorPending?'CURSOR':'AGY';if(confirm===phrase){const type:HarnessType=claudePending?'claude':cursorPending?'cursor':'antigravity';setSelected(value=>[...new Set<HarnessType>([...value,type])]);if(claudePending)setClaudeConfirmed(true);if(cursorPending)setCursorConfirmed(true);setAgyPending(false);setClaudePending(false);setCursorPending(false);setConfirm('');}else setMessage(`Type exactly ${phrase} / Введите точно ${phrase}`);}
       else if (input && !key.ctrl && !key.meta) setConfirm(value => `${value}${input}`.slice(0, 16));
       return;
     }
@@ -162,16 +162,18 @@ function ConnectorScreen({ config, locale, onBack }: { config: SupervisorConfig;
       const candidate = state.candidates[index]; if (!candidate?.safeToSelect) return;
       if (candidate.type === 'antigravity' && !selected.includes(candidate.type)) { setAgyPending(true); return; }
       if(candidate.requiresConfirmation==='claude_oauth'&&!selected.includes(candidate.type)&&!claudeConfirmed){setClaudePending(true);return;}
+      if(candidate.requiresConfirmation==='cursor_experimental'&&!selected.includes(candidate.type)&&!cursorConfirmed){setCursorPending(true);return;}
       setSelected(value => value.includes(candidate.type) ? value.filter(item => item !== candidate.type) : [...value, candidate.type]);
     }
     if (key.return) {
       setSaving(true); setMessage('');
-      void configureConnectors(config, mergeConnectorSelection(state, selected, selected.includes('antigravity'),claudeConfirmed)).then(() => { setMessage(t(locale, 'ready')); return getSetupState(config); }).then(setState).catch(error => setMessage(errorMessage(error))).finally(() => setSaving(false));
+      void configureConnectors(config, mergeConnectorSelection(state, selected, selected.includes('antigravity'),claudeConfirmed,cursorConfirmed)).then(() => { setMessage(t(locale, 'ready')); return getSetupState(config); }).then(setState).catch(error => setMessage(errorMessage(error))).finally(() => setSaving(false));
     }
   });
   if (!state) return message ? <TuiFrame locale={locale}><Text color="red">{message}</Text><Text dimColor>Esc — back</Text></TuiFrame> : <BusyView locale={locale} label={t(locale, 'working')} />;
   if (agyPending) return <TuiFrame locale={locale}><Text bold>AGY может изменять файлы. Режим по умолчанию: plan.</Text><Text>Для включения введите точно AGY и нажмите Enter:</Text><Text color="yellow">{confirm}_</Text><Text dimColor>Esc — отмена</Text></TuiFrame>;
   if(claudePending)return <TuiFrame locale={locale}><Text bold>Claude subscription OAuth is experimental and may conflict with Anthropic terms for third-party products.</Text><Text>Для включения введите точно CLAUDE OAUTH и нажмите Enter:</Text><Text color="yellow">{confirm}_</Text><Text dimColor>Esc — отмена</Text></TuiFrame>;
+  if(cursorPending)return <TuiFrame locale={locale}><Text bold>Cursor CLI is experimental. Rules, MCP servers, and hooks remain active; Work has no approval bridge.</Text><Text>Для включения введите точно CURSOR и нажмите Enter:</Text><Text color="yellow">{confirm}_</Text><Text dimColor>Esc — отмена</Text></TuiFrame>;
   return <TuiFrame locale={locale}><Text bold>{t(locale, 'connectors')}</Text><Box marginTop={1} flexDirection="column">{state.candidates.map((candidate, candidateIndex) => <Text key={candidate.type} dimColor={!candidate.safeToSelect} bold={candidateIndex === index} color={candidateIndex === index ? 'cyan' : undefined}>{candidateIndex === index ? '◆ ' : '  '}[{selected.includes(candidate.type) ? 'x' : ' '}] {candidate.type === 'antigravity' ? 'AGY' : candidate.label} — {candidate.safeToSelect ? candidate.cli.version ?? (candidate.endpoint?.reachable ? 'ready' : 'found') : 'not found'}</Text>)}</Box><Box marginTop={1}>{saving ? <Spinner type="dots" label={t(locale, 'working')} /> : <Text color={message ? 'green' : undefined}>{message}</Text>}</Box><Text dimColor>↑/↓ · Space toggle · Enter save · Esc back</Text></TuiFrame>;
 }
 

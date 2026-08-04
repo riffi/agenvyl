@@ -73,7 +73,7 @@ export type ConnectorCatalog = {
   models: ConnectorCatalogModel[];
   controls: ConnectorExecutionControls;
 };
-export type HarnessType = 'hermes' | 'opencode' | 'antigravity' | 'codex' | 'claude';
+export type HarnessType = 'hermes' | 'opencode' | 'antigravity' | 'codex' | 'claude' | 'cursor';
 export type ConnectorInstanceConfiguration = {
   id: string;
   type: HarnessType;
@@ -95,7 +95,7 @@ export type HarnessDiscoveryCandidate = {
   safeToSelect: boolean;
   supportsManagedServer: boolean;
   auth?: HarnessAuthentication;
-  requiresConfirmation?: 'claude_oauth';
+  requiresConfirmation?: 'claude_oauth' | 'cursor_experimental';
   warning?: string;
 };
 export type ConnectorDiscovery = {
@@ -293,7 +293,7 @@ export function isConnectorDiscovery(value: unknown): value is ConnectorDiscover
       && (candidate.endpoint === undefined || (isRecord(candidate.endpoint) && typeof candidate.endpoint.url === 'string' && typeof candidate.endpoint.reachable === 'boolean'))
       && typeof candidate.safeToSelect === 'boolean' && typeof candidate.supportsManagedServer === 'boolean'
       && (candidate.auth === undefined || (isRecord(candidate.auth) && typeof candidate.auth.authenticated === 'boolean' && ['api', 'cloud', 'subscription_oauth', 'none', 'unknown'].includes(String(candidate.auth.kind))))
-      && (candidate.requiresConfirmation === undefined || candidate.requiresConfirmation === 'claude_oauth')
+      && (candidate.requiresConfirmation === undefined || candidate.requiresConfirmation === 'claude_oauth' || candidate.requiresConfirmation === 'cursor_experimental')
       && (candidate.warning === undefined || typeof candidate.warning === 'string'));
 }
 
@@ -313,6 +313,7 @@ export function isConfigureConnectorInstancesRequest(value: unknown): value is C
       && (instance.type === 'opencode' || instance.externalDirectoryRoots === undefined)
       && (instance.type !== 'codex' || instance.endpoint === undefined)
       && (instance.type !== 'claude' || instance.endpoint === undefined)
+      && (instance.type !== 'cursor' || instance.endpoint === undefined)
       && (instance.type === 'claude' || instance.allowSubscriptionOAuth === undefined);
   });
 }
@@ -376,7 +377,7 @@ export function isConnectorExecutionEvent(value: unknown): value is ConnectorExe
 }
 
 const capabilities = new Set<string>(['model_catalog', 'execution_profiles', 'text_streaming', 'reasoning', 'tools', 'approvals', 'clarifications', 'elicitations', 'usage']);
-const harnessTypes = new Set<string>(['hermes', 'opencode', 'antigravity', 'codex', 'claude']);
+const harnessTypes = new Set<string>(['hermes', 'opencode', 'antigravity', 'codex', 'claude', 'cursor']);
 const executionStatuses = new Set<string>(['queued', 'running', 'waiting_for_user', 'stopping', 'completed', 'failed', 'cancelled']);
 const requestResolutions = new Set<string>(['answered', 'declined', 'cancelled', 'expired', 'superseded']);
 const upstreamStatusStates = new Set<string>(['waiting_upstream', 'retrying', 'recovered']);

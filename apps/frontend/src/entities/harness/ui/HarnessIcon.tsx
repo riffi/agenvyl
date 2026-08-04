@@ -5,6 +5,7 @@ import hermesMark from './assets/hermes.svg';
 import opencodeMark from './assets/opencode.svg';
 import codexMark from './assets/codex.svg';
 import claudeMark from './assets/claude.svg';
+import cursorMark from './assets/cursor.svg';
 import styles from './HarnessIcon.module.css';
 
 const harnesses:Record<string,{label:string;mark:string}>={
@@ -13,6 +14,7 @@ const harnesses:Record<string,{label:string;mark:string}>={
   opencode:{label:'OpenCode',mark:opencodeMark},
   codex:{label:'Codex',mark:codexMark},
   claude:{label:'Claude',mark:claudeMark},
+  cursor:{label:'Cursor',mark:cursorMark},
 };
 
 export type HarnessIconProps={

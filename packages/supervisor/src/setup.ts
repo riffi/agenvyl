@@ -3,8 +3,8 @@ import type { SupervisorConfig } from './config.js';
 import { openWebUi } from './browser.js';
 import { startSupervisor } from './runtime.js';
 
-export type HarnessType = 'hermes' | 'opencode' | 'antigravity' | 'codex' | 'claude';
-export type SetupCandidate = { type: HarnessType; label: string; cli: { found: boolean; version?: string }; endpoint?: { url: string; reachable: boolean }; safeToSelect: boolean; supportsManagedServer?: boolean; auth?:{authenticated:boolean;kind:'api'|'cloud'|'subscription_oauth'|'none'|'unknown'};requiresConfirmation?:'claude_oauth';warning?: string };
+export type HarnessType = 'hermes' | 'opencode' | 'antigravity' | 'codex' | 'claude' | 'cursor';
+export type SetupCandidate = { type: HarnessType; label: string; cli: { found: boolean; version?: string }; endpoint?: { url: string; reachable: boolean }; safeToSelect: boolean; supportsManagedServer?: boolean; auth?:{authenticated:boolean;kind:'api'|'cloud'|'subscription_oauth'|'none'|'unknown'};requiresConfirmation?:'claude_oauth'|'cursor_experimental';warning?: string };
 export type SetupInstance = { id: string; type: HarnessType; enabled: boolean; endpoint?: string; managed?: boolean; externalDirectoryRoots?:string[];allowSubscriptionOAuth?:boolean };
 export type SetupState = { completed: boolean; firstRoomId?: string; candidates: SetupCandidate[]; instances: Array<SetupInstance & { status: string; error?: { code: string; message: string } }> };
 
@@ -35,15 +35,15 @@ export async function configureConnectors(config: SupervisorConfig, instances: S
   return json(webUrl(config, '/api/v1/setup/harnesses'), { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ instances }) });
 }
 
-export function mergeConnectorSelection(state: SetupState, selected: HarnessType[], agyConfirmed: boolean,claudeOAuthConfirmed=false): SetupInstance[] {
+export function mergeConnectorSelection(state: SetupState, selected: HarnessType[], agyConfirmed: boolean,claudeOAuthConfirmed=false,cursorConfirmed=false): SetupInstance[] {
   const safeCandidates=new Map(state.candidates.filter(candidate=>candidate.safeToSelect).map(candidate=>[candidate.type,candidate]));
-  const allowedSelected=selected.filter(type=>type!=='antigravity'||agyConfirmed);
+  const allowedSelected=selected.filter(type=>(type!=='antigravity'||agyConfirmed)&&(type!=='cursor'||cursorConfirmed));
   const result=state.instances.map(({status:_status,error:_error,...instance})=>{
     const candidate=safeCandidates.get(instance.type);
     if(!candidate)return instance;
     const enabled=allowedSelected.includes(instance.type);
     return{...instance,enabled,
-      ...(!instance.endpoint&&candidate.endpoint&&instance.type!=='codex'&&instance.type!=='claude'?{endpoint:candidate.endpoint.url}:{}),
+      ...(!instance.endpoint&&candidate.endpoint&&!['codex','claude','cursor'].includes(instance.type)?{endpoint:candidate.endpoint.url}:{}),
       ...(instance.type==='claude'&&candidate.requiresConfirmation==='claude_oauth'&&enabled?{allowSubscriptionOAuth:instance.allowSubscriptionOAuth===true||claudeOAuthConfirmed}:{})};
   });
   for(const type of allowedSelected){
@@ -51,7 +51,7 @@ export function mergeConnectorSelection(state: SetupState, selected: HarnessType
     const candidate=safeCandidates.get(type);if(!candidate)continue;
     const id=uniqueInstanceId(type,result);
     result.push({id,type,enabled:true,
-      ...(candidate.endpoint&&type!=='codex'&&type!=='claude'?{endpoint:candidate.endpoint.url}:{}),
+      ...(candidate.endpoint&&!['codex','claude','cursor'].includes(type)?{endpoint:candidate.endpoint.url}:{}),
       ...(type==='opencode'?{managed:true,externalDirectoryRoots:[]}:{}),
       ...(type==='claude'?{allowSubscriptionOAuth:candidate.requiresConfirmation==='claude_oauth'&&claudeOAuthConfirmed}:{})});
   }

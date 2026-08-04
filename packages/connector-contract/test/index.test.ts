@@ -65,4 +65,5 @@ describe('Connector v1 contract fixtures', () => {
     expect(isConfigureConnectorInstancesRequest({instances:[{id:'local-antigravity',type:'antigravity',enabled:true,permissionMode:'plan'}]})).toBe(false);
     expect(isConfigureConnectorInstancesRequest({instances:[{id:'local-codex',type:'codex',enabled:true,unknown:true}]})).toBe(false);
   });
+  it('accepts Cursor configuration only without an endpoint',()=>{expect(isConfigureConnectorInstancesRequest({instances:[{id:'local-cursor',type:'cursor',enabled:true}]})).toBe(true);expect(isConfigureConnectorInstancesRequest({instances:[{id:'local-cursor',type:'cursor',enabled:true,endpoint:'http://127.0.0.1:1'}]})).toBe(false);});
 });

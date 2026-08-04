@@ -51,6 +51,8 @@ npm run test:codex
 npm run test:e2e:codex
 npm run test:claude
 npm run test:e2e:claude
+npm run test:cursor
+npm run test:e2e:cursor
 ```
 
 They validate Agenvyl's adapter and protocol behavior against controlled
@@ -67,6 +69,7 @@ npm run smoke:opencode:live
 npm run smoke:antigravity:live
 npm run smoke:codex:live
 npm run smoke:claude:live
+npm run smoke:cursor:live
 ```
 
 Run them only with:
@@ -90,4 +93,3 @@ files, test fixtures, logs, or shell transcripts.
 
 Platform-sensitive changes should be tested on the affected native target, not
 only through a TypeScript build on another operating system.
-

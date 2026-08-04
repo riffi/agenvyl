@@ -15,7 +15,7 @@ const message=(value:unknown)=>value instanceof Error?value.message:String(value
 export const AddHarnessDrawer=({open,state,onClose,onRescan,onAdd}:{open:boolean;state?:HarnessSettingsState;onClose:()=>void;onRescan:()=>Promise<void>;onAdd:(draft:HarnessDraft)=>Promise<void>})=>{
   const[draft,setDraft]=useState<HarnessDraft>(),[custom,setCustom]=useState(false),[busy,setBusy]=useState(false),[rescanning,setRescanning]=useState(false),[error,setError]=useState('');
   const close=()=>{if(draft&&!confirm('Discard this new harness draft?'))return;setDraft(undefined);setCustom(false);setError('');onClose();};
-  const start=(candidate:SetupHarnessCandidate)=>{setCustom(false);setError('');setDraft(addHarnessDraft(candidate.type,state?.instances??[],state?.candidates??[]));};
+  const start=(candidate:SetupHarnessCandidate)=>{if(candidate.requiresConfirmation==='cursor_experimental'&&prompt('Cursor CLI is experimental. Cursor rules, MCP servers, and hooks remain active, and Work has no approval bridge. Type CURSOR to continue.')!=='CURSOR')return;setCustom(false);setError('');setDraft(addHarnessDraft(candidate.type,state?.instances??[],state?.candidates??[]));};
   const startCustom=(type:'hermes'|'opencode'='hermes')=>{setCustom(true);setError('');setDraft(addHarnessDraft(type,state?.instances??[],state?.candidates??[]));};
   const rescan=async()=>{setRescanning(true);setError('');try{await onRescan();}catch(issue){setError(message(issue));}finally{setRescanning(false);}};
   const add=async()=>{if(!draft||!validDraft([draft]))return;setBusy(true);setError('');try{await onAdd(draft);setDraft(undefined);setCustom(false);onClose();}catch(issue){setError(message(issue));}finally{setBusy(false);}};

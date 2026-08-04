@@ -16,11 +16,13 @@ export function SetupPage(){
   const [agy,setAgy]=useState(false),[agyConfirmation,setAgyConfirmation]=useState('');
   const [openCodeManaged,setOpenCodeManaged]=useState(true);
   const [claudeOAuthConfirmation,setClaudeOAuthConfirmation]=useState('');
+  const [cursorConfirmation,setCursorConfirmation]=useState('');
   const [name,setName]=useState('User'),[handle,setHandle]=useState('user'),[workspaceRoot,setWorkspaceRoot]=useState(''),[choosingRoot,setChoosingRoot]=useState(false),[roomTitle,setRoomTitle]=useState('First room'),[busy,setBusy]=useState(false),[error,setError]=useState('');
   useEffect(()=>{if(configure){navigate('/settings/harnesses',{replace:true});return;}void apiRequest<SetupState>('/api/v1/setup').then(value=>{
     const initial=initialConnectorSelection(value);
     setState(value);setSelected(initial.selected);setAgy(initial.agy);setOpenCodeManaged(initial.openCodeManaged);setWorkspaceRoot(value.workspaceRoot);
     setClaudeOAuthConfirmation(initial.claudeOAuthConfirmed?'CLAUDE OAUTH':'');
+    setCursorConfirmation(initial.cursorConfirmed?'CURSOR':'');
     if(value.completed&&value.firstRoomId&&!preview)navigate(`/rooms/${value.firstRoomId}`,{replace:true});
   }).catch(issue=>setError(message(issue)));},[configure,navigate,preview]);
   useEffect(()=>{
@@ -32,12 +34,14 @@ export function SetupPage(){
   const normalizedHandle=handle.trim().replace(/^@/,'').toLowerCase();
   const handleIssue=normalizedHandle&&!/^[a-z0-9][a-z0-9_-]*$/.test(normalizedHandle)?'Use only a-z, 0-9, _, or -; start with a letter or digit.':undefined;
   const claudeNeedsConfirmation=Boolean(state?.candidates.some(candidate=>candidate.type==='claude'&&candidate.requiresConfirmation==='claude_oauth'&&selected.includes('claude')));
+  const cursorNeedsConfirmation=Boolean(state?.candidates.some(candidate=>candidate.type==='cursor'&&candidate.requiresConfirmation==='cursor_experimental'&&selected.includes('cursor')));
   const toggle=(candidate:SetupHarnessCandidate)=>setSelected(value=>value.includes(candidate.type)?value.filter(item=>item!==candidate.type):[...value,candidate.type]);
   const chooseWorkspaceRoot=async()=>{setChoosingRoot(true);setError('');try{const result=await apiRequest<{path:string|null}>('/api/v1/setup/workspace-directory',{method:'POST',body:{}});if(result.path)setWorkspaceRoot(result.path);}catch(issue){setError(message(issue));}finally{setChoosingRoot(false);}};
   const submit=async(event:FormEvent)=>{event.preventDefault();
     if(preview){setError('Development preview is read-only. No setup changes were saved.');return;}
     if(agy&&agyConfirmation!=='AGY'){setError('Type AGY to confirm');return;}
     if(claudeNeedsConfirmation&&claudeOAuthConfirmation!=='CLAUDE OAUTH'){setError('Type CLAUDE OAUTH to confirm');return;}
+    if(cursorNeedsConfirmation&&cursorConfirmation!=='CURSOR'){setError('Type CURSOR to confirm');return;}
     setBusy(true);setError('');try{
     const options:SetupHarnessOptions={openCodeManaged,claudeOAuthConfirmed:claudeOAuthConfirmation==='CLAUDE OAUTH'};
     const instances=state?mergeSetupHarnessSelection(state,selected,agy,options):[];
@@ -68,6 +72,9 @@ export function SetupPage(){
       claudeNeedsConfirmation={claudeNeedsConfirmation}
       claudeOAuthConfirmation={claudeOAuthConfirmation}
       setClaudeOAuthConfirmation={setClaudeOAuthConfirmation}
+      cursorNeedsConfirmation={cursorNeedsConfirmation}
+      cursorConfirmation={cursorConfirmation}
+      setCursorConfirmation={setCursorConfirmation}
     />
     {!configure&&<section className={styles.grid}>
       <label><FieldTitle label="Display name" help="The name other participants will see for you in rooms and messages."/><input value={name} onChange={event=>{const nextName=event.target.value;setHandle(current=>handleAfterNameChange(name,nextName,current));setName(nextName);}} required/></label>
@@ -83,7 +90,7 @@ export function SetupPage(){
 export function FieldTitle({label,help}:{label:string;help:string}){return <span className={styles.fieldTitle}>{label}<span className={styles.fieldHelp} tabIndex={0} aria-label={help}><CircleHelp aria-hidden="true"/><span className={styles.fieldTooltip} role="tooltip">{help}</span></span></span>}
 
 export function Candidate({candidate,checked,onChange}:{candidate:SetupHarnessCandidate;checked:boolean;onChange:()=>void}){const available=candidate.safeToSelect;return <label className={`${styles.option} ${available?'':styles.unavailable}`}><input type="checkbox" checked={checked} disabled={!available&&!checked} onChange={onChange}/><HarnessIcon type={candidate.type} size="md"/><span><strong>{candidate.label}</strong><small>{candidate.endpoint?.reachable?'Endpoint ready':candidate.cli.found?`${candidate.cli.version??'CLI'} detected`:'Not detected'}</small></span></label>}
-export function ConnectorOptions({selected,agy,agyConfirmation,setAgyConfirmation,openCodeManaged,setOpenCodeManaged,claudeNeedsConfirmation,claudeOAuthConfirmation,setClaudeOAuthConfirmation}:{
+export function ConnectorOptions({selected,agy,agyConfirmation,setAgyConfirmation,openCodeManaged,setOpenCodeManaged,claudeNeedsConfirmation,claudeOAuthConfirmation,setClaudeOAuthConfirmation,cursorNeedsConfirmation=false,cursorConfirmation='',setCursorConfirmation=()=>undefined}:{
   selected:string[];
   agy:boolean;
   agyConfirmation:string;
@@ -93,14 +100,18 @@ export function ConnectorOptions({selected,agy,agyConfirmation,setAgyConfirmatio
   claudeNeedsConfirmation:boolean;
   claudeOAuthConfirmation:string;
   setClaudeOAuthConfirmation:(value:string)=>void;
+  cursorNeedsConfirmation?:boolean;
+  cursorConfirmation?:string;
+  setCursorConfirmation?:(value:string)=>void;
 }){
-  if(!selected.includes('opencode')&&!agy&&!claudeNeedsConfirmation)return null;
+  if(!selected.includes('opencode')&&!agy&&!claudeNeedsConfirmation&&!cursorNeedsConfirmation)return null;
   return <section className={styles.connectorSettings} aria-labelledby="connector-options-title">
     <div className={styles.subsectionTitle}><span><h3 id="connector-options-title">Connector options</h3><small>Settings for the runtimes selected above.</small></span></div>
     <div className={styles.settingList}>
       {selected.includes('opencode')&&<div className={styles.setting}><label className={styles.settingChoice}><input type="checkbox" checked={openCodeManaged} onChange={event=>setOpenCodeManaged(event.target.checked)}/><span><strong>Managed server</strong><small>Start and stop OpenCode with Agenvyl instead of relying on an existing endpoint.</small></span><em>OpenCode</em></label></div>}
       {agy&&<div className={`${styles.setting} ${styles.settingDanger}`}><div className={styles.requiredSetting}><i aria-hidden="true"/><span><strong>Confirm dangerous permission mode</strong><small>AGY runs as a separate subprocess with a dangerous permission flag.</small></span><em>AGY</em></div><label className={styles.confirmation}><span>Confirmation phrase</span><input type="text" value={agyConfirmation} onChange={event=>setAgyConfirmation(event.target.value)} placeholder="Type AGY" autoComplete="off"/></label></div>}
       {claudeNeedsConfirmation&&<div className={`${styles.setting} ${styles.settingDanger}`}><div className={styles.requiredSetting}><i aria-hidden="true"/><span><strong>Confirm subscription OAuth</strong><small>This experimental integration may conflict with Anthropic terms for third-party products.</small></span><em>Claude</em></div><label className={styles.confirmation}><span>Confirmation phrase</span><input type="text" value={claudeOAuthConfirmation} onChange={event=>setClaudeOAuthConfirmation(event.target.value)} placeholder="Type CLAUDE OAUTH" autoComplete="off"/></label></div>}
+      {cursorNeedsConfirmation&&<div className={`${styles.setting} ${styles.settingDanger}`}><div className={styles.requiredSetting}><i aria-hidden="true"/><span><strong>Confirm experimental Cursor CLI</strong><small>Cursor rules, MCP servers, and hooks remain active, and Work has no per-action approval bridge.</small></span><em>Cursor</em></div><label className={styles.confirmation}><span>Confirmation phrase</span><input type="text" value={cursorConfirmation} onChange={event=>setCursorConfirmation(event.target.value)} placeholder="Type CURSOR" autoComplete="off"/></label></div>}
     </div>
   </section>;
 }
@@ -113,9 +124,10 @@ export function initialConnectorSelection(state:SetupState){
     agy:state.completed&&enabled.has('antigravity'),
     openCodeManaged:openCode?.managed??true,
     claudeOAuthConfirmed:state.instances.some(instance=>instance.type==='claude'&&instance.allowSubscriptionOAuth),
+    cursorConfirmed:state.completed&&enabled.has('cursor'),
   };
 }
-export function instanceConfig(candidate:SetupHarnessCandidate,existing?:SetupState['instances'][number],options:SetupHarnessOptions={},id=`local-${candidate.type}`):SetupHarnessInstance{return{id:existing?.id??id,type:candidate.type,enabled:true,...(existing?.endpoint?{endpoint:existing.endpoint}:{}),...(!existing?.endpoint&&candidate.endpoint&&candidate.type!=='codex'&&candidate.type!=='claude'?{endpoint:candidate.endpoint.url}:{}),...(candidate.type==='opencode'?{managed:options.openCodeManaged??existing?.managed??true,externalDirectoryRoots:existing?.externalDirectoryRoots??[]}:{}),...(candidate.type==='claude'?{allowSubscriptionOAuth:candidate.requiresConfirmation==='claude_oauth'&&(options.claudeOAuthConfirmed??existing?.allowSubscriptionOAuth??false)}:{})};}
+export function instanceConfig(candidate:SetupHarnessCandidate,existing?:SetupState['instances'][number],options:SetupHarnessOptions={},id=`local-${candidate.type}`):SetupHarnessInstance{return{id:existing?.id??id,type:candidate.type,enabled:true,...(existing?.endpoint?{endpoint:existing.endpoint}:{}),...(!existing?.endpoint&&candidate.endpoint&&!['codex','claude','cursor'].includes(candidate.type)?{endpoint:candidate.endpoint.url}:{}),...(candidate.type==='opencode'?{managed:options.openCodeManaged??existing?.managed??true,externalDirectoryRoots:existing?.externalDirectoryRoots??[]}:{}),...(candidate.type==='claude'?{allowSubscriptionOAuth:candidate.requiresConfirmation==='claude_oauth'&&(options.claudeOAuthConfirmed??existing?.allowSubscriptionOAuth??false)}:{})};}
 export function mergeSetupHarnessSelection(state:SetupState,selected:string[],agy:boolean,options:SetupHarnessOptions={}):SetupHarnessInstance[]{
   const configurable=new Map(state.candidates.filter(candidate=>candidate.safeToSelect||(candidate.type==='antigravity'&&candidate.cli.found&&candidate.cli.compatible!==false)).map(candidate=>[candidate.type,candidate]));
   const selectedTypes=new Set<SetupHarnessInstance['type']>([...selected.filter(isHarnessType),...(agy?['antigravity' as const]:[])]);
@@ -134,7 +146,7 @@ export function mergeSetupHarnessSelection(state:SetupState,selected:string[],ag
   return result;
 }
 function uniqueInstanceId(type:string,instances:SetupHarnessInstance[]){const base=`local-${type}`;let id=base,index=2;while(instances.some(instance=>instance.id===id))id=`${base}-${index++}`;return id;}
-function isHarnessType(value:string):value is SetupHarnessInstance['type']{return['hermes','opencode','antigravity','codex','claude'].includes(value);}
+function isHarnessType(value:string):value is SetupHarnessInstance['type']{return['hermes','opencode','antigravity','codex','claude','cursor'].includes(value);}
 export const isSetupPreview=(search:string,development:boolean)=>development&&new URLSearchParams(search).get('preview')==='1';
 function message(value:unknown){return value instanceof Error?value.message:'Setup failed';}
 const cacheTime=(value:string|null)=>value?` from ${new Date(value).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`:'';

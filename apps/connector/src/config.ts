@@ -3,7 +3,7 @@ import { isAbsolute } from 'node:path';
 import { parse, stringify } from 'yaml';
 import { resolveAgenvylPaths } from '@agenvyl/runtime-config';
 
-export type ConnectorInstanceConfig = { id: string; type: 'hermes'|'opencode'|'antigravity'|'codex'|'claude'; enabled: boolean; endpoint?:string; managed?:boolean; externalDirectoryRoots?:string[];allowSubscriptionOAuth?:boolean };
+export type ConnectorInstanceConfig = { id: string; type: 'hermes'|'opencode'|'antigravity'|'codex'|'claude'|'cursor'; enabled: boolean; endpoint?:string; managed?:boolean; externalDirectoryRoots?:string[];allowSubscriptionOAuth?:boolean };
 export type ConnectorConfig = {
   version: 1;
   listen: { host: string; port: number };
@@ -85,7 +85,7 @@ export function normalizeConnectorInstances(value: unknown): ConnectorInstanceCo
     if (typeof item.id !== 'string' || !/^[a-z0-9][a-z0-9_-]*$/.test(item.id)) throw new Error(`instances[${index}].id is invalid`);
     if (seen.has(item.id)) throw new Error(`Duplicate Connector instance id: ${item.id}`);
     seen.add(item.id);
-    if (item.type!=='hermes'&&item.type!=='opencode'&&item.type!=='antigravity'&&item.type!=='codex'&&item.type!=='claude') throw new Error(`instances[${index}].type is invalid`);
+    if (item.type!=='hermes'&&item.type!=='opencode'&&item.type!=='antigravity'&&item.type!=='codex'&&item.type!=='claude'&&item.type!=='cursor') throw new Error(`instances[${index}].type is invalid`);
     if (item.enabled !== undefined && typeof item.enabled !== 'boolean') throw new Error(`instances[${index}].enabled must be boolean`);
     if(item.endpoint!==undefined&&!safeEndpoint(item.endpoint))throw new Error(`instances[${index}].endpoint is invalid`);
     if(item.managed!==undefined&&(item.type!=='opencode'||typeof item.managed!=='boolean'))throw new Error(`instances[${index}].managed is invalid`);
@@ -93,6 +93,7 @@ export function normalizeConnectorInstances(value: unknown): ConnectorInstanceCo
     if(item.allowSubscriptionOAuth!==undefined&&(item.type!=='claude'||typeof item.allowSubscriptionOAuth!=='boolean'))throw new Error(`instances[${index}].allowSubscriptionOAuth is invalid`);
     if(item.type==='codex'&&item.endpoint!==undefined)throw new Error(`instances[${index}].endpoint is invalid for Codex`);
     if(item.type==='claude'&&item.endpoint!==undefined)throw new Error(`instances[${index}].endpoint is invalid for Claude`);
+    if(item.type==='cursor'&&item.endpoint!==undefined)throw new Error(`instances[${index}].endpoint is invalid for Cursor`);
     return { id: item.id, type: item.type, enabled: item.enabled ?? true, ...(item.endpoint?{endpoint:new URL(String(item.endpoint)).toString()}:{}), ...(item.managed!==undefined?{managed:item.managed}:{}), ...(externalDirectoryRoots?{externalDirectoryRoots}:{}),...(item.allowSubscriptionOAuth!==undefined?{allowSubscriptionOAuth:item.allowSubscriptionOAuth}:{}) };
   });
 }
