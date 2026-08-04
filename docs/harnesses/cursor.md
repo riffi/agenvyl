@@ -6,10 +6,12 @@
 
 ## Before you start
 
-Agenvyl requires Cursor CLI `2026.01.16` or newer on macOS, Linux, WSL, or
-native Windows. Install and
-authenticate Cursor using the [official CLI documentation](https://cursor.com/docs/cli),
-then verify it yourself:
+Agenvyl requires Cursor CLI `2026.01.16` or newer on macOS or Linux. Cursor's
+documented Windows route uses WSL; the Agenvyl Connector and workspace must run
+inside that same WSL environment. Native Windows CLI support is not currently
+documented upstream. Install and authenticate Cursor using the
+[official CLI documentation](https://cursor.com/docs/cli), then verify it
+yourself:
 
 ```bash
 agent --version

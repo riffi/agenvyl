@@ -27,6 +27,7 @@ tool:
 - [OpenCode](harnesses/opencode.md)
 - [Antigravity / AGY](harnesses/antigravity.md)
 - [Hermes](harnesses/hermes.md)
+- [Cursor CLI](harnesses/cursor.md) *(experimental)*
 
 ## Understand the architecture
 

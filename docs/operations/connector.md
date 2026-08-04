@@ -28,7 +28,7 @@ The YAML contains only:
 - allowed workspace roots;
 - non-secret harness instance definitions;
 - managed OpenCode state and explicit external-directory roots; and
-- explicit AGY, Codex full-access, and Claude OAuth opt-ins.
+- the explicit Claude subscription OAuth opt-in.
 
 Unknown fields and invalid values are rejected. Tokens, passwords, executable
 paths, provider credentials, and OAuth state remain in environment variables or
@@ -57,6 +57,9 @@ instances:
     managed: true
     externalDirectoryRoots:
       - /absolute/path/to/trusted-repository
+  - id: local-cursor
+    type: cursor
+    enabled: false
 ```
 
 Every workspace root must already exist and be absolute. For each run,
@@ -70,6 +73,17 @@ path without traversal or wildcard segments. An empty list denies external
 access. Adding a directory through an Agenvyl approval persists the validated
 root in the Connector instance configuration.
 
+The personal first-run flow may replace the single workspace root through
+authenticated `PUT /v2/workspaces`. The target directory must exist before
+Connector accepts it; Core creates a selected setup directory first, then keeps
+its workspace service and Connector policy on the same root.
+
+Core also uses authenticated `POST /v2/directories/validate` to canonicalize
+registered local-project folders and `POST /v2/directories/pick` to open the
+host folder picker. These endpoints validate or select a directory only. They
+do not add it to the workspace policy or an OpenCode external-directory
+allowlist.
+
 ## Harness environment reference
 
 | Harness | Environment variables |
@@ -79,10 +93,12 @@ root in the Connector instance configuration.
 | Codex | `AGENVYL_CONNECTOR_CODEX_COMMAND` |
 | Claude | `AGENVYL_CONNECTOR_CLAUDE_COMMAND` |
 | AGY | `AGENVYL_CONNECTOR_AGY_COMMAND`, `AGENVYL_CONNECTOR_AGY_PRINT_TIMEOUT_MS` |
+| Cursor CLI | `AGENVYL_CONNECTOR_CURSOR_COMMAND` |
 
 Hermes is attach-only. OpenCode may attach to an existing endpoint or run as a
 Connector-managed child. Codex owns one restartable app-server and multiplexes
-ephemeral threads. Claude and AGY start a fresh process for each execution.
+ephemeral threads. Claude, AGY, and Cursor CLI start a fresh process for each
+execution. Cursor runs headlessly and does not resume upstream sessions.
 
 Do not put secrets into interpolated shell commands. Windows `.exe`, `.cmd`, and
 `.bat` overrides are supported for Codex and Claude; AGY normally resolves its
@@ -168,6 +184,12 @@ instance allowlist; malformed or unsupported payloads fail closed. Other
 adapter-specific limits are documented in the
 [harness overview](../harnesses/README.md).
 
+Cursor CLI publishes assistant text and tool activity from `stream-json`.
+Headless runs do not expose a documented reasoning, usage, approval, or
+clarification round-trip, so Connector does not synthesize those events. Plan
+runs use native Plan mode; Work runs require the explicit `accept-edits`
+profile and Cursor's `--force` flag.
+
 ### Claude permission bridge lifecycle
 
 Claude Code approvals use an internal MCP server owned by Connector. The
@@ -217,7 +239,10 @@ npm run test:codex
 npm run test:e2e:codex
 npm run test:claude
 npm run test:e2e:claude
+npm run test:cursor
+npm run test:e2e:cursor
 ```
 
 Live smoke tests are opt-in and require isolated workspaces, databases, and
-credentials. See [Development testing](../development/testing.md).
+credentials. Cursor's live check is `npm run smoke:cursor:live`. See
+[Development testing](../development/testing.md).

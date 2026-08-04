@@ -7,11 +7,28 @@ Register a folder once, then select it when creating a room or from the room's
 Projects are guidance, not storage or a security boundary:
 
 - the agent process still starts in its isolated room workspace;
+- selecting a project does not change the process working directory, extend a
+  sandbox, or add the folder to an allowlist;
 - the selected harness and permission profile still decide which paths the
   agent can access;
 - agents may use other folders when their permissions and task allow it; and
 - workspace versioning, artifacts, and conflict handling continue to apply
   only to the room workspace.
+
+### Harness access requirements
+
+| Harness | What is required to use a project outside the room workspace |
+| --- | --- |
+| Codex CLI | A profile whose Codex sandbox permits the external path; **Full access** is the Agenvyl profile intended for unrestricted host access. |
+| OpenCode | The directory must be covered by the instance's **Allowed external directories**. **Standard** still asks for approval; **Auto-approve** applies only to Work runs. |
+| Claude Code | Claude's selected permission mode and any runtime approval must permit the operation. Agenvyl does not pre-authorize the project path. |
+| Antigravity / AGY | The instance and workflow mode remain authoritative; selecting a project does not enable edits. |
+| Cursor CLI | Agenvyl starts Cursor in the room workspace and instructs it to stay there. A selected project is context only for this integration. |
+| Hermes | Access depends on the connected Hermes server and its tools; Agenvyl does not mount or grant the local path. |
+
+Registering or selecting a project therefore does not prove that every agent in
+the room can read it. Configure and test each harness separately, and keep
+managed attachments and response artifacts in the room workspace.
 
 ## Register a folder
 

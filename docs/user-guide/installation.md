@@ -103,15 +103,23 @@ In the setup screen:
 
 1. review the detected harnesses and keep only the ones you trust;
 2. read and accept any tool-specific permission warning;
-3. enter your display name;
-4. name the first room; and
-5. finish setup.
+3. enter your display name and mention handle;
+4. choose the absolute workspace root where Agenvyl stores room files and
+   isolated agent workspaces;
+5. name the first room; and
+6. finish setup.
+
+You can type the workspace root or select **Choose…**. Agenvyl creates the
+directory when needed, persists it for Core and Connector, and uses it for all
+room workspaces. Windows and macOS use their system folder dialogs. Linux uses
+Zenity or KDialog when available; manual absolute-path entry remains available.
 
 The setup screen also exposes safety-sensitive instance controls when they
 apply:
 
 - OpenCode can use an existing endpoint or a Connector-managed server;
-- Claude subscription OAuth requires the exact `CLAUDE OAUTH` confirmation.
+- Claude subscription OAuth requires the exact `CLAUDE OAUTH` confirmation;
+- experimental Cursor CLI requires the exact `CURSOR` confirmation.
 
 Codex Full access is selected per agent after setup and requires an explicit
 warning-dialog confirmation each time it is enabled.

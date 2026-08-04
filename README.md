@@ -64,6 +64,7 @@ For components, persistence, retries, and security boundaries, read
 | [OpenCode](docs/harnesses/opencode.md) | Agenvyl connects to or manages an OpenCode server |
 | [Antigravity / AGY](docs/harnesses/antigravity.md) | Agenvyl starts a fresh `agy --print` process per attempt |
 | [Hermes](docs/harnesses/hermes.md) | Agenvyl connects to an authenticated local Hermes API Server |
+| [Cursor CLI](docs/harnesses/cursor.md) *(experimental)* | Agenvyl starts a fresh headless `agent` process per attempt |
 
 Agenvyl does not provide model access. The harness must already be installed or
 running and authenticated on the same computer. One harness can power several
@@ -146,6 +147,7 @@ Use the [documentation map](docs/README.md) to choose a route:
 
 - [Install and use Agenvyl](docs/user-guide/installation.md)
 - [Work with Workspace files and previews](docs/user-guide/workspace.md)
+- [Register and use local projects](docs/user-guide/projects.md)
 - [Connect an agent tool](docs/harnesses/README.md)
 - [Understand the architecture](docs/architecture/overview.md)
 - [Operate a custom deployment](docs/operations/deployment-boundaries.md)

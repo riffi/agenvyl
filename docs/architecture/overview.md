@@ -27,9 +27,13 @@ flowchart LR
 - An **agent** is an Agenvyl persona: a name, instructions, model, permissions,
   and a connection to an installed coding-agent tool.
 - A **coding-agent tool** (or *harness*) is the program that does the actual
-  model and tool work, such as Codex CLI, Claude Code, OpenCode, Hermes, or AGY.
+  model and tool work, such as Codex CLI, Claude Code, OpenCode, Hermes, AGY,
+  or Cursor CLI.
 - The **workspace** is the room's published set of files. Each run starts from
   an isolated copy of that published state.
+- A **project** is an optional registered local directory recommended to agents
+  in a room. It is run context, not the run working directory or an access
+  grant.
 
 Agenvyl coordinates these parts. It does not provide model access and does not
 replace the agent tools or their accounts.
@@ -83,7 +87,7 @@ disconnect, the UI can replay events it missed.
 Core is the product backend. It:
 
 - serves the Web UI and REST API;
-- owns rooms, agents, messages, run state, and orchestration;
+- owns rooms, projects, agents, messages, run state, and orchestration;
 - decides which saved conversation and configuration belong to a run;
 - publishes durable room events; and
 - reads and versions room files.
@@ -108,8 +112,9 @@ tool.
 
 ### PostgreSQL and room workspaces
 
-PostgreSQL stores product records: rooms, versioned agent configurations,
-messages, run attempts, workspace metadata, and the ordered event history.
+PostgreSQL stores product records: rooms, registered local projects, versioned
+agent configurations, messages, run attempts, workspace metadata, and the
+ordered event history.
 
 The filesystem stores live room files and application-managed immutable
 versions. Message attachments point to a saved version, so a later edit does
@@ -160,6 +165,7 @@ and secrets are outside the product repository. See
 | Codex CLI | Starts the user-installed `codex app-server` |
 | Claude Code CLI *(experimental)* | Starts a fresh user-installed `claude` process for each attempt and routes unresolved permissions through a shared loopback MCP bridge |
 | Antigravity / AGY | Starts a fresh `agy --print` process for each attempt |
+| Cursor CLI *(experimental)* | Starts a fresh headless `agent` process for each attempt |
 
 Connector reports only behavior an integration can represent safely. The
 [harness capability matrix](../harnesses/capabilities.md) compares the current
@@ -180,7 +186,11 @@ Several rules keep a room understandable and reproducible:
   candidate, or deletion.
 - Attachments refer to immutable versions rather than mutable paths.
 - Every run saves the exact agent version, tool instance, model, execution
-  controls, conversation snapshot, and workspace base snapshot it started with.
+  controls, conversation snapshot, workspace base snapshot, and recommended
+  project snapshot it started with.
+- Changing or deleting a room project affects future runs only. A retry keeps
+  the original project's name and path, then checks that path again before it
+  starts.
 - Every attempt ends once as completed, failed, or cancelled.
 - A retry is a new attempt; it does not rewrite the original attempt.
 - Only the selected completed attempt is included in later conversation
@@ -298,6 +308,7 @@ apps/connector/src/adapters/
   codex/
   claude/
   antigravity/
+  cursor/
 ```
 
 Shared Core/Connector request and event shapes are versioned in
