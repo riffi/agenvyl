@@ -218,6 +218,18 @@ describe('Connector shell', () => {
     await app.close();
   });
 
+  it('persists and applies a replacement workspace root',async()=>{
+    const nextRoot=await realpath(await mkdtemp(join(tmpdir(),'agenvyl-connector-next-root-'))),persisted:string[][]=[];
+    const value=structuredClone(config),app=buildConnectorApp(value,{persistWorkspaces:async roots=>{persisted.push([...roots]);}});
+    try{
+      const response=await app.inject({method:'PUT',url:'/v2/workspaces',headers:auth,payload:{roots:[nextRoot]}});
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({apiVersion:'v2',roots:[nextRoot]});
+      expect(persisted).toEqual([[nextRoot]]);
+      expect(value.workspaces.roots).toEqual([nextRoot]);
+    }finally{await app.close();await rm(nextRoot,{recursive:true,force:true});}
+  });
+
   it('tests a temporary instance without persisting or activating it and always cleans up',async()=>{
     const active=new ControlledAdapter(),temporary:ControlledAdapter[]=[];let releases=0,persists=0;
     const app=buildConnectorApp(config,{adapters:new Map([['local-hermes',active]]),configureInstances:async instances=>{

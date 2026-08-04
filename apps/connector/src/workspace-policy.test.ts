@@ -26,6 +26,17 @@ describe('WorkspacePolicy', () => {
     expect(policy.resolve('room-1', 'subdir')).toBe(join(root, 'room-1', 'subdir'));
   });
 
+  it('switches to a newly configured root',async()=>{
+    const nextRoot=await realpath(await mkdtemp(join(tmpdir(),'agenvyl-workspaces-next-')));
+    await mkdir(join(nextRoot,'room-2'));
+    try{
+      const policy=new WorkspacePolicy([root]);
+      policy.configure([nextRoot]);
+      expect(policy.resolve('room-2','.')).toBe(join(nextRoot,'room-2'));
+      expectCode(()=>policy.resolve('room-1','.'),'workspace_not_found');
+    }finally{await rm(nextRoot,{recursive:true,force:true});}
+  });
+
   it.each([
     ['../outside', 'workspace_invalid'],
     ['/tmp', 'workspace_invalid'],

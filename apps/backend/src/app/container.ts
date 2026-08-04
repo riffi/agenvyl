@@ -19,6 +19,10 @@ import {SetupService} from '../modules/setup/SetupService.js';
 
 export async function createAppContainer(config: AppConfig, fetchImplementation?: typeof fetch,logger?:FastifyBaseLogger,legacySeed?:boolean) {
   const {database,personas,userProfile,personaGroups,rooms,roomEvents,messages,runs,workspace,workspaceSnapshots,workspaceSlots}=await createRepositories(config.databaseUrl,{legacySeed:legacySeed??process.env.NODE_ENV==='test'});
+  const[installation]=await database.sql`SELECT completed_at,workspace_root FROM installation_state WHERE id=true`;
+  const persistedWorkspaceRoot=installation.completed_at&&String(installation.workspace_root??'').trim()?String(installation.workspace_root):undefined;
+  const workspaceRoot=persistedWorkspaceRoot??config.workspaceRoot;
+  const workspaceAgentRoot=persistedWorkspaceRoot&&config.workspaceAgentRoot===config.workspaceRoot?persistedWorkspaceRoot:config.workspaceAgentRoot;
   const eventBus = new RoomEventBus();
   const events = new RoomEventService(roomEvents,eventBus);
   const connector=new HttpConnectorClient(config.connectorUrl,config.connectorToken,fetchImplementation,{
@@ -27,7 +31,7 @@ export async function createAppContainer(config: AppConfig, fetchImplementation?
   const harnessCatalogService=new HarnessCatalogService(connector,{logger});
   const connectorRuns=new ConnectorRunAdapter(connector);
   const activeRuns = new ActiveRunRegistry();
-  const roomWorkspace=new RoomWorkspaceService(rooms,workspace,events,activeRuns,config.workspaceRoot,config.workspaceAgentRoot,config.workspaceMaxFileBytes,config.planModeEnabled,workspaceSnapshots,logger,{
+  const roomWorkspace=new RoomWorkspaceService(rooms,workspace,events,activeRuns,workspaceRoot,workspaceAgentRoot,config.workspaceMaxFileBytes,config.planModeEnabled,workspaceSnapshots,logger,{
     noopMode:config.workspaceNoopMode,
     warmSlotsMode:config.workspaceWarmSlotsMode,
     statCacheMode:config.workspaceStatCacheMode,
@@ -56,7 +60,7 @@ export async function createAppContainer(config: AppConfig, fetchImplementation?
     runsService:new RunsService({runs,events,activeRuns,executor:runExecutor,planModeEnabled:config.planModeEnabled}),
     harnessCatalogService,
     roomWorkspace,
-    setupService:new SetupService(database,connector,config.workspaceRoot,harnessCatalogService,{logger}),
+    setupService:new SetupService(database,connector,workspaceRoot,harnessCatalogService,{logger,roomWorkspace}),
   };
 }
 

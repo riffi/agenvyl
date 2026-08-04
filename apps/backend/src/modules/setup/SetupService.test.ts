@@ -36,6 +36,13 @@ describe('SetupService harness discovery cache',()=>{
     const state=await new SetupService(database,connector,'C:/workspaces',{invalidate:vi.fn()}).state();
     expect(state.instances).toEqual([{id:'custom-hermes',type:'hermes',enabled:true,endpoint:'http://127.0.0.1:9000',status:'unavailable'}]);
   });
+
+  it('returns a native folder selection without changing setup state',async()=>{
+    const directoryPicker=vi.fn().mockResolvedValue('/Users/test/workspaces');
+    const service=new SetupService(databaseFixture(),connectorFixture(),'/default',{invalidate:vi.fn()},{directoryPicker});
+    await expect(service.selectWorkspaceDirectory()).resolves.toEqual({path:'/Users/test/workspaces'});
+    expect(directoryPicker).toHaveBeenCalledOnce();
+  });
 });
 
 const databaseFixture=()=>({sql:vi.fn().mockResolvedValue([])}) as unknown as Database;

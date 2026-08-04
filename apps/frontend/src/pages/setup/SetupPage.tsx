@@ -1,8 +1,10 @@
 import {useEffect,useMemo,useState,type FormEvent} from 'react';
 import {useLocation,useNavigate} from 'react-router-dom';
+import {FolderOpen} from 'lucide-react';
 import type {CompleteSetupRequest,SetupHarnessCandidate,SetupHarnessInstance,SetupState} from '@agenvyl/contracts';
 import {HarnessIcon} from '../../entities/harness';
 import {apiRequest} from '../../shared/api';
+import {handleAfterNameChange} from '../../shared/lib';
 import styles from './SetupPage.module.css';
 
 type Catalog={instances:Array<{id:string;type:string;status:string;models:Array<{id:string;label?:string}>;controls:{permissionProfiles:Array<{id:string}>;agentVariants:Array<{id:string}>}}>};
@@ -14,10 +16,10 @@ export function SetupPage(){
   const [agy,setAgy]=useState(false),[agyConfirmation,setAgyConfirmation]=useState('');
   const [openCodeManaged,setOpenCodeManaged]=useState(true);
   const [claudeOAuthConfirmation,setClaudeOAuthConfirmation]=useState('');
-  const [name,setName]=useState('User'),[handle,setHandle]=useState('user'),[roomTitle,setRoomTitle]=useState('First room'),[busy,setBusy]=useState(false),[error,setError]=useState('');
+  const [name,setName]=useState('User'),[handle,setHandle]=useState('user'),[workspaceRoot,setWorkspaceRoot]=useState(''),[choosingRoot,setChoosingRoot]=useState(false),[roomTitle,setRoomTitle]=useState('First room'),[busy,setBusy]=useState(false),[error,setError]=useState('');
   useEffect(()=>{if(configure){navigate('/settings/harnesses',{replace:true});return;}void apiRequest<SetupState>('/api/v1/setup').then(value=>{
     const initial=initialConnectorSelection(value);
-    setState(value);setSelected(initial.selected);setAgy(initial.agy);setOpenCodeManaged(initial.openCodeManaged);
+    setState(value);setSelected(initial.selected);setAgy(initial.agy);setOpenCodeManaged(initial.openCodeManaged);setWorkspaceRoot(value.workspaceRoot);
     setClaudeOAuthConfirmation(initial.claudeOAuthConfirmed?'CLAUDE OAUTH':'');
     if(value.completed&&value.firstRoomId&&!preview)navigate(`/rooms/${value.firstRoomId}`,{replace:true});
   }).catch(issue=>setError(message(issue)));},[configure,navigate,preview]);
@@ -27,8 +29,11 @@ export function SetupPage(){
     return()=>window.clearInterval(timer);
   },[state?.discoveryCache.state]);
   const safe=useMemo(()=>state?.candidates.filter(candidate=>candidate.safeToSelect&&!candidate.requiresConfirmation).map(candidate=>candidate.type)??[],[state]);
+  const normalizedHandle=handle.trim().replace(/^@/,'').toLowerCase();
+  const handleIssue=normalizedHandle&&!/^[a-z0-9][a-z0-9_-]*$/.test(normalizedHandle)?'Use only a-z, 0-9, _, or -; start with a letter or digit.':undefined;
   const claudeNeedsConfirmation=Boolean(state?.candidates.some(candidate=>candidate.type==='claude'&&candidate.requiresConfirmation==='claude_oauth'&&selected.includes('claude')));
   const toggle=(candidate:SetupHarnessCandidate)=>setSelected(value=>value.includes(candidate.type)?value.filter(item=>item!==candidate.type):[...value,candidate.type]);
+  const chooseWorkspaceRoot=async()=>{setChoosingRoot(true);setError('');try{const result=await apiRequest<{path:string|null}>('/api/v1/setup/workspace-directory',{method:'POST',body:{}});if(result.path)setWorkspaceRoot(result.path);}catch(issue){setError(message(issue));}finally{setChoosingRoot(false);}};
   const submit=async(event:FormEvent)=>{event.preventDefault();
     if(preview){setError('Development preview is read-only. No setup changes were saved.');return;}
     if(agy&&agyConfirmation!=='AGY'){setError('Type AGY to confirm');return;}
@@ -41,7 +46,7 @@ export function SetupPage(){
     const catalog=instances.length?await apiRequest<Catalog>('/api/v1/harnesses?refresh=true'):undefined;
     const first=catalog?.instances.find(instance=>instance.status!=='unavailable'&&instance.models.length);
     const route:CompleteSetupRequest['route']=first?{harness_instance_id:first.id,harness_type:first.type,model_id:first.models[0].id,permission_profile_id:first.controls.permissionProfiles[0]?.id??null,agent_variant_id:first.controls.agentVariants[0]?.id??null}:null;
-    const result=await apiRequest<{roomId:string}>('/api/v1/setup/complete',{method:'POST',body:{locale:'en',workspace_root:state?.workspaceRoot??'',profile:{display_name:name,handle},room_title:roomTitle,route} satisfies CompleteSetupRequest});navigate(`/rooms/${result.roomId}`,{replace:true});
+    const result=await apiRequest<{roomId:string}>('/api/v1/setup/complete',{method:'POST',body:{locale:'en',workspace_root:workspaceRoot.trim(),profile:{display_name:name,handle},room_title:roomTitle,route} satisfies CompleteSetupRequest});navigate(`/rooms/${result.roomId}`,{replace:true});
   }catch(issue){setError(message(issue));}finally{setBusy(false);}};
   if(configure)return null;
   if(!state&&!error)return <main className={styles.shell}><p>Checking installation…</p></main>;
@@ -64,7 +69,7 @@ export function SetupPage(){
       claudeOAuthConfirmation={claudeOAuthConfirmation}
       setClaudeOAuthConfirmation={setClaudeOAuthConfirmation}
     />
-    {!configure&&<section className={styles.grid}><label>Display name<input value={name} onChange={event=>setName(event.target.value)} required/></label><label>Handle<input value={handle} onChange={event=>setHandle(event.target.value)} pattern="[a-z0-9][a-z0-9_-]*" required/></label><label className={styles.wide}>Workspace root<input value={state?.workspaceRoot??''} readOnly/></label><label className={styles.wide}>First room<input value={roomTitle} onChange={event=>setRoomTitle(event.target.value)} required/></label></section>}
+    {!configure&&<section className={styles.grid}><label>Display name<input value={name} onChange={event=>{const nextName=event.target.value;setHandle(current=>handleAfterNameChange(name,nextName,current));setName(nextName);}} required/></label><label className={styles.handleField}>Handle<span className={`${styles.handleWrap} ${handleIssue?styles.invalid:''}`}><b aria-hidden="true">@</b><input aria-label="User handle" placeholder="for example, alex_smith" value={handle} onChange={event=>setHandle(event.target.value.toLowerCase().replace(/^@/,''))} pattern="[a-z0-9][a-z0-9_-]*" required/></span><small className={`${styles.handleMessage} ${handleIssue?styles.handleError:normalizedHandle?styles.available:''}`}>{handleIssue??(normalizedHandle?`@${normalizedHandle} — available`:'Used in mentions.')}</small></label><label className={styles.wide}>Workspace root<span className={styles.pathField}><input value={workspaceRoot} onChange={event=>setWorkspaceRoot(event.target.value)} required spellCheck={false}/><button type="button" className={styles.browse} onClick={chooseWorkspaceRoot} disabled={choosingRoot} aria-label="Choose workspace root folder"><FolderOpen/>{choosingRoot?'Choosing…':'Choose…'}</button></span></label><label className={styles.wide}>First room<input value={roomTitle} onChange={event=>setRoomTitle(event.target.value)} required/></label></section>}
     {state&&state.discoveryCache.state!=='fresh'&&<p className={styles.cacheWarning} role="status">Harness discovery is {state.discoveryCache.state}. Showing the last known candidates{cacheTime(state.discoveryCache.refreshedAt)}.</p>}
     {error&&<p className={styles.error} role="alert">{error}</p>}<button className={styles.primary} disabled={busy||preview}>{busy?'Setting up…':preview?'Preview only':configure?'Save connectors':'Create workspace'}</button><p className={styles.note}>{preview?'Open /setup normally to use the real installation flow.':'You can continue without connectors and add them later.'}</p>
   </form></main>;

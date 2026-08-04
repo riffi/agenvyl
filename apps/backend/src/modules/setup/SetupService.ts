@@ -1,12 +1,16 @@
 import type {CompleteSetupRequest,ConfigureSetupHarnessesRequest,HarnessSettingsState,SetupState,TestHarnessInstanceRequest,TestHarnessInstanceResult} from '@agenvyl/contracts';
 import {isConfigureConnectorInstancesRequest,isTestConnectorInstanceRequest} from '@agenvyl/connector-contract';
 import type {FastifyBaseLogger} from 'fastify';
+import {mkdir} from 'node:fs/promises';
+import path from 'node:path';
 import type {Database} from '../../infrastructure/database/Database.js';
 import type {HttpConnectorClient} from '../../integrations/connector/HttpConnectorClient.js';
 import {AppError} from '../../shared/errors/AppError.js';
 import type {HarnessCatalogService} from '../connector/HarnessCatalogService.js';
+import type {RoomWorkspaceService} from '../workspace/RoomWorkspaceService.js';
 import {HarnessMetadataCache,unavailableHarnessCache} from '../connector/HarnessMetadataCache.js';
 import {isAvailableStarterRoute,selectStarterAgentRoutes,type StarterAgentRoute,type StarterHarnessCatalog} from './starterAgentRoutes.js';
+import {pickWorkspaceDirectory} from './workspaceDirectoryPicker.js';
 
 const templates=[
   {handle:'architect',name:'Architect',color:'#3b82f6',prompt:'Analyze the system, contracts, risks, and trade-offs before implementation.'},
@@ -18,15 +22,19 @@ export class SetupService{
   private readonly discoveryCache:HarnessMetadataCache<Awaited<ReturnType<HttpConnectorClient['discover']>>>;
   private readonly now:()=>number;
   private readonly logger?:Pick<FastifyBaseLogger,'info'|'warn'>;
+  private readonly roomWorkspace?:Pick<RoomWorkspaceService,'configureRoots'>;
+  private readonly directoryPicker:()=>Promise<string|undefined>;
   constructor(
     private readonly database:Database,
     private readonly connector:HttpConnectorClient,
-    private readonly workspaceRoot:string,
+    private workspaceRoot:string,
     private readonly catalogCache:Pick<HarnessCatalogService,'invalidate'>,
-    options:{ttlMs?:number;retryMs?:number;now?:()=>number;logger?:Pick<FastifyBaseLogger,'info'|'warn'>}={},
+    options:{ttlMs?:number;retryMs?:number;now?:()=>number;logger?:Pick<FastifyBaseLogger,'info'|'warn'>;roomWorkspace?:Pick<RoomWorkspaceService,'configureRoots'>;directoryPicker?:()=>Promise<string|undefined>}={},
   ){
     this.now=options.now??Date.now;
     this.logger=options.logger;
+    this.roomWorkspace=options.roomWorkspace;
+    this.directoryPicker=options.directoryPicker??(()=>pickWorkspaceDirectory());
     this.discoveryCache=new HarnessMetadataCache({...options,error:{code:'discovery_unavailable',message:'Harness discovery refresh failed'}});
   }
   async state():Promise<SetupState>{
@@ -85,9 +93,25 @@ export class SetupService{
       throw new AppError('connector_unavailable',503,'Connector connection testing is unavailable');
     }
   }
+  async selectWorkspaceDirectory(){
+    try{return{path:await this.directoryPicker()??null};}
+    catch{throw new AppError('directory_picker_unavailable',503,'The system folder picker is unavailable');}
+  }
   async complete(input:CompleteSetupRequest){
     validate(input);
-    if(input.workspace_root!==this.workspaceRoot)throw new AppError('invalid_workspace_root',400,'Workspace root does not match this installation');
+    const workspaceRoot=path.resolve(input.workspace_root.trim());
+    if(!path.isAbsolute(input.workspace_root.trim()))throw new AppError('invalid_workspace_root',400,'Workspace root must be an absolute path');
+    const[existingState]=await this.database.sql`SELECT completed_at,first_room_id FROM installation_state WHERE id=true`;
+    if(existingState.completed_at)return{roomId:String(existingState.first_room_id)};
+    if(workspaceRoot!==path.resolve(this.workspaceRoot)){
+      try{
+        await mkdir(workspaceRoot,{recursive:true});
+        await this.connector.configureWorkspaceRoot(workspaceRoot);
+        this.roomWorkspace?.configureRoots(workspaceRoot);
+      }
+      catch{throw new AppError('invalid_workspace_root',400,'Workspace root could not be configured');}
+      this.workspaceRoot=workspaceRoot;
+    }
     const starterRoutes=input.route?await this.starterRoutes(input.route):[];
     const now=new Date().toISOString(),roomId=crypto.randomUUID();
     return this.database.transaction(async tx=>{

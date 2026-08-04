@@ -8,5 +8,6 @@ export async function registerSetupRoutes(app:FastifyInstance,setup:SetupService
   app.put<{Body:ConfigureSetupHarnessesRequest}>('/api/v1/harness-settings',request=>setup.configure(request.body));
   app.post<{Body:TestHarnessInstanceRequest}>('/api/v1/harness-settings/test',request=>setup.testHarness(request.body));
   app.put<{Body:ConfigureSetupHarnessesRequest}>('/api/v1/setup/harnesses',request=>setup.configure(request.body));
+  app.post('/api/v1/setup/workspace-directory',()=>setup.selectWorkspaceDirectory());
   app.post<{Body:CompleteSetupRequest}>('/api/v1/setup/complete',request=>setup.complete(request.body));
 }

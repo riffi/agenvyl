@@ -1,4 +1,7 @@
 import {describe,expect,it,vi} from 'vitest';
+import {mkdtemp,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {buildApp} from '../../app/buildApp.js';
 import {connectTestDatabase,testDatabaseUrl} from '../../testDatabase.js';
 
@@ -14,15 +17,16 @@ describe('setup API',()=>{
   });
 
   it('bootstraps a fresh zero-harness installation atomically and idempotently',async()=>{
-    const request=vi.fn<typeof fetch>(async(url,init)=>{const path=new URL(String(url)).pathname;if(path==='/v2/discovery')return Response.json({apiVersion:'v2',candidates:[]});if(path==='/v2/instances/test'&&init?.method==='POST')return Response.json({apiVersion:'v2',instanceId:'local-hermes',status:'healthy',capabilities:['model_catalog']});if(path==='/v2/instances')return Response.json({apiVersion:'v2',connectorEpoch:'epoch',instances:[]});if(path==='/v2/configuration')return Response.json({apiVersion:'v2',instances:[]});return new Response('{}',{status:404});});
+    const request=vi.fn<typeof fetch>(async(url,init)=>{const path=new URL(String(url)).pathname;if(path==='/v2/discovery')return Response.json({apiVersion:'v2',candidates:[]});if(path==='/v2/instances/test'&&init?.method==='POST')return Response.json({apiVersion:'v2',instanceId:'local-hermes',status:'healthy',capabilities:['model_catalog']});if(path==='/v2/instances')return Response.json({apiVersion:'v2',connectorEpoch:'epoch',instances:[]});if(path==='/v2/configuration')return Response.json({apiVersion:'v2',instances:[]});if(path==='/v2/workspaces'&&init?.method==='PUT')return Response.json({apiVersion:'v2',roots:JSON.parse(String(init.body)).roots});return new Response('{}',{status:404});});
     const databaseUrl=testDatabaseUrl('setup_api'),app=await buildApp({databaseUrl,connectorUrl:'http://connector.test',connectorToken:'x'.repeat(32),fetch:request,distPath:'missing-dist',legacySeed:false,logger:false});
     const setup=(await app.inject('/api/v1/setup')).json();expect(setup).toMatchObject({completed:false,instances:[],candidates:[],workspaceRoot:expect.any(String)});
     const tested=await app.inject({method:'POST',url:'/api/v1/harness-settings/test',payload:{instance:{id:'local-hermes',type:'hermes',enabled:false}}});expect(tested.statusCode).toBe(200);expect(tested.json()).toMatchObject({instanceId:'local-hermes',status:'healthy'});
     expect((await app.inject({method:'PUT',url:'/api/v1/setup/harnesses',payload:{instances:[{id:'local-antigravity',type:'antigravity',enabled:true}]}})).statusCode).toBe(200);
-    const payload={locale:'ru',workspace_root:setup.workspaceRoot,profile:{display_name:'Владимир',handle:'vladimir'},room_title:'Первая комната',route:null};
+    const customWorkspaceRoot=await mkdtemp(join(tmpdir(),'agenvyl-setup-workspaces-'));
+    const payload={locale:'ru',workspace_root:customWorkspaceRoot,profile:{display_name:'Владимир',handle:'vladimir'},room_title:'Первая комната',route:null};
     const first=await app.inject({method:'POST',url:'/api/v1/setup/complete',payload});expect(first.statusCode).toBe(200);
     const repeated=await app.inject({method:'POST',url:'/api/v1/setup/complete',payload});expect(repeated.json()).toEqual(first.json());
-    const sql=connectTestDatabase(databaseUrl);expect((await sql`SELECT COUNT(*)::int count FROM rooms`)[0]).toEqual({count:1});expect((await sql`SELECT COUNT(*)::int count FROM personas`)[0]).toEqual({count:0});expect((await sql`SELECT display_name,handle FROM local_user_profiles WHERE id='local-user'`)[0]).toEqual({display_name:'Владимир',handle:'vladimir'});await sql.end();await app.close();
+    const sql=connectTestDatabase(databaseUrl);expect((await sql`SELECT COUNT(*)::int count FROM rooms`)[0]).toEqual({count:1});expect((await sql`SELECT COUNT(*)::int count FROM personas`)[0]).toEqual({count:0});expect((await sql`SELECT display_name,handle FROM local_user_profiles WHERE id='local-user'`)[0]).toEqual({display_name:'Владимир',handle:'vladimir'});expect((await sql`SELECT workspace_root FROM installation_state WHERE id=true`)[0]).toEqual({workspace_root:customWorkspaceRoot});expect(request).toHaveBeenCalledWith(expect.stringContaining('/v2/workspaces'),expect.objectContaining({method:'PUT'}));await sql.end();await app.close();await rm(customWorkspaceRoot,{recursive:true,force:true});
   });
   it('creates Architect, Builder, and Reviewer on different harnesses when available',async()=>{
     const instances=[

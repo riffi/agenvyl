@@ -31,6 +31,7 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
   discover?:()=>Promise<ConnectorDiscovery>;
   configureInstances?:(instances:ConnectorConfig['instances'])=>Promise<ReadonlyMap<string,ConnectorAdapter>|PreparedAdapterRuntime>;
   persistInstances?:(instances:ConnectorConfig['instances'])=>Promise<void>;
+  persistWorkspaces?:(roots:string[])=>Promise<void>;
   sseHeartbeatMs?:number;
 } = {}) {
   const app = Fastify({ logger: options.logger ? { redact: ['req.headers.authorization', 'req.headers.x-api-key'] } : false });
@@ -89,6 +90,22 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
   }));
 
   app.get('/v2/configuration',async()=>({apiVersion:CONNECTOR_API_VERSION,instances:structuredClone(config.instances)}));
+
+  app.put('/v2/workspaces',async(request,reply)=>{
+    const roots=isWorkspaceRoots(request.body)?request.body.roots:undefined;
+    if(!roots)return reply.code(400).send({apiVersion:CONNECTOR_API_VERSION,error:'invalid_request',message:'Workspace roots must contain one absolute directory'});
+    if(!options.persistWorkspaces)return reply.code(503).send({apiVersion:CONNECTOR_API_VERSION,error:'configuration_unavailable',message:'Workspace configuration is unavailable'});
+    try{
+      new WorkspacePolicy(roots);
+      await options.persistWorkspaces(roots);
+      workspacePolicy.configure(roots);
+      config.workspaces.roots=[...roots];
+      return{apiVersion:CONNECTOR_API_VERSION,roots:[...roots]};
+    }catch(error){
+      app.log.warn({err:error},'Workspace configuration failed');
+      return reply.code(400).send({apiVersion:CONNECTOR_API_VERSION,error:'invalid_workspace_root',message:'Workspace root must be an existing absolute directory'});
+    }
+  });
 
   app.get('/v2/discovery',async(_request,reply)=>options.discover?options.discover():reply.code(503).send({apiVersion:CONNECTOR_API_VERSION,error:'discovery_unavailable',message:'Harness discovery is unavailable'}));
 
@@ -249,4 +266,8 @@ function authorized(request: FastifyRequest, token: string) {
   if (!header?.startsWith('Bearer ')) return false;
   const supplied = Buffer.from(header.slice(7)), expected = Buffer.from(token);
   return supplied.length === expected.length && timingSafeEqual(supplied, expected);
+}
+
+function isWorkspaceRoots(value:unknown):value is{roots:string[]}{
+  return Boolean(value&&typeof value==='object'&&Array.isArray((value as {roots?:unknown}).roots)&&(value as {roots:unknown[]}).roots.length===1&&typeof (value as {roots:string[]}).roots[0]==='string');
 }

@@ -52,14 +52,21 @@ cleanup() { rm -rf "$temporary"; }
 trap cleanup EXIT HUP INT TERM
 
 download() {
-  if command -v curl >/dev/null 2>&1; then curl --fail --location --proto '=https' --tlsv1.2 --silent --show-error "$1" --output "$2"
-  elif command -v wget >/dev/null 2>&1; then wget --https-only --quiet "$1" -O "$2"
+  quiet=${3:-0}
+  if command -v curl >/dev/null 2>&1; then
+    if [ "$quiet" = 1 ]; then curl --fail --location --proto '=https' --tlsv1.2 --silent --show-error "$1" --output "$2"
+    else curl --fail --location --proto '=https' --tlsv1.2 --progress-bar "$1" --output "$2"
+    fi
+  elif command -v wget >/dev/null 2>&1; then
+    if [ "$quiet" = 1 ]; then wget --https-only --quiet "$1" -O "$2"
+    else wget --https-only "$1" -O "$2"
+    fi
   else echo 'Agenvyl installer requires curl or wget.' >&2; exit 1
   fi
 }
 
 index_file=$temporary/agenvyl-release.txt
-download "$manifest_url" "$index_file"
+download "$manifest_url" "$index_file" 1
 [ "$(sed -n '1p' "$index_file")" = 'agenvyl-release-index-v1' ] || { echo 'Unsupported Agenvyl release index.' >&2; exit 1; }
 
 tab=$(printf '\t')
@@ -84,6 +91,7 @@ case $expected_sha in *[!0-9a-f]*|'') echo 'Release index contains an invalid SH
 if [ "$requested_version" != latest ] && [ "$requested_version" != "$version" ]; then echo "Requested version $requested_version, index contains $version." >&2; exit 1; fi
 
 archive=$temporary/$filename
+echo "Downloading Agenvyl $version..."
 download "$archive_url" "$archive"
 actual_size=$(wc -c < "$archive" | tr -d ' ')
 [ "$actual_size" = "$expected_size" ] || { echo "Archive size mismatch: expected $expected_size, got $actual_size." >&2; exit 1; }

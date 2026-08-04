@@ -60,6 +60,7 @@ export class HttpConnectorClient implements ConnectorExecutionClient {
   async discover():Promise<ConnectorDiscovery>{const value=await this.get('/v2/discovery','discovery',METADATA_REQUEST_TIMEOUT_MS);if(!isConnectorDiscovery(value))throw invalidResponse('Connector returned invalid discovery');return value;}
   async configuration():Promise<ConnectorConfigurationResult>{const value=await this.get('/v2/configuration','discovery');if(!isConnectorConfigurationResult(value))throw invalidResponse('Connector returned invalid configuration');return value;}
   async configureInstances(input:ConfigureConnectorInstancesRequest):Promise<ConnectorConfigurationResult>{const value=await this.json('/v2/instances','PUT',input,'discovery',15_000);if(!isRecord(value)||value.apiVersion!=='v2'||!Array.isArray(value.instances))throw invalidResponse('Connector returned invalid configuration');return value as ConnectorConfigurationResult;}
+  async configureWorkspaceRoot(root:string):Promise<void>{await this.json('/v2/workspaces','PUT',{roots:[root]},'discovery',15_000);}
   async testInstance(input:TestConnectorInstanceRequest):Promise<TestConnectorInstanceResult>{const value=await this.json('/v2/instances/test','POST',input,'discovery',METADATA_REQUEST_TIMEOUT_MS);if(!isTestConnectorInstanceResult(value)||value.instanceId!==input.instance.id)throw invalidResponse('Connector returned an invalid connection test result');return value;}
 
   async start(request:StartExecutionRequest):Promise<ExecutionSnapshot>{

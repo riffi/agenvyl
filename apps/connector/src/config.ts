@@ -33,8 +33,16 @@ export async function loadConnectorConfig(options: { path?: string; env?: NodeJS
 }
 
 export async function saveConnectorInstances(config:ConnectorConfig,instances:ConnectorInstanceConfig[]){
+  await saveConnectorConfig(config,{...config,instances});
+}
+
+export async function saveConnectorWorkspaces(config:ConnectorConfig,roots:string[]){
+  await saveConnectorConfig(config,{...config,workspaces:{roots}});
+}
+
+async function saveConnectorConfig(config:ConnectorConfig,next:ConnectorConfig){
   if(!config.path)throw new Error('Connector config path is unavailable');
-  const document={version:1,listen:{host:config.listen.host,port:config.listen.port},workspaces:{roots:[...config.workspaces.roots]},instances};
+  const document={version:1,listen:{host:next.listen.host,port:next.listen.port},workspaces:{roots:[...next.workspaces.roots]},instances:next.instances};
   const temporary=`${config.path}.${process.pid}.tmp`;
   await writeFile(temporary,stringify(document),{encoding:'utf8',mode:0o600});
   if(process.platform!=='win32'){await rename(temporary,config.path);return;}

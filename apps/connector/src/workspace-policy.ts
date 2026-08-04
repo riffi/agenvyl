@@ -8,9 +8,13 @@ export class WorkspacePolicyError extends Error {
 }
 
 export class WorkspacePolicy {
-  private readonly roots: string[];
+  private roots: string[]=[];
 
   constructor(configuredRoots: readonly string[]) {
+    this.configure(configuredRoots);
+  }
+
+  configure(configuredRoots:readonly string[]){
     const roots = configuredRoots.map((root, index) => canonicalDirectory(root, `workspaces.roots[${index}]`));
     if (new Set(roots).size !== roots.length) throw new Error('workspaces.roots contains duplicate canonical paths');
     this.roots = roots;

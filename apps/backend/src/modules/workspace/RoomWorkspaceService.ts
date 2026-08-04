@@ -37,9 +37,9 @@ export class RoomWorkspaceService{
   private statCapabilities=new Map<string,{supported:boolean;capabilityKey:string}>();
   private readonly runCleanup:RunWorkspaceCleanup;
   private readonly optimization:WorkspaceOptimizationOptions;
-  private readonly legacyDriver:LegacyRunWorkspaceDriver;
-  private readonly warmDriver:WarmSlotWorkspaceDriver;
-  constructor(private readonly rooms:RoomRepository,private readonly repository:WorkspaceRepository,private readonly events:RoomEventService,private readonly activeRuns:ActiveRunRegistry,private readonly root:string,private readonly agentRoot:string,readonly maxFileBytes:number,private readonly planModeEnabled?:boolean,private readonly snapshots?:WorkspaceSnapshotRepository,private readonly logger?:WorkspaceLogger,optimization:Partial<WorkspaceOptimizationOptions>={},private readonly slots?:WorkspaceSlotRepository){
+  private legacyDriver:LegacyRunWorkspaceDriver;
+  private warmDriver:WarmSlotWorkspaceDriver;
+  constructor(private readonly rooms:RoomRepository,private readonly repository:WorkspaceRepository,private readonly events:RoomEventService,private readonly activeRuns:ActiveRunRegistry,private root:string,private agentRoot:string,readonly maxFileBytes:number,private readonly planModeEnabled?:boolean,private readonly snapshots?:WorkspaceSnapshotRepository,private readonly logger?:WorkspaceLogger,optimization:Partial<WorkspaceOptimizationOptions>={},private readonly slots?:WorkspaceSlotRepository){
     this.optimization={...defaultOptimizationOptions,...optimization};
     this.legacyDriver=new LegacyRunWorkspaceDriver(root,agentRoot);
     this.warmDriver=new WarmSlotWorkspaceDriver(root,agentRoot);
@@ -56,6 +56,13 @@ export class RoomWorkspaceService{
         },
       },
     );
+  }
+
+  configureRoots(root:string,agentRoot=root){
+    if(this.watchers.size||this.preparedRuns.size)throw new Error('Workspace root cannot change while workspaces are active');
+    this.root=root;this.agentRoot=agentRoot;
+    this.legacyDriver=new LegacyRunWorkspaceDriver(root,agentRoot);
+    this.warmDriver=new WarmSlotWorkspaceDriver(root,agentRoot);
   }
 
   roomPath(roomId:string){return path.join(path.resolve(this.root),roomId);}
