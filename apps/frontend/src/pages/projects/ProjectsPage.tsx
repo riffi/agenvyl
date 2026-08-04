@@ -14,16 +14,16 @@ export const ProjectsPage=()=>{
   const projects=query.data??[],back=search.get('room')?`/rooms/${encodeURIComponent(search.get('room')!)}`:'/';
   const deleteProject=async(project:LocalProject)=>{if(!confirm(`Delete “${project.name}”? It will be removed from every room.`))return;setError('');try{await remove.mutateAsync(project.id);}catch(issue){setError(message(issue));}};
   return <main className={styles.shell}>
-    <aside className={styles.rail}><Link to={back}><ArrowLeft/>Workspace</Link><div><p>Context</p><span><Folder/>Projects</span></div><small>Recommended local<br/>working folders</small></aside>
+    <aside className={styles.rail}><Link to={back} className={styles.back}><ArrowLeft/>Workspace</Link><div><p>Context</p><span className={styles.active}><Folder/>Projects</span></div><small>Recommended local<br/>working folders</small></aside>
     <section className={styles.content}>
-      <header className={styles.header}><span><strong><Folder/>Projects</strong><small>{projects.length} registered folder{projects.length===1?'':'s'}</small></span><div><Button icon={<RefreshCw/>} disabled={query.isFetching} onClick={()=>void query.refetch()}>Refresh</Button><Button variant="primary" icon={<Plus/>} onClick={()=>setEditing(null)}>Add project</Button></div></header>
-      {error&&<Alert tone="error">{error}</Alert>}
-      {query.isPending
-        ? <div className={styles.loading}><Spinner label="Loading projects…"/></div>
-        : projects.length
-          ? <div className={styles.grid}>{projects.map(project=><article key={project.id} className={styles.card}><div className={styles.folder}><FolderOpen/></div><span className={styles.copy}><strong>{project.name}</strong><code title={project.path}>{project.path}</code><small className={styles[project.availability]}><i/>{project.availability}</small></span><IconButton aria-label={`Edit ${project.name}`} title="Edit project" onClick={()=>setEditing(project)}><MoreHorizontal/></IconButton><IconButton className={styles.delete} aria-label={`Delete ${project.name}`} title="Delete project" onClick={()=>void deleteProject(project)}><Trash2/></IconButton></article>)}</div>
-          : <EmptyState className={styles.empty} icon={<Folder/>} title="No projects yet" description="Register a local folder once, then recommend it to agents in any room." action={<Button variant="primary" icon={<Plus/>} onClick={()=>setEditing(null)}>Add your first project</Button>}/>
-      }
+      <header className={styles.pageHeader}><span><strong><Folder/>Projects</strong><small>{projects.length} registered folder{projects.length===1?'':'s'}</small></span><div><Button icon={<RefreshCw className={query.isFetching?styles.spinning:''}/>} disabled={query.isFetching} onClick={()=>void query.refetch()}>{query.isFetching?'Refreshing…':'Refresh'}</Button><Button variant="primary" icon={<Plus/>} onClick={()=>setEditing(null)}>Add project</Button></div></header>
+      {error&&<Alert className={styles.pageAlert} tone="error">{error}</Alert>}
+      <div className={styles.body}>{query.isPending
+          ? <div className={styles.loading}><Spinner label="Loading projects…"/></div>
+          : projects.length
+            ? <div className={styles.grid}>{projects.map(project=><article key={project.id} className={styles.card}><div className={styles.folder}><FolderOpen/></div><span className={styles.copy}><strong>{project.name}</strong><code title={project.path}>{project.path}</code><small className={styles[project.availability]}><i/>{project.availability}</small></span><IconButton aria-label={`Edit ${project.name}`} title="Edit project" onClick={()=>setEditing(project)}><MoreHorizontal/></IconButton><IconButton className={styles.delete} aria-label={`Delete ${project.name}`} title="Delete project" onClick={()=>void deleteProject(project)}><Trash2/></IconButton></article>)}</div>
+            : <EmptyState className={styles.empty} icon={<Folder/>} title="No projects yet" description="Register a local folder once, then recommend it to agents in any room." action={<Button variant="primary" icon={<Plus/>} onClick={()=>setEditing(null)}>Add your first project</Button>}/>
+      }</div>
     </section>
     {editing!==undefined&&<ProjectDialog project={editing} onClose={()=>setEditing(undefined)} onSaved={async()=>{setEditing(undefined);await queryClient.invalidateQueries({queryKey:projectKeys.all});}}/>}
   </main>;
