@@ -367,6 +367,20 @@ describe('OpenCodeConnectorAdapter', () => {
     expect(client.replyPermission).toHaveBeenNthCalledWith(2,expect.objectContaining({requestID:'native-external',reply:'once'}));
   });
 
+  it('auto-approves an allowlisted resource-only external permission from Bash',async()=>{
+    const client=fixtureClient();
+    client.subscribe=vi.fn().mockResolvedValue(events([
+      {type:'permission.asked',properties:{id:'native-external-bash',sessionID:'session-1',permission:'external_directory',patterns:['C:\\work\\tmp\\beautiful-landscape\\*'],metadata:{},always:[]}},
+      ...completedTurn(),
+      {type:'session.idle',properties:{sessionID:'session-1'}},
+    ]));
+    const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client,externalDirectoryRoots:['C:\\work']});
+    const executionProfile={...startRequest().executionProfile,permissionProfileId:'auto-approve'};
+
+    await expect(collect(adapter.events(await adapter.start({...startRequest(),executionProfile})))).resolves.toEqual([{type:'execution.completed',payload:{}}]);
+    expect(client.replyPermission).toHaveBeenCalledWith(expect.objectContaining({requestID:'native-external-bash',reply:'once'}));
+  });
+
   it('forces Standard approvals in Plan even when the persona selects Auto-approve',async()=>{
     const client=fixtureClient();
     client.agents=vi.fn().mockResolvedValue([{name:'build',mode:'primary'},{name:'plan',mode:'primary'}]);

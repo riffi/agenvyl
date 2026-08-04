@@ -20,22 +20,19 @@ export type ExternalDirectoryAssessment=
 
 export const assessExternalDirectoryRequest=(properties:Record<string,unknown>,roots:string[]):ExternalDirectoryAssessment=>{
   const metadata=record(properties.metadata);
-  if(!metadata)return{status:'malformed'};
-  const filepath=concreteAbsolutePath(metadata.filepath),parentDir=concreteAbsolutePath(metadata.parentDir);
-  if(!filepath||!parentDir||filepath.style!==parentDir.style)return{status:'malformed'};
-  if(!contains(parentDir,filepath))return{status:'malformed'};
   const resources=Array.isArray(properties.resources)?properties.resources:properties.patterns;
   if(!Array.isArray(resources)||resources.length===0)return{status:'malformed'};
   const concreteResources=resources.map(resourcePath);
-  if(concreteResources.some(resource=>!resource||resource.style!==filepath.style||!contains(parentDir,resource)))return{status:'malformed'};
+  if(concreteResources.some(resource=>!resource))return{status:'malformed'};
+  const boundary=requestBoundary(metadata,resources,concreteResources);
+  if(!boundary)return{status:'malformed'};
   const allowlisted=roots.some(root=>{
     const normalizedRoot=concreteAbsolutePath(root);
-    return normalizedRoot?.style===filepath.style
-      &&contains(normalizedRoot,parentDir)
-      &&contains(normalizedRoot,filepath)
+    return normalizedRoot?.style===boundary.style
+      &&contains(normalizedRoot,boundary)
       &&concreteResources.every(resource=>resource!==undefined&&contains(normalizedRoot,resource));
   });
-  return{status:allowlisted?'allowlisted':'outside_allowlist',requestedRoot:parentDir.value};
+  return{status:allowlisted?'allowlisted':'outside_allowlist',requestedRoot:boundary.value};
 };
 
 export const isAllowlistedExternalDirectoryRequest=(properties:Record<string,unknown>,roots:string[])=>assessExternalDirectoryRequest(properties,roots).status==='allowlisted';
@@ -58,6 +55,22 @@ const resourcePath=(value:unknown):PortablePath|undefined=>{
   const concrete=value.trim().replace(/[\\/](?:\*\*|\*)$/,'');
   return concreteAbsolutePath(concrete);
 };
+
+const requestBoundary=(metadata:Record<string,unknown>|undefined,resources:unknown[],concreteResources:(PortablePath|undefined)[]):PortablePath|undefined=>{
+  const hasFilepath=metadata?.filepath!==undefined,hasParentDir=metadata?.parentDir!==undefined;
+  if(hasFilepath||hasParentDir){
+    const filepath=concreteAbsolutePath(metadata?.filepath),parentDir=concreteAbsolutePath(metadata?.parentDir);
+    if(!filepath||!parentDir||filepath.style!==parentDir.style||!contains(parentDir,filepath))return;
+    if(concreteResources.some(resource=>!resource||resource.style!==filepath.style||!contains(parentDir,resource)))return;
+    return parentDir;
+  }
+  if(!resources.every(resource=>typeof resource==='string'&&/[\\/](?:\*\*|\*)$/.test(resource.trim())))return;
+  const [first,...rest]=concreteResources;
+  if(!first||rest.some(resource=>!resource||resource.style!==first.style||pathKey(resource)!==pathKey(first)))return;
+  return first;
+};
+
+const pathKey=(candidate:PortablePath)=>candidate.style==='win32'?candidate.value.toLowerCase():candidate.value;
 
 const contains=(root:PortablePath,target:PortablePath)=>{
   if(root.style!==target.style)return false;

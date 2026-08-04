@@ -17,6 +17,19 @@ describe('OpenCode external-directory policy',()=>{
     },[])).toEqual({status:'outside_allowlist',requestedRoot:'C:\\work'});
   });
 
+  it('allows a resource-only directory request emitted for a Bash command',()=>{
+    expect(assessExternalDirectoryRequest({
+      metadata:{},
+      resources:['C:\\work\\tmp\\beautiful-landscape\\*'],
+    },['C:\\work'])).toEqual({status:'allowlisted',requestedRoot:'C:\\work\\tmp\\beautiful-landscape'});
+  });
+
+  it('returns the concrete directory for a resource-only request outside the allowlist',()=>{
+    expect(assessExternalDirectoryRequest({
+      patterns:['C:\\work\\tmp\\beautiful-landscape\\**'],
+    },[])).toEqual({status:'outside_allowlist',requestedRoot:'C:\\work\\tmp\\beautiful-landscape'});
+  });
+
   it.each([
     ['empty allowlist',{metadata:{filepath:'/srv/shared/file.txt',parentDir:'/srv/shared'},resources:['/srv/shared/file.txt/**']},[]],
     ['prefix collision',{metadata:{filepath:'/srv/shared-secret/file.txt',parentDir:'/srv/shared-secret'},resources:['/srv/shared-secret/file.txt/**']},['/srv/shared']],
@@ -25,10 +38,12 @@ describe('OpenCode external-directory policy',()=>{
     ['resource traversal',{metadata:{filepath:'/srv/shared/file.txt',parentDir:'/srv/shared'},resources:['/srv/shared/../secret.txt/**']},['/srv/shared']],
     ['mixed separators',{metadata:{filepath:'C:\\Shared/file.txt',parentDir:'C:\\Shared'},resources:['C:\\Shared\\file.txt\\**']},['C:\\Shared']],
     ['relative filepath',{metadata:{filepath:'shared/file.txt',parentDir:'/srv/shared'},resources:['/srv/shared/file.txt/**']},['/srv/shared']],
-    ['missing metadata',{resources:['/srv/shared/file.txt/**']},['/srv/shared']],
     ['wildcard metadata',{metadata:{filepath:'/srv/shared/*.txt',parentDir:'/srv/shared'},resources:['/srv/shared/*.txt']},['/srv/shared']],
     ['wildcard root',{metadata:{filepath:'/srv/shared/file.txt',parentDir:'/srv/shared'},resources:['/srv/shared/file.txt/**']},['/srv/*']],
     ['cross-platform root',{metadata:{filepath:'/srv/shared/file.txt',parentDir:'/srv/shared'},resources:['/srv/shared/file.txt/**']},['C:\\srv\\shared']],
+    ['resource-only exact file',{metadata:{},resources:['/srv/shared/file.txt']},['/srv/shared']],
+    ['resource-only distinct roots',{metadata:{},resources:['/srv/shared/*','/srv/other/*']},['/srv']],
+    ['partial metadata',{metadata:{filepath:'/srv/shared/file.txt'},resources:['/srv/shared/*']},['/srv/shared']],
   ])('rejects %s',(_label,properties,roots)=>{
     expect(isAllowlistedExternalDirectoryRequest(properties,roots)).toBe(false);
   });
