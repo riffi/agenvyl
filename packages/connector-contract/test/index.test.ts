@@ -32,6 +32,9 @@ describe('Connector v1 contract fixtures', () => {
     expect(isConnectorExecutionEvent({ ...connectorContractFixtures.textEvent, payload: { text: 42 } })).toBe(false);
     const toolEvent={...connectorContractFixtures.textEvent,type:'tool.started',payload:{toolId:'tool-1',name:'mcpToolCall',safeSummary:'nodexium: search',safeInput:'{"query":"Codex"}'}};
     expect(isConnectorExecutionEvent(toolEvent)).toBe(true);
+    for(const type of ['tool.updated','tool.completed','tool.failed','tool.cancelled'] as const){
+      expect(isConnectorExecutionEvent({...toolEvent,type})).toBe(true);
+    }
     expect(isConnectorExecutionEvent({...toolEvent,payload:{...toolEvent.payload,safeInput:42}})).toBe(false);
     expect(isConnectorExecutionEvent({...toolEvent,payload:{...toolEvent.payload,safeInput:'x'.repeat(8_001)}})).toBe(false);
     expect(isConnectorExecutionEvent({...connectorContractFixtures.textEvent,type:'execution.upstream_status',payload:{state:'retrying',reason:'vendor_secret',retryable:true}})).toBe(false);

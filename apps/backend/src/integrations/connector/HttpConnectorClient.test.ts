@@ -81,6 +81,15 @@ describe('HttpConnectorClient', () => {
     expect(request.mock.calls[0]?.[0]).toBe('http://connector.test/v2/executions/run-1/events?after=2');
   });
 
+  it('accepts failed and cancelled tool lifecycle events',async()=>{
+    const failed={...connectorContractFixtures.textEvent,cursor:3,type:'tool.failed' as const,payload:{toolId:'tool-failed',name:'bash',safeSummary:'bash failed'}};
+    const cancelled={...connectorContractFixtures.textEvent,cursor:4,type:'tool.cancelled' as const,payload:{toolId:'tool-cancelled',name:'bash',safeSummary:'bash cancelled'}};
+    const completed={...connectorContractFixtures.textEvent,cursor:5,type:'execution.completed' as const,payload:{}};
+    const client=new HttpConnectorClient('http://connector.test','x'.repeat(32),vi.fn<typeof fetch>().mockResolvedValue(sse(failed,cancelled,completed)));
+
+    await expect(collect(client.events('run-1',{after:2,connectorEpoch:'epoch-1',signal:new AbortController().signal}))).resolves.toEqual([failed,cancelled,completed]);
+  });
+
   it('reconnects interrupted streams from the last accepted cursor',async()=>{
     const completed={...connectorContractFixtures.textEvent,cursor:4,type:'execution.completed' as const,payload:{}},retry=vi.fn();
     const request=vi.fn<typeof fetch>()
