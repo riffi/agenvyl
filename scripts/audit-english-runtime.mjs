@@ -12,6 +12,7 @@ const cyrillicPattern = /[\u0400-\u04ff]/u;
 // These entries support Cyrillic input or data created by older versions. They
 // are not presented as current English UI copy.
 const allowedRuntimeCyrillic = new Map([
+  ['apps/frontend/src/shared/lib/handles.ts', () => true],
   ['apps/frontend/src/widgets/personas-screen/personaDraft.ts', () => true],
   [
     'apps/backend/src/modules/messages/messages.repository.ts',
