@@ -2,7 +2,7 @@ import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {describe,expect,it} from 'vitest';
 import type {SetupHarnessCandidate,SetupState} from '@agenvyl/contracts';
-import {Candidate,ConnectorOptions,initialConnectorSelection,instanceConfig,isSetupPreview,mergeSetupHarnessSelection} from './SetupPage';
+import {Candidate,ConnectorOptions,FieldTitle,initialConnectorSelection,instanceConfig,isSetupPreview,mergeSetupHarnessSelection} from './SetupPage';
 
 const candidate:SetupHarnessCandidate={type:'opencode',label:'OpenCode',cli:{found:true,command:'opencode',version:'1.17.20'},endpoint:{url:'http://127.0.0.1:4096',reachable:true},safeToSelect:true,supportsManagedServer:true};
 const discoveryCache={state:'fresh' as const,refreshedAt:'2026-07-24T00:00:00.000Z',expiresAt:'2026-07-24T00:05:00.000Z'};
@@ -18,6 +18,10 @@ describe('setup harness configuration',()=>{
     expect(html).toContain('aria-label="OpenCode"');
     expect(html).toContain('data-harness-type="opencode"');
     expect(html).toContain('data-harness-size="md"');
+  });
+  it('renders field help as a keyboard-focusable tooltip',()=>{
+    const html=renderToStaticMarkup(createElement(FieldTitle,{label:'Workspace root',help:'Stores room files.'}));
+    expect(html).toContain('tabindex="0"');expect(html).toContain('role="tooltip"');expect(html).toContain('Stores room files.');
   });
 
   it('renders selected runtime settings in a separate compact options section',()=>{
