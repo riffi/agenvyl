@@ -31,12 +31,12 @@ export class RoomsService {
       throw new AppError("room_not_found", 404, "Room or cursor not found");
     return page;
   }
-  async create(input: { title?: string; personaIds?: string[] }) {
+  async create(input: { title?: string; personaIds?: string[];projectId?:string|null }) {
     const title = input.title?.trim();
     if (!title)
       throw new AppError("title_required", 400, "Room title is required");
     try {
-      return await this.rooms.create(title, input.personaIds ?? []);
+      return await this.rooms.create(title, input.personaIds ?? [],input.projectId);
     } catch (error) {
       throw new AppError(
         error instanceof Error ? error.message : "room_conflict",
@@ -44,6 +44,12 @@ export class RoomsService {
         "Room could not be created",
       );
     }
+  }
+  async assignProject(roomId:string,projectId:string|null){
+    const result=await this.rooms.assignProject(roomId,projectId);
+    if(result==='room_not_found')throw new AppError('room_not_found',404,'Room not found');
+    if(result==='project_not_found')throw new AppError('project_not_found',404,'Project not found');
+    return(await this.rooms.list()).find(room=>room.id===roomId)!;
   }
   async rename(roomId: string, titleInput?: string) {
     const title = titleInput?.trim();

@@ -7,7 +7,8 @@ import { fakePersonas, personaKeys, personasApi, type Persona } from "../../enti
 import {personaGroupKeys,personaGroupsApi,type PersonaGroup} from '../../entities/persona-group';
 import { roomKeys, roomsApi, useRoomStream, type Room } from "../../entities/room";
 import {userProfileApi,userProfileKey,type LocalUserProfile} from '../../entities/user-profile';
-import { CreateRoomDialog, RoomAgentManager } from "../../features/room-dialogs";
+import {projectKeys,projectsApi} from '../../entities/project';
+import { CreateRoomDialog, RoomAgentManager,RoomProjectDialog } from "../../features/room-dialogs";
 import {AttachmentPicker,useRoomAttachments} from '../../features/send-message';
 import {useRuntimeFeatures} from '../../shared/features';
 import { FakeRoomGateway, HttpRoomGateway, type RoomGateway } from "../../features/room-session";
@@ -50,6 +51,7 @@ export function WorkspaceApp({
   navigateToRoom,
   navigateToPersonas,
   navigateToHarnessSettings,
+  navigateToProjects,
   selectedPersonaId,
   navigateToPersona,
 }: {
@@ -58,6 +60,7 @@ export function WorkspaceApp({
   navigateToRoom: (roomId: string, options?: { replace?: boolean }) => void;
   navigateToPersonas: () => void;
   navigateToHarnessSettings?:()=>void;
+  navigateToProjects?:()=>void;
   selectedPersonaId?:string;
   navigateToPersona:(id?:string,options?:{replace?:boolean})=>void;
 }) {
@@ -91,6 +94,7 @@ export function WorkspaceApp({
     refetchInterval:query=>harnessCatalogRefreshInterval(query.state.data),
   });
   const userProfileQuery=useQuery({queryKey:userProfileKey,queryFn:({signal})=>userProfileApi.get(signal),enabled:!fake});
+  const projectsQuery=useQuery({queryKey:projectKeys.all,queryFn:({signal})=>projectsApi.list(signal),enabled:!fake});
   const rooms=fake?demoRooms:roomsQuery.data??[];
   const queriedRoomPersonas:RoomPersona[]=fake?demoPersonas.map(persona=>({persona,reasoning_effort_override:null})):roomPersonasQuery.data??[];
   const roomPersonas=queriedRoomPersonas.map(participant=>state.participantUpdates[participant.persona.id]??participant);
@@ -105,6 +109,7 @@ export function WorkspaceApp({
   const [menu, setMenu] = useState(false),
     [creatingRoom,setCreatingRoom]=useState(false),
     [managingAgents,setManagingAgents]=useState(false),
+    [projectRoom,setProjectRoom]=useState<Room>(),
     [refreshingHarness,setRefreshingHarness]=useState(false),
     [refreshHarnessError,setRefreshHarnessError]=useState<string>(),
     [selected, setSelected] = useState<string>();
@@ -138,13 +143,14 @@ export function WorkspaceApp({
   useEffect(()=>{if(!fake&&view==='chat'&&roomsQuery.data?.length&&!roomsQuery.data.some(room=>room.id===roomId))navigateToRoom(roomsQuery.data[0].id,{replace:true})},[fake,view,roomId,roomsQuery.data,navigateToRoom]);
   useEffect(()=>{setAttachmentPicker(false);setDraggingFiles(false);dragDepth.current=0},[roomId]);
   useEffect(() => () => gateway.dispose(), [gateway]);
-  const createRoomMutation=useMutation({mutationFn:({title,personaIds}:{title:string;personaIds:string[]})=>roomsApi.create(title,personaIds),onSuccess:()=>invalidateRooms()});
+  const createRoomMutation=useMutation({mutationFn:({title,personaIds,projectId}:{title:string;personaIds:string[];projectId:string|null})=>roomsApi.create(title,personaIds,projectId),onSuccess:()=>invalidateRooms()});
+  const assignProjectMutation=useMutation({mutationFn:({id,projectId}:{id:string;projectId:string|null})=>roomsApi.assignProject(id,projectId),onSuccess:()=>invalidateRooms()});
   const renameRoomMutation=useMutation({mutationFn:({id,title}:{id:string;title:string})=>roomsApi.rename(id,title),onSuccess:()=>invalidateRooms()});
   const deleteRoomMutation=useMutation({mutationFn:(id:string)=>roomsApi.remove(id),onSuccess:()=>invalidateRooms()});
   const restoreRoomMutation=useMutation({mutationFn:(id:string)=>roomsApi.restore(id),onSuccess:()=>invalidateRooms()});
   const purgeRoomMutation=useMutation({mutationFn:(id:string)=>roomsApi.purge(id),onSuccess:()=>invalidateRooms()});
   const userProfileMutation=useMutation({mutationFn:userProfileApi.update,onSuccess:profile=>queryClient.setQueryData(userProfileKey,profile)});
-  const createRoom=async(title:string,personaIds:string[])=>{if(fake){const id=crypto.randomUUID();setDemoRooms(current=>[{id,title,created_at:new Date().toISOString(),participant_count:personaIds.length,last_message_at:null,last_message_text:null},...current]);setDemoPersonas([...fakePersonas].filter(persona=>personaIds.includes(persona.id)));navigateToRoom(id);return}const room=await createRoomMutation.mutateAsync({title,personaIds});navigateToRoom(room.id);};
+  const createRoom=async(title:string,personaIds:string[],projectId:string|null)=>{if(fake){const id=crypto.randomUUID();setDemoRooms(current=>[{id,title,created_at:new Date().toISOString(),participant_count:personaIds.length,last_message_at:null,last_message_text:null,project:null},...current]);setDemoPersonas([...fakePersonas].filter(persona=>personaIds.includes(persona.id)));navigateToRoom(id);return}const room=await createRoomMutation.mutateAsync({title,personaIds,projectId});navigateToRoom(room.id);};
   const renameRoom=async(room:Room,title:string)=>{if(fake){setDemoRooms(current=>current.map(item=>item.id===room.id?{...item,title}:item));return}await renameRoomMutation.mutateAsync({id:room.id,title});};
   const saveRoomAgents=async(next:Set<string>)=>{if(fake){setDemoPersonas([...fakePersonas].filter(persona=>next.has(persona.id)));setDemoRooms(current=>current.map(room=>room.id===roomId?{...room,participant_count:next.size}:room));return}const current=new Set(personas.map(persona=>persona.id));await Promise.all([...next].filter(id=>!current.has(id)).map(id=>roomsApi.addParticipant(roomId,id)).concat([...current].filter(id=>!next.has(id)).map(id=>roomsApi.removeParticipant(roomId,id))));await Promise.all([invalidatePersonas(),invalidateRooms()]);};
   const updateParticipantReasoning=async(personaId:string,value:string|null)=>{if(fake)return;const updated=await roomsApi.updateParticipant(roomId,personaId,{reasoning_effort_override:value});queryClient.setQueryData<RoomPersona[]>(personaKeys.byRoom(roomId),current=>current?.map(item=>item.persona.id===personaId?updated:item)??[updated]);};
@@ -210,6 +216,8 @@ export function WorkspaceApp({
         view={view}
         openPersonas={openPersonas}
         openHarnessSettings={navigateToHarnessSettings}
+        openProjects={navigateToProjects}
+        configureRoomProject={setProjectRoom}
         rooms={rooms}
         selectedRoomId={roomId}
         selectRoom={id=>guardedNavigation(`room “${rooms.find(room=>room.id===id)?.title??id}”`,()=>navigateToRoom(id))}
@@ -236,6 +244,7 @@ export function WorkspaceApp({
         {view==='chat'?(currentRoom?<>
           <RoomHeader
             title={currentRoom?.title??"Room"}
+            project={currentRoom.project}
             personas={personas}
             active={active}
             connection={state.connection}
@@ -273,8 +282,9 @@ export function WorkspaceApp({
       />
       <WorkspaceWindow request={workspaceRequest} roomId={roomId} fake={fake} onAttach={attachment=>attachments.addExisting([attachment])} plan={state.executionState.plan} planModeEnabled={planModeEnabled} onClose={closeWorkspace} onRequestChange={updateWorkspaceRequest}/>
       <AttachmentPicker open={attachmentPicker} roomId={roomId} selected={attachments.ready} onClose={()=>setAttachmentPicker(false)} onConfirm={attachments.replaceReady} onUpload={files=>void attachments.uploadFiles(files)}/>
-      {creatingRoom&&<CreateRoomDialog personas={personaCatalog.filter(persona=>!persona.archived_at)} catalog={harnessCatalog} groups={groups} onClose={()=>setCreatingRoom(false)} onCreated={createRoom}/>}
+      {creatingRoom&&<CreateRoomDialog personas={personaCatalog.filter(persona=>!persona.archived_at)} catalog={harnessCatalog} groups={groups} projects={projectsQuery.data??[]} onClose={()=>setCreatingRoom(false)} onCreated={createRoom}/>}
       {managingAgents&&currentRoom&&<RoomAgentManager personas={personaCatalog.filter(persona=>!persona.archived_at)} catalog={harnessCatalog} groups={groups} roomPersonas={roomPersonas} onUpdateReasoning={updateParticipantReasoning} onClose={()=>setManagingAgents(false)} onSave={saveRoomAgents}/>}
+      {projectRoom&&<RoomProjectDialog room={projectRoom} projects={projectsQuery.data??[]} onClose={()=>setProjectRoom(undefined)} onSave={async projectId=>{await assignProjectMutation.mutateAsync({id:projectRoom.id,projectId})}}/>}
     </>
   );
 }

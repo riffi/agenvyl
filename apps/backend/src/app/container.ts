@@ -16,9 +16,10 @@ import {HarnessCatalogService} from '../modules/connector/HarnessCatalogService.
 import {ConnectorRunAdapter} from '../integrations/connector/ConnectorRunAdapter.js';
 import {UserProfileService} from '../modules/user-profile/userProfile.service.js';
 import {SetupService} from '../modules/setup/SetupService.js';
+import {ProjectsService} from '../modules/projects/projects.service.js';
 
 export async function createAppContainer(config: AppConfig, fetchImplementation?: typeof fetch,logger?:FastifyBaseLogger,legacySeed?:boolean) {
-  const {database,personas,userProfile,personaGroups,rooms,roomEvents,messages,runs,workspace,workspaceSnapshots,workspaceSlots}=await createRepositories(config.databaseUrl,{legacySeed:legacySeed??process.env.NODE_ENV==='test'});
+  const {database,personas,userProfile,personaGroups,projects,rooms,roomEvents,messages,runs,workspace,workspaceSnapshots,workspaceSlots}=await createRepositories(config.databaseUrl,{legacySeed:legacySeed??process.env.NODE_ENV==='test'});
   const[installation]=await database.sql`SELECT completed_at,workspace_root FROM installation_state WHERE id=true`;
   const persistedWorkspaceRoot=installation.completed_at&&String(installation.workspace_root??'').trim()?String(installation.workspace_root):undefined;
   const workspaceRoot=persistedWorkspaceRoot??config.workspaceRoot;
@@ -61,6 +62,7 @@ export async function createAppContainer(config: AppConfig, fetchImplementation?
     harnessCatalogService,
     roomWorkspace,
     setupService:new SetupService(database,connector,workspaceRoot,harnessCatalogService,{logger,roomWorkspace}),
+    projectsService:new ProjectsService(projects,connector),
   };
 }
 

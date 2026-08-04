@@ -11,7 +11,10 @@
 }
 .identity {
   min-width: 0;
+  position: relative;
 }
+.project { position:absolute;left:calc(100% + 12px);top:3px;display:inline-flex;max-width:220px;align-items:center;gap:5px;padding:3px 7px;border:1px solid #dfe6dc;border-radius:6px;background:#f4f7f2;color:#54705d;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.project svg { width:12px;height:12px;flex:none; }
 .room-header h1 {
   font-size: 17px;
   line-height: 1.3;
@@ -143,6 +146,7 @@
     font-size: 15px;
   }
   .identity small,
+  .project,
   .avatars,
   .roster-label,
   .artifacts span {

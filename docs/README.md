@@ -11,6 +11,7 @@ center, and your first room.
 Continue with:
 
 - [Workspace and file previews](user-guide/workspace.md)
+- [Local projects](user-guide/projects.md)
 - [Data and backups](user-guide/data-and-backups.md)
 - [Updates and uninstall](user-guide/update-and-uninstall.md)
 - [Troubleshooting](user-guide/troubleshooting.md)

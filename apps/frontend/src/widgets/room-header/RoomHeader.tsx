@@ -1,11 +1,13 @@
 import { FolderOpen, Menu, Users } from 'lucide-react';
 import type { Persona } from '../../entities/persona';
 import type { Connection } from '../../entities/room';
+import type {ProjectSummary} from '@agenvyl/contracts';
 import { Avatar } from '../../shared/ui';
 import styles from './RoomHeader.module.css';
 
 export type RoomHeaderProps = {
   title: string;
+  project?:ProjectSummary|null;
   personas: Persona[];
   active: number;
   connection: Connection;
@@ -25,12 +27,13 @@ const connectionLabels:Record<Connection,string>={
   replaying:'Restoring history…',
 };
 
-export function RoomHeader({ title, personas, active, connection, openMenu, openArtifacts, manageAgents }: RoomHeaderProps) {
+export function RoomHeader({ title,project, personas, active, connection, openMenu, openArtifacts, manageAgents }: RoomHeaderProps) {
   return <header className={styles['room-header']} ui-spec-block-id="room_header">
     <button className={styles['menu-button']} onClick={openMenu} aria-label="Open menu"><Menu /></button>
     <div className={styles.identity}>
       <h1>{title}</h1>
       <small className={connection==='connected'?styles.connected:styles.reconnecting}><i /> {connectionLabels[connection]}{active>0&&<> · {activeRunsLabel(active)}</>}</small>
+      {project&&<span className={styles.project} title={project.path}><FolderOpen/>{project.name}</span>}
     </div>
     <div className={styles.actions}>
       <button className={styles.roster} onClick={manageAgents} aria-label="Manage room agents" title="Manage room agents">

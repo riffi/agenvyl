@@ -63,7 +63,7 @@ export class MessageRepository {
       now = new Date().toISOString();
     return this.database.transaction(async (tx) => {
       const room = (
-        await tx`SELECT id,approved_plan_version_id FROM rooms WHERE id=${roomId} AND deleted_at IS NULL FOR UPDATE`
+        await tx`SELECT r.id,r.approved_plan_version_id,p.id project_id,p.name project_name,p.path project_path FROM rooms r LEFT JOIN local_projects p ON p.id=r.project_id WHERE r.id=${roomId} AND r.deleted_at IS NULL FOR UPDATE OF r`
       )[0];
       const existing = (
         await tx`SELECT id,text,created_at,targets,run_ids,author_profile_id,author_display_name,author_handle,addressed_to_all FROM room_messages WHERE room_id=${roomId} AND id=${messageId}`
@@ -112,6 +112,7 @@ export class MessageRepository {
         id: string;
         history: ConversationItem[];
         executionProfile: RunExecutionProfileSnapshot;
+        recommendedProject?:import('@agenvyl/contracts').RunProjectSnapshot;
       }> = [];
       const targetIds = targetPersonas.map((persona) => persona.id);
       const personaRows = targetIds.length
@@ -160,6 +161,7 @@ export class MessageRepository {
           id: crypto.randomUUID(),
           history: await this.conversationHistory(roomId, current.handle, tx),
           executionProfile,
+          ...(room?.project_id?{recommendedProject:{id:String(room.project_id),name:String(room.project_name),path:String(room.project_path),availability:'unknown' as const}}:{}),
         });
       }
       const attachments = attachmentVersions.map((version) =>
@@ -179,7 +181,7 @@ export class MessageRepository {
       await this.workspace.attachMessage(messageId, attachmentVersionIds, tx);
       for (const x of snapshots) {
         await tx`INSERT INTO response_slots(id,message_id,persona_id,created_at) VALUES(${x.id},${messageId},${x.persona.id},${now})`;
-        await tx`INSERT INTO agent_runs(id,message_id,room_id,persona_id,persona_version_id,persona_handle,requested_model,harness_instance_id,harness_type,model_id,execution_profile,implementation_plan_version_id,status,response_slot_id,context,created_at,updated_at) VALUES(${x.id},${messageId},${roomId},${x.persona.id},${x.version.id},${x.persona.handle},${x.version.requested_model},${x.version.harness_instance_id},${x.version.harness_type},${x.version.model_id},${this.database.sql.json(x.executionProfile)},${x.executionProfile.implementationPlanVersionId},'queued',${x.id},${this.database.sql.json(x.history)},${now},${now})`;
+        await tx`INSERT INTO agent_runs(id,message_id,room_id,persona_id,persona_version_id,persona_handle,requested_model,harness_instance_id,harness_type,model_id,execution_profile,implementation_plan_version_id,project_id_snapshot,project_name_snapshot,project_path_snapshot,project_availability,status,response_slot_id,context,created_at,updated_at) VALUES(${x.id},${messageId},${roomId},${x.persona.id},${x.version.id},${x.persona.handle},${x.version.requested_model},${x.version.harness_instance_id},${x.version.harness_type},${x.version.model_id},${this.database.sql.json(x.executionProfile)},${x.executionProfile.implementationPlanVersionId},${x.recommendedProject?.id??null},${x.recommendedProject?.name??null},${x.recommendedProject?.path??null},${x.recommendedProject?.availability??null},'queued',${x.id},${this.database.sql.json(x.history)},${now},${now})`;
       }
       const persisted = [
         await this.events.appendInTransaction(
@@ -211,6 +213,7 @@ export class MessageRepository {
               artifacts: [],
               responseSlotId: x.id,
               attemptNumber: 1,
+              ...(x.recommendedProject?{recommendedProject:x.recommendedProject}:{}),
             },
             now,
           ),

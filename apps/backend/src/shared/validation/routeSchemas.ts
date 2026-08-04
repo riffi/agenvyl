@@ -23,9 +23,11 @@ export const roomTimelineQuerySchema = objectSchema({
 export const createRoomBodySchema = objectSchema({
   title: { type: 'string' },
   persona_ids: { type: 'array', items: { type: 'string' } },
+  project_id: nullableStringSchema,
 });
 
 export const renameRoomBodySchema = objectSchema({ title: { type: 'string' } });
+export const assignRoomProjectBodySchema=objectSchema({project_id:nullableStringSchema},['project_id']);
 const workflowModeSchema={type:'string',enum:['plan','work']} as const;
 export const updateRoomPersonaBodySchema=objectSchema({reasoning_effort_override:nullableStringSchema},['reasoning_effort_override']);
 export const approvePlanBodySchema=objectSchema({version_id:{type:'string'}},['version_id']);
@@ -95,7 +97,8 @@ export const roomResponseSchema = objectSchema({
   id:{type:'string'},title:{type:'string'},created_at:{type:'string'},participant_count:{type:'integer'},
   last_message_at:nullableStringSchema,last_message_text:nullableStringSchema,
   deleted_at:nullableStringSchema,
-},['id','title','created_at','participant_count','last_message_at','last_message_text','deleted_at']);
+  project:{anyOf:[{type:'null'},objectSchema({id:{type:'string'},name:{type:'string'},path:{type:'string'},availability:{type:'string',enum:['available','unavailable','unknown']}},['id','name','path','availability'])]},
+},['id','title','created_at','participant_count','last_message_at','last_message_text','deleted_at','project']);
 
 export const personaGroupResponseSchema=objectSchema({
   id:{type:'string'},name:{type:'string'},position:{type:'integer'},created_at:{type:'string'},updated_at:{type:'string'},
@@ -125,8 +128,9 @@ const runRequestResponseSchema=objectSchema({id:{type:'string'},kind:{type:'stri
 const runExecutionProfileResponseSchema=objectSchema({workflowMode:workflowModeSchema,requestedReasoningEffort:nullableStringSchema,reasoningEffort:nullableStringSchema,reasoningEffortFallback:{type:'boolean'},reasoningEffortSource:{type:'string',enum:['room_override','persona_default','model_default','auto']},planEnforcement:{anyOf:[{type:'null'},{type:'string',enum:['native','instruction_only']}]},permissionProfileId:nullableStringSchema,agentVariantId:nullableStringSchema,implementationPlanVersionId:nullableStringSchema},['workflowMode','requestedReasoningEffort','reasoningEffort','reasoningEffortFallback','reasoningEffortSource','planEnforcement','permissionProfileId','agentVariantId','implementationPlanVersionId']);
 const workspaceCaptureErrorSchema=objectSchema({path:{type:'string'},code:{type:'string'},message:{type:'string'}},['path','code']);
 const runWorkspaceResultSchema=objectSchema({base_snapshot_id:{type:'string'},result_snapshot_id:{type:'string'},published_snapshot_id:{type:'string'},capture_status:{type:'string'},publish_status:{type:'string'},conflict_count:{type:'integer',minimum:0},errors:{type:'array',items:workspaceCaptureErrorSchema}},['base_snapshot_id','capture_status','publish_status','conflict_count','errors']);
+const runProjectSchema=objectSchema({id:{type:'string'},name:{type:'string'},path:{type:'string'},availability:{type:'string',enum:['available','unavailable','unknown']}},['id','name','path','availability']);
 const timelineRunResponseSchema=objectSchema({
-  id:{type:'string'},messageId:{type:'string'},agent:{type:'string'},requestedModel:{type:'string'},harnessInstanceId:{type:'string'},harnessType:{type:'string'},adapterGeneration:{type:'integer',minimum:1},modelId:{type:'string'},executionProfile:runExecutionProfileResponseSchema,status:{type:'string'},upstreamStatus:upstreamStatusResponseSchema,connector:connectorRunStateResponseSchema,usage:{type:'object',additionalProperties:false,required:['inputTokens','outputTokens'],properties:{inputTokens:{type:'integer',minimum:0},outputTokens:{type:'integer',minimum:0},totalTokens:{type:'integer',minimum:0},reasoningTokens:{type:'integer',minimum:0},cacheReadTokens:{type:'integer',minimum:0},cacheWriteTokens:{type:'integer',minimum:0}}},text:{type:'string'},reasoning:{type:'string'},tools:{type:'array',items:toolActivityResponseSchema},retryOfRunId:{type:'string'},responseSlotId:{type:'string'},attemptNumber:{type:'integer',minimum:1},requests:{type:'array',items:runRequestResponseSchema},error:{type:'string'},errorCode:{type:'string'},artifacts:{type:'array'},embeds:{type:'array'},workspaceResult:runWorkspaceResultSchema,
+  id:{type:'string'},messageId:{type:'string'},agent:{type:'string'},requestedModel:{type:'string'},harnessInstanceId:{type:'string'},harnessType:{type:'string'},adapterGeneration:{type:'integer',minimum:1},modelId:{type:'string'},executionProfile:runExecutionProfileResponseSchema,recommendedProject:runProjectSchema,status:{type:'string'},upstreamStatus:upstreamStatusResponseSchema,connector:connectorRunStateResponseSchema,usage:{type:'object',additionalProperties:false,required:['inputTokens','outputTokens'],properties:{inputTokens:{type:'integer',minimum:0},outputTokens:{type:'integer',minimum:0},totalTokens:{type:'integer',minimum:0},reasoningTokens:{type:'integer',minimum:0},cacheReadTokens:{type:'integer',minimum:0},cacheWriteTokens:{type:'integer',minimum:0}}},text:{type:'string'},reasoning:{type:'string'},tools:{type:'array',items:toolActivityResponseSchema},retryOfRunId:{type:'string'},responseSlotId:{type:'string'},attemptNumber:{type:'integer',minimum:1},requests:{type:'array',items:runRequestResponseSchema},error:{type:'string'},errorCode:{type:'string'},artifacts:{type:'array'},embeds:{type:'array'},workspaceResult:runWorkspaceResultSchema,
 },['id','messageId','agent','harnessInstanceId','harnessType','modelId','executionProfile','status','text','tools']);
 export const roomTimelineResponseSchema=objectSchema({
   messages:{type:'array',items:messageResponseSchema},runs:{type:'array',items:timelineRunResponseSchema},selectedRuns:{type:'object',additionalProperties:{type:'string'}},executionState:roomExecutionStateResponseSchema,lastSequence:{type:'integer',minimum:0},hasMore:{type:'boolean'},nextCursor:{type:'string'},

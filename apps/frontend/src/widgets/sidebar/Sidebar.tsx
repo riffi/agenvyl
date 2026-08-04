@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Cable, MoreHorizontal, Plus, RotateCcw, Search, Settings, Trash2, Users, X } from 'lucide-react';
+import { Cable, Folder, MoreHorizontal, Plus, RotateCcw, Search, Settings, Trash2, Users, X } from 'lucide-react';
 import type { Room } from '../../entities/room';
 import type { LocalUserProfile, UpdateLocalUserProfileRequest } from '../../entities/user-profile';
 import { Alert, Button, Dialog, IconButton, Input } from '../../shared/ui';
@@ -16,6 +16,8 @@ export type SidebarProps = {
   view: 'chat' | 'personas';
   openPersonas: () => void;
   openHarnessSettings?: () => void;
+  openProjects?:()=>void;
+  configureRoomProject?:(room:Room)=>void;
   rooms: Room[];
   selectedRoomId: string;
   selectRoom: (id: string) => void;
@@ -34,7 +36,7 @@ export type SidebarProps = {
 type PositionedRoomMenu = { room: Room; top: number; left: number };
 type ProfileMenuPosition = { left: number; bottom: number; width: number };
 
-export function Sidebar({ open, close, view, openPersonas, openHarnessSettings, rooms, selectedRoomId, selectRoom, createRoom, renameRoom, deleteRoom, deletedRooms = [], restoreRoom, purgeRoom, userProfile, userProfileLoading, userProfileError, saveUserProfile }: SidebarProps) {
+export function Sidebar({ open, close, view, openPersonas, openHarnessSettings,openProjects,configureRoomProject, rooms, selectedRoomId, selectRoom, createRoom, renameRoom, deleteRoom, deletedRooms = [], restoreRoom, purgeRoom, userProfile, userProfileLoading, userProfileError, saveUserProfile }: SidebarProps) {
   const [deleting, setDeleting] = useState<string>();
   const [roomError, setRoomError] = useState<string>();
   const [profileOpen, setProfileOpen] = useState(false);
@@ -120,6 +122,7 @@ export function Sidebar({ open, close, view, openPersonas, openHarnessSettings, 
       <nav className={styles.mainNav} aria-label="Main navigation">
         <button type="button" onClick={createRoom}><Plus /> <span>New room</span></button>
         <button type="button" className={view === 'personas' ? styles.active : ''} onClick={openPersonas}><Users /> <span>Agents</span></button>
+        {openProjects&&<button type="button" onClick={openProjects}><Folder/><span>Projects</span></button>}
       </nav>
 
       <section className={styles.history} aria-label="Room history">
@@ -148,6 +151,7 @@ export function Sidebar({ open, close, view, openPersonas, openHarnessSettings, 
 
       {roomMenu && <Portal><div className={styles.menuLayer} onMouseDown={() => setRoomMenu(undefined)}><div className={styles.contextMenu} role="menu" style={{ top: roomMenu.top, left: roomMenu.left }} onMouseDown={event => event.stopPropagation()}>
         <button type="button" role="menuitem" onClick={() => { setRenaming(roomMenu.room); setRoomMenu(undefined); }}>Rename</button>
+        {configureRoomProject&&<button type="button" role="menuitem" onClick={()=>{configureRoomProject(roomMenu.room);setRoomMenu(undefined);}}><Folder/> Project…</button>}
         <button type="button" role="menuitem" className={styles.danger} disabled={deleting === roomMenu.room.id} onClick={() => { const room = roomMenu.room; setRoomMenu(undefined); void requestDelete(room); }}><Trash2 /> Delete…</button>
       </div></div></Portal>}
 

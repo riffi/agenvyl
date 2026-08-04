@@ -7,6 +7,7 @@ import {RoomPage} from '../pages/room';
 import {withGatewayMode} from '../shared/lib';
 import {SetupPage} from '../pages/setup';
 import {HarnessSettingsPage} from '../pages/harness-settings';
+import {ProjectsPage} from '../pages/projects';
 import {apiRequest} from '../shared/api';
 import {AppShell} from '../widgets/app-shell';
 
@@ -26,6 +27,7 @@ const router=createBrowserRouter([
   {path:'/personas/:personaId',element:<PersonasPage/>},
   {path:'/settings/harnesses',element:harnessSettings},
   {path:'/settings/harnesses/:instanceId',element:harnessSettings},
+  {path:'/projects',element:<AppShell><ProjectsPage/></AppShell>},
   {path:'*',element:<NotFoundPage/>},
 ]);
 

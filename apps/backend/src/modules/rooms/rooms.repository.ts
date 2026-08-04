@@ -51,9 +51,9 @@ export class RoomRepository {
   async list(includeDeleted = false): Promise<Room[]> {
     const rows = includeDeleted
       ? await this.database
-          .sql`SELECT r.id,r.title,r.created_at,r.deleted_at,COUNT(DISTINCT rp.persona_id)::int participant_count,(SELECT created_at FROM room_messages m WHERE m.room_id=r.id ORDER BY created_at DESC LIMIT 1) last_message_at,(SELECT text FROM room_messages m WHERE m.room_id=r.id ORDER BY created_at DESC LIMIT 1) last_message_text FROM rooms r LEFT JOIN room_participants rp ON rp.room_id=r.id GROUP BY r.id ORDER BY r.deleted_at NULLS FIRST,COALESCE((SELECT MAX(created_at) FROM room_messages m WHERE m.room_id=r.id),r.created_at) DESC`
+          .sql`SELECT r.id,r.title,r.created_at,r.deleted_at,p.id project_id,p.name project_name,p.path project_path,COUNT(DISTINCT rp.persona_id)::int participant_count,(SELECT created_at FROM room_messages m WHERE m.room_id=r.id ORDER BY created_at DESC LIMIT 1) last_message_at,(SELECT text FROM room_messages m WHERE m.room_id=r.id ORDER BY created_at DESC LIMIT 1) last_message_text FROM rooms r LEFT JOIN local_projects p ON p.id=r.project_id LEFT JOIN room_participants rp ON rp.room_id=r.id GROUP BY r.id,p.id ORDER BY r.deleted_at NULLS FIRST,COALESCE((SELECT MAX(created_at) FROM room_messages m WHERE m.room_id=r.id),r.created_at) DESC`
       : await this.database
-          .sql`SELECT r.id,r.title,r.created_at,r.deleted_at,COUNT(DISTINCT rp.persona_id)::int participant_count,(SELECT created_at FROM room_messages m WHERE m.room_id=r.id ORDER BY created_at DESC LIMIT 1) last_message_at,(SELECT text FROM room_messages m WHERE m.room_id=r.id ORDER BY created_at DESC LIMIT 1) last_message_text FROM rooms r LEFT JOIN room_participants rp ON rp.room_id=r.id WHERE r.deleted_at IS NULL GROUP BY r.id ORDER BY COALESCE((SELECT MAX(created_at) FROM room_messages m WHERE m.room_id=r.id),r.created_at) DESC`;
+          .sql`SELECT r.id,r.title,r.created_at,r.deleted_at,p.id project_id,p.name project_name,p.path project_path,COUNT(DISTINCT rp.persona_id)::int participant_count,(SELECT created_at FROM room_messages m WHERE m.room_id=r.id ORDER BY created_at DESC LIMIT 1) last_message_at,(SELECT text FROM room_messages m WHERE m.room_id=r.id ORDER BY created_at DESC LIMIT 1) last_message_text FROM rooms r LEFT JOIN local_projects p ON p.id=r.project_id LEFT JOIN room_participants rp ON rp.room_id=r.id WHERE r.deleted_at IS NULL GROUP BY r.id,p.id ORDER BY COALESCE((SELECT MAX(created_at) FROM room_messages m WHERE m.room_id=r.id),r.created_at) DESC`;
     return rows.map(toRoom);
   }
   async timeline(
@@ -89,7 +89,7 @@ export class RoomRepository {
             toMessage(row, attachmentMap.get(text(row.id)) ?? []),
           );
         const runRows = messageIds.length
-          ? await tx`SELECT r.id,r.message_id,r.persona_handle,r.requested_model,r.harness_instance_id,r.harness_type,r.adapter_generation,r.model_id,r.execution_profile,r.status,r.upstream_status,r.usage,r.text,r.reasoning,r.error,r.error_code,r.retry_of_run_id,r.response_slot_id,r.connector_execution_id,r.connector_epoch,r.connector_cursor,(ROW_NUMBER() OVER(PARTITION BY r.response_slot_id ORDER BY r.created_at,r.id))::int attempt_number,r.created_at,w.base_snapshot_id,w.result_snapshot_id,w.published_snapshot_id,w.capture_status workspace_capture_status,w.publish_status workspace_publish_status,w.conflict_count workspace_conflict_count,w.errors workspace_errors FROM agent_runs r LEFT JOIN run_workspace_results w ON w.run_id=r.id WHERE r.message_id=ANY(${messageIds}) ORDER BY r.created_at,r.id`
+          ? await tx`SELECT r.id,r.message_id,r.persona_handle,r.requested_model,r.harness_instance_id,r.harness_type,r.adapter_generation,r.model_id,r.execution_profile,r.project_id_snapshot,r.project_name_snapshot,r.project_path_snapshot,r.project_availability,r.status,r.upstream_status,r.usage,r.text,r.reasoning,r.error,r.error_code,r.retry_of_run_id,r.response_slot_id,r.connector_execution_id,r.connector_epoch,r.connector_cursor,(ROW_NUMBER() OVER(PARTITION BY r.response_slot_id ORDER BY r.created_at,r.id))::int attempt_number,r.created_at,w.base_snapshot_id,w.result_snapshot_id,w.published_snapshot_id,w.capture_status workspace_capture_status,w.publish_status workspace_publish_status,w.conflict_count workspace_conflict_count,w.errors workspace_errors FROM agent_runs r LEFT JOIN run_workspace_results w ON w.run_id=r.id WHERE r.message_id=ANY(${messageIds}) ORDER BY r.created_at,r.id`
           : [];
         const runIds = runRows.map((row) => text(row.id));
         const eventRows = runIds.length
@@ -184,11 +184,12 @@ export class RoomRepository {
       },
     );
   }
-  async create(title: string, personaIds: string[]) {
+  async create(title: string, personaIds: string[],projectId?:string|null) {
     const id = crypto.randomUUID(),
       now = new Date().toISOString();
     await this.database.transaction(async (tx) => {
-      await tx`INSERT INTO rooms(id,title,created_at) VALUES(${id},${title},${now})`;
+      if(projectId&&!(await tx`SELECT 1 FROM local_projects WHERE id=${projectId}`).length)throw new Error('project_unavailable');
+      await tx`INSERT INTO rooms(id,title,created_at,project_id) VALUES(${id},${title},${now},${projectId??null})`;
       for (const pid of new Set(personaIds)) {
         const p = await this.personas.find(pid, tx);
         if (!p || p.archived_at) throw new Error("persona_unavailable");
@@ -203,6 +204,13 @@ export class RoomRepository {
     return rows.length
       ? (await this.list()).find((r) => r.id === id)
       : undefined;
+  }
+  async assignProject(id:string,projectId:string|null){
+    return this.database.transaction(async tx=>{
+      if(projectId&&!(await tx`SELECT 1 FROM local_projects WHERE id=${projectId}`).length)return'project_not_found' as const;
+      const rows=await tx`UPDATE rooms SET project_id=${projectId} WHERE id=${id} AND deleted_at IS NULL RETURNING id`;
+      return rows.length?'updated' as const:'room_not_found' as const;
+    });
   }
   async delete(id: string) {
     return this.database.transaction(async (tx) => {

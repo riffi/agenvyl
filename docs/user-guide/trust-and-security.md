@@ -77,6 +77,9 @@ not disable SmartScreen globally.
   that instance's trusted file boundary.
 - Harness processes run with the permissions of your operating-system user.
 - A room workspace is a shared working directory, **not a sandbox**.
+- A selected local project is only a recommended path in the agent's
+  instructions. It grants no access and does not restrict the agent to that
+  folder; the harness permission profile remains authoritative.
 
 Do not enable an agent tool or permission profile that you would not trust with
 the selected files. Agenvyl has no public multi-user authorization layer. Put a

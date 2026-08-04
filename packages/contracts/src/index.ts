@@ -126,7 +126,19 @@ export type Run = {
   artifacts?: RunArtifact[];
   embeds?: RunEmbed[];
   workspaceResult?:RunWorkspaceResult;
+  recommendedProject?: RunProjectSnapshot;
 };
+
+export type ProjectAvailability = 'available' | 'unavailable' | 'unknown';
+export type LocalProject = {
+  id:string;name:string;path:string;availability:ProjectAvailability;
+  created_at:string;updated_at:string;
+};
+export type ProjectSummary = Pick<LocalProject,'id'|'name'|'path'|'availability'>;
+export type RunProjectSnapshot = {id:string;name:string;path:string;availability:ProjectAvailability};
+export type CreateProjectRequest = {name:string;path:string};
+export type UpdateProjectRequest = {name?:string;path?:string};
+export type DirectoryPickerResult = {status:'selected'|'cancelled'|'unavailable';path?:string;message?:string};
 
 export type Room = {
   id: string;
@@ -136,6 +148,7 @@ export type Room = {
   last_message_at: string | null;
   last_message_text: string | null;
   deleted_at?: string | null;
+  project?: ProjectSummary | null;
 };
 
 export type WorkspaceSource='user'|'agent'|'external';
@@ -225,8 +238,9 @@ export type ErrorEnvelope = {
   details?: unknown;
 };
 
-export type CreateRoomRequest = { title?: string; persona_ids?: string[] };
+export type CreateRoomRequest = { title?: string; persona_ids?: string[]; project_id?:string|null };
 export type RenameRoomRequest = { title?: string };
+export type AssignRoomProjectRequest = { project_id:string|null };
 export type CreateMessageRequest = { text?: string; targets?: AgentHandle[]; message_id?: string; attachment_version_ids?:string[]; execution_intent?:ExecutionIntent };
 export type StructuredQuestion={id:string;header:string;question:string;options?:Array<{label:string;description?:string}>;isOther:boolean;isSecret:boolean;multiSelect?:boolean};
 export type JsonValue=null|boolean|number|string|JsonValue[]|{[key:string]:JsonValue};
@@ -265,6 +279,7 @@ export type ServerRoomEvent =
   | Envelope<'run.status', { runId: string; status: RunStatus; error?: string; errorCode?: string }>
   | Envelope<'run.upstream_status', { runId: string } & UpstreamStatusEvent>
   | Envelope<'run.usage', {runId:string;usage:TokenUsage}>
+  | Envelope<'run.project.updated',{runId:string;project:RunProjectSnapshot}>
   | Envelope<'tool.updated', { runId: string; tool: ToolActivity }>
   | Envelope<'request.created', { runId: string; requestId:string; kind: 'approval' | 'clarification' | 'elicitation'; prompt: string;directory?:string;choices?: string[];questions?:StructuredQuestion[];elicitation?:McpElicitation;autoResolutionMs?:number }>
   | Envelope<'request.resolved', { runId: string; requestId:string; resolution: string }>
@@ -285,6 +300,7 @@ const eventTypes = new Set<ServerRoomEvent['type']>([
   'run.status',
   'run.upstream_status',
   'run.usage',
+  'run.project.updated',
   'tool.updated',
   'request.created',
   'request.resolved',
@@ -311,6 +327,7 @@ export function isServerRoomEvent(value: unknown): value is ServerRoomEvent {
     case 'run.status': return strings(payload, 'runId', 'status') && runStatuses.has(payload.status as RunStatus) && (payload.error===undefined||typeof payload.error==='string') && (payload.errorCode===undefined||typeof payload.errorCode==='string');
     case 'run.upstream_status': return typeof payload.runId === 'string' && isUpstreamStatusEvent(payload);
     case 'run.usage': return typeof payload.runId==='string'&&isTokenUsage(payload.usage);
+    case 'run.project.updated': return typeof payload.runId==='string'&&isRunProjectSnapshot(payload.project);
     case 'tool.updated': return typeof payload.runId === 'string' && isRecord(payload.tool) && strings(payload.tool, 'id', 'name', 'detail', 'status') && (payload.tool.input === undefined || typeof payload.tool.input === 'string') && toolStatuses.has(payload.tool.status as ToolActivity['status']);
     case 'request.created': return strings(payload, 'runId', 'requestId', 'kind', 'prompt') && ['approval','clarification','elicitation'].includes(String(payload.kind)) && (payload.directory===undefined||typeof payload.directory==='string') && (payload.choices===undefined||(Array.isArray(payload.choices)&&payload.choices.every(choice=>typeof choice==='string'))) && (payload.questions===undefined||isStructuredQuestions(payload.questions)) && (payload.elicitation===undefined||isMcpElicitation(payload.elicitation)) && (payload.kind==='elicitation'?payload.elicitation!==undefined:payload.elicitation===undefined) && (payload.autoResolutionMs===undefined||Number.isSafeInteger(payload.autoResolutionMs));
     case 'request.resolved': return strings(payload, 'runId', 'requestId', 'resolution');
@@ -330,6 +347,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 function isTokenUsage(value:unknown):value is TokenUsage{if(!isRecord(value)||!tokenCount(value.inputTokens)||!tokenCount(value.outputTokens))return false;return['totalTokens','reasoningTokens','cacheReadTokens','cacheWriteTokens'].every(key=>value[key]===undefined||tokenCount(value[key]));}
 function isRunWorkspaceResult(value:unknown):value is RunWorkspaceResult{if(!isRecord(value)||typeof value.base_snapshot_id!=='string'||typeof value.capture_status!=='string'||typeof value.publish_status!=='string'||!Number.isSafeInteger(value.conflict_count)||!Array.isArray(value.errors))return false;return['preparing','ready','finalizing','complete','incomplete','failed'].includes(value.capture_status)&&['pending','published','partially_published','not_published','noop','failed'].includes(value.publish_status);}
+function isRunProjectSnapshot(value:unknown):value is RunProjectSnapshot{return isRecord(value)&&strings(value,'id','name','path','availability')&&['available','unavailable','unknown'].includes(String(value.availability));}
 function isPlanVersionRef(value:unknown):value is PlanVersionRef{return isRecord(value)&&strings(value,'entry_id','version_id');}
 function isRunExecutionProfile(value:unknown):value is RunExecutionProfileSnapshot{return isRecord(value)&&(value.workflowMode==='plan'||value.workflowMode==='work')&&(value.requestedReasoningEffort===null||typeof value.requestedReasoningEffort==='string')&&(value.reasoningEffort===null||typeof value.reasoningEffort==='string')&&typeof value.reasoningEffortFallback==='boolean'&&['room_override','persona_default','model_default','auto'].includes(String(value.reasoningEffortSource))&&(value.planEnforcement===null||value.planEnforcement==='native'||value.planEnforcement==='instruction_only')&&(value.permissionProfileId===null||typeof value.permissionProfileId==='string')&&(value.agentVariantId===null||typeof value.agentVariantId==='string')&&(value.implementationPlanVersionId===null||typeof value.implementationPlanVersionId==='string');}
 function isRoomPersona(value:Record<string,unknown>):boolean{return isRecord(value.persona)&&typeof value.persona.id==='string'&&(value.reasoning_effort_override===null||typeof value.reasoning_effort_override==='string');}

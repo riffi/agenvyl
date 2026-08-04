@@ -19,6 +19,7 @@ import { AdapterGenerationManager, type PreparedAdapterRuntime } from './adapter
 import { normalizeConnectorInstances, type ConnectorConfig } from './config.js';
 import { ExecutionRegistry, RegistryError } from './execution-registry.js';
 import { WorkspacePolicy, WorkspacePolicyError } from './workspace-policy.js';
+import {pickLocalDirectory,validateLocalDirectory} from './directory-access.js';
 
 export function buildConnectorApp(config: ConnectorConfig, options: {
   connectorEpoch?: string;
@@ -108,6 +109,14 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
   });
 
   app.get('/v2/discovery',async(_request,reply)=>options.discover?options.discover():reply.code(503).send({apiVersion:CONNECTOR_API_VERSION,error:'discovery_unavailable',message:'Harness discovery is unavailable'}));
+
+  app.post('/v2/directories/validate',async(request,reply)=>{
+    const path=isRecord(request.body)&&typeof request.body.path==='string'?request.body.path:'';
+    const result=await validateLocalDirectory(path);
+    return reply.send({apiVersion:CONNECTOR_API_VERSION,...result});
+  });
+
+  app.post('/v2/directories/pick',async()=>({apiVersion:CONNECTOR_API_VERSION,...await pickLocalDirectory()}));
 
   app.put('/v2/instances',async(request,reply)=>{
     if(!isConfigureConnectorInstancesRequest(request.body))return reply.code(400).send({apiVersion:CONNECTOR_API_VERSION,error:'invalid_request',message:'Connector instances do not match the v2 contract'});
@@ -271,3 +280,5 @@ function authorized(request: FastifyRequest, token: string) {
 function isWorkspaceRoots(value:unknown):value is{roots:string[]}{
   return Boolean(value&&typeof value==='object'&&Array.isArray((value as {roots?:unknown}).roots)&&(value as {roots:unknown[]}).roots.length===1&&typeof (value as {roots:string[]}).roots[0]==='string');
 }
+
+function isRecord(value:unknown):value is Record<string,unknown>{return Boolean(value&&typeof value==='object'&&!Array.isArray(value));}

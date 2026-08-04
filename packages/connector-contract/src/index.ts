@@ -116,6 +116,20 @@ export type ConnectorConfigurationResult = {
   instances: ConnectorInstanceConfiguration[];
 };
 
+export type ConnectorDirectoryValidation = {
+  apiVersion: ConnectorApiVersion;
+  status: 'available' | 'unavailable';
+  path?: string;
+  pathKey?: string;
+  error?: ConnectorError;
+};
+export type ConnectorDirectoryPickerResult = {
+  apiVersion: ConnectorApiVersion;
+  status: 'selected' | 'cancelled' | 'unavailable';
+  path?: string;
+  error?: ConnectorError;
+};
+
 export type CanonicalConversationItem = { role: 'user' | 'assistant'; content: string };
 export type StartExecutionRequest = {
   executionId: string;
@@ -413,6 +427,19 @@ function isRequest(value: unknown): value is ConnectorRequestSnapshot {
   if(value.kind!=='elicitation'&&value.elicitation!==undefined)return false;
   if(value.autoResolutionMs!==undefined&&(!Number.isSafeInteger(value.autoResolutionMs)||Number(value.autoResolutionMs)<0))return false;
   return value.resolution === undefined || (isRecord(value.resolution) && typeof value.resolution.outcome === 'string' && requestResolutions.has(value.resolution.outcome) && (value.resolution.value === undefined || typeof value.resolution.value === 'string'));
+}
+
+export function isConnectorDirectoryValidation(value:unknown):value is ConnectorDirectoryValidation {
+  return isRecord(value)&&value.apiVersion===CONNECTOR_API_VERSION&&(value.status==='available'||value.status==='unavailable')
+    &&(value.path===undefined||typeof value.path==='string')&&(value.pathKey===undefined||typeof value.pathKey==='string')
+    &&(value.error===undefined||isError(value.error))
+    &&(value.status!=='available'||(typeof value.path==='string'&&typeof value.pathKey==='string'));
+}
+
+export function isConnectorDirectoryPickerResult(value:unknown):value is ConnectorDirectoryPickerResult {
+  return isRecord(value)&&value.apiVersion===CONNECTOR_API_VERSION&&['selected','cancelled','unavailable'].includes(String(value.status))
+    &&(value.path===undefined||typeof value.path==='string')&&(value.error===undefined||isError(value.error))
+    &&(value.status!=='selected'||typeof value.path==='string');
 }
 
 export function isTestConnectorInstanceRequest(value:unknown):value is TestConnectorInstanceRequest {

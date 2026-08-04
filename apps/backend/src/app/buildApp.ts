@@ -16,6 +16,7 @@ import {registerConnectorRoutes} from '../modules/connector/connector.routes.js'
 import {registerUserProfileRoutes} from '../modules/user-profile/userProfile.routes.js';
 import {registerSetupRoutes} from '../modules/setup/setup.routes.js';
 import {registerFeatureRoutes} from '../modules/features/features.routes.js';
+import {registerProjectRoutes} from '../modules/projects/projects.routes.js';
 
 export type AppOptions = { databaseUrl?: string; connectorUrl?:string; connectorToken?:string; fetch?: typeof fetch; distPath?: string; runConcurrency?: number; runTimeoutMs?:number; shutdownTimeoutMs?: number; websocketMaxBufferedBytes?: number; workspaceRoot?:string; workspaceAgentRoot?:string; workspaceMaxFileBytes?:number; workspaceNoopMode?:WorkspaceOptimizationMode;workspaceWarmSlotsMode?:WorkspaceOptimizationMode;workspaceStatCacheMode?:WorkspaceOptimizationMode;planModeEnabled?:boolean; previewOrigin?:string; logger?:boolean;legacySeed?:boolean };
 
@@ -39,7 +40,7 @@ export async function buildApp(options: AppOptions = {}) {
     previewOrigin:options.previewOrigin,
   });
   const app = Fastify({ logger: options.logger === false ? false : { redact: ['req.headers.authorization', 'req.headers.x-api-key'] } });
-  const { database, events, dependencyHealth, runExecutor, roomsService, personasService, userProfileService, personaGroupsService, createMessageRound, runsService,roomWorkspace,harnessCatalogService,setupService } = await createAppContainer(config, options.fetch,app.log,options.legacySeed);
+  const { database, events, dependencyHealth, runExecutor, roomsService, personasService, userProfileService, personaGroupsService, createMessageRound, runsService,roomWorkspace,harnessCatalogService,setupService,projectsService } = await createAppContainer(config, options.fetch,app.log,options.legacySeed);
 
   await registerErrorHandler(app);
   await app.register(websocket);
@@ -50,6 +51,7 @@ export async function buildApp(options: AppOptions = {}) {
   });
   await registerHealthRoutes(app, dependencyHealth,database);
   await registerFeatureRoutes(app,{planMode:config.planModeEnabled,previewOrigin:config.previewOrigin});
+  await registerProjectRoutes(app,projectsService);
   await registerConnectorRoutes(app,harnessCatalogService);
   await registerSetupRoutes(app,setupService);
   await registerRoomRoutes(app, roomsService);

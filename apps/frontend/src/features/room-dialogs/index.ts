@@ -1,1 +1,1 @@
-export { CreateRoomDialog, RoomAgentManager } from './RoomDialogs';
+export { CreateRoomDialog, RoomAgentManager,RoomProjectDialog } from './RoomDialogs';

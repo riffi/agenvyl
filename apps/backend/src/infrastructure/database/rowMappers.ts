@@ -22,7 +22,8 @@ export function toPersonaGroup(row: DatabaseRow): PersonaGroup {
 }
 
 export function toRoom(row: DatabaseRow): Room {
-  return { id:text(row.id),title:text(row.title),created_at:timestamp(row.created_at),participant_count:number(row.participant_count),last_message_at:nullableTimestamp(row.last_message_at),last_message_text:nullableText(row.last_message_text),deleted_at:nullableTimestamp(row.deleted_at) };
+  const project=row.project_id==null?null:{id:text(row.project_id),name:text(row.project_name),path:text(row.project_path),availability:'unknown' as const};
+  return { id:text(row.id),title:text(row.title),created_at:timestamp(row.created_at),participant_count:number(row.participant_count),last_message_at:nullableTimestamp(row.last_message_at),last_message_text:nullableText(row.last_message_text),deleted_at:nullableTimestamp(row.deleted_at),project };
 }
 
 export function toMessage(row: DatabaseRow,attachments:WorkspaceAttachment[]=[]): Message {
@@ -44,6 +45,7 @@ export function toTimelineRun(row: DatabaseRow, tools: ToolActivity[], requests:
     ...(row.response_slot_id == null ? {} : { responseSlotId:text(row.response_slot_id) }),
     ...(row.attempt_number == null ? {} : { attemptNumber:number(row.attempt_number) }),
     requests, ...(row.error == null ? {} : { error:text(row.error) }),...(row.error_code == null ? {} : { errorCode:text(row.error_code) }),artifacts,embeds,
+    ...(row.project_id_snapshot?{recommendedProject:{id:text(row.project_id_snapshot),name:text(row.project_name_snapshot),path:text(row.project_path_snapshot),availability:text(row.project_availability) as NonNullable<Run['recommendedProject']>['availability']}}:{}),
     ...(row.base_snapshot_id?{workspaceResult:{base_snapshot_id:text(row.base_snapshot_id),...(row.result_snapshot_id?{result_snapshot_id:text(row.result_snapshot_id)}:{}),...(row.published_snapshot_id?{published_snapshot_id:text(row.published_snapshot_id)}:{}),capture_status:text(row.workspace_capture_status) as NonNullable<Run['workspaceResult']>['capture_status'],publish_status:text(row.workspace_publish_status) as NonNullable<Run['workspaceResult']>['publish_status'],conflict_count:number(row.workspace_conflict_count),errors:Array.isArray(row.workspace_errors)?row.workspace_errors as NonNullable<Run['workspaceResult']>['errors']:[]}}:{}),
   };
 }

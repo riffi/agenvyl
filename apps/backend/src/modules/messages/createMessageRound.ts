@@ -241,6 +241,7 @@ export class CreateMessageRound {
         harnessType: item.version.harness_type,
         modelId: item.version.model_id,
         executionProfile: item.executionProfile,
+        recommendedProject:item.recommendedProject,
         conversationHistory: item.history,
         correlationId: command.correlationId,
         terminal: false,

@@ -12,7 +12,7 @@ import type {RoomWorkspaceService} from '../workspace/RoomWorkspaceService.js';
 import type {MessageRepository} from '../messages/messages.repository.js';
 import {formatHumanMessage} from '../messages/messages.repository.js';
 import {connectorLifecycleErrorCode,type ConnectorLifecycle,type ConnectorLifecycleErrorCode} from '../connector/connector.ports.js';
-import type {ExecutionSnapshot} from '@agenvyl/connector-contract';
+import type {ConnectorDirectoryValidation,ExecutionSnapshot} from '@agenvyl/connector-contract';
 import {extractExternalImageReferences} from '../workspace/workspaceEmbeds.js';
 
 type RunExecutorDependencies = {
@@ -28,7 +28,7 @@ type RunExecutorDependencies = {
   logger?:LifecycleLogger;
   roomWorkspace?:RoomWorkspaceService;
   messages?:MessageRepository;
-  connector?:ConnectorLifecycle;
+  connector?:ConnectorLifecycle&{validateDirectory?(path:string):Promise<ConnectorDirectoryValidation>};
   planModeEnabled?:boolean;
   recoveryHealthAttempts?:number;
   recoveryHealthDelayMs?:number;
@@ -109,7 +109,7 @@ export class RunExecutor {
   }
 
   private resumePersisted(persisted:PersistedNonTerminalRun,execution:ExecutionSnapshot,transport:RunGateway&RunEventStream&RunRecovery){
-    const pendingRequests=new Map(execution.pendingRequests.map(request=>[request.id,{...request,resolved:request.resolution?.outcome}])),run:RunContext={id:persisted.id,messageId:persisted.messageId,roomId:persisted.roomId,personaVersionId:persisted.personaVersionId,personaHandle:persisted.personaHandle,requestedModel:persisted.requestedModel,harnessInstanceId:persisted.harnessInstanceId,harnessType:persisted.harnessType,modelId:persisted.modelId,executionProfile:persisted.executionProfile,conversationHistory:persisted.context,responseText:persisted.text,upstreamRunId:persisted.connectorExecutionId!,connectorExecutionId:persisted.connectorExecutionId!,...(persisted.executionDeadlineAt?{executionDeadlineAt:persisted.executionDeadlineAt}:{}),status:persisted.status as RunStatus,terminal:false,started:true,refreshContext:false,stopping:persisted.status==='stopping'||execution.status==='stopping',pendingRequests};
+    const pendingRequests=new Map(execution.pendingRequests.map(request=>[request.id,{...request,resolved:request.resolution?.outcome}])),run:RunContext={id:persisted.id,messageId:persisted.messageId,roomId:persisted.roomId,personaVersionId:persisted.personaVersionId,personaHandle:persisted.personaHandle,requestedModel:persisted.requestedModel,harnessInstanceId:persisted.harnessInstanceId,harnessType:persisted.harnessType,modelId:persisted.modelId,executionProfile:persisted.executionProfile,recommendedProject:persisted.recommendedProject,conversationHistory:persisted.context,responseText:persisted.text,upstreamRunId:persisted.connectorExecutionId!,connectorExecutionId:persisted.connectorExecutionId!,...(persisted.executionDeadlineAt?{executionDeadlineAt:persisted.executionDeadlineAt}:{}),status:persisted.status as RunStatus,terminal:false,started:true,refreshContext:false,stopping:persisted.status==='stopping'||execution.status==='stopping',pendingRequests};
     this.dependencies.activeRuns.add(run);
     const task=this.consumeRecovered(run,execution,transport).finally(()=>{this.tasks.delete(run.id);this.pump();});
     this.tasks.set(run.id,task);
@@ -284,6 +284,8 @@ export class RunExecutor {
         if(this.dependencies.roomWorkspace&&context.references.length){const snapshots=await Promise.all(context.references.map(async reference=>({...reference,snapshot:await this.dependencies.roomWorkspace!.snapshotAgentPath(run.roomId,reference.versionId)})));snapshotInstructions=`\n\n<workspace_snapshot_context>\nThis is an internal mapping between historical workspace files and their immutable versions. Use these paths only to read the exact historical context. Never quote, summarize, or reproduce this block or its internal paths in your response.\n${snapshots.map(item=>`- ${item.path} => ${item.snapshot}`).join('\n')}\n</workspace_snapshot_context>`;}
       }
       const roomPersonas = await personas.list(run.roomId);
+      run.recommendedProject??=await runs.recommendedProject(run.id);
+      snapshotInstructions=await this.projectInstructions(run)+snapshotInstructions;
       const sessionId = run.sessionId ?? stableSessionId(run.roomId, run.id);
       run.sessionId = sessionId;
       const preparedWorkspace=await this.dependencies.roomWorkspace?.prepareRun(run.roomId,run.id);
@@ -411,6 +413,18 @@ export class RunExecutor {
     }
     activeRuns.remove(run.id);this.stopTasks.delete(run.id);
     this.logger.info({runId:run.id,roomId:run.roomId,correlationId:run.correlationId,upstreamRunId:run.upstreamRunId,transition:status,...(error?{error}: {})},'Run reached terminal state');
+  }
+
+  private async projectInstructions(run:RunContext){
+    const project=run.recommendedProject;
+    if(!project)return'';
+    let availability:typeof project.availability='unknown';
+    try{const result=await this.dependencies.connector?.validateDirectory?.(project.path);availability=result?.status==='available'?'available':'unavailable';}catch{/* Execution continues with explicit unknown availability. */}
+    run.recommendedProject={...project,availability};
+    await this.dependencies.runs.setProjectAvailability(run.id,availability);
+    await this.dependencies.events.emit(run.roomId,'run.project.updated',{runId:run.id,project:run.recommendedProject});
+    if(availability!=='available')return`\n\nRecommended project “${project.name}” is currently unavailable. Continue in the Agenvyl room workspace and do not assume that the configured project path can be accessed.`;
+    return`\n\nRecommended project context for this room:\n- Name: ${project.name}\n- Local directory: ${project.path}\nPrefer this directory for project-related work. This is contextual guidance, not an access restriction or permission grant. You may use other directories when the task and current harness permissions allow it. The Agenvyl room workspace remains the location for managed attachments and response artifacts.`;
   }
 
   private armDeadline(run:RunContext){

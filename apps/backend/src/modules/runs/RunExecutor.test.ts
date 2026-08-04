@@ -15,6 +15,32 @@ const workProfile={workflowMode:'work' as const,requestedReasoningEffort:null,re
 const profiles=(personas:Array<{id:string}>)=>new Map(personas.map(persona=>[persona.id,workProfile]));
 
 describe('RunExecutor', () => {
+  it('adds an available project as guidance without changing the run workspace',async()=>{
+    let instructions='',workspace:unknown;
+    const connector={health:vi.fn().mockResolvedValue(connectorContractFixtures.health),inspect:vi.fn(),validateDirectory:vi.fn().mockResolvedValue({apiVersion:'v2',status:'available',path:'C:\\work\\project',pathKey:'c:\\work\\project'})};
+    const{executor,registry,database}=await fixture(async(input,init)=>{
+      if(String(input).endsWith('/v1/runs')){const body=JSON.parse(String(init?.body)) as{instructions:string;workspace?:unknown};instructions=body.instructions;workspace=body.workspace;return new Response(JSON.stringify({run_id:'upstream-project'}),{status:202});}
+      return new Response(`data: ${JSON.stringify({event:'run.completed'})}\n\n`,{status:200,headers:{'content-type':'text/event-stream'}});
+    },4,connector);
+    registry.add({...run('project-run'),recommendedProject:{id:'project-1',name:'Main',path:'C:\\work\\project',availability:'unknown'}});
+    executor.start('project-run','work there');await vi.waitFor(()=>expect(registry.get('project-run')).toBeUndefined());
+    expect(instructions).toContain('Recommended project context for this room');expect(instructions).toContain('C:\\work\\project');expect(instructions).toContain('not an access restriction');expect(workspace).toBeUndefined();
+    await executor.shutdown();await database.close();
+  });
+
+  it('continues in the room workspace when the snapshotted project is unavailable',async()=>{
+    let instructions='';
+    const connector={health:vi.fn().mockResolvedValue(connectorContractFixtures.health),inspect:vi.fn(),validateDirectory:vi.fn().mockResolvedValue({apiVersion:'v2',status:'unavailable',error:{code:'directory_not_found',message:'Missing folder'}})};
+    const{executor,registry,database}=await fixture(async(input,init)=>{
+      if(String(input).endsWith('/v1/runs')){instructions=String((JSON.parse(String(init?.body)) as{instructions?:unknown}).instructions??'');return new Response(JSON.stringify({run_id:'upstream-missing-project'}),{status:202});}
+      return new Response(`data: ${JSON.stringify({event:'run.completed'})}\n\n`,{status:200,headers:{'content-type':'text/event-stream'}});
+    },4,connector);
+    registry.add({...run('missing-project-run'),recommendedProject:{id:'project-1',name:'Missing',path:'C:\\deleted\\project',availability:'unknown'}});
+    executor.start('missing-project-run','keep going');await vi.waitFor(()=>expect(registry.get('missing-project-run')).toBeUndefined());
+    expect(instructions).toContain('Recommended project “Missing” is currently unavailable');expect(instructions).toContain('Continue in the Agenvyl room workspace');expect(instructions).not.toContain('C:\\deleted\\project');
+    await executor.shutdown();await database.close();
+  });
+
   it('tells the model its routed identity and the active room roster', async () => {
     let instructions='';
     const {executor,registry,database}=await fixture(async(input,init)=>{
