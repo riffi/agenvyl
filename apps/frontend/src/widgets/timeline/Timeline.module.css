@@ -29,14 +29,17 @@
 .image-attachments{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:8px}.image-attachments[data-count="1"]{grid-template-columns:minmax(0,1fr)}.messageImage{position:relative;display:block;min-width:0}.messageImage>button{display:block;width:100%;padding:0;border:0;background:transparent;color:inherit;text-align:left;cursor:zoom-in}.messageImage>button:focus-visible{outline:2px solid var(--primary);outline-offset:2px}.messageImage>button img{display:block;width:100%;height:180px;object-fit:cover}.image-attachments[data-count="1"] .messageImage>button img{width:auto;max-width:100%;height:auto;max-height:420px;object-fit:contain}.messageImage>button span{display:block;overflow:hidden;padding-top:4px;color:var(--muted);font-size:9px;text-overflow:ellipsis;white-space:nowrap}.messageImage>span{position:absolute;top:5px;right:5px;border-radius:7px;background:#ffffffe6;box-shadow:0 2px 8px #0f172a24}
 .user-message p {
   margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
   white-space: pre-wrap;
 }
 .user-message small {
   display: block;
   text-align: right;
-  color: var(--muted);
+  color: #475569;
   margin-top: 5px;
-  font-size: 10px;
+  font-size: 11px;
+  line-height: 1.35;
 }
 .mention {
   display: inline;
