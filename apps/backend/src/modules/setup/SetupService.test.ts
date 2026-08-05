@@ -43,6 +43,12 @@ describe('SetupService harness discovery cache',()=>{
     await expect(service.selectWorkspaceDirectory()).resolves.toEqual({path:'/Users/test/workspaces'});
     expect(directoryPicker).toHaveBeenCalledOnce();
   });
+
+  it('invalidates the aggregate catalog after a managed restart',async()=>{
+    const connector=connectorFixture(),catalogCache={invalidate:vi.fn()},service=new SetupService(databaseFixture(),connector,'C:/workspaces',catalogCache);
+    await expect(service.restartHarness('local-opencode')).resolves.toEqual({instanceId:'local-opencode',status:'healthy',models:[{id:'fresh'}]});
+    expect(connector.restart).toHaveBeenCalledWith('local-opencode');expect(catalogCache.invalidate).toHaveBeenCalledOnce();
+  });
 });
 
 const databaseFixture=()=>({sql:vi.fn().mockResolvedValue([])}) as unknown as Database;
@@ -53,6 +59,7 @@ const connectorFixture=()=>{
     instances:vi.fn().mockResolvedValue({apiVersion:'v2',connectorEpoch:'epoch',instances:[]}),
     discover:vi.fn().mockResolvedValue({apiVersion:'v2',candidates:[]}),
     configureInstances:vi.fn().mockResolvedValue({apiVersion:'v2',instances:[]}),
+    restart:vi.fn().mockResolvedValue({apiVersion:'v2',connectorEpoch:'epoch',instance:{id:'local-opencode',type:'opencode',status:'healthy',capabilities:['model_catalog'],managed:true,activeExecutions:0},catalog:{models:[{id:'fresh'}],controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]}}}),
   };
   return connector as unknown as HttpConnectorClient&typeof connector;
 };

@@ -16,18 +16,19 @@ try {
     return operation;
   };
   const adapterOptions={claudePermissionBridge:claudePermissions,grantOpenCodeExternalDirectoryRoot};
-  const initialManagedLease=await managed.acquire(config.instances);
+  const initialManagedRuntime=await managed.acquireAvailable(config.instances);
   let app:ReturnType<typeof buildConnectorApp>;
   try{
     const adapters = buildConfiguredAdapters(config,process.env,fetch,adapterOptions);
-    app = buildConnectorApp(config, { logger: true, adapters,releaseInitialRuntime:initialManagedLease.release,discover:()=>discoverHarnesses(),configureInstances:async instances=>{const lease=await managed.acquire(instances);try{return{adapters:buildConfiguredAdapters({...config,instances},process.env,fetch,adapterOptions),release:lease.release};}catch(error){lease.release();throw error;}},persistInstances:instances=>saveConnectorInstances(config,instances),persistWorkspaces:roots=>saveConnectorWorkspaces(config,roots) });
-  }catch(error){initialManagedLease.release();managed.close();await claudePermissions.close();throw error;}
+    const prepareRuntime=async(instances:typeof config.instances)=>{const lease=await managed.acquire(instances);try{return{adapters:buildConfiguredAdapters({...config,instances},process.env,fetch,adapterOptions),release:lease.release};}catch(error){await lease.release();throw error;}};
+    app = buildConnectorApp(config, { logger: true, adapters,releaseInitialRuntime:initialManagedRuntime.release,initialRuntimeErrors:initialManagedRuntime.errors,discover:()=>discoverHarnesses(),configureInstances:prepareRuntime,restartInstance:async instance=>{await managed.restart(instance);return prepareRuntime(config.instances);},persistInstances:instances=>saveConnectorInstances(config,instances),persistWorkspaces:roots=>saveConnectorWorkspaces(config,roots) });
+  }catch(error){await initialManagedRuntime.release();await managed.close();await claudePermissions.close();throw error;}
   let closing = false;
   const shutdown = async () => {
     if (closing) return;
     closing = true;
     await app.close();
-    managed.close();
+    await managed.close();
     await claudePermissions.close();
   };
   process.once('SIGINT', () => void shutdown());

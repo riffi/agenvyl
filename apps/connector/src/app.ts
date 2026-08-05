@@ -20,6 +20,7 @@ import { normalizeConnectorInstances, type ConnectorConfig } from './config.js';
 import { ExecutionRegistry, RegistryError } from './execution-registry.js';
 import { WorkspacePolicy, WorkspacePolicyError } from './workspace-policy.js';
 import {pickLocalDirectory,validateLocalDirectory} from './directory-access.js';
+import {ManagedServerError} from './managed-servers.js';
 
 export function buildConnectorApp(config: ConnectorConfig, options: {
   connectorEpoch?: string;
@@ -27,10 +28,12 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
   logger?: boolean;
   adapters?: ReadonlyMap<string, ConnectorAdapter>;
   releaseInitialRuntime?:()=>Promise<void>|void;
+  initialRuntimeErrors?:ReadonlyMap<string,{code:string;message:string}>;
   replayLimit?: number;
   now?: () => string;
   discover?:()=>Promise<ConnectorDiscovery>;
   configureInstances?:(instances:ConnectorConfig['instances'])=>Promise<ReadonlyMap<string,ConnectorAdapter>|PreparedAdapterRuntime>;
+  restartInstance?:(instance:ConnectorConfig['instances'][number])=>Promise<PreparedAdapterRuntime>;
   persistInstances?:(instances:ConnectorConfig['instances'])=>Promise<void>;
   persistWorkspaces?:(roots:string[])=>Promise<void>;
   sseHeartbeatMs?:number;
@@ -45,9 +48,11 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
     release: options.releaseInitialRuntime,
   }, app.log);
   let configurationQueue = Promise.resolve();
+  const runtimeErrors=new Map(options.initialRuntimeErrors);
+  const restartingInstances=new Set<string>();
   const hasAdapter = (instance: ConnectorConfig['instances'][number]) => generations.current.adapters.get(instance.id)?.type === instance.type;
   const workspacePolicy = new WorkspacePolicy(config.workspaces.roots);
-  const isReady = (instance: ConnectorConfig['instances'][number]) => hasAdapter(instance) && workspacePolicy.configured;
+  const isReady = (instance: ConnectorConfig['instances'][number]) => !runtimeErrors.has(instance.id)&&hasAdapter(instance) && workspacePolicy.configured;
   const registry = new ExecutionRegistry(
     connectorEpoch,
     instanceId => generations.acquire(instanceId),
@@ -55,6 +60,14 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
     options.replayLimit,
     options.now,
   );
+  const instanceSnapshot=(instance:ConnectorConfig['instances'][number])=>{
+    const adapter=generations.current.adapters.get(instance.id),ownership=instance.type==='opencode'&&instance.managed!==undefined?{managed:instance.managed}:{},activeExecutions=registry.activeCount(instance.id),runtimeError=runtimeErrors.get(instance.id);
+    if(runtimeError)return{id:instance.id,type:instance.type,status:'unavailable' as const,capabilities:[],...ownership,activeExecutions,error:runtimeError};
+    if(adapter?.type!==instance.type)return{id:instance.id,type:instance.type,status:'unavailable' as const,capabilities:[],...ownership,activeExecutions,error:{code:'adapter_not_loaded',message:'Adapter module is not loaded in this Connector build'}};
+    return workspacePolicy.configured
+      ?{id:instance.id,type:instance.type,status:'healthy' as const,capabilities:adapter.capabilities,...ownership,activeExecutions}
+      :{id:instance.id,type:instance.type,status:'degraded' as const,capabilities:adapter.capabilities,...ownership,activeExecutions,error:{code:'workspace_not_configured',message:'Connector workspace roots are not configured'}};
+  };
 
   app.addHook('onClose',async()=>{await configurationQueue;await generations.close();});
 
@@ -78,16 +91,7 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
   app.get('/v2/instances', async (): Promise<ConnectorInstanceList> => ({
     apiVersion: CONNECTOR_API_VERSION,
     connectorEpoch,
-    instances: enabledInstances.map(instance => {
-      const adapter = generations.current.adapters.get(instance.id);
-      const ownership=instance.type==='opencode'&&instance.managed!==undefined?{managed:instance.managed}:{};
-      if (adapter?.type !== instance.type) {
-        return { id: instance.id, type: instance.type, status: 'unavailable' as const, capabilities: [],...ownership, error: { code: 'adapter_not_loaded', message: 'Adapter module is not loaded in this Connector build' } };
-      }
-      return workspacePolicy.configured
-        ? { id: instance.id, type: instance.type, status: 'healthy' as const, capabilities: adapter.capabilities,...ownership }
-        : { id: instance.id, type: instance.type, status: 'degraded' as const, capabilities: adapter.capabilities,...ownership, error: { code: 'workspace_not_configured', message: 'Connector workspace roots are not configured' } };
-    }),
+    instances: enabledInstances.map(instanceSnapshot),
   }));
 
   app.get('/v2/configuration',async()=>({apiVersion:CONNECTOR_API_VERSION,instances:structuredClone(config.instances)}));
@@ -131,18 +135,19 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
         candidate=generations.candidate(instances,runtime);
         await options.persistInstances!(instances);
         generations.activate(candidate);
+        runtimeErrors.clear();
         config.instances=structuredClone(instances);
         enabledInstances=instances.filter(instance=>instance.enabled);
         return{ok:true as const};
       }catch(error){
         if(candidate)await generations.discard(candidate);
         app.log.error({err:error},'Connector configuration failed');
-        return{ok:false as const};
+        return{ok:false as const,error};
       }
     });
     configurationQueue=operation.then(()=>undefined,()=>undefined);
     const result=await operation;
-    if(!result.ok)return reply.code(409).send({apiVersion:CONNECTOR_API_VERSION,error:'configuration_failed',message:'Connector configuration could not be applied'});
+    if(!result.ok){const issue=configurationIssue(result.error);return reply.code(issue.statusCode).send({apiVersion:CONNECTOR_API_VERSION,error:issue.code,message:issue.message});}
     return{apiVersion:CONNECTOR_API_VERSION,instances};
   });
 
@@ -169,6 +174,7 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
   app.get<{ Params: { id: string } }>('/v2/instances/:id/catalog', async (request, reply) => {
     const instance=enabledInstances.find(candidate=>candidate.id===request.params.id);
     if (!instance) return reply.code(404).send({ apiVersion: CONNECTOR_API_VERSION, error: 'instance_not_found', message: 'Connector instance not found' });
+    if(runtimeErrors.has(instance.id))return reply.code(503).send({apiVersion:CONNECTOR_API_VERSION,error:'catalog_unavailable',message:'Connector instance is unavailable'});
     const adapter=generations.current.adapters.get(instance.id);
     if(adapter?.type!==instance.type||!adapter.catalog)return reply.code(503).send({ apiVersion: CONNECTOR_API_VERSION, error: 'catalog_unavailable', message: 'Connector instance does not provide catalog discovery' });
     try{const catalog=await adapter.catalog();return{apiVersion:CONNECTOR_API_VERSION,connectorEpoch,instanceId:instance.id,...catalog} satisfies ConnectorCatalog;}
@@ -177,6 +183,7 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
 
   app.post('/v2/executions', async (request, reply) => {
     if (!isStartExecutionRequest(request.body)) return error(reply, new RegistryError('invalid_request', 'Execution request does not match Connector v2 contract', 400));
+    if(restartingInstances.has(request.body.harnessInstanceId)||runtimeErrors.has(request.body.harnessInstanceId))return error(reply,new RegistryError('instance_unavailable','Connector instance is restarting or unavailable',503));
     try {
       const result = registry.start(request.body);
       return reply.code(result.created ? 201 : 200).send({ execution: result.execution });
@@ -226,6 +233,40 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
     }
   });
 
+  app.post<{Params:{id:string}}>('/v2/instances/:id/restart',async(request,reply)=>{
+    const instance=enabledInstances.find(candidate=>candidate.id===request.params.id);
+    if(!instance)return reply.code(404).send({apiVersion:CONNECTOR_API_VERSION,error:'instance_not_found',message:'Connector instance not found'});
+    if(instance.type!=='opencode'||!instance.managed)return reply.code(409).send({apiVersion:CONNECTOR_API_VERSION,error:'instance_not_managed',message:'Only managed OpenCode instances can be restarted by Agenvyl'});
+    if(registry.activeCount(instance.id)>0)return reply.code(409).send({apiVersion:CONNECTOR_API_VERSION,error:'instance_busy',message:'Wait for active executions to finish before restarting OpenCode'});
+    if(restartingInstances.has(instance.id))return reply.code(409).send({apiVersion:CONNECTOR_API_VERSION,error:'instance_busy',message:'Managed OpenCode restart is already in progress'});
+    if(!options.restartInstance)return reply.code(503).send({apiVersion:CONNECTOR_API_VERSION,error:'restart_unavailable',message:'Managed OpenCode restart is unavailable'});
+    restartingInstances.add(instance.id);
+    const operation=configurationQueue.then(async()=>{
+      let candidate:ReturnType<typeof generations.candidate>|undefined;
+      try{
+        if(registry.activeCount(instance.id)>0)throw new RegistryError('instance_busy','Wait for active executions to finish before restarting OpenCode',409);
+        const runtime=await options.restartInstance!(instance);
+        candidate=generations.candidate(config.instances,runtime);
+        const adapter=candidate.adapters.get(instance.id);
+        if(adapter?.type!=='opencode'||!adapter.catalog)throw new ManagedServerError('managed_server_unavailable','Restarted OpenCode catalog is unavailable');
+        const catalog=await adapter.catalog();
+        generations.activate(candidate);
+        runtimeErrors.delete(instance.id);
+        return{ok:true as const,catalog};
+      }catch(error){
+        if(candidate)await generations.discard(candidate);
+        const issue=error instanceof RegistryError?error:restartIssue(error);
+        if(!(issue instanceof RegistryError&&issue.code==='instance_busy'))runtimeErrors.set(instance.id,{code:issue.code,message:issue.message});
+        app.log.error({err:error,instanceId:instance.id},'Managed OpenCode restart failed');
+        return{ok:false as const,issue};
+      }
+    });
+    configurationQueue=operation.then(()=>undefined,()=>undefined);
+    const result=await operation.finally(()=>restartingInstances.delete(instance.id));
+    if(!result.ok)return reply.code(result.issue.statusCode).send({apiVersion:CONNECTOR_API_VERSION,error:result.issue.code,message:result.issue.message});
+    return{apiVersion:CONNECTOR_API_VERSION,connectorEpoch,instance:instanceSnapshot(instance),catalog:result.catalog};
+  });
+
   return app;
 }
 
@@ -256,7 +297,11 @@ function nextBeforeHeartbeat<T>(pending:Promise<IteratorResult<T>>,heartbeatMs:n
     const timer=setTimeout(()=>resolve(undefined),heartbeatMs);
     pending.then(result=>{clearTimeout(timer);resolve(result);},error=>{clearTimeout(timer);reject(error);});
   });
+
 }
+
+const configurationIssue=(error:unknown)=>error instanceof ManagedServerError?error:{code:'configuration_failed',message:'Connector configuration could not be applied',statusCode:409};
+const restartIssue=(error:unknown)=>error instanceof ManagedServerError?error:new ManagedServerError('managed_server_unavailable','Managed OpenCode restart failed');
 
 function isPreparedRuntime(value:ReadonlyMap<string,ConnectorAdapter>|PreparedAdapterRuntime):value is PreparedAdapterRuntime{
   return typeof value==='object'&&value!==null&&'adapters' in value;

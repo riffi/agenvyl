@@ -1,10 +1,11 @@
-import type {CompleteSetupRequest,ConfigureSetupHarnessesRequest,HarnessSettingsState,SetupState,TestHarnessInstanceRequest,TestHarnessInstanceResult} from '@agenvyl/contracts';
+import type {CompleteSetupRequest,ConfigureSetupHarnessesRequest,HarnessSettingsState,RestartHarnessResult,SetupState,TestHarnessInstanceRequest,TestHarnessInstanceResult} from '@agenvyl/contracts';
 import {isConfigureConnectorInstancesRequest,isTestConnectorInstanceRequest} from '@agenvyl/connector-contract';
 import type {FastifyBaseLogger} from 'fastify';
 import {mkdir} from 'node:fs/promises';
 import path from 'node:path';
 import type {Database} from '../../infrastructure/database/Database.js';
 import type {HttpConnectorClient} from '../../integrations/connector/HttpConnectorClient.js';
+import {ConnectorClientError} from '../../integrations/connector/HttpConnectorClient.js';
 import {AppError} from '../../shared/errors/AppError.js';
 import type {HarnessCatalogService} from '../connector/HarnessCatalogService.js';
 import type {RoomWorkspaceService} from '../workspace/RoomWorkspaceService.js';
@@ -66,8 +67,18 @@ export class SetupService{
     return{connectorEpoch:runtime.connectorEpoch,candidates:discovery.value.candidates,discoveryCache:discovery.cache,instances:configuration.instances.map(instance=>{
       const current=runtimeById.get(instance.id);
       const personas=personaRows.filter(row=>String(row.harness_instance_id)===instance.id).map(row=>({id:String(row.id),name:String(row.name),handle:String(row.handle),archived:Boolean(row.archived_at)}));
-      return{...instance,status:instance.enabled?(current?.status??'unavailable'):'disabled',capabilities:current?.capabilities??[],...(current?.error?{error:current.error}:{}),personas};
+      return{...instance,status:instance.enabled?(current?.status??'unavailable'):'disabled',capabilities:current?.capabilities??[],activeExecutions:current?.activeExecutions??0,...(current?.error?{error:current.error}:{}),personas};
     })};
+  }
+  async restartHarness(instanceId:string):Promise<RestartHarnessResult>{
+    try{
+      const result=await this.connector.restart(instanceId);
+      this.catalogCache.invalidate();
+      return{instanceId:result.instance.id,status:result.instance.status,models:result.catalog.models};
+    }catch(error){
+      if(error instanceof ConnectorClientError&&error.code==='connector_command_rejected')throw new AppError(error.serverCode??'restart_rejected',error.status??409,error.message);
+      throw new AppError('connector_unavailable',503,'Managed OpenCode restart failed');
+    }
   }
   async configure(input:ConfigureSetupHarnessesRequest){
     if(!isConfigureConnectorInstancesRequest(input))throw new AppError('invalid_setup_harnesses',400,'Harness selection is invalid');

@@ -49,6 +49,7 @@ export type ConnectorInstance = {
   status: ConnectorInstanceStatus;
   capabilities: ConnectorCapability[];
   managed?: boolean;
+  activeExecutions?: number;
   error?: ConnectorError;
 };
 
@@ -114,6 +115,12 @@ export type TestConnectorInstanceResult = {
 export type ConnectorConfigurationResult = {
   apiVersion: ConnectorApiVersion;
   instances: ConnectorInstanceConfiguration[];
+};
+export type RestartConnectorInstanceResult={
+  apiVersion:ConnectorApiVersion;
+  connectorEpoch:string;
+  instance:ConnectorInstance;
+  catalog:PickCatalog;
 };
 
 export type ConnectorDirectoryValidation = {
@@ -289,7 +296,14 @@ export function isConnectorInstanceList(value: unknown): value is ConnectorInsta
       && Array.isArray(instance.capabilities) && instance.capabilities.every(capability => typeof capability === 'string' && capabilities.has(capability))
       && (instance.managed === undefined || typeof instance.managed === 'boolean')
       && (instance.type === 'opencode' || instance.managed === undefined)
+      && (instance.activeExecutions === undefined || (Number.isSafeInteger(instance.activeExecutions) && Number(instance.activeExecutions) >= 0))
       && (instance.error === undefined || isError(instance.error)));
+}
+
+export function isRestartConnectorInstanceResult(value:unknown):value is RestartConnectorInstanceResult{
+  return isRecord(value)&&value.apiVersion===CONNECTOR_API_VERSION&&strings(value,'connectorEpoch')
+    &&isConnectorInstanceList({apiVersion:CONNECTOR_API_VERSION,connectorEpoch:value.connectorEpoch,instances:[value.instance]})
+    &&isRecord(value.catalog)&&Array.isArray(value.catalog.models)&&value.catalog.models.every(isCatalogModel)&&isExecutionControls(value.catalog.controls);
 }
 
 export function isConnectorCatalog(value: unknown): value is ConnectorCatalog {

@@ -1,5 +1,5 @@
 import { apiRequest } from '../../../shared/api';
-import type {ConfigureSetupHarnessesRequest,HarnessSettingsState,TestHarnessInstanceRequest,TestHarnessInstanceResult} from '@agenvyl/contracts';
+import type {ConfigureSetupHarnessesRequest,HarnessSettingsState,RestartHarnessResult,TestHarnessInstanceRequest,TestHarnessInstanceResult} from '@agenvyl/contracts';
 import type { HarnessCatalog } from '../model';
 
 export const harnessKeys = { catalog: ['harnesses'] as const,settings:['harness-settings'] as const };
@@ -11,4 +11,5 @@ export const harnessesApi = {
   settings:(signal?:AbortSignal,refresh=false)=>apiRequest<HarnessSettingsState>(refreshUrl('/api/v1/harness-settings',refresh),{signal}),
   configure:(input:ConfigureSetupHarnessesRequest)=>apiRequest('/api/v1/harness-settings',{method:'PUT',body:input}),
   testInstance:(input:TestHarnessInstanceRequest)=>apiRequest<TestHarnessInstanceResult>('/api/v1/harness-settings/test',{method:'POST',body:input}),
+  restart:(instanceId:string)=>apiRequest<RestartHarnessResult>(`/api/v1/harnesses/${encodeURIComponent(instanceId)}/restart`,{method:'POST'}),
 };

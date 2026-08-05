@@ -39,6 +39,12 @@ manages a local `opencode serve` child process. CLI fallback:
 agenvyl setup
 ```
 
+Managed means exclusive lifecycle ownership. Agenvyl refuses to reuse an
+unknown process already listening on the configured endpoint. After changing
+`opencode.json`, use **Restart OpenCode** in Harness Settings to start a fresh
+server and reload its model catalog. Restart is disabled while that instance
+has active executions.
+
 ## Connect an existing server
 
 Start the server yourself:
@@ -52,6 +58,10 @@ Then start Agenvyl with:
 ```bash
 export AGENVYL_CONNECTOR_OPENCODE_URL=http://127.0.0.1:4096
 ```
+
+Set the OpenCode instance to `managed: false` in Harness Settings. Agenvyl only
+attaches to external instances and never stops or restarts them; restart the
+server with your own service manager after configuration changes.
 
 If the server requires HTTP Basic authentication:
 

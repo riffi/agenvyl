@@ -13,6 +13,7 @@ import {
 import type { AdapterExecution, AdapterExecutionEvent, AdapterStartExecutionRequest, ConnectorAdapter } from './adapter.js';
 import { buildConnectorApp } from './app.js';
 import type { ConnectorConfig } from './config.js';
+import {ManagedServerError} from './managed-servers.js';
 
 const token = 'connector-test-token-that-is-long-enough';
 let workspaceRoot = '';
@@ -50,7 +51,7 @@ describe('Connector shell', () => {
     expect(health.json()).toMatchObject({ connectorEpoch: 'epoch-test', status: 'degraded', instances: { total: 1, healthy: 0, degraded: 1 } });
     const instances = await app.inject({ url: '/v2/instances', headers: auth });
     expect(isConnectorInstanceList(instances.json())).toBe(true);
-    expect(instances.json().instances).toEqual([{ id: 'local-hermes', type: 'hermes', status: 'unavailable', capabilities: [], error: { code: 'adapter_not_loaded', message: expect.any(String) } }]);
+    expect(instances.json().instances).toEqual([{ id: 'local-hermes', type: 'hermes', status: 'unavailable', capabilities: [], activeExecutions:0,error: { code: 'adapter_not_loaded', message: expect.any(String) } }]);
     expect((await app.inject({url:'/v2/configuration',headers:auth})).json()).toEqual({apiVersion:'v2',instances:config.instances});
     await app.close();
   });
@@ -215,6 +216,47 @@ describe('Connector shell', () => {
     expect(response.statusCode).toBe(200);
     expect(response.body).toContain(': heartbeat\n\n');
     expect(parseEvents(response.body).at(-1)?.type).toBe('execution.completed');
+    await app.close();
+  });
+
+  it('starts degraded after a managed endpoint conflict and recovers through reconfiguration',async()=>{
+    const instance={id:'local-opencode',type:'opencode' as const,enabled:true,endpoint:'http://127.0.0.1:4096',managed:true};
+    const initial=new ControlledAdapter('opencode'),replacement=new ControlledAdapter('opencode');
+    const value={...structuredClone(config),instances:[instance]};
+    const app=buildConnectorApp(value,{adapters:new Map([[instance.id,initial]]),initialRuntimeErrors:new Map([[instance.id,{code:'managed_endpoint_conflict',message:'Choose another endpoint'}]]),configureInstances:async()=>new Map([[instance.id,replacement]]),persistInstances:async()=>undefined});
+
+    expect((await app.inject({url:'/v2/health',headers:auth})).json()).toMatchObject({status:'degraded',instances:{healthy:0,degraded:1}});
+    expect((await app.inject({url:'/v2/instances',headers:auth})).json().instances[0]).toMatchObject({status:'unavailable',error:{code:'managed_endpoint_conflict',message:'Choose another endpoint'}});
+    const changed=[{...instance,endpoint:'http://127.0.0.1:4097'}];
+    expect((await app.inject({method:'PUT',url:'/v2/instances',headers:auth,payload:{instances:changed}})).statusCode).toBe(200);
+    expect((await app.inject({url:'/v2/instances',headers:auth})).json().instances[0]).toMatchObject({status:'healthy'});
+    await app.close();
+  });
+
+  it('rejects a busy managed restart and activates a fresh adapter generation after stop',async()=>{
+    const instance={id:'local-opencode',type:'opencode' as const,enabled:true,endpoint:'http://127.0.0.1:4096',managed:true};
+    const value={...structuredClone(config),instances:[instance]},initial=new ControlledAdapter('opencode'),replacement=new ControlledAdapter('opencode');
+    const app=buildConnectorApp(value,{connectorEpoch:'epoch-test',adapters:new Map([[instance.id,initial]]),restartInstance:async()=>({adapters:new Map([[instance.id,replacement]])})});
+    const run={...structuredClone(connectorContractFixtures.startExecution),executionId:'busy-opencode',harnessInstanceId:instance.id} as StartExecutionRequest;
+    await app.inject({method:'POST',url:'/v2/executions',headers:auth,payload:run});await waitForStatus(app,run.executionId,'running');
+    const busy=await app.inject({method:'POST',url:`/v2/instances/${instance.id}/restart`,headers:auth});
+    expect(busy.statusCode).toBe(409);expect(busy.json()).toMatchObject({error:'instance_busy'});
+    expect((await app.inject({url:'/v2/instances',headers:auth})).json().instances[0].activeExecutions).toBe(1);
+    await app.inject({method:'POST',url:`/v2/executions/${run.executionId}/stop`,headers:auth});
+    const restarted=await app.inject({method:'POST',url:`/v2/instances/${instance.id}/restart`,headers:auth});
+    expect(restarted.statusCode).toBe(200);expect(restarted.json()).toMatchObject({connectorEpoch:'epoch-test',instance:{id:instance.id,status:'healthy',activeExecutions:0},catalog:{models:expect.any(Array)}});
+    const next={...run,executionId:'new-generation'};
+    await app.inject({method:'POST',url:'/v2/executions',headers:auth,payload:next});await waitForStatus(app,next.executionId,'running');
+    expect((await app.inject({url:`/v2/executions/${next.executionId}`,headers:auth})).json().execution.adapterGeneration).toBe(2);
+    await app.close();
+  });
+
+  it('marks a managed instance unavailable when safe restart fails',async()=>{
+    const instance={id:'local-opencode',type:'opencode' as const,enabled:true,endpoint:'http://127.0.0.1:4096',managed:true},adapter=new ControlledAdapter('opencode');
+    const app=buildConnectorApp({...structuredClone(config),instances:[instance]},{adapters:new Map([[instance.id,adapter]]),restartInstance:async()=>{throw new ManagedServerError('managed_endpoint_conflict','Choose another endpoint');}});
+    const response=await app.inject({method:'POST',url:`/v2/instances/${instance.id}/restart`,headers:auth});
+    expect(response.statusCode).toBe(409);expect(response.json()).toMatchObject({error:'managed_endpoint_conflict'});
+    expect((await app.inject({url:'/v2/instances',headers:auth})).json().instances[0]).toMatchObject({status:'unavailable',error:{code:'managed_endpoint_conflict'}});
     await app.close();
   });
 
@@ -396,7 +438,7 @@ describe('Connector shell', () => {
 });
 
 class ControlledAdapter implements ConnectorAdapter {
-  readonly type = 'hermes';
+  constructor(readonly type:'hermes'|'opencode'='hermes'){}
   readonly capabilities = ['model_catalog','text_streaming'] satisfies ConnectorAdapter['capabilities'];
   readonly queues = new Map<string, AsyncEventQueue>();
   startCount = 0;

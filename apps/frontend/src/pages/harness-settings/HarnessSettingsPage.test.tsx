@@ -22,6 +22,7 @@ beforeEach(()=>{
   requests=[];testHealthy=true;vi.stubGlobal('confirm',vi.fn(()=>true));vi.stubGlobal('requestAnimationFrame',(callback:FrameRequestCallback)=>{callback(0);return 1;});
   vi.stubGlobal('fetch',vi.fn<typeof fetch>(async(input,init)=>{const url=String(input),method=init?.method??'GET',body=init?.body?JSON.parse(String(init.body)):undefined;requests.push({url,method,body});
     if(url==='/api/v1/harness-settings/test')return Response.json(testHealthy?{instanceId:(body as {instance:{id:string}}).instance.id,status:'healthy',capabilities:[]}:{instanceId:(body as {instance:{id:string}}).instance.id,status:'unavailable',capabilities:[],error:{code:'connection_test_failed',message:'Harness connection test failed'}});
+    if(url==='/api/v1/harnesses/local-opencode/restart'&&method==='POST')return Response.json({instanceId:'local-opencode',status:'healthy',models:[{id:'fresh-model'}]});
     if(url==='/api/v1/harness-settings'&&method==='PUT')return Response.json({});
     if(url==='/api/v1/harnesses?refresh=true')return Response.json({connectorEpoch:'epoch',cache,instances:[]});
     if(url.startsWith('/api/v1/harness-settings'))return Response.json(settings);
@@ -50,6 +51,15 @@ describe('HarnessSettingsPage',()=>{
     const endpoint=await screen.findByRole('textbox',{name:'Endpoint'});await user.clear(endpoint);await user.type(endpoint,'http://127.0.0.1:4999');await user.click(screen.getByRole('button',{name:'Test connection'}));
     expect(await screen.findByText('Connection is healthy.')).toBeTruthy();expect(requests.some(request=>request.method==='PUT')).toBe(false);
     expect(requests.find(request=>request.url.endsWith('/test'))?.body).toMatchObject({instance:{endpoint:'http://127.0.0.1:4999'}});
+  });
+
+  it('confirms managed OpenCode restart and refreshes settings and catalog',async()=>{
+    const user=userEvent.setup();renderPage('/settings/harnesses/local-opencode');
+    const restart=await screen.findByRole('button',{name:'Restart OpenCode'});await user.click(restart);
+    expect(vi.mocked(confirm)).toHaveBeenCalled();
+    await waitFor(()=>expect(requests.some(request=>request.url==='/api/v1/harnesses/local-opencode/restart'&&request.method==='POST')).toBe(true));
+    expect(await screen.findByText('local-opencode restarted with a fresh model catalog.')).toBeTruthy();
+    expect(requests.some(request=>request.url==='/api/v1/harnesses?refresh=true')).toBe(true);
   });
 
   it('keeps an add draft when preflight fails',async()=>{

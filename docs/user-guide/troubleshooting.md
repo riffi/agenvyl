@@ -102,6 +102,18 @@ The harness, not Agenvyl, owns model access.
    [Hermes model routes](../harnesses/hermes.md).
 5. Inspect Connector logs without publishing credentials.
 
+For managed OpenCode, **Refresh models** rereads the running server but does not
+reload `opencode.json`. Use **Harness Settings → Restart OpenCode** after a
+configuration change. Wait for active executions to finish first. For an
+external OpenCode instance, restart the server outside Agenvyl and then refresh
+the catalog.
+
+If Connector reports `managed_endpoint_conflict`, it found a process on the
+managed endpoint that does not match its durable ownership record. Agenvyl will
+not terminate or reuse it. Stop that process yourself, select another endpoint,
+or configure the instance as externally managed. Other harnesses and Harness
+Settings remain available while the conflicting instance is unavailable.
+
 ## Claude cannot edit files or no approval appears
 
 Agenvyl injects its permission bridge into Claude processes automatically. Do

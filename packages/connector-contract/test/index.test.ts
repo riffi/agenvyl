@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { connectorContractFixtures, isConfigureConnectorInstancesRequest, isConnectorCatalog, isConnectorCommandResult, isConnectorExecutionEvent, isConnectorHealth, isConnectorInstanceList, isConnectorRequestCommandResult, isExecutionSnapshot, isResolveConnectorRequest, isStartExecutionRequest } from '../src/index.js';
+import { connectorContractFixtures, isConfigureConnectorInstancesRequest, isConnectorCatalog, isConnectorCommandResult, isConnectorExecutionEvent, isConnectorHealth, isConnectorInstanceList, isConnectorRequestCommandResult, isExecutionSnapshot, isResolveConnectorRequest, isRestartConnectorInstanceResult, isStartExecutionRequest } from '../src/index.js';
 
 describe('Connector v1 contract fixtures', () => {
   it('keeps health, discovery, execution and events runtime-valid', () => {
@@ -49,6 +49,13 @@ describe('Connector v1 contract fixtures', () => {
     expect(isConnectorInstanceList({...connectorContractFixtures.instances,instances:[{...instance,type:'opencode',managed:true}]})).toBe(true);
     expect(isConnectorInstanceList({...connectorContractFixtures.instances,instances:[{...instance,type:'opencode',managed:'yes'}]})).toBe(false);
     expect(isConnectorInstanceList({...connectorContractFixtures.instances,instances:[{...instance,type:'hermes',managed:true}]})).toBe(false);
+  });
+
+  it('validates active execution counts and restart results',()=>{
+    const instance={...connectorContractFixtures.instances.instances[0],type:'opencode',managed:true,activeExecutions:0};
+    expect(isConnectorInstanceList({...connectorContractFixtures.instances,instances:[instance]})).toBe(true);
+    expect(isConnectorInstanceList({...connectorContractFixtures.instances,instances:[{...instance,activeExecutions:-1}]})).toBe(false);
+    expect(isRestartConnectorInstanceResult({apiVersion:'v2',connectorEpoch:'epoch-1',instance,catalog:{models:[],controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]}}})).toBe(true);
   });
 
   it('accepts only concrete absolute external-directory roots on OpenCode instances',()=>{

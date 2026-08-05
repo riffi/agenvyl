@@ -95,8 +95,9 @@ allowlist.
 | AGY | `AGENVYL_CONNECTOR_AGY_COMMAND`, `AGENVYL_CONNECTOR_AGY_PRINT_TIMEOUT_MS` |
 | Cursor CLI | `AGENVYL_CONNECTOR_CURSOR_COMMAND` |
 
-Hermes is attach-only. OpenCode may attach to an existing endpoint or run as a
-Connector-managed child. Codex owns one restartable app-server and multiplexes
+Hermes is attach-only. OpenCode with `managed: true` is started and stopped only
+by Connector; `managed: false` is attach-only and leaves its lifecycle to the
+operator. Codex owns one restartable app-server and multiplexes
 ephemeral threads. Claude, AGY, and Cursor CLI start a fresh process for each
 execution. Cursor runs headlessly and does not resume upstream sessions.
 
@@ -143,9 +144,23 @@ executions use the new generation while existing executions remain pinned to
 the adapter and harness type with which they started. The old generation drains
 until all of its executions reach a terminal state; there is no forced
 retirement timeout. Connector-managed OpenCode processes are reference-counted
-by endpoint and remain alive while any generation still uses them. Preparation
+by instance and remain alive while any generation still uses them. Preparation
 or persistence failure disposes only the candidate generation and leaves the
 current configuration active.
+
+Managed OpenCode ownership is recorded atomically under the Agenvyl state
+directory. Connector verifies the PID, process start time, executable, and
+launch arguments before stopping a stale process. A reachable endpoint without
+matching ownership fails with `managed_endpoint_conflict`; Connector never
+attaches to or terminates that process. Stop the external server, change the
+instance to `managed: false`, or choose another loopback endpoint. The conflict
+degrades only that instance; Connector and Harness Settings remain available so
+the configuration can be corrected without editing files manually.
+
+`POST /v2/instances/:id/restart` restarts only an enabled managed OpenCode
+instance. It rejects active executions with `instance_busy`, starts and probes
+the replacement server, loads its catalog, and activates a new adapter
+generation. External instances cannot be restarted through Connector.
 
 The per-instance catalog returns only models and controls the adapter can
 represent safely. Unknown or incompatible upstream responses fail closed.

@@ -1,4 +1,4 @@
-import { isConnectorCatalog, isConnectorCommandResult, isConnectorConfigurationResult, isConnectorDirectoryPickerResult, isConnectorDirectoryValidation, isConnectorDiscovery, isConnectorExecutionEvent, isConnectorHealth, isConnectorInstanceList, isConnectorRequestCommandResult, isExecutionSnapshot, isTestConnectorInstanceResult, type ConfigureConnectorInstancesRequest, type ConnectorCatalog, type ConnectorConfigurationResult, type ConnectorDirectoryPickerResult, type ConnectorDirectoryValidation, type ConnectorDiscovery, type ConnectorExecutionEvent, type ConnectorHealth, type ConnectorInstanceList, type ConnectorRequestAnswer, type ConnectorRequestCommandResult, type ExecutionSnapshot, type StartExecutionRequest, type TestConnectorInstanceRequest, type TestConnectorInstanceResult } from '@agenvyl/connector-contract';
+import { isConnectorCatalog, isConnectorCommandResult, isConnectorConfigurationResult, isConnectorDirectoryPickerResult, isConnectorDirectoryValidation, isConnectorDiscovery, isConnectorExecutionEvent, isConnectorHealth, isConnectorInstanceList, isConnectorRequestCommandResult, isExecutionSnapshot, isRestartConnectorInstanceResult, isTestConnectorInstanceResult, type ConfigureConnectorInstancesRequest, type ConnectorCatalog, type ConnectorConfigurationResult, type ConnectorDirectoryPickerResult, type ConnectorDirectoryValidation, type ConnectorDiscovery, type ConnectorExecutionEvent, type ConnectorHealth, type ConnectorInstanceList, type ConnectorRequestAnswer, type ConnectorRequestCommandResult, type ExecutionSnapshot, type RestartConnectorInstanceResult, type StartExecutionRequest, type TestConnectorInstanceRequest, type TestConnectorInstanceResult } from '@agenvyl/connector-contract';
 import type { ConnectorExecutionClient, ConnectorLifecycleErrorCode } from '../../modules/connector/connector.ports.js';
 import {parseSse} from '../../infrastructure/http/parseSse.js';
 
@@ -14,7 +14,7 @@ type HttpConnectorClientOptions={
 };
 
 export class ConnectorClientError extends Error {
-  constructor(readonly code: ConnectorLifecycleErrorCode, message: string, readonly status?: number,cause?:unknown) {
+  constructor(readonly code: ConnectorLifecycleErrorCode, message: string, readonly status?: number,cause?:unknown,readonly serverCode?:string) {
     super(message,{cause});
     this.name = 'ConnectorClientError';
   }
@@ -54,6 +54,12 @@ export class HttpConnectorClient implements ConnectorExecutionClient {
   async catalog(instanceId:string):Promise<ConnectorCatalog>{
     const value=await this.get(`/v2/instances/${encodeURIComponent(instanceId)}/catalog`,'discovery',METADATA_REQUEST_TIMEOUT_MS);
     if(!isConnectorCatalog(value))throw new ConnectorClientError('connector_invalid_response','Connector returned an invalid catalog response');
+    return value;
+  }
+
+  async restart(instanceId:string):Promise<RestartConnectorInstanceResult>{
+    const value=await this.json(`/v2/instances/${encodeURIComponent(instanceId)}/restart`,'POST',undefined,'discovery',30_000);
+    if(!isRestartConnectorInstanceResult(value)||value.instance.id!==instanceId)throw invalidResponse('Connector returned an invalid restart response');
     return value;
   }
 
@@ -151,7 +157,7 @@ export class HttpConnectorClient implements ConnectorExecutionClient {
     const body=await safeJson(response),serverCode=isRecord(body)&&typeof body.error==='string'?body.error:undefined;
     if(resource==='execution'&&response.status===404&&serverCode==='execution_not_found')return new ConnectorClientError('connector_execution_lost','Connector execution is no longer available',404);
     if(response.status===409&&serverCode==='replay_unavailable')return new ConnectorClientError('connector_replay_unavailable','Connector events are no longer replayable',409);
-    if(response.status===400||response.status===404||response.status===409)return new ConnectorClientError('connector_command_rejected','Connector command was rejected',response.status);
+    if(response.status===400||response.status===404||response.status===409)return new ConnectorClientError('connector_command_rejected',isRecord(body)&&typeof body.message==='string'?body.message:'Connector command was rejected',response.status,undefined,serverCode);
     return new ConnectorClientError('connector_unavailable','Connector request failed',response.status);
   }
 }

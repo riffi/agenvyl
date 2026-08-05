@@ -45,6 +45,13 @@ describe('HttpConnectorClient', () => {
     }finally{timeout.mockRestore();}
   });
 
+  it('restarts a managed instance through the typed connector endpoint',async()=>{
+    const result={apiVersion:'v2' as const,connectorEpoch:'epoch-1',instance:{...connectorContractFixtures.instances.instances[0]!,id:'local/opencode',type:'opencode',managed:true,activeExecutions:0},catalog:{models:[{id:'fresh'}],controls:{nativeWorkflowModes:[] as Array<'plan'|'work'>,permissionProfiles:[],agentVariants:[]}}};
+    const request=vi.fn<typeof fetch>().mockResolvedValue(Response.json(result)),client=new HttpConnectorClient('http://connector.test','x'.repeat(32),request);
+    await expect(client.restart('local/opencode')).resolves.toEqual(result);
+    expect(request).toHaveBeenCalledWith('http://connector.test/v2/instances/local%2Fopencode/restart',expect.objectContaining({method:'POST'}));
+  });
+
   it('maps missing executions and malformed payloads to safe errors', async () => {
     const token = 'secret-token-'.padEnd(32, 'x');
     const missing = new HttpConnectorClient('http://connector.test', token, vi.fn<typeof fetch>().mockResolvedValue(Response.json({apiVersion:'v2',error:'execution_not_found',message:`leak ${token}`},{status:404})));

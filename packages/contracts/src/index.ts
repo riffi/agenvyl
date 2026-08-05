@@ -95,8 +95,9 @@ export type ConfigureSetupHarnessesRequest={instances:SetupHarnessInstance[]};
 export type TestHarnessInstanceRequest={instance:SetupHarnessInstance};
 export type TestHarnessInstanceResult={instanceId:string;status:'healthy'|'unavailable';capabilities:string[];error?:{code:string;message:string}};
 export type HarnessSettingsPersona={id:string;name:string;handle:string;archived:boolean};
-export type HarnessSettingsInstance=SetupHarnessInstance&{status:'healthy'|'degraded'|'unavailable'|'disabled';capabilities:string[];error?:{code:string;message:string};personas:HarnessSettingsPersona[]};
+export type HarnessSettingsInstance=SetupHarnessInstance&{status:'healthy'|'degraded'|'unavailable'|'disabled';capabilities:string[];activeExecutions?:number;error?:{code:string;message:string};personas:HarnessSettingsPersona[]};
 export type HarnessSettingsState={connectorEpoch:string;instances:HarnessSettingsInstance[];candidates:SetupHarnessCandidate[];discoveryCache:HarnessCacheMetadata};
+export type RestartHarnessResult={instanceId:string;status:'healthy'|'degraded'|'unavailable';models:Array<{id:string;label?:string}>};
 export type CompleteSetupRequest={locale:'en'|'ru';workspace_root:string;profile:{display_name:string;handle:string};room_title:string;route:{harness_instance_id:string;harness_type:string;model_id:string;permission_profile_id:string|null;agent_variant_id:string|null}|null};
 export type CompleteSetupResult={roomId:string};
 

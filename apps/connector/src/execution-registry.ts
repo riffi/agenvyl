@@ -119,6 +119,10 @@ export class ExecutionRegistry {
     return this.snapshot(this.require(executionId));
   }
 
+  activeCount(instanceId:string){
+    return [...this.executions.values()].filter(record=>record.request.harnessInstanceId===instanceId&&!terminalStatuses.has(record.status)).length;
+  }
+
   async stop(executionId: string): Promise<ExecutionSnapshot> {
     const record = this.require(executionId);
     if (terminalStatuses.has(record.status)) return this.snapshot(record);
