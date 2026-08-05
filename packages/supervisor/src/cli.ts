@@ -10,14 +10,41 @@ import { defaultLocale, inspectSettings, invalidSettingsError, isLocale, type Lo
 import type { ShortcutPolicy } from './shortcuts.js';
 import { errorEnvelope, SupervisorError } from './errors.js';
 import { runTui } from './tui.js';
+import { agenvylVersion, renderCommandHelp, renderGeneralHelp, resolveCliMetaAction } from './cli-help.js';
 
 const argv = process.argv.slice(2);
 const explicitCommand = argv[0] && !argv[0].startsWith('--') ? argv[0] : undefined;
 const command = explicitCommand ?? (process.stdin.isTTY && process.stdout.isTTY ? 'tui' : 'status');
 const args = explicitCommand ? argv.slice(1) : argv;
 const json = args.includes('--json');
+const metaAction = resolveCliMetaAction(argv);
 
-try {
+await runCli();
+
+async function runCli() {
+  if (metaAction?.type === 'version') {
+    process.stdout.write(`Agenvyl ${agenvylVersion}\n`);
+    return;
+  }
+  if (metaAction?.type === 'help') {
+    const help = metaAction.topic ? renderCommandHelp(metaAction.topic) : renderGeneralHelp();
+    if (help) process.stdout.write(help);
+    else {
+      process.stderr.write(`agenvyl: Unknown help topic: ${metaAction.topic}\n\n${renderGeneralHelp()}`);
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  try { await executeCommand(); }
+  catch (error) {
+    if (json) process.stderr.write(`${JSON.stringify(errorEnvelope(error), null, 2)}\n`);
+    else process.stderr.write(`agenvyl: ${humanError(error)}\n`);
+    process.exitCode = 1;
+  }
+}
+
+async function executeCommand() {
   const config = resolveSupervisorConfig();
   const settings=await inspectSettings(config);
   const locale=settings.status==='valid'?settings.settings.locale:defaultLocale();
@@ -56,11 +83,7 @@ try {
     const archive = positional(args, 0); if (!archive) throw new SupervisorError('RESTORE_FILE_REQUIRED', 'Usage: agenvyl restore <file>');
     output({ restored: await restoreDatabase(config, resolve(archive)) }, json, locale);
   } else if (command === 'uninstall') output(await uninstallPortable(config, { purge: args.includes('--purge'), confirmed: args.includes('--yes') }), json, locale);
-  else throw new SupervisorError('UNKNOWN_COMMAND', 'Usage: agenvyl <tui|init|repair|setup|start|stop|status|logs|doctor|backup|restore|uninstall>');
-} catch (error) {
-  if (json) process.stderr.write(`${JSON.stringify(errorEnvelope(error), null, 2)}\n`);
-  else process.stderr.write(`agenvyl: ${humanError(error)}\n`);
-  process.exitCode = 1;
+  else throw new SupervisorError('UNKNOWN_COMMAND', 'Unknown command. Run "agenvyl --help" to list available commands.');
 }
 
 function positional(values: string[], index: number) {

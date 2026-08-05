@@ -6,6 +6,8 @@ import { resolveSupervisorConfig } from './config.js';
 import { uninstallPortable, windowsCleanupLaunch, windowsCleanupScript } from './uninstall.js';
 
 const roots: string[] = [];
+const cleanupTestTimeoutMs = process.platform === 'win32' ? 15_000 : 5_000;
+const cleanupWaitTimeoutMs = process.platform === 'win32' ? 10_000 : 3_000;
 afterEach(async () => { await Promise.all(roots.splice(0).map(path => rm(path, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }))); });
 
 describe('portable uninstall cleanup', () => {
@@ -45,7 +47,7 @@ describe('portable uninstall cleanup', () => {
     expect(stages).toEqual(process.platform === 'win32' ? ['stopping', 'removing', 'scheduling'] : ['stopping', 'removing']);
     await waitForMissing(fixture.bundleRoot);
     await expect(readFile(join(fixture.config.paths.data, 'keep.txt'), 'utf8')).resolves.toBe('user data');
-  });
+  }, cleanupTestTimeoutMs);
 
   it('defers removal of the running Windows command shim', () => {
     const script = windowsCleanupScript(0, 1);
@@ -60,7 +62,7 @@ describe('portable uninstall cleanup', () => {
     await writeFile(fixture.config.settingsFile, JSON.stringify({ schemaVersion: 2, locale: 'en', initializedAt: 'now', shortcuts: [], command: { path: fixture.config.userCommandPath, bundleRoot: fixture.bundleRoot, pathEntryAdded: false } }));
     await uninstallPortable(fixture.config);
     await waitForMissing(fixture.config.userCommandPath);
-  });
+  }, cleanupTestTimeoutMs);
 
   it('uses ownership markers when malformed settings cannot be loaded',async()=>{
     const fixture=await portableFixture();
@@ -70,7 +72,7 @@ describe('portable uninstall cleanup', () => {
     await uninstallPortable(fixture.config);
     await waitForMissing(fixture.config.userCommandPath);
     await expect(stat(fixture.config.paths.data)).resolves.toBeTruthy();
-  },15_000);
+  }, cleanupTestTimeoutMs);
 
   it('preserves a foreign command when settings are malformed',async()=>{
     const fixture=await portableFixture();
@@ -87,7 +89,7 @@ describe('portable uninstall cleanup', () => {
     await uninstallPortable(fixture.config, { purge: true, confirmed: true });
     await waitForMissing(fixture.bundleRoot);
     await waitForMissing(fixture.config.paths.data);
-  });
+  }, cleanupTestTimeoutMs);
 });
 
 async function portableFixture() {
@@ -104,7 +106,8 @@ async function portableFixture() {
 }
 
 async function waitForMissing(path: string) {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  const deadline = Date.now() + cleanupWaitTimeoutMs;
+  while (Date.now() < deadline) {
     try { await stat(path); } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return; throw error; }
     await new Promise(resolve => setTimeout(resolve, 50));
   }

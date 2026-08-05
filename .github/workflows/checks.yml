@@ -3,8 +3,16 @@ name: Checks
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - "spec/**"
   pull_request:
     branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - "spec/**"
   workflow_dispatch:
 
 permissions:
@@ -46,6 +54,7 @@ jobs:
         run: |
           git status --porcelain --untracked-files=all > "$RUNNER_TEMP/status-before"
           npm run check:local
+          npm run test:e2e:codex
           npm run test:supervisor
           git status --porcelain --untracked-files=all > "$RUNNER_TEMP/status-after"
           diff -u "$RUNNER_TEMP/status-before" "$RUNNER_TEMP/status-after"

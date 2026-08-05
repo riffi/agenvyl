@@ -86,8 +86,10 @@ Use this path when you do not want the installer to modify your user `PATH`.
    | macOS | `Start Agenvyl.command` |
 
 The archive also includes `Stop`, `Status`, and `Uninstall` launchers. Manual
-archive installation does not create the stable `agenvyl` command until the
-control center runs **Install / repair** with user command integration enabled.
+archive installation does not create the stable `agenvyl` command. To add it,
+run `repair --path user` through the archive's unified `Agenvyl` launcher; the
+[command-line guide](cli-and-control-center.md#initialize-or-repair-command-integration)
+shows the platform launchers and all integration options.
 
 ## Complete first-run setup
 
@@ -158,8 +160,9 @@ A message without an `@mention` is saved in the room but starts no agent.
 
 ## Control the local runtime
 
-Run `agenvyl` without arguments to open the control center. Common direct
-commands are:
+Run `agenvyl` without arguments in an interactive terminal to open the terminal
+control center. Use its menu for interactive management, or run a direct
+command for a specific operation:
 
 ```bash
 agenvyl start
@@ -172,5 +175,9 @@ agenvyl stop
 `agenvyl start` starts the stack without opening a browser. The control center
 can also configure connectors, create backups, restore a database, and
 uninstall the app.
+
+Read [Command line and terminal control center](cli-and-control-center.md) for
+all menu entries, navigation keys, commands, options, automation behavior, and
+exit codes.
 
 Next, learn [where Agenvyl stores data and how to back it up](data-and-backups.md).

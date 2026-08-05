@@ -10,6 +10,8 @@ agenvyl logs supervisor --lines 100
 
 Logs do not intentionally include prompts or responses, but inspect them before
 sharing because local paths and process diagnostics can still be sensitive.
+For command syntax, components, and exit codes, see
+[Command line and terminal control center](cli-and-control-center.md).
 
 ## The Web UI does not open
 

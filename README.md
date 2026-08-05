@@ -146,6 +146,7 @@ and model comparison all use the same shared-history pattern.
 Use the [documentation map](docs/README.md) to choose a route:
 
 - [Install and use Agenvyl](docs/user-guide/installation.md)
+- [Use the command line and terminal control center](docs/user-guide/cli-and-control-center.md)
 - [Work with Workspace files and previews](docs/user-guide/workspace.md)
 - [Register and use local projects](docs/user-guide/projects.md)
 - [Connect an agent tool](docs/harnesses/README.md)
