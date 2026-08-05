@@ -18,7 +18,7 @@ import {registerSetupRoutes} from '../modules/setup/setup.routes.js';
 import {registerFeatureRoutes} from '../modules/features/features.routes.js';
 import {registerProjectRoutes} from '../modules/projects/projects.routes.js';
 
-export type AppOptions = { databaseUrl?: string; connectorUrl?:string; connectorToken?:string; fetch?: typeof fetch; distPath?: string; runConcurrency?: number; runTimeoutMs?:number; shutdownTimeoutMs?: number; websocketMaxBufferedBytes?: number; workspaceRoot?:string; workspaceAgentRoot?:string; workspaceMaxFileBytes?:number; workspaceNoopMode?:WorkspaceOptimizationMode;workspaceWarmSlotsMode?:WorkspaceOptimizationMode;workspaceStatCacheMode?:WorkspaceOptimizationMode;planModeEnabled?:boolean; previewOrigin?:string; logger?:boolean;legacySeed?:boolean };
+export type AppOptions = { databaseUrl?: string; connectorUrl?:string; connectorToken?:string; fetch?: typeof fetch; distPath?: string; runConcurrency?: number; runTimeoutMs?:number; shutdownTimeoutMs?: number; websocketMaxBufferedBytes?: number; workspaceRoot?:string; workspaceAgentRoot?:string; workspaceMaxFileBytes?:number; workspaceNoopMode?:WorkspaceOptimizationMode;workspaceWarmSlotsMode?:WorkspaceOptimizationMode;workspaceStatCacheMode?:WorkspaceOptimizationMode; previewOrigin?:string; logger?:boolean;legacySeed?:boolean };
 
 export async function buildApp(options: AppOptions = {}) {
   const config = resolveAppConfig({
@@ -36,7 +36,6 @@ export async function buildApp(options: AppOptions = {}) {
     workspaceNoopMode:options.workspaceNoopMode,
     workspaceWarmSlotsMode:options.workspaceWarmSlotsMode,
     workspaceStatCacheMode:options.workspaceStatCacheMode,
-    planModeEnabled:options.planModeEnabled,
     previewOrigin:options.previewOrigin,
   });
   const app = Fastify({ logger: options.logger === false ? false : { redact: ['req.headers.authorization', 'req.headers.x-api-key'] } });
@@ -50,7 +49,7 @@ export async function buildApp(options: AppOptions = {}) {
     await database.close();
   });
   await registerHealthRoutes(app, dependencyHealth,database);
-  await registerFeatureRoutes(app,{planMode:config.planModeEnabled,previewOrigin:config.previewOrigin});
+  await registerFeatureRoutes(app,{previewOrigin:config.previewOrigin});
   await registerProjectRoutes(app,projectsService);
   await registerConnectorRoutes(app,harnessCatalogService);
   await registerSetupRoutes(app,setupService);

@@ -12,12 +12,8 @@ import type {
   ConnectorCatalogModel,
   ConnectorExecutionControls,
 } from "@agenvyl/connector-contract";
-import type {
-  ExecutionIntent,
-  RunExecutionProfileSnapshot,
-} from "@agenvyl/contracts";
+import type {RunExecutionProfileSnapshot,WorkflowMode} from "@agenvyl/contracts";
 import { resolveExecutionProfile } from "./executionProfile.js";
-import {assertPlanModeEnabled} from '../features/planMode.js';
 
 export class CreateMessageRound {
   constructor(
@@ -40,7 +36,6 @@ export class CreateMessageRound {
       activeRuns: ActiveRunRegistry;
       runExecutor: RunExecutor;
       roomWorkspace?: RoomWorkspaceService;
-      planModeEnabled?:boolean;
     },
   ) {}
 
@@ -50,10 +45,8 @@ export class CreateMessageRound {
     targets?: string[];
     messageId?: string;
     attachmentVersionIds?: string[];
-    executionIntent?: ExecutionIntent;
     correlationId?: string;
   }) {
-    if(command.executionIntent)assertPlanModeEnabled(this.dependencies.planModeEnabled);
     const text = command.text?.trim() ?? "";
     if (!text && !command.attachmentVersionIds?.length)
       throw new AppError(
@@ -100,21 +93,9 @@ export class CreateMessageRound {
         });
       throw new AppError("unknown_target", 400, "Unknown target persona");
     }
-    if (command.executionIntent?.kind === "plan" && targets.length !== 1)
-      throw new AppError(
-        "plan_requires_single_agent",
-        400,
-        "Create or update plan requires exactly one agent",
-      );
-    if (command.executionIntent?.kind === "implement" && !targets.length)
-      throw new AppError(
-        "implementation_requires_agent",
-        400,
-        "Implementation requires at least one agent",
-      );
     const catalog = targets.length ? await harnesses.catalog() : { instances: [] };
     const effectiveModels = new Map<string,string>();
-    const profileFor = ({persona,version,roomOverride}:{persona:Persona;version:PersonaVersion;roomOverride:string|null}):RunExecutionProfileSnapshot => {
+    const profileFor = ({persona,version,roomOverride,workflowMode}:{persona:Persona;version:PersonaVersion;roomOverride:string|null;workflowMode:WorkflowMode}):RunExecutionProfileSnapshot => {
         const instance = catalog.instances.find(
           (item) =>
             item.id === version.harness_instance_id &&
@@ -179,7 +160,7 @@ export class CreateMessageRound {
             controls: instance.controls,
             permissionProfileId: version.permission_profile_id,
             agentVariantId: version.agent_variant_id,
-            intent: command.executionIntent,
+            workflowMode,
           });
     };
     if ((command.attachmentVersionIds?.length ?? 0) > 10)
@@ -201,7 +182,6 @@ export class CreateMessageRound {
         command.messageId,
         command.attachmentVersionIds ?? [],
         addressedToAll,
-        command.executionIntent,
       );
     } catch (error) {
       if (error instanceof Error && error.message === "attachment_unavailable")
@@ -209,18 +189,6 @@ export class CreateMessageRound {
           "attachment_unavailable",
           409,
           "Attachment version is unavailable",
-        );
-      if (error instanceof Error && error.message === "plan_run_active")
-        throw new AppError(
-          "plan_run_active",
-          409,
-          "Wait for the active plan update to finish",
-        );
-      if (error instanceof Error && error.message === "approved_plan_changed")
-        throw new AppError(
-          "approved_plan_changed",
-          409,
-          "The approved plan changed; review it before starting implementation",
         );
       throw error;
     }

@@ -26,10 +26,12 @@ spent in the local queue. When it expires, Core durably fails the run with
 configured gateway. A late upstream completion or cancellation cannot replace the
 timeout terminal state.
 
-`AGENVYL_FEATURE_PLAN_MODE` controls the experimental Plan Mode workflow. It
-accepts only `true` or `false` (case-insensitive), defaults to `false`, and is
-read when Core starts. Changing it requires a Core restart, not a frontend
-rebuild.
+Plan is always available and has no runtime feature flag. Its sticky state is
+stored per room and applies to all new message rounds until a user changes it.
+Existing runs are not altered, and retry preserves the original run's mode.
+Native Plan selects the strictest read-only behavior exposed by the harness;
+instruction-only Plan is prompt enforcement and cannot technically prevent
+writes by a process that has operating-system access to an external project.
 
 Cancelling a queued run removes it before any execution request and persists a
 `cancelled` terminal event. Queue depth and active count are available through the

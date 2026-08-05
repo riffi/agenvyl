@@ -16,7 +16,6 @@ const workProfile = {
   planEnforcement: null,
   permissionProfileId: null,
   agentVariantId: null,
-  implementationPlanVersionId: null,
 };
 const profiles = (personas: Array<{ id: string }>) =>
   new Map(personas.map((persona) => [persona.id, workProfile]));
@@ -32,7 +31,7 @@ describe("PostgreSQL repositories", () => {
         await p.database
           .sql`SELECT version FROM schema_migrations ORDER BY version`
       ).map((row) => row.version),
-    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]);
+    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27]);
     expect(
       await p.database.sql`SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='personas' AND column_name='role'`,
     ).toEqual([]);
@@ -75,10 +74,26 @@ describe("PostgreSQL repositories", () => {
     ['Владимир','Владимир'],
   ])('upgrades the migration 010 default without overwriting %s',async(before,after)=>{
     const url=testDatabaseUrl(`migration_v10_${before==='Пользователь'?'default':'custom'}`);
-    await seedDatabaseThroughMigration10(url);
+    await seedDatabaseThroughMigration(url,10);
     const sql=connectTestDatabase(url);await sql`UPDATE local_user_profiles SET display_name=${before} WHERE id='local-user'`;await sql.end();
     const database=await Database.connect(url);
     expect((await database.sql`SELECT display_name FROM local_user_profiles WHERE id='local-user'`)[0]).toEqual({display_name:after});
+    await database.close();
+  });
+  it("removes legacy approval state without deleting an existing plan.md",async()=>{
+    const url=testDatabaseUrl("migration_v27_plan_file");
+    await seedDatabaseThroughMigration(url,26);
+    const sql=connectTestDatabase(url),now=new Date().toISOString();
+    await sql`INSERT INTO rooms(id,title,created_at)VALUES('legacy-plan-room','Legacy plan',${now})`;
+    await sql`INSERT INTO workspace_entries(id,room_id,path,kind,size,mime_type,status,created_at,updated_at)VALUES('plan-entry','legacy-plan-room','plan.md','file',6,'text/markdown','tracked',${now},${now})`;
+    await sql`INSERT INTO workspace_versions(id,entry_id,room_id,path,size,mime_type,sha256,source,run_ids,created_at)VALUES('plan-version','plan-entry','legacy-plan-room','plan.md',6,'text/markdown','sha','user','[]'::jsonb,${now})`;
+    await sql`UPDATE workspace_entries SET current_version_id='plan-version' WHERE id='plan-entry'`;
+    await sql`UPDATE rooms SET approved_plan_version_id='plan-version' WHERE id='legacy-plan-room'`;
+    await sql.end();
+    const database=await Database.connect(url);
+    expect((await database.sql`SELECT workflow_mode FROM rooms WHERE id='legacy-plan-room'`)[0]).toEqual({workflow_mode:'work'});
+    expect((await database.sql`SELECT path,current_version_id FROM workspace_entries WHERE id='plan-entry'`)[0]).toEqual({path:'plan.md',current_version_id:'plan-version'});
+    expect(await database.sql`SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND ((table_name='rooms' AND column_name='approved_plan_version_id') OR (table_name='agent_runs' AND column_name='implementation_plan_version_id'))`).toEqual([]);
     await database.close();
   });
   it("backfills immutable snapshots when upgrading an initial-schema database", async () => {
@@ -112,7 +127,7 @@ describe("PostgreSQL repositories", () => {
         await repositories.database
           .sql`SELECT version FROM schema_migrations ORDER BY version`
       ).map((row) => row.version),
-    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]);
+    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27]);
     expect(
       await repositories.database.sql`SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='personas' AND column_name='role'`,
     ).toEqual([]);
@@ -262,37 +277,67 @@ describe("PostgreSQL repositories", () => {
     ]);
     await p.database.close();
   });
-  it("allows only one active Plan run in a room", async () => {
-    const p = await createRepositories(testDatabaseUrl("single_plan"));
-    const persona = (await p.personas.find("persona-architect"))!,
-      planProfile = {
-        ...workProfile,
-        workflowMode: "plan" as const,
-        planEnforcement: "instruction_only" as const,
-      },
-      planProfiles = new Map([[persona.id, planProfile]]);
-    await p.messages.createRound(
-      "demo-room",
-      "first plan",
-      [persona],
-      planProfiles,
-      undefined,
-      [],
-      false,
-      { kind: "plan" },
-    );
-    await expect(
+  it("snapshots the locked room workflow mode for parallel and subsequent rounds", async () => {
+    const p = await createRepositories(testDatabaseUrl("room_workflow"));
+    const responders = (await p.personas.list()).slice(0, 2);
+    const resolveProfile = ({
+      workflowMode,
+    }: {
+      workflowMode: "plan" | "work";
+    }) => ({
+      ...workProfile,
+      workflowMode,
+      planEnforcement:
+        workflowMode === "plan" ? ("instruction_only" as const) : null,
+    });
+
+    const [, concurrentRound] = await Promise.all([
+      p.rooms.updateWorkflowMode("demo-room", "plan"),
       p.messages.createRound(
         "demo-room",
-        "second plan",
-        [persona],
-        planProfiles,
+        "@all inspect during toggle",
+        responders,
+        resolveProfile,
         undefined,
         [],
-        false,
-        { kind: "plan" },
+        true,
       ),
-    ).rejects.toThrow("plan_run_active");
+    ]);
+    const concurrentModes = new Set(
+      concurrentRound.runs.map((run) => run.executionProfile.workflowMode),
+    );
+    expect(concurrentModes.size).toBe(1);
+    expect(["plan", "work"]).toContain([...concurrentModes][0]);
+
+    const first = await p.messages.createRound(
+      "demo-room",
+      "@all inspect",
+      responders,
+      resolveProfile,
+      undefined,
+      [],
+      true,
+    );
+    const second = await p.messages.createRound(
+      "demo-room",
+      "inspect again",
+      responders,
+      resolveProfile,
+    );
+    expect([...first.runs, ...second.runs]).toHaveLength(4);
+    expect(
+      [...first.runs, ...second.runs].every(
+        (run) => run.executionProfile.workflowMode === "plan",
+      ),
+    ).toBe(true);
+    await p.rooms.updateWorkflowMode("demo-room", "work");
+    const work = await p.messages.createRound(
+      "demo-room",
+      "implement",
+      [responders[0]],
+      resolveProfile,
+    );
+    expect(work.runs[0].executionProfile.workflowMode).toBe("work");
     await p.database.close();
   });
   it("accepts a Connector cursor and its Core events atomically and idempotently", async () => {
@@ -839,11 +884,11 @@ describe("PostgreSQL repositories", () => {
   });
 });
 
-async function seedDatabaseThroughMigration10(url:string){
+async function seedDatabaseThroughMigration(url:string,maxVersion:number){
   const parsed=new URL(url),schema=parsed.searchParams.get('schema')!;parsed.searchParams.delete('schema');
   const bootstrap=postgres(parsed.toString(),{max:1});await bootstrap`CREATE SCHEMA ${bootstrap(schema)}`;await bootstrap.end();
   const sql=connectTestDatabase(url);await sql`CREATE TABLE schema_migrations (version integer PRIMARY KEY,name text NOT NULL,applied_at timestamptz NOT NULL DEFAULT now())`;
-  for(const migration of migrations.filter(item=>item.version<=10)){
+  for(const migration of migrations.filter(item=>item.version<=maxVersion)){
     await sql.unsafe(await readFile(new URL(`./migrations/${migration.file}`,import.meta.url),'utf8'));
     await sql`INSERT INTO schema_migrations(version,name)VALUES(${migration.version},${migration.name})`;
   }

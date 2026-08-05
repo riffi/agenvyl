@@ -47,7 +47,7 @@ Each attempt starts a fresh `agy --print` process in the room workspace.
 - **Plan only** is the safe per-agent default for read-only analysis.
 - **Accept edits** is selected per agent and requires an explicit warning-dialog
   confirmation. It allows AGY to modify files without per-action approvals.
-- Agenvyl's global **Plan** workflow always forces read-only AGY execution, even
+- Agenvyl's room **Plan** workflow always forces read-only AGY execution, even
   for an agent configured with **Accept edits**.
 
 The former connector-level `permissionMode` field is no longer supported. Remove

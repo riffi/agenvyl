@@ -59,7 +59,8 @@ store.
 - **Accept edits** permits edits without an edit-by-edit prompt.
 - **Allow for session** applies only to the current Agenvyl execution and is
   not written into Claude Code settings.
-- Experimental Plan Mode selects Claude's Plan permission mode.
+- Room Plan always selects Claude's native Plan permission mode, overriding a
+  saved **Accept edits** profile for that run.
 
 Agenvyl intentionally does not pass `--bare`. Normal user, project, and local
 settings, `CLAUDE.md`, skills, plugins, hooks, MCP configuration, provider

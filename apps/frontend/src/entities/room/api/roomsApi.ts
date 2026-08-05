@@ -1,5 +1,5 @@
 import type { Room,TimelinePage } from '../model';
-import type {ResolveWorkspaceConflictsRequest,RoomExecutionState,RoomPersona,RoomWorkspace,RunWorkspaceResult,UpdatePlanResponse,UpdateRoomPersonaRequest,WorkspaceConflictSet,WorkspaceEntry,WorkspaceVersion} from '@agenvyl/contracts';
+import type {ResolveWorkspaceConflictsRequest,RoomPersona,RoomWorkflowState,RoomWorkspace,RunWorkspaceResult,UpdateRoomPersonaRequest,WorkflowMode,WorkspaceConflictSet,WorkspaceEntry,WorkspaceVersion} from '@agenvyl/contracts';
 import { apiRequest } from '../../../shared/api';
 
 export const roomKeys = { all: ['rooms'] as const };
@@ -18,10 +18,7 @@ export const roomsApi = {
   removeParticipant: (roomId: string, personaId: string) => apiRequest(`/api/v1/rooms/${encodeURIComponent(roomId)}/participants/${encodeURIComponent(personaId)}`, { method: 'DELETE' }),
   participants:(roomId:string,signal?:AbortSignal)=>apiRequest<RoomPersona[]>(`/api/v1/rooms/${encodeURIComponent(roomId)}/participants`,{signal}),
   updateParticipant:(roomId:string,personaId:string,input:UpdateRoomPersonaRequest)=>apiRequest<RoomPersona>(`/api/v1/rooms/${encodeURIComponent(roomId)}/participants/${encodeURIComponent(personaId)}`,{method:'PATCH',body:input}),
-  executionState:(roomId:string,signal?:AbortSignal)=>apiRequest<RoomExecutionState>(`/api/v1/rooms/${encodeURIComponent(roomId)}/execution-state`,{signal}),
-  approvePlan:(roomId:string,versionId:string)=>apiRequest<RoomExecutionState>(`/api/v1/rooms/${encodeURIComponent(roomId)}/approved-plan`,{method:'PUT',body:{version_id:versionId}}),
-  clearApprovedPlan:(roomId:string)=>apiRequest<RoomExecutionState>(`/api/v1/rooms/${encodeURIComponent(roomId)}/approved-plan`,{method:'DELETE'}),
-  updatePlan:(roomId:string,content:string,expectedVersionId:string)=>apiRequest<UpdatePlanResponse>(`/api/v1/rooms/${encodeURIComponent(roomId)}/plan`,{method:'PUT',body:{content,expected_version_id:expectedVersionId}}),
+  updateWorkflowMode:(roomId:string,workflowMode:WorkflowMode)=>apiRequest<RoomWorkflowState>(`/api/v1/rooms/${encodeURIComponent(roomId)}/workflow-mode`,{method:'PUT',body:{workflow_mode:workflowMode}}),
   workspace:(roomId:string,signal?:AbortSignal)=>apiRequest<RoomWorkspace>(`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace`,{signal}),
   uploadFile:(roomId:string,file:File,filePath=file.name,conflict:'fail'|'replace'|'rename'='fail',options:{signal?:AbortSignal;onProgress?:(progress:number)=>void}={})=>new Promise<{entry:WorkspaceEntry;version?:WorkspaceVersion}>((resolve,reject)=>{
     const request=new XMLHttpRequest();

@@ -29,17 +29,14 @@ export const createRoomBodySchema = objectSchema({
 export const renameRoomBodySchema = objectSchema({ title: { type: 'string' } });
 export const assignRoomProjectBodySchema=objectSchema({project_id:nullableStringSchema},['project_id']);
 const workflowModeSchema={type:'string',enum:['plan','work']} as const;
+export const updateRoomWorkflowModeBodySchema=objectSchema({workflow_mode:workflowModeSchema},['workflow_mode']);
+export const roomWorkflowStateResponseSchema=objectSchema({workflow_mode:workflowModeSchema},['workflow_mode']);
 export const updateRoomPersonaBodySchema=objectSchema({reasoning_effort_override:nullableStringSchema},['reasoning_effort_override']);
-export const approvePlanBodySchema=objectSchema({version_id:{type:'string'}},['version_id']);
-export const updatePlanBodySchema=objectSchema({content:{type:'string',minLength:1},expected_version_id:{type:'string'}},['content','expected_version_id']);
 export const workspaceConflictParamsSchema=objectSchema({roomId:{type:'string'},runId:{type:'string'}},['roomId','runId']);
 export const resolveWorkspaceConflictsBodySchema=objectSchema({
   expected_current_snapshot_id:{type:'string'},
   resolutions:{type:'array',minItems:1,items:objectSchema({path:{type:'string'},choice:{type:'string',enum:['current','candidate','delete']}},['path','choice'])},
 },['expected_current_snapshot_id','resolutions']);
-const planVersionRefSchema=objectSchema({entry_id:{type:'string'},version_id:{type:'string'}},['entry_id','version_id']);
-const roomPlanStateSchema=objectSchema({path:{type:'string',const:'plan.md'},current:{anyOf:[{type:'null'},planVersionRefSchema]},approved:{anyOf:[{type:'null'},planVersionRefSchema]}},['path','current','approved']);
-export const roomExecutionStateResponseSchema=objectSchema({plan:roomPlanStateSchema},['plan']);
 
 export const createPersonaBodySchema = {
   ...objectSchema({
@@ -78,7 +75,6 @@ export const createMessageBodySchema = objectSchema({
   targets: { type: 'array', items: { type: 'string' } },
   message_id: { type: 'string' },
   attachment_version_ids:{type:'array',items:{type:'string'},maxItems:10},
-  execution_intent:{type:'object',additionalProperties:false,required:['kind'],properties:{kind:{type:'string',enum:['plan','implement']},approved_plan_version_id:{type:'string'}},allOf:[{if:{properties:{kind:{const:'implement'}},required:['kind']},then:{required:['approved_plan_version_id']}},{if:{properties:{kind:{const:'plan'}},required:['kind']},then:{not:{required:['approved_plan_version_id']}}}]},
 });
 
 export const userProfileBodySchema=objectSchema({display_name:{type:'string',maxLength:120},handle:{type:'string',maxLength:80}},['display_name','handle']);
@@ -98,7 +94,8 @@ export const roomResponseSchema = objectSchema({
   last_message_at:nullableStringSchema,last_message_text:nullableStringSchema,
   deleted_at:nullableStringSchema,
   project:{anyOf:[{type:'null'},objectSchema({id:{type:'string'},name:{type:'string'},path:{type:'string'},availability:{type:'string',enum:['available','unavailable','unknown']}},['id','name','path','availability'])]},
-},['id','title','created_at','participant_count','last_message_at','last_message_text','deleted_at','project']);
+  workflow_mode:workflowModeSchema,
+},['id','title','created_at','participant_count','last_message_at','last_message_text','deleted_at','project','workflow_mode']);
 
 export const personaGroupResponseSchema=objectSchema({
   id:{type:'string'},name:{type:'string'},position:{type:'integer'},created_at:{type:'string'},updated_at:{type:'string'},
@@ -125,7 +122,7 @@ const structuredQuestionOptionResponseSchema=objectSchema({label:{type:'string'}
 const structuredQuestionResponseSchema=objectSchema({id:{type:'string'},header:{type:'string'},question:{type:'string'},options:{type:'array',items:structuredQuestionOptionResponseSchema},isOther:{type:'boolean'},isSecret:{type:'boolean'},multiSelect:{type:'boolean'}},['id','header','question','isOther','isSecret']);
 const mcpElicitationResponseSchema={anyOf:[objectSchema({mode:{type:'string',enum:['form','openai/form']},serverName:{type:'string'},message:{type:'string'},requestedSchema:{}},['mode','serverName','message','requestedSchema']),objectSchema({mode:{type:'string',const:'url'},serverName:{type:'string'},message:{type:'string'},url:{type:'string'},elicitationId:{type:'string'}},['mode','serverName','message','url','elicitationId'])]} as const;
 const runRequestResponseSchema=objectSchema({id:{type:'string'},kind:{type:'string',enum:['approval','clarification','elicitation']},prompt:{type:'string'},directory:{type:'string'},choices:{type:'array',items:{type:'string'}},questions:{type:'array',items:structuredQuestionResponseSchema,maxItems:4},elicitation:mcpElicitationResponseSchema,autoResolutionMs:{type:'integer'},resolved:{type:'string'}},['id','kind','prompt']);
-const runExecutionProfileResponseSchema=objectSchema({workflowMode:workflowModeSchema,requestedReasoningEffort:nullableStringSchema,reasoningEffort:nullableStringSchema,reasoningEffortFallback:{type:'boolean'},reasoningEffortSource:{type:'string',enum:['room_override','persona_default','model_default','auto']},planEnforcement:{anyOf:[{type:'null'},{type:'string',enum:['native','instruction_only']}]},permissionProfileId:nullableStringSchema,agentVariantId:nullableStringSchema,implementationPlanVersionId:nullableStringSchema},['workflowMode','requestedReasoningEffort','reasoningEffort','reasoningEffortFallback','reasoningEffortSource','planEnforcement','permissionProfileId','agentVariantId','implementationPlanVersionId']);
+const runExecutionProfileResponseSchema=objectSchema({workflowMode:workflowModeSchema,requestedReasoningEffort:nullableStringSchema,reasoningEffort:nullableStringSchema,reasoningEffortFallback:{type:'boolean'},reasoningEffortSource:{type:'string',enum:['room_override','persona_default','model_default','auto']},planEnforcement:{anyOf:[{type:'null'},{type:'string',enum:['native','instruction_only']}]},permissionProfileId:nullableStringSchema,agentVariantId:nullableStringSchema},['workflowMode','requestedReasoningEffort','reasoningEffort','reasoningEffortFallback','reasoningEffortSource','planEnforcement','permissionProfileId','agentVariantId']);
 const workspaceCaptureErrorSchema=objectSchema({path:{type:'string'},code:{type:'string'},message:{type:'string'}},['path','code']);
 const runWorkspaceResultSchema=objectSchema({base_snapshot_id:{type:'string'},result_snapshot_id:{type:'string'},published_snapshot_id:{type:'string'},capture_status:{type:'string'},publish_status:{type:'string'},conflict_count:{type:'integer',minimum:0},errors:{type:'array',items:workspaceCaptureErrorSchema}},['base_snapshot_id','capture_status','publish_status','conflict_count','errors']);
 const runProjectSchema=objectSchema({id:{type:'string'},name:{type:'string'},path:{type:'string'},availability:{type:'string',enum:['available','unavailable','unknown']}},['id','name','path','availability']);
@@ -133,8 +130,8 @@ const timelineRunResponseSchema=objectSchema({
   id:{type:'string'},messageId:{type:'string'},agent:{type:'string'},requestedModel:{type:'string'},harnessInstanceId:{type:'string'},harnessType:{type:'string'},adapterGeneration:{type:'integer',minimum:1},modelId:{type:'string'},executionProfile:runExecutionProfileResponseSchema,recommendedProject:runProjectSchema,status:{type:'string'},upstreamStatus:upstreamStatusResponseSchema,connector:connectorRunStateResponseSchema,usage:{type:'object',additionalProperties:false,required:['inputTokens','outputTokens'],properties:{inputTokens:{type:'integer',minimum:0},outputTokens:{type:'integer',minimum:0},totalTokens:{type:'integer',minimum:0},reasoningTokens:{type:'integer',minimum:0},cacheReadTokens:{type:'integer',minimum:0},cacheWriteTokens:{type:'integer',minimum:0}}},text:{type:'string'},reasoning:{type:'string'},tools:{type:'array',items:toolActivityResponseSchema},retryOfRunId:{type:'string'},responseSlotId:{type:'string'},attemptNumber:{type:'integer',minimum:1},requests:{type:'array',items:runRequestResponseSchema},error:{type:'string'},errorCode:{type:'string'},artifacts:{type:'array'},embeds:{type:'array'},workspaceResult:runWorkspaceResultSchema,
 },['id','messageId','agent','harnessInstanceId','harnessType','modelId','executionProfile','status','text','tools']);
 export const roomTimelineResponseSchema=objectSchema({
-  messages:{type:'array',items:messageResponseSchema},runs:{type:'array',items:timelineRunResponseSchema},selectedRuns:{type:'object',additionalProperties:{type:'string'}},executionState:roomExecutionStateResponseSchema,lastSequence:{type:'integer',minimum:0},hasMore:{type:'boolean'},nextCursor:{type:'string'},
-},['messages','runs','selectedRuns','executionState','lastSequence','hasMore']);
+  messages:{type:'array',items:messageResponseSchema},runs:{type:'array',items:timelineRunResponseSchema},selectedRuns:{type:'object',additionalProperties:{type:'string'}},workflowMode:workflowModeSchema,lastSequence:{type:'integer',minimum:0},hasMore:{type:'boolean'},nextCursor:{type:'string'},
+},['messages','runs','selectedRuns','workflowMode','lastSequence','hasMore']);
 
 export const roomListResponseSchema={type:'array',items:roomResponseSchema} as const;
 const connectorCatalogModelSchema=objectSchema({id:{type:'string'},label:{type:'string'},reasoningEfforts:{type:'array',items:{type:'string'}},defaultReasoningEffort:nullableStringSchema},['id']);

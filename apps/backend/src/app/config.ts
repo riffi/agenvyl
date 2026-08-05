@@ -17,7 +17,6 @@ export type AppConfig = {
   workspaceNoopMode: WorkspaceOptimizationMode;
   workspaceWarmSlotsMode: WorkspaceOptimizationMode;
   workspaceStatCacheMode: WorkspaceOptimizationMode;
-  planModeEnabled: boolean;
   previewOrigin: string;
 };
 
@@ -52,7 +51,6 @@ export function resolveAppConfig(overrides: AppConfigOverrides = {}): AppConfig 
     workspaceNoopMode,
     workspaceWarmSlotsMode,
     workspaceStatCacheMode,
-    planModeEnabled: overrides.planModeEnabled ?? featureFlag(process.env.AGENVYL_FEATURE_PLAN_MODE, 'AGENVYL_FEATURE_PLAN_MODE'),
     previewOrigin: overrides.previewOrigin ?? process.env.AGENVYL_PREVIEW_ORIGIN ?? `http://127.0.0.1:${positiveInteger(process.env.AGENVYL_PREVIEW_PORT,8792)}`,
   };
 }
@@ -60,15 +58,6 @@ export function resolveAppConfig(overrides: AppConfigOverrides = {}): AppConfig 
 function positiveInteger(value: unknown, fallback: number) {
   const parsed=Number(value);
   return Number.isInteger(parsed)&&parsed>0?parsed:fallback;
-}
-
-function featureFlag(value: unknown, name: string) {
-  if(value===undefined)return false;
-  if(typeof value==='boolean')return value;
-  const normalized=String(value).trim().toLowerCase();
-  if(normalized==='true')return true;
-  if(normalized==='false')return false;
-  throw new Error(`${name} must be true or false`);
 }
 
 function optimizationMode(value:unknown,name:string):WorkspaceOptimizationMode{

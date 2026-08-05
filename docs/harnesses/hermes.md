@@ -33,6 +33,11 @@ Protect that file with user-only permissions:
 chmod 600 ~/.hermes/.env
 ```
 
+Hermes does not expose a native Plan execution control. Agenvyl therefore marks
+Hermes Plan runs as **Instruction-only**: the system instruction prohibits
+implementation and external-project writes, but it cannot technically stop a
+Hermes process that has operating-system write access.
+
 In `~/.hermes/config.yaml`, enable the API Server and declare the names Agenvyl
 should discover:
 

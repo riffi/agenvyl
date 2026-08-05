@@ -23,7 +23,7 @@ export function toPersonaGroup(row: DatabaseRow): PersonaGroup {
 
 export function toRoom(row: DatabaseRow): Room {
   const project=row.project_id==null?null:{id:text(row.project_id),name:text(row.project_name),path:text(row.project_path),availability:'unknown' as const};
-  return { id:text(row.id),title:text(row.title),created_at:timestamp(row.created_at),participant_count:number(row.participant_count),last_message_at:nullableTimestamp(row.last_message_at),last_message_text:nullableText(row.last_message_text),deleted_at:nullableTimestamp(row.deleted_at),project };
+  return { id:text(row.id),title:text(row.title),created_at:timestamp(row.created_at),participant_count:number(row.participant_count),last_message_at:nullableTimestamp(row.last_message_at),last_message_text:nullableText(row.last_message_text),deleted_at:nullableTimestamp(row.deleted_at),project,workflow_mode:text(row.workflow_mode) as Room['workflow_mode'] };
 }
 
 export function toMessage(row: DatabaseRow,attachments:WorkspaceAttachment[]=[]): Message {

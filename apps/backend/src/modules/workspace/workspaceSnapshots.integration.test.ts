@@ -13,7 +13,7 @@ import {RoomWorkspaceService} from './RoomWorkspaceService.js';
 const roots:string[]=[];
 afterEach(async()=>{await Promise.all(roots.splice(0).map(root=>rm(root,{recursive:true,force:true})))});
 
-const profile:RunExecutionProfileSnapshot={workflowMode:'work',requestedReasoningEffort:null,reasoningEffort:null,reasoningEffortFallback:false,reasoningEffortSource:'auto',planEnforcement:null,permissionProfileId:null,agentVariantId:null,implementationPlanVersionId:null};
+const profile:RunExecutionProfileSnapshot={workflowMode:'work',requestedReasoningEffort:null,reasoningEffort:null,reasoningEffortFallback:false,reasoningEffortSource:'auto',planEnforcement:null,permissionProfileId:null,agentVariantId:null};
 const finalizeRun=async(repositories:Awaited<ReturnType<typeof createRepositories>>,service:RoomWorkspaceService,runId:string,status:'completed'|'failed'|'cancelled')=>{
   await repositories.database.sql`UPDATE agent_runs SET status=${status} WHERE id=${runId}`;
   return service.finalizeRun('demo-room',runId,status);
@@ -23,7 +23,7 @@ describe('isolated run workspace snapshots',()=>{
   it('gives parallel runs separate cwd, captures exact manifests, and exposes a three-way conflict',async()=>{
     const root=await mkdtemp(path.join(tmpdir(),'run-snapshots-'));roots.push(root);
     const repositories=await createRepositories(testDatabaseUrl('isolated_run_snapshots'));
-    const events=new RoomEventService(repositories.roomEvents,new RoomEventBus()),service=new RoomWorkspaceService(repositories.rooms,repositories.workspace,events,new ActiveRunRegistry(),root,root,1024*1024,true,repositories.workspaceSnapshots);
+    const events=new RoomEventService(repositories.roomEvents,new RoomEventBus()),service=new RoomWorkspaceService(repositories.rooms,repositories.workspace,events,new ActiveRunRegistry(),root,root,1024*1024,repositories.workspaceSnapshots);
     try{
       await service.upload('demo-room','site/index.html','text/html',Buffer.from('<link rel="stylesheet" href="style.css">'));
       await service.upload('demo-room','site/style.css','text/css',Buffer.from('body{color:black}'));
@@ -59,7 +59,7 @@ describe('isolated run workspace snapshots',()=>{
   it('saves but does not publish a failed run snapshot',async()=>{
     const root=await mkdtemp(path.join(tmpdir(),'failed-snapshot-'));roots.push(root);
     const repositories=await createRepositories(testDatabaseUrl('failed_run_snapshot'));
-    const service=new RoomWorkspaceService(repositories.rooms,repositories.workspace,new RoomEventService(repositories.roomEvents,new RoomEventBus()),new ActiveRunRegistry(),root,root,1024*1024,true,repositories.workspaceSnapshots);
+    const service=new RoomWorkspaceService(repositories.rooms,repositories.workspace,new RoomEventService(repositories.roomEvents,new RoomEventBus()),new ActiveRunRegistry(),root,root,1024*1024,repositories.workspaceSnapshots);
     try{
       const [persona]=(await repositories.personas.list('demo-room')),round=await repositories.messages.createRound('demo-room','failed edit',[persona],new Map([[persona.id,profile]])),run=round.runs[0];
       await service.prepareRun('demo-room',run.id);await writeFile(path.join(service.runPath('demo-room',run.id),'draft.txt'),'captured');
@@ -74,7 +74,7 @@ describe('isolated run workspace snapshots',()=>{
   it('short-circuits an unchanged run without snapshot or materialization churn',async()=>{
     const root=await mkdtemp(path.join(tmpdir(),'noop-snapshot-'));roots.push(root);
     const repositories=await createRepositories(testDatabaseUrl('noop_run_snapshot'));
-    const service=new RoomWorkspaceService(repositories.rooms,repositories.workspace,new RoomEventService(repositories.roomEvents,new RoomEventBus()),new ActiveRunRegistry(),root,root,1024*1024,true,repositories.workspaceSnapshots,undefined,{noopMode:'on'},repositories.workspaceSlots);
+    const service=new RoomWorkspaceService(repositories.rooms,repositories.workspace,new RoomEventService(repositories.roomEvents,new RoomEventBus()),new ActiveRunRegistry(),root,root,1024*1024,repositories.workspaceSnapshots,undefined,{noopMode:'on'},repositories.workspaceSlots);
     try{
       await service.upload('demo-room','note.txt','text/plain',Buffer.from('stable'));
       const [persona]=(await repositories.personas.list('demo-room')),round=await repositories.messages.createRound('demo-room','no changes',[persona],new Map([[persona.id,profile]])),run=round.runs[0];
@@ -106,7 +106,7 @@ describe('isolated run workspace snapshots',()=>{
   it('never takes the no-op path when capture reports a reserved path',async()=>{
     const root=await mkdtemp(path.join(tmpdir(),'noop-error-'));roots.push(root);
     const repositories=await createRepositories(testDatabaseUrl('noop_capture_error'));
-    const service=new RoomWorkspaceService(repositories.rooms,repositories.workspace,new RoomEventService(repositories.roomEvents,new RoomEventBus()),new ActiveRunRegistry(),root,root,1024*1024,true,repositories.workspaceSnapshots,undefined,{noopMode:'on'},repositories.workspaceSlots);
+    const service=new RoomWorkspaceService(repositories.rooms,repositories.workspace,new RoomEventService(repositories.roomEvents,new RoomEventBus()),new ActiveRunRegistry(),root,root,1024*1024,repositories.workspaceSnapshots,undefined,{noopMode:'on'},repositories.workspaceSlots);
     try{
       const [persona]=(await repositories.personas.list('demo-room')),run=(await repositories.messages.createRound('demo-room','reserved path',[persona],new Map([[persona.id,profile]]))).runs[0];
       await service.prepareRun('demo-room',run.id);
@@ -121,7 +121,7 @@ describe('isolated run workspace snapshots',()=>{
   it('retains a finalized workspace until the owning agent run is durably terminal',async()=>{
     const root=await mkdtemp(path.join(tmpdir(),'terminal-cleanup-fence-'));roots.push(root);
     const repositories=await createRepositories(testDatabaseUrl('terminal_cleanup_fence'));
-    const service=new RoomWorkspaceService(repositories.rooms,repositories.workspace,new RoomEventService(repositories.roomEvents,new RoomEventBus()),new ActiveRunRegistry(),root,root,1024*1024,true,repositories.workspaceSnapshots,undefined,{noopMode:'on'},repositories.workspaceSlots);
+    const service=new RoomWorkspaceService(repositories.rooms,repositories.workspace,new RoomEventService(repositories.roomEvents,new RoomEventBus()),new ActiveRunRegistry(),root,root,1024*1024,repositories.workspaceSnapshots,undefined,{noopMode:'on'},repositories.workspaceSlots);
     try{
       const [persona]=(await repositories.personas.list('demo-room')),run=(await repositories.messages.createRound('demo-room','terminal cleanup fence',[persona],new Map([[persona.id,profile]]))).runs[0];
       await service.prepareRun('demo-room',run.id);
@@ -137,7 +137,7 @@ describe('isolated run workspace snapshots',()=>{
   it('uses two fenced warm slots and falls back to a legacy directory for a third same-persona run',async()=>{
     const root=await mkdtemp(path.join(tmpdir(),'warm-slots-'));roots.push(root);
     const repositories=await createRepositories(testDatabaseUrl('warm_slot_pool'));
-    const service=new RoomWorkspaceService(repositories.rooms,repositories.workspace,new RoomEventService(repositories.roomEvents,new RoomEventBus()),new ActiveRunRegistry(),root,root,1024*1024,true,repositories.workspaceSnapshots,undefined,{noopMode:'on',warmSlotsMode:'on'},repositories.workspaceSlots);
+    const service=new RoomWorkspaceService(repositories.rooms,repositories.workspace,new RoomEventService(repositories.roomEvents,new RoomEventBus()),new ActiveRunRegistry(),root,root,1024*1024,repositories.workspaceSnapshots,undefined,{noopMode:'on',warmSlotsMode:'on'},repositories.workspaceSlots);
     try{
       const [persona]=(await repositories.personas.list('demo-room')),profiles=new Map([[persona.id,profile]]);
       const rounds=await Promise.all(['one','two','three'].map(text=>repositories.messages.createRound('demo-room',text,[persona],profiles)));
@@ -161,7 +161,7 @@ describe('isolated run workspace snapshots',()=>{
   it('keeps the legacy driver authoritative while warm slots run in shadow mode',async()=>{
     const root=await mkdtemp(path.join(tmpdir(),'warm-slot-shadow-'));roots.push(root);
     const repositories=await createRepositories(testDatabaseUrl('warm_slot_shadow'));
-    const service=new RoomWorkspaceService(repositories.rooms,repositories.workspace,new RoomEventService(repositories.roomEvents,new RoomEventBus()),new ActiveRunRegistry(),root,root,1024*1024,true,repositories.workspaceSnapshots,undefined,{noopMode:'shadow',warmSlotsMode:'shadow'},repositories.workspaceSlots);
+    const service=new RoomWorkspaceService(repositories.rooms,repositories.workspace,new RoomEventService(repositories.roomEvents,new RoomEventBus()),new ActiveRunRegistry(),root,root,1024*1024,repositories.workspaceSnapshots,undefined,{noopMode:'shadow',warmSlotsMode:'shadow'},repositories.workspaceSlots);
     try{
       await service.upload('demo-room','value.txt','text/plain',Buffer.from('base'));
       const [persona]=(await repositories.personas.list('demo-room')),run=(await repositories.messages.createRound('demo-room','shadow slot',[persona],new Map([[persona.id,profile]]))).runs[0];
@@ -178,7 +178,7 @@ describe('isolated run workspace snapshots',()=>{
   it('ignores a stale slot release after the slot generation has advanced',async()=>{
     const root=await mkdtemp(path.join(tmpdir(),'warm-slot-fence-'));roots.push(root);
     const repositories=await createRepositories(testDatabaseUrl('warm_slot_generation_fence'));
-    const service=new RoomWorkspaceService(repositories.rooms,repositories.workspace,new RoomEventService(repositories.roomEvents,new RoomEventBus()),new ActiveRunRegistry(),root,root,1024*1024,true,repositories.workspaceSnapshots,undefined,{noopMode:'on',warmSlotsMode:'on'},repositories.workspaceSlots);
+    const service=new RoomWorkspaceService(repositories.rooms,repositories.workspace,new RoomEventService(repositories.roomEvents,new RoomEventBus()),new ActiveRunRegistry(),root,root,1024*1024,repositories.workspaceSnapshots,undefined,{noopMode:'on',warmSlotsMode:'on'},repositories.workspaceSlots);
     try{
       const [persona]=(await repositories.personas.list('demo-room')),profiles=new Map([[persona.id,profile]]);
       const first=(await repositories.messages.createRound('demo-room','first lease',[persona],profiles)).runs[0];
@@ -203,7 +203,7 @@ describe('isolated run workspace snapshots',()=>{
   it('detects a same-size rewrite even when mtime is restored with stat cache enabled',async()=>{
     const root=await mkdtemp(path.join(tmpdir(),'stat-cache-'));roots.push(root);
     const repositories=await createRepositories(testDatabaseUrl('stat_cache_racy'));
-    const service=new RoomWorkspaceService(repositories.rooms,repositories.workspace,new RoomEventService(repositories.roomEvents,new RoomEventBus()),new ActiveRunRegistry(),root,root,1024*1024,true,repositories.workspaceSnapshots,undefined,{noopMode:'on',warmSlotsMode:'on',statCacheMode:'on'},repositories.workspaceSlots);
+    const service=new RoomWorkspaceService(repositories.rooms,repositories.workspace,new RoomEventService(repositories.roomEvents,new RoomEventBus()),new ActiveRunRegistry(),root,root,1024*1024,repositories.workspaceSnapshots,undefined,{noopMode:'on',warmSlotsMode:'on',statCacheMode:'on'},repositories.workspaceSlots);
     try{
       await service.upload('demo-room','value.txt','text/plain',Buffer.from('alpha'));
       const [persona]=(await repositories.personas.list('demo-room')),profiles=new Map([[persona.id,profile]]);

@@ -1,6 +1,6 @@
-import { useEffect, useState, type FormEvent } from 'react';
-import type { WorkspaceEntry, WorkspaceVersion } from '@agenvyl/contracts';
-import { Alert, Button, Dialog, Input } from '../../shared/ui';
+import { useState, type FormEvent } from 'react';
+import type { WorkspaceEntry } from '@agenvyl/contracts';
+import { Button, Dialog, Input } from '../../shared/ui';
 import styles from './WorkspaceWindow.module.css';
 
 export type WorkspaceOperation =
@@ -58,53 +58,4 @@ export const WorkspaceOperationDialog = ({
       {validation && <small className={styles.validation}>{validation}</small>}
     </form>
   </Dialog>;
-};
-
-export const WorkspacePlanEditor = ({
-  version,
-  save,
-  cancel,
-}: {
-  version: WorkspaceVersion;
-  save: (content: string) => Promise<void>;
-  cancel: () => void;
-}) => {
-  const [text, setText] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string>();
-
-  useEffect(() => {
-    const controller = new AbortController();
-    setLoading(true);
-    fetch(version.url, { signal: controller.signal })
-      .then(response => response.text())
-      .then(value => { setText(value); setLoading(false); })
-      .catch(value => {
-        if ((value as Error).name !== 'AbortError') {
-          setError(String(value));
-          setLoading(false);
-        }
-      });
-    return () => controller.abort();
-  }, [version.id, version.url]);
-
-  const submit = async () => {
-    if (!text.trim() || saving) return;
-    setSaving(true);
-    setError(undefined);
-    try {
-      await save(text);
-    } catch (value) {
-      setError(value instanceof Error ? value.message : String(value));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return <section className={styles.planEditor}>
-    <header><span><strong>Editing plan.md</strong><small>Saving creates a new immutable version.</small></span><div><Button size="sm" variant="secondary" disabled={saving} onClick={cancel}>Cancel</Button><Button size="sm" variant="primary" disabled={loading || saving || !text.trim()} onClick={() => void submit()}>{saving ? 'Saving…' : 'Save version'}</Button></div></header>
-    {error && <Alert tone="error">{error}</Alert>}
-    <textarea aria-label="Plan Markdown" value={text} disabled={loading || saving} onChange={event => setText(event.target.value)} spellCheck={false} />
-  </section>;
 };

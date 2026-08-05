@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Archive, Ban, Brain, Check, ChevronDown, ChevronUp, CircleCheck, CircleHelp, CircleX, Clock3, FolderCheck, Info, LoaderCircle, Paperclip, RotateCcw, Square, TriangleAlert, BadgeCheck } from 'lucide-react';
-import type {RoomPlanState,UpstreamStatus,WorkspaceAttachment,WorkspaceConflictChoice,WorkspaceConflictSide} from '@agenvyl/contracts';
+import { Archive, Ban, Brain, Check, ChevronDown, ChevronUp, CircleCheck, CircleHelp, CircleX, Clock3, FolderCheck, Info, LoaderCircle, Paperclip, RotateCcw, Square, TriangleAlert } from 'lucide-react';
+import type {UpstreamStatus,WorkspaceAttachment,WorkspaceConflictChoice,WorkspaceConflictSide} from '@agenvyl/contracts';
 import {WorkspaceArtifactActions,type OpenWorkspaceArtifact,type WorkspaceTarget} from '../workspace-window';
 import {HarnessIcon,type HarnessCatalog} from '../../entities/harness';
 import type { Persona } from '../../entities/persona';
@@ -109,10 +109,7 @@ function RunCard({
   harnessCatalog,
   personas,
   onMentionPersona,
-  plan,
-  approvePlan=async()=>{},
   openWorkspace,
-  planModeEnabled=true,
   roomId,
 }: {
   run: Run;
@@ -131,10 +128,7 @@ function RunCard({
   harnessCatalog?:HarnessCatalog;
   personas:Persona[];
   onMentionPersona:(handle:string)=>void;
-  plan:RoomPlanState;
-  approvePlan?:(versionId:string)=>Promise<void>;
   openWorkspace:(target:WorkspaceTarget)=>void;
-  planModeEnabled?:boolean;
   roomId:string;
 }) {
   const [retrying,setRetrying]=useState(false);const [retryError,setRetryError]=useState<string>();
@@ -142,7 +136,6 @@ function RunCard({
   const canCancel=['queued','streaming','waiting_approval','waiting_clarification'].includes(run.status);
   const retryLabel=run.status==='completed'?'Create another response':'Run again';
   const retryRun=async()=>{setRetrying(true);setRetryError(undefined);try{await retry()}catch(error){setRetryError(error instanceof Error?error.message:String(error))}finally{setRetrying(false)}};
-  const planArtifact=run.artifacts?.find(item=>item.attribution==='exact'&&item.path==='plan.md'&&item.change!=='deleted');
   const publishedFileCount=run.artifacts?.filter(item=>item.attribution==='exact').length??0;
   const changedFiles=run.artifacts?.filter(item=>item.attribution==='exact'&&!run.embeds?.some(embed=>embed.status==='resolved'&&embed.attachment?.version_id===item.version_id))??[];
   const workspaceActivity=run.workspaceResult?.publish_status==='published'||run.workspaceResult?.publish_status==='not_published';
@@ -198,10 +191,7 @@ function RunCard({
             </section>}
           </RunActivity>
         </div>}
-        {(attemptCount>1||(planModeEnabled&&planArtifact&&plan.current?.version_id===planArtifact.version_id))&&<div className={styles['run-footer']}>
-          <span className={styles['run-footer-actions']}>
-            {planModeEnabled&&planArtifact&&plan.current?.version_id===planArtifact.version_id&&<button type="button" data-plan-approvable="true" className={`${styles['footer-action']} ${plan.approved?.version_id===planArtifact.version_id?styles['approved-action']:''}`} onClick={()=>void approvePlan(planArtifact.version_id)}><BadgeCheck/><span>{plan.approved?.version_id===planArtifact.version_id?'Approved plan':'Approve plan'}</span></button>}
-          </span>
+        {attemptCount>1&&<div className={styles['run-footer']}>
           {attemptCount>1&&<span className={styles['attempt-carousel']}><IconButton onClick={previousAttempt} disabled={attemptIndex===0} aria-label="Previous attempt">‹</IconButton><small>{attemptIndex+1} of {attemptCount}</small><IconButton onClick={nextAttempt} disabled={attemptIndex===attemptCount-1} aria-label="Next attempt">›</IconButton></span>}
         </div>}
         {retryError&&<Alert tone="error">{retryError}</Alert>}
@@ -219,11 +209,8 @@ export function Timeline({
   initialLoading,
   harnessCatalog,
   onMentionPersona,
-  plan=state.executionState.plan,
-  approvePlan=async()=>{},
   openWorkspace=()=>{},
   openArtifact=()=>{},
-  planModeEnabled=true,
   roomId='',
 }: {
   state: RoomState;
@@ -235,11 +222,8 @@ export function Timeline({
   initialLoading:boolean;
   harnessCatalog?:HarnessCatalog;
   onMentionPersona:(handle:string)=>void;
-  plan?:RoomPlanState;
-  approvePlan?:(versionId:string)=>Promise<void>;
   openWorkspace?:(target:WorkspaceTarget)=>void;
   openArtifact?:OpenWorkspaceArtifact;
-  planModeEnabled?:boolean;
   roomId?:string;
 }) {
   const byHandle = new Map(personas.map((p) => [p.handle, p]));
@@ -337,7 +321,7 @@ export function Timeline({
                     select={() => select(id)}
                     cancel={() => gateway.cancel(id)}
                     retry={async()=>{setAttemptView(current=>{const next={...current};delete next[slot];return next});await gateway.retry(id)}}
-                    canRetry={messageIndex===state.messages.length-1&&['completed','failed','cancelled'].includes(state.runs[id].status)&&!activeAttempt&&gateway.mode==='real'&&(planModeEnabled||(state.runs[id].executionProfile.workflowMode!=='plan'&&!state.runs[id].executionProfile.implementationPlanVersionId))}
+                    canRetry={messageIndex===state.messages.length-1&&['completed','failed','cancelled'].includes(state.runs[id].status)&&!activeAttempt&&gateway.mode==='real'}
                     attemptIndex={shownIndex}
                     attemptCount={attemptIds.length}
                     previousAttempt={()=>void showAttempt(shownIndex-1)}
@@ -348,10 +332,7 @@ export function Timeline({
                     harnessCatalog={harnessCatalog}
                     personas={personas}
                     onMentionPersona={onMentionPersona}
-                    plan={plan}
-                    approvePlan={approvePlan}
                     openWorkspace={openWorkspace}
-                    planModeEnabled={planModeEnabled}
                     roomId={roomId}
                   />
                   </div>

@@ -24,7 +24,6 @@ const workProfile = {
   planEnforcement: null,
   permissionProfileId: null,
   agentVariantId: null,
-  implementationPlanVersionId: null,
 };
 function personaCatalogFetch(
   models: Array<{
@@ -206,102 +205,15 @@ describe("backend smoke", () => {
 });
 
 describe("runtime features", () => {
-  it("publishes Plan Mode as disabled by default and rejects its workflow", async () => {
-    const file = db(),
-      app = await buildApp({
-        databaseUrl: file,
-        fetch: vi.fn<typeof fetch>(),
-        distPath: "missing-dist",
-      }),
-      sql = connectTestDatabase(file);
+  it("publishes only independent runtime origins because Plan is always available", async () => {
+    const app = await buildApp({
+      databaseUrl: db(),
+      fetch: vi.fn<typeof fetch>(),
+      distPath: "missing-dist",
+    });
     expect((await app.inject("/api/v1/features")).json()).toEqual({
-      plan_mode: false,
       preview_origin: "http://127.0.0.1:8792",
     });
-    const requests = [
-      await app.inject({
-        method: "POST",
-        url: "/api/v1/rooms/demo-room/messages",
-        payload: {
-          text: "@architect plan",
-          execution_intent: { kind: "plan" },
-        },
-      }),
-      await app.inject({
-        method: "POST",
-        url: "/api/v1/rooms/demo-room/messages",
-        payload: {
-          text: "@architect implement",
-          execution_intent: {
-            kind: "implement",
-            approved_plan_version_id: "version-1",
-          },
-        },
-      }),
-      await app.inject({
-        method: "PUT",
-        url: "/api/v1/rooms/demo-room/plan",
-        payload: { content: "# Plan", expected_version_id: "version-1" },
-      }),
-      await app.inject({
-        method: "PUT",
-        url: "/api/v1/rooms/demo-room/approved-plan",
-        payload: { version_id: "version-1" },
-      }),
-      await app.inject({
-        method: "DELETE",
-        url: "/api/v1/rooms/demo-room/approved-plan",
-      }),
-    ];
-    for (const response of requests) {
-      expect(response.statusCode).toBe(409);
-      expect(response.json()).toMatchObject({ error: "plan_mode_disabled" });
-    }
-    expect((await sql`SELECT COUNT(*)::int count FROM agent_runs`)[0]).toEqual({
-      count: 0,
-    });
-    expect(
-      (
-        await app.inject({
-          method: "POST",
-          url: "/api/v1/rooms/demo-room/messages",
-          payload: { text: "ordinary note" },
-        })
-      ).statusCode,
-    ).toBe(202);
-    const now = new Date().toISOString(),
-      profiles = [
-        {
-          ...workProfile,
-          workflowMode: "plan" as const,
-          planEnforcement: "native" as const,
-        },
-        {
-          ...workProfile,
-          implementationPlanVersionId: "historical-plan-version",
-        },
-      ],
-      runIds: string[] = [];
-    for (const [index, executionProfile] of profiles.entries()) {
-      const messageId = crypto.randomUUID(),
-        runId = crypto.randomUUID();
-      runIds.push(runId);
-      await sql`INSERT INTO room_messages(id,room_id,text,targets,run_ids,created_at)VALUES(${messageId},'demo-room',${`historical ${index}`},${sql.json(["architect"])},${sql.json([runId])},${now})`;
-      await sql`INSERT INTO response_slots(id,message_id,persona_id,created_at)VALUES(${runId},${messageId},'persona-architect',${now})`;
-      await sql`INSERT INTO agent_runs(id,message_id,room_id,persona_id,persona_version_id,persona_handle,requested_model,harness_instance_id,harness_type,model_id,execution_profile,status,response_slot_id,created_at,updated_at)VALUES(${runId},${messageId},'demo-room','persona-architect','persona-architect-v1','architect','sol','local-hermes','hermes','sol',${sql.json(executionProfile)},'completed',${runId},${now},${now})`;
-    }
-    for (const runId of runIds) {
-      const retry = await app.inject({
-        method: "POST",
-        url: `/api/v1/runs/${runId}/retry`,
-      });
-      expect(retry.statusCode).toBe(409);
-      expect(retry.json()).toMatchObject({ error: "plan_mode_disabled" });
-    }
-    expect((await sql`SELECT COUNT(*)::int count FROM agent_runs`)[0]).toEqual({
-      count: 2,
-    });
-    await sql.end();
     await app.close();
   });
 });
@@ -454,10 +366,13 @@ describe("execution routing", () => {
       runId = response.json().runIds[0] as string,
       sql = connectTestDatabase(file);
     expect(response.statusCode).toBe(202);
-    await vi.waitFor(async () =>
-      expect(
-        (await sql`SELECT status FROM agent_runs WHERE id=${runId}`)[0]?.status,
-      ).toBe("completed"),
+    await vi.waitFor(
+      async () =>
+        expect(
+          (await sql`SELECT status FROM agent_runs WHERE id=${runId}`)[0]
+            ?.status,
+        ).toBe("completed"),
+      { timeout: 10_000 },
     );
     expect(
       (
@@ -492,9 +407,8 @@ describe("execution routing", () => {
     await app.close();
   });
 
-  it("versions plan.md, approves a version, and injects it only for explicit implementation", async () => {
+  it("keeps Plan sticky, snapshots every responder, and preserves it on retry", async () => {
     const file = db(),
-      workspaceRoot = await mkdtemp(join(tmpdir(), "agenvyl-plan-test-")),
       submitted: Array<Record<string, unknown>> = [],
       request = personaCatalogFetch(
         [
@@ -517,202 +431,105 @@ describe("execution routing", () => {
       app = await buildApp({
         databaseUrl: file,
         fetch: request,
-        workspaceRoot,
-        workspaceAgentRoot: workspaceRoot,
         distPath: "missing-dist",
-        planModeEnabled: true,
       }),
       sql = connectTestDatabase(file);
-    for (const personaId of ["persona-architect", "persona-coder"]) {
-      const participant = await app.inject({
-        method: "PATCH",
-        url: `/api/v1/rooms/demo-room/participants/${personaId}`,
-        payload: { reasoning_effort_override: "low" },
-      });
-      expect(participant.statusCode, participant.body).toBe(200);
-      expect(participant.json()).toMatchObject({
-        persona: { id: personaId },
-        reasoning_effort_override: "low",
-      });
-    }
-    const proposed = await app.inject({
-        method: "POST",
-        url: "/api/v1/rooms/demo-room/messages",
-        payload: {
-          text: "@architect propose a plan",
-          execution_intent: { kind: "plan" },
-        },
-      }),
-      planRunId = proposed.json().runIds[0] as string;
-    expect(proposed.statusCode).toBe(202);
+    expect(
+      (await app.inject("/api/v1/rooms"))
+        .json()
+        .find((room: { id: string }) => room.id === "demo-room"),
+    ).toMatchObject({ workflow_mode: "work" });
+    expect(
+      (await app.inject("/api/v1/rooms/demo-room/timeline")).json(),
+    ).toMatchObject({ workflowMode: "work" });
+
+    const enabled = await app.inject({
+      method: "PUT",
+      url: "/api/v1/rooms/demo-room/workflow-mode",
+      payload: { workflow_mode: "plan" },
+    });
+    expect(enabled.statusCode, enabled.body).toBe(200);
+    expect(enabled.json()).toEqual({ workflow_mode: "plan" });
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/rooms/demo-room/messages",
+      payload: {
+        text: "@architect @coder inspect together",
+        targets: ["architect", "coder"],
+      },
+    });
+    expect(response.statusCode, response.body).toBe(202);
+    const runIds = response.json().runIds as string[];
+    expect(runIds).toHaveLength(2);
+    await vi.waitFor(() => expect(submitted).toHaveLength(2), {
+      timeout: 10_000,
+    });
+    const profiles =
+      await sql`SELECT id,execution_profile FROM agent_runs WHERE id IN ${sql(runIds)}`;
+    expect(
+      profiles.every(
+        (row) =>
+          row.execution_profile.workflowMode === "plan" &&
+          row.execution_profile.planEnforcement === "instruction_only",
+      ),
+    ).toBe(true);
+    expect(
+      (await app.inject("/api/v1/rooms/demo-room/timeline")).json(),
+    ).toMatchObject({ workflowMode: "plan" });
+    expect(
+      (await app.inject("/api/v1/rooms/demo-room/workspace"))
+        .json()
+        .entries.some((entry: { path: string }) => entry.path === "plan.md"),
+    ).toBe(false);
+    expect(
+      (
+        await sql`SELECT type,payload FROM room_events WHERE room_id='demo-room' AND type='room.workflow_mode.updated' ORDER BY sequence DESC LIMIT 1`
+      )[0],
+    ).toMatchObject({
+      type: "room.workflow_mode.updated",
+      payload: { workflowMode: "plan" },
+    });
+
     await vi.waitFor(
       async () =>
         expect(
-          (await sql`SELECT status FROM agent_runs WHERE id=${planRunId}`)[0]
+          (await sql`SELECT status FROM agent_runs WHERE id=${runIds[0]}`)[0]
             ?.status,
         ).toBe("completed"),
-      { timeout: 5_000 },
+      { timeout: 10_000 },
     );
-    expect(
-      (
-        await sql`SELECT execution_profile FROM agent_runs WHERE id=${planRunId}`
-      )[0]?.execution_profile,
-    ).toEqual({
-      ...workProfile,
-      workflowMode: "plan",
-      requestedReasoningEffort: "low",
-      reasoningEffort: "low",
-      reasoningEffortFallback: false,
-      reasoningEffortSource: "room_override",
-      planEnforcement: "instruction_only",
-    });
-    const timeline = (
-        await app.inject("/api/v1/rooms/demo-room/timeline")
-      ).json(),
-      current = timeline.executionState.plan.current as {
-        entry_id: string;
-        version_id: string;
-      };
-    expect(current).toEqual({
-      entry_id: expect.any(String),
-      version_id: expect.any(String),
-    });
-    expect(
-      (
-        await sql`SELECT version_id,attribution FROM run_artifacts WHERE run_id=${planRunId}`
-      )[0],
-    ).toEqual({ version_id: current.version_id, attribution: "exact" });
-    const approved = await app.inject({
-      method: "PUT",
-      url: "/api/v1/rooms/demo-room/approved-plan",
-      payload: { version_id: current.version_id },
-    });
-    expect(approved.statusCode).toBe(200);
-    expect(approved.json().plan.approved).toEqual(current);
-    const ordinary = await app.inject({
-      method: "POST",
-      url: "/api/v1/rooms/demo-room/messages",
-      payload: { text: "@coder inspect only" },
-    });
-    expect(ordinary.statusCode).toBe(202);
-    await vi.waitFor(() => expect(submitted).toHaveLength(2));
-    expect(
-      (submitted[1].input as { systemPrompt: string }).systemPrompt,
-    ).not.toContain("<approved_plan");
-    const implementation = await app.inject({
-      method: "POST",
-      url: "/api/v1/rooms/demo-room/messages",
-      payload: {
-        text: "@coder implement it",
-        execution_intent: {
-          kind: "implement",
-          approved_plan_version_id: current.version_id,
-        },
-      },
-    });
-    expect(implementation.statusCode, implementation.body).toBe(202);
-    const workRunId = implementation.json().runIds[0] as string;
-    await vi.waitFor(() => expect(submitted).toHaveLength(3));
-    expect(
-      (
-        await sql`SELECT implementation_plan_version_id,execution_profile FROM agent_runs WHERE id=${workRunId}`
-      )[0],
-    ).toEqual({
-      implementation_plan_version_id: current.version_id,
-      execution_profile: {
-        ...workProfile,
-        requestedReasoningEffort: "low",
-        reasoningEffort: "low",
-        reasoningEffortFallback: false,
-        reasoningEffortSource: "room_override",
-        implementationPlanVersionId: current.version_id,
-      },
-    });
-    const workInput = submitted[2].input as { systemPrompt: string };
-    expect(workInput.systemPrompt).toContain(
-      `<approved_plan version_id="${current.version_id}" path="plan.md">`,
-    );
-    expect(workInput.systemPrompt).toContain(
-      "\nprior answer\n</approved_plan>",
-    );
-    const edited = await app.inject({
-      method: "PUT",
-      url: "/api/v1/rooms/demo-room/plan",
-      payload: {
-        content: "# Revised plan",
-        expected_version_id: current.version_id,
-      },
-    });
-    expect(edited.statusCode).toBe(200);
-    expect(edited.json().version.id).not.toBe(current.version_id);
-    const editedVersion = edited.json().version.id as string;
-    const staleEdit = await app.inject({
-      method: "PUT",
-      url: "/api/v1/rooms/demo-room/plan",
-      payload: {
-        content: "# Stale overwrite",
-        expected_version_id: current.version_id,
-      },
-    });
-    expect(staleEdit.statusCode).toBe(409);
-    expect(staleEdit.json()).toMatchObject({ error: "plan_version_conflict" });
-    const unchanged = await app.inject({
-      method: "PUT",
-      url: "/api/v1/rooms/demo-room/plan",
-      payload: {
-        content: "# Revised plan",
-        expected_version_id: editedVersion,
-      },
-    });
-    expect(unchanged.statusCode).toBe(200);
-    expect(unchanged.json().version.id).toBe(editedVersion);
     expect(
       (
         await app.inject({
           method: "PUT",
-          url: "/api/v1/rooms/demo-room/approved-plan",
-          payload: { version_id: current.version_id },
+          url: "/api/v1/rooms/demo-room/workflow-mode",
+          payload: { workflow_mode: "work" },
         })
-      ).statusCode,
-    ).toBe(409);
-    const changed = (
-      await app.inject("/api/v1/rooms/demo-room/timeline")
-    ).json().executionState.plan;
-    expect(changed.approved.version_id).toBe(current.version_id);
-    expect(changed.current.version_id).toBe(edited.json().version.id);
-    const cleared = await app.inject({
-      method: "DELETE",
-      url: "/api/v1/rooms/demo-room/approved-plan",
-    });
-    expect(cleared.statusCode).toBe(200);
-    expect(cleared.json().plan.approved).toBeNull();
-    await vi.waitFor(async () =>
-      expect(
-        (await sql`SELECT status FROM agent_runs WHERE id=${workRunId}`)[0]
-          ?.status,
-      ).toBe("completed"),
-    );
-    const retried = await app.inject({
+      ).json(),
+    ).toEqual({ workflow_mode: "work" });
+    const retry = await app.inject({
       method: "POST",
-      url: `/api/v1/runs/${workRunId}/retry`,
+      url: `/api/v1/runs/${runIds[0]}/retry`,
     });
-    expect(retried.statusCode).toBe(202);
-    const retryRunId = retried.json().run_id as string;
-    await vi.waitFor(() => expect(submitted).toHaveLength(4));
-    expect(
-      (submitted[3].input as { systemPrompt: string }).systemPrompt,
-    ).toContain(
-      `<approved_plan version_id="${current.version_id}" path="plan.md">`,
-    );
+    expect(retry.statusCode, retry.body).toBe(202);
+    const retryId = retry.json().run_id as string;
+    await vi.waitFor(() => expect(submitted).toHaveLength(3), {
+      timeout: 10_000,
+    });
     expect(
       (
-        await sql`SELECT implementation_plan_version_id FROM agent_runs WHERE id=${retryRunId}`
-      )[0],
-    ).toEqual({ implementation_plan_version_id: current.version_id });
+        await sql`SELECT execution_profile FROM agent_runs WHERE id=${retryId}`
+      )[0]?.execution_profile,
+    ).toMatchObject({
+      workflowMode: "plan",
+      planEnforcement: "instruction_only",
+    });
+    expect(
+      (await app.inject("/api/v1/rooms/demo-room/timeline")).json(),
+    ).toMatchObject({ workflowMode: "work" });
     await sql.end();
     await app.close();
-    await rm(workspaceRoot, { recursive: true, force: true });
-  });
+  }, 30_000);
 });
 
 describe("harness catalog", () => {

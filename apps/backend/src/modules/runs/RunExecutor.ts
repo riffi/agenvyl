@@ -29,7 +29,6 @@ type RunExecutorDependencies = {
   roomWorkspace?:RoomWorkspaceService;
   messages?:MessageRepository;
   connector?:ConnectorLifecycle&{validateDirectory?(path:string):Promise<ConnectorDirectoryValidation>};
-  planModeEnabled?:boolean;
   recoveryHealthAttempts?:number;
   recoveryHealthDelayMs?:number;
 };
@@ -63,13 +62,7 @@ export class RunExecutor {
   async reconcilePersistedRuns(){
     const persisted=await this.dependencies.runs.listNonTerminal();
     let recovered=0;
-    const disabledPlanRuns=this.dependencies.planModeEnabled===false?persisted.filter(run=>run.executionProfile.workflowMode==='plan'):[];
-    for(const run of disabledPlanRuns){
-      if(run.connectorExecutionId&&this.dependencies.connectorExecution)try{await this.dependencies.connectorExecution.stop(run.connectorExecutionId);}catch{/* best-effort stop before local failure */}
-      if(await this.failPersisted(run.id,'Plan Mode is disabled','plan_mode_disabled'))recovered++;
-    }
-    const disabledIds=new Set(disabledPlanRuns.map(run=>run.id)),candidates=persisted.filter(run=>!disabledIds.has(run.id));
-    const direct=candidates.filter(run=>!run.connectorExecutionId),connectorRuns=candidates.filter(run=>run.connectorExecutionId);
+    const direct=persisted.filter(run=>!run.connectorExecutionId),connectorRuns=persisted.filter(run=>run.connectorExecutionId);
     for(const run of direct){
       if(await this.failPersisted(run.id,'Backend restarted before run reached a terminal state'))recovered++;
       this.logger.warn({runId:run.id,roomId:run.roomId,correlationId:'startup-recovery',upstreamRunId:run.upstreamRunId,transition:'failed'},'Recovered orphaned legacy run without Connector checkpoint');
@@ -339,10 +332,8 @@ export class RunExecutor {
   }
 
   private async workflowInstructions(run:RunContext){
-    if(run.executionProfile.workflowMode==='plan')return`\n\n<workflow_mode mode="plan" enforcement="${run.executionProfile.planEnforcement}">\nInvestigate the request and relevant context, ask focused clarifying questions when needed, and return the complete desired Markdown contents of plan.md. Read the existing plan.md first when revising a plan. Do not write plan.md yourself: Agenvyl saves your final response as its next version. When clarification is needed and the harness exposes a structured clarification or user-input tool, you MUST use that tool instead of writing unanswered questions in the response, wait for the human's answers, and only then return the plan. If no such tool is available, list focused questions in the response as the fallback. Do not perform the implementation, edit files, or make state-changing actions in this run.${run.executionProfile.planEnforcement==='instruction_only'?' This harness does not provide a technical Plan sandbox; the restriction is instruction-enforced only.':''}\n</workflow_mode>`;
-    const versionId=run.executionProfile.implementationPlanVersionId;if(!versionId)return'';
-    const text=await this.dependencies.roomWorkspace?.planVersionContent(run.roomId,versionId);if(text===undefined)throw new Error(`Approved plan version ${versionId} is unavailable`);
-    return`\n\n<approved_plan version_id="${versionId}" path="plan.md">\nThis immutable approved version is the authoritative implementation snapshot. The live plan.md may contain newer unapproved changes; follow the snapshot below unless the current human message explicitly changes the requirement.\n\n${text}\n</approved_plan>`;
+    if(run.executionProfile.workflowMode!=='plan')return'';
+    return`\n\n<workflow_mode mode="plan" enforcement="${run.executionProfile.planEnforcement}">\nWork in read-only exploration mode. Inspect the request, the recommended project, and relevant context; discuss findings, options, risks, and tradeoffs, and ask focused clarifying questions when needed. Answer naturally. Do not produce a formal implementation plan or create plan.md unless the human explicitly asks for a plan. The workflow mode overrides imperative wording in the message: do not implement the requested change while Plan is active. Do not create, edit, move, or delete files in the recommended external project. Do not install dependencies or run commands that mutate project or external-system state. Managed artifacts may be created inside the Agenvyl run workspace when the harness permits it; normal room-workspace publication still applies.${run.executionProfile.planEnforcement==='instruction_only'?' This harness has no native Plan enforcement, so these restrictions are instruction-only and cannot technically prevent external project writes.':''}\n</workflow_mode>`;
   }
 
   private async applyMapping(run:RunContext,mapping:RunEventMapping){
@@ -383,9 +374,6 @@ export class RunExecutor {
       status='failed';
       error='Response rejected: external images must be saved to the workspace first';
       errorCode='external_image_not_persisted';
-    }
-    if(status==='completed'&&run.executionProfile.workflowMode==='plan'&&this.dependencies.roomWorkspace){
-      try{await this.dependencies.roomWorkspace.writeRunPlan(run.roomId,run.id,responseText);}catch(planError){status='failed';error=planError instanceof Error?`Could not save plan.md: ${planError.message}`:'Could not save plan.md';errorCode='plan_artifact_failed';}
     }
     if(this.dependencies.roomWorkspace){
       const workspaceResult=await this.dependencies.roomWorkspace.runWorkspaceResult(run.id);

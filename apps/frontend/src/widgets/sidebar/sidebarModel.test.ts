@@ -9,6 +9,7 @@ const room = (id: string, title: string, createdAt: string, lastMessageAt: strin
   participant_count: 0,
   last_message_at: lastMessageAt,
   last_message_text: null,
+  workflow_mode: 'work',
 });
 
 describe('sidebar room model', () => {

@@ -2,13 +2,13 @@ import { createPortal } from 'react-dom';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { File, X } from 'lucide-react';
-import type { RoomPlanState, RoomWorkspace, WorkspaceAttachment, WorkspaceEntry } from '@agenvyl/contracts';
+import type { RoomWorkspace, WorkspaceAttachment, WorkspaceEntry } from '@agenvyl/contracts';
 import { Alert } from '../../shared/ui';
 import { roomsApi } from '../../entities/room';
 import { WorkspaceContent } from './WorkspaceContent';
 import { WorkspaceExplorer } from './WorkspaceExplorer';
 import { WorkspaceHeader } from './WorkspaceHeader';
-import { WorkspaceOperationDialog, WorkspacePlanEditor, type WorkspaceOperation } from './WorkspaceDialogs';
+import { WorkspaceOperationDialog, type WorkspaceOperation } from './WorkspaceDialogs';
 import {
   defaultWorkspaceMode,
   workspaceAttachmentFromVersion,
@@ -22,8 +22,6 @@ export const WorkspaceWindow = ({
   request,
   roomId,
   fake = false,
-  plan,
-  planModeEnabled = true,
   onClose,
   onRequestChange,
   onAttach,
@@ -31,8 +29,6 @@ export const WorkspaceWindow = ({
   request?: WorkspaceOpenRequest;
   roomId: string;
   fake?: boolean;
-  plan?: RoomPlanState;
-  planModeEnabled?: boolean;
   onClose: () => void;
   onRequestChange: (update: WorkspaceRequestUpdate) => void;
   onAttach?: (attachment: WorkspaceAttachment) => void;
@@ -43,7 +39,6 @@ export const WorkspaceWindow = ({
   const [trash, setTrash] = useState(false);
   const [operation, setOperation] = useState<WorkspaceOperation>();
   const [uploadDirectory, setUploadDirectory] = useState('');
-  const [editingPlan, setEditingPlan] = useState(false);
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
   const [explorerWidth, setExplorerWidth] = useState(() => clampWidth(Number(localStorage.getItem('workspace-explorer-width')) || 286));
@@ -137,7 +132,6 @@ export const WorkspaceWindow = ({
   }, [onRequestChange, open, request?.followCurrent, selected?.current_version_id, target]);
 
   useEffect(() => {
-    setEditingPlan(false);
     setNotice(undefined);
   }, [target?.entryId]);
 
@@ -147,7 +141,6 @@ export const WorkspaceWindow = ({
     if (!entry.current_version_id) return;
     const nextAttachment = attachmentForEntry(roomId, entry);
     setUploadDirectory(parentPath(entry.path));
-    setEditingPlan(false);
     onRequestChange({
       target: { entryId: entry.id, versionId: entry.current_version_id },
       mode: defaultWorkspaceMode(nextAttachment),
@@ -219,10 +212,7 @@ export const WorkspaceWindow = ({
       current={current}
       viewed={viewed}
       mode={mode}
-      approvedVersionId={planModeEnabled ? plan?.approved?.version_id : undefined}
-      planModeEnabled={planModeEnabled}
       deleted={Boolean(selected?.deleted_at)}
-      editingPlan={editingPlan}
       canAttach={Boolean(onAttach)}
       onTreeToggle={() => onRequestChange({ treeVisible: !treeVisible })}
       onVersion={(version, followCurrent) => onRequestChange({ target: { entryId: version.entry_id ?? target?.entryId, versionId: version.id }, followCurrent, mode })}
@@ -233,7 +223,6 @@ export const WorkspaceWindow = ({
         mutation.mutate(() => roomsApi.restoreVersion(roomId, viewed.id));
       }}
       onRestoreEntry={() => selected && mutation.mutate(() => roomsApi.restoreEntry(roomId, selected.id), { onSuccess: () => setTrash(false) })}
-      onEditPlan={() => setEditingPlan(true)}
       onAttach={() => attachment && onAttach?.(attachment)}
       onRename={() => selected && setOperation({ kind: 'rename', entry: selected })}
       onMove={() => selected && setOperation({ kind: 'move', entry: selected })}
@@ -251,7 +240,6 @@ export const WorkspaceWindow = ({
           selectedId={selected?.id}
           trash={trash}
           loading={workspaceQuery.isPending}
-          planModeEnabled={planModeEnabled}
           onFile={selectEntry}
           onDirectory={setUploadDirectory}
           onUpload={files => void uploadFiles(files)}
@@ -267,24 +255,18 @@ export const WorkspaceWindow = ({
           : attachment
             ? <>
               <div className={styles.content}>
-                {editingPlan && current
-                  ? <WorkspacePlanEditor version={current} cancel={() => setEditingPlan(false)} save={async content => {
-                    await mutation.mutateAsync(() => roomsApi.updatePlan(roomId, content, current.id));
-                    setEditingPlan(false);
-                    onRequestChange({ followCurrent: true });
-                  }} />
-                  : <WorkspaceContent
-                      attachment={attachment}
-                      mode={mode}
-                      encoding={request.encoding}
-                      gallery={request.gallery}
-                      onEncodingChange={(encoding?: WorkspaceEncoding) => onRequestChange({ encoding })}
-                      onGalleryNavigate={item => onRequestChange({
-                        target: { entryId: item.entry_id, versionId: item.version_id, snapshotId: item.snapshot_id, path: item.path },
-                        mode: defaultWorkspaceMode(item),
-                        followCurrent: false,
-                      })}
-                    />}
+                <WorkspaceContent
+                  attachment={attachment}
+                  mode={mode}
+                  encoding={request.encoding}
+                  gallery={request.gallery}
+                  onEncodingChange={(encoding?: WorkspaceEncoding) => onRequestChange({ encoding })}
+                  onGalleryNavigate={item => onRequestChange({
+                    target: { entryId: item.entry_id, versionId: item.version_id, snapshotId: item.snapshot_id, path: item.path },
+                    mode: defaultWorkspaceMode(item),
+                    followCurrent: false,
+                  })}
+                />
               </div>
             </>
             : <ViewerEmpty title={treeVisible ? 'Select a file' : 'No file selected'} detail={treeVisible ? 'Its contents will open here.' : 'Open the file tree to browse the workspace.'} />}

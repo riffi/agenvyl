@@ -2,7 +2,7 @@ import {createContext,useContext,useEffect,useState,type ReactNode} from 'react'
 import type {RuntimeFeatures} from '@agenvyl/contracts';
 import {apiRequest} from '../api';
 
-const disabledFeatures:RuntimeFeatures={plan_mode:false,preview_origin:''};
+const disabledFeatures:RuntimeFeatures={preview_origin:''};
 const RuntimeFeaturesContext=createContext<RuntimeFeatures>(disabledFeatures);
 
 export const RuntimeFeaturesProvider=({children,value}:{children:ReactNode;value?:RuntimeFeatures})=>{

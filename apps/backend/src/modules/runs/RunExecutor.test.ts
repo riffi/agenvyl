@@ -11,7 +11,7 @@ import type { ApprovalChoice,RunEventMapping,RunEventStream,RunGateway,RunRecove
 import {ConnectorRunAdapter} from '../../integrations/connector/ConnectorRunAdapter.js';
 import {connectorContractFixtures,type ConnectorExecutionEvent} from '@agenvyl/connector-contract';
 
-const workProfile={workflowMode:'work' as const,requestedReasoningEffort:null,reasoningEffort:null,reasoningEffortFallback:false,reasoningEffortSource:'auto',planEnforcement:null,permissionProfileId:null,agentVariantId:null,implementationPlanVersionId:null};
+const workProfile={workflowMode:'work' as const,requestedReasoningEffort:null,reasoningEffort:null,reasoningEffortFallback:false,reasoningEffortSource:'auto',planEnforcement:null,permissionProfileId:null,agentVariantId:null};
 const profiles=(personas:Array<{id:string}>)=>new Map(personas.map(persona=>[persona.id,workProfile]));
 
 describe('RunExecutor', () => {
@@ -69,7 +69,7 @@ describe('RunExecutor', () => {
     await database.close();
   });
 
-  it('requires structured clarification before a Plan response when the harness supports it',async()=>{
+  it('instructs Plan runs to explore without implementing or creating plan.md by default',async()=>{
     let instructions='';
     const{executor,registry,database}=await fixture(async(input,init)=>{
       if(String(input).endsWith('/v1/runs')){instructions=String((JSON.parse(String(init?.body)) as{instructions?:unknown}).instructions??'');return new Response(JSON.stringify({run_id:'upstream-plan'}),{status:202});}
@@ -80,9 +80,12 @@ describe('RunExecutor', () => {
     executor.start('plan-run','Plan an underspecified change');
     await vi.waitFor(()=>expect(registry.get('plan-run')).toBeUndefined());
 
-    expect(instructions).toContain('you MUST use that tool instead of writing unanswered questions in the response');
-    expect(instructions).toContain("wait for the human's answers, and only then return the plan");
-    expect(instructions).toContain('If no such tool is available, list focused questions in the response as the fallback');
+    expect(instructions).toContain('read-only exploration mode');
+    expect(instructions).toContain('do not implement the requested change while Plan is active');
+    expect(instructions).toContain('Do not create, edit, move, or delete files in the recommended external project');
+    expect(instructions).toContain('Do not install dependencies');
+    expect(instructions).toContain('Do not produce a formal implementation plan or create plan.md unless the human explicitly asks');
+    expect(instructions).toContain('Managed artifacts may be created inside the Agenvyl run workspace');
     await executor.shutdown();
     await database.close();
   });
@@ -213,18 +216,6 @@ describe('RunExecutor', () => {
     await expect(runs.retry(runId)).resolves.toMatchObject({status:'created'});await executor.shutdown();await database.close();
   });
 
-  it('stops and fails persisted Plan runs when Plan Mode is disabled',async()=>{
-    const snapshot={...connectorContractFixtures.execution,executionId:'execution-plan-disabled',status:'streaming' as const,cursor:7,earliestReplayableCursor:1,pendingRequests:[]},connector=executionClient(snapshot,async function*(){}),transport=new ConnectorRunAdapter(connector);
-    const {executor,database,personas,messages}=await fixture(vi.fn<typeof fetch>(),4,connector,transport,undefined,undefined,false),persona=(await personas.find('persona-architect'))!,round=await messages.createRound('demo-room','disabled plan',[persona],profiles([persona])),runId=round.runs[0].id;
-    await database.sql`UPDATE agent_runs SET status='streaming',execution_profile=${database.sql.json({...workProfile,workflowMode:'plan',planEnforcement:'native'})},connector_execution_id='execution-plan-disabled',connector_epoch='epoch-1',connector_cursor=7 WHERE id=${runId}`;
-
-    expect(await executor.reconcilePersistedRuns()).toBe(1);
-    expect(connector.stop).toHaveBeenCalledWith('execution-plan-disabled');
-    expect(connector.inspect).not.toHaveBeenCalled();
-    expect((await database.sql`SELECT status,error_code FROM agent_runs WHERE id=${runId}`)[0]).toEqual({status:'failed',error_code:'plan_mode_disabled'});
-    await executor.shutdown();await database.close();
-  });
-
   it('waits for a temporarily unavailable Connector before recovering persisted execution',async()=>{
     const snapshot={...connectorContractFixtures.execution,executionId:'execution-delayed',status:'completed' as const,cursor:8,earliestReplayableCursor:1,pendingRequests:[]},connector=executionClient(snapshot,async function*(){yield{...connectorEvent(8,'execution.completed',{}),executionId:'execution-delayed'};}),transport=new ConnectorRunAdapter(connector);
     vi.mocked(connector.health).mockRejectedValueOnce(new Error('Connector is restarting')).mockResolvedValue({...connectorContractFixtures.health,connectorEpoch:'epoch-1'});
@@ -350,13 +341,13 @@ describe('RunExecutor', () => {
   });
 });
 
-async function fixture(fetchImplementation: typeof fetch,concurrency=4,connector?:ConnectorLifecycle,execution?:RunGateway&RunEventStream&Partial<RunRecovery>,runTimeoutMs?:number,recoveryHealthDelayMs?:number,planModeEnabled?:boolean) {
+async function fixture(fetchImplementation: typeof fetch,concurrency=4,connector?:ConnectorLifecycle,execution?:RunGateway&RunEventStream&Partial<RunRecovery>,runTimeoutMs?:number,recoveryHealthDelayMs?:number) {
   const {database,personas,runs,roomEvents,messages}=await createRepositories(testDatabaseUrl('run_executor'));
   const events = new RoomEventService(roomEvents,new RoomEventBus());
   const registry = new ActiveRunRegistry();
   const transport = new FetchRunTransport(fetchImplementation);
   const connectorExecution=execution&&'reattach'in execution?execution as RunGateway&RunEventStream&RunRecovery:undefined;
-  const executor = new RunExecutor({ personas,runs,events,runGateway:execution??transport,runEvents:execution??transport,connectorExecution,activeRuns:registry,concurrency,runTimeoutMs,messages,connector,recoveryHealthDelayMs,planModeEnabled });
+  const executor = new RunExecutor({ personas,runs,events,runGateway:execution??transport,runEvents:execution??transport,connectorExecution,activeRuns:registry,concurrency,runTimeoutMs,messages,connector,recoveryHealthDelayMs });
   return { executor, events, registry, database,personas,messages,runs };
 }
 

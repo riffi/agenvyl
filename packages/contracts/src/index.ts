@@ -2,11 +2,8 @@ export type AgentHandle = string;
 
 export type WorkflowMode = 'plan' | 'work';
 export type PlanEnforcement = 'native' | 'instruction_only';
-export type RuntimeFeatures = { plan_mode: boolean; preview_origin: string };
-export type PlanVersionRef = { entry_id: string; version_id: string };
-export type RoomPlanState = { path: 'plan.md'; current: PlanVersionRef | null; approved: PlanVersionRef | null };
-export type RoomExecutionState = { plan: RoomPlanState };
-export type ExecutionIntent = { kind: 'plan' } | { kind: 'implement'; approved_plan_version_id: string };
+export type RuntimeFeatures = { preview_origin: string };
+export type RoomWorkflowState = { workflow_mode: WorkflowMode };
 export type ReasoningEffortSource = 'room_override' | 'persona_default' | 'model_default' | 'auto';
 export type RunExecutionProfileSnapshot = {
   workflowMode: WorkflowMode;
@@ -17,7 +14,6 @@ export type RunExecutionProfileSnapshot = {
   planEnforcement: PlanEnforcement | null;
   permissionProfileId: string | null;
   agentVariantId: string | null;
-  implementationPlanVersionId: string | null;
 };
 
 export type RunStatus =
@@ -150,6 +146,7 @@ export type Room = {
   last_message_text: string | null;
   deleted_at?: string | null;
   project?: ProjectSummary | null;
+  workflow_mode: WorkflowMode;
 };
 
 export type WorkspaceSource='user'|'agent'|'external';
@@ -222,16 +219,14 @@ export type TimelinePage = {
   messages: Message[];
   runs: Run[];
   selectedRuns: Record<string, string>;
-  executionState: RoomExecutionState;
+  workflowMode: WorkflowMode;
   lastSequence: number;
   hasMore: boolean;
   nextCursor?: string;
 };
 
 export type UpdateRoomPersonaRequest = { reasoning_effort_override: string | null };
-export type ApprovePlanRequest = { version_id: string };
-export type UpdatePlanRequest = { content: string; expected_version_id: string };
-export type UpdatePlanResponse = { entry: WorkspaceEntry; version: WorkspaceVersion };
+export type UpdateRoomWorkflowModeRequest = RoomWorkflowState;
 
 export type ErrorEnvelope = {
   error: string;
@@ -242,7 +237,7 @@ export type ErrorEnvelope = {
 export type CreateRoomRequest = { title?: string; persona_ids?: string[]; project_id?:string|null };
 export type RenameRoomRequest = { title?: string };
 export type AssignRoomProjectRequest = { project_id:string|null };
-export type CreateMessageRequest = { text?: string; targets?: AgentHandle[]; message_id?: string; attachment_version_ids?:string[]; execution_intent?:ExecutionIntent };
+export type CreateMessageRequest = { text?: string; targets?: AgentHandle[]; message_id?: string; attachment_version_ids?:string[] };
 export type StructuredQuestion={id:string;header:string;question:string;options?:Array<{label:string;description?:string}>;isOther:boolean;isSecret:boolean;multiSelect?:boolean};
 export type JsonValue=null|boolean|number|string|JsonValue[]|{[key:string]:JsonValue};
 export type McpElicitation={mode:'form'|'openai/form';serverName:string;message:string;requestedSchema:JsonValue}|{mode:'url';serverName:string;message:string;url:string;elicitationId:string};
@@ -286,7 +281,7 @@ export type ServerRoomEvent =
   | Envelope<'request.resolved', { runId: string; requestId:string; resolution: string }>
   | Envelope<'run.selected', { responseSlotId: string; runId: string }>
   | Envelope<'room.participant.updated', RoomPersona>
-  | Envelope<'room.plan.approval.updated', { approved: PlanVersionRef | null }>
+  | Envelope<'room.workflow_mode.updated', { workflowMode: WorkflowMode }>
   | Envelope<'workspace.changed', { entry:WorkspaceEntry;change:'created'|'updated'|'deleted'|'restored'|'moved' }>
   | Envelope<'artifact.created', { runId:string;artifact:RunArtifact }>
   | Envelope<'run.embeds', { runId:string;embeds:RunEmbed[] }>
@@ -307,7 +302,7 @@ const eventTypes = new Set<ServerRoomEvent['type']>([
   'request.resolved',
   'run.selected',
   'room.participant.updated',
-  'room.plan.approval.updated',
+  'room.workflow_mode.updated',
   'workspace.changed',
   'artifact.created',
   'run.embeds',
@@ -334,7 +329,7 @@ export function isServerRoomEvent(value: unknown): value is ServerRoomEvent {
     case 'request.resolved': return strings(payload, 'runId', 'requestId', 'resolution');
     case 'run.selected': return strings(payload, 'responseSlotId', 'runId');
     case 'room.participant.updated': return isRoomPersona(payload);
-    case 'room.plan.approval.updated': return payload.approved===null||isPlanVersionRef(payload.approved);
+    case 'room.workflow_mode.updated': return payload.workflowMode==='plan'||payload.workflowMode==='work';
     case 'workspace.changed': return isRecord(payload.entry) && typeof payload.entry.id==='string' && typeof payload.change==='string';
     case 'artifact.created': return typeof payload.runId==='string' && isRecord(payload.artifact) && typeof payload.artifact.version_id==='string';
     case 'run.embeds': return typeof payload.runId==='string'&&Array.isArray(payload.embeds);
@@ -349,8 +344,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function isTokenUsage(value:unknown):value is TokenUsage{if(!isRecord(value)||!tokenCount(value.inputTokens)||!tokenCount(value.outputTokens))return false;return['totalTokens','reasoningTokens','cacheReadTokens','cacheWriteTokens'].every(key=>value[key]===undefined||tokenCount(value[key]));}
 function isRunWorkspaceResult(value:unknown):value is RunWorkspaceResult{if(!isRecord(value)||typeof value.base_snapshot_id!=='string'||typeof value.capture_status!=='string'||typeof value.publish_status!=='string'||!Number.isSafeInteger(value.conflict_count)||!Array.isArray(value.errors))return false;return['preparing','ready','finalizing','complete','incomplete','failed'].includes(value.capture_status)&&['pending','published','partially_published','not_published','noop','failed'].includes(value.publish_status);}
 function isRunProjectSnapshot(value:unknown):value is RunProjectSnapshot{return isRecord(value)&&strings(value,'id','name','path','availability')&&['available','unavailable','unknown'].includes(String(value.availability));}
-function isPlanVersionRef(value:unknown):value is PlanVersionRef{return isRecord(value)&&strings(value,'entry_id','version_id');}
-function isRunExecutionProfile(value:unknown):value is RunExecutionProfileSnapshot{return isRecord(value)&&(value.workflowMode==='plan'||value.workflowMode==='work')&&(value.requestedReasoningEffort===null||typeof value.requestedReasoningEffort==='string')&&(value.reasoningEffort===null||typeof value.reasoningEffort==='string')&&typeof value.reasoningEffortFallback==='boolean'&&['room_override','persona_default','model_default','auto'].includes(String(value.reasoningEffortSource))&&(value.planEnforcement===null||value.planEnforcement==='native'||value.planEnforcement==='instruction_only')&&(value.permissionProfileId===null||typeof value.permissionProfileId==='string')&&(value.agentVariantId===null||typeof value.agentVariantId==='string')&&(value.implementationPlanVersionId===null||typeof value.implementationPlanVersionId==='string');}
+function isRunExecutionProfile(value:unknown):value is RunExecutionProfileSnapshot{return isRecord(value)&&(value.workflowMode==='plan'||value.workflowMode==='work')&&(value.requestedReasoningEffort===null||typeof value.requestedReasoningEffort==='string')&&(value.reasoningEffort===null||typeof value.reasoningEffort==='string')&&typeof value.reasoningEffortFallback==='boolean'&&['room_override','persona_default','model_default','auto'].includes(String(value.reasoningEffortSource))&&(value.planEnforcement===null||value.planEnforcement==='native'||value.planEnforcement==='instruction_only')&&(value.permissionProfileId===null||typeof value.permissionProfileId==='string')&&(value.agentVariantId===null||typeof value.agentVariantId==='string');}
 function isRoomPersona(value:Record<string,unknown>):boolean{return isRecord(value.persona)&&typeof value.persona.id==='string'&&(value.reasoning_effort_override===null||typeof value.reasoning_effort_override==='string');}
 function tokenCount(value:unknown){return Number.isSafeInteger(value)&&Number(value)>=0;}
 function isStructuredQuestions(value:unknown):value is StructuredQuestion[]{return Array.isArray(value)&&value.length>0&&value.length<=4&&value.every(question=>isRecord(question)&&strings(question,'id','header','question')&&typeof question.isOther==='boolean'&&typeof question.isSecret==='boolean'&&(question.multiSelect===undefined||typeof question.multiSelect==='boolean')&&(question.options===undefined||(Array.isArray(question.options)&&question.options.every(option=>isRecord(option)&&typeof option.label==='string'&&(option.description===undefined||typeof option.description==='string')))));}

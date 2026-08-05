@@ -71,53 +71,33 @@ describe("route validation contracts", () => {
     await app.close();
   });
 
-  it("accepts only the one-message plan and immutable implementation intents", async () => {
+  it("validates persistent room workflow updates and ignores legacy message intents", async () => {
     const app = await buildApp({
-      databaseUrl: testDatabaseUrl("validation_execution_intent"),
+      databaseUrl: testDatabaseUrl("validation_workflow_mode"),
       distPath: "missing-dist",
       fetch: vi.fn<typeof fetch>(),
-      planModeEnabled: true,
-    });
-    const legacy = await app.inject({
-      method: "PATCH",
-      url: "/api/v1/rooms/demo-room/execution-profile",
-      payload: { workflow_mode: "plan" },
-    });
-    const missingVersion = await app.inject({
-      method: "POST",
-      url: "/api/v1/rooms/demo-room/messages",
-      payload: {
-        text: "@architect implement",
-        execution_intent: { kind: "implement" },
-      },
-    });
-    const pollutedPlan = await app.inject({
-      method: "POST",
-      url: "/api/v1/rooms/demo-room/messages",
-      payload: {
-        text: "@architect plan",
-        execution_intent: {
-          kind: "plan",
-          approved_plan_version_id: "unexpected",
-        },
-      },
     });
     const validShape = await app.inject({
+      method: "PUT",
+      url: "/api/v1/rooms/demo-room/workflow-mode",
+      payload: { workflow_mode: "plan" },
+    });
+    const invalidMode = await app.inject({
+      method: "PUT",
+      url: "/api/v1/rooms/demo-room/workflow-mode",
+      payload: { workflow_mode: "implement" },
+    });
+    const legacyIntent = await app.inject({
       method: "POST",
       url: "/api/v1/rooms/demo-room/messages",
       payload: {
-        text: "@architect implement",
-        execution_intent: {
-          kind: "implement",
-          approved_plan_version_id: "version-1",
-        },
+        text: "@architect inspect",
+        execution_intent: { kind: "plan" },
       },
     });
-    expect(legacy.statusCode).toBe(404);
-    expect(missingVersion.statusCode).toBe(400);
-    expect(pollutedPlan.statusCode).toBe(400);
-    expect(validShape.statusCode).toBe(503);
-    expect(validShape.json()).toMatchObject({ error: "connector_unavailable" });
+    expect(validShape.statusCode).toBe(200);
+    expect(invalidMode.statusCode).toBe(400);
+    expect(legacyIntent.statusCode).toBe(503);
     await app.close();
   });
 });

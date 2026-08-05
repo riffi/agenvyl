@@ -32,14 +32,14 @@ export async function createAppContainer(config: AppConfig, fetchImplementation?
   const harnessCatalogService=new HarnessCatalogService(connector,{logger});
   const connectorRuns=new ConnectorRunAdapter(connector);
   const activeRuns = new ActiveRunRegistry();
-  const roomWorkspace=new RoomWorkspaceService(rooms,workspace,events,activeRuns,workspaceRoot,workspaceAgentRoot,config.workspaceMaxFileBytes,config.planModeEnabled,workspaceSnapshots,logger,{
+  const roomWorkspace=new RoomWorkspaceService(rooms,workspace,events,activeRuns,workspaceRoot,workspaceAgentRoot,config.workspaceMaxFileBytes,workspaceSnapshots,logger,{
     noopMode:config.workspaceNoopMode,
     warmSlotsMode:config.workspaceWarmSlotsMode,
     statCacheMode:config.workspaceStatCacheMode,
     slotLeaseMs:config.runTimeoutMs+5*60_000,
   },workspaceSlots);
 
-  const runExecutor=new RunExecutor({ personas, runs, events, runGateway:connectorRuns, runEvents:connectorRuns, connectorExecution:connectorRuns,activeRuns,concurrency:config.runConcurrency,runTimeoutMs:config.runTimeoutMs,logger,roomWorkspace,messages,connector,planModeEnabled:config.planModeEnabled });
+  const runExecutor=new RunExecutor({ personas, runs, events, runGateway:connectorRuns, runEvents:connectorRuns, connectorExecution:connectorRuns,activeRuns,concurrency:config.runConcurrency,runTimeoutMs:config.runTimeoutMs,logger,roomWorkspace,messages,connector });
   await roomWorkspace.recover();
   await runExecutor.reconcilePersistedRuns();
   await roomWorkspace.recoverRuns();
@@ -53,12 +53,12 @@ export async function createAppContainer(config: AppConfig, fetchImplementation?
     dependencyHealth:connectorRuns,
     activeRuns,
     runExecutor,
-    roomsService:new RoomsService(rooms,roomWorkspace,events,config.planModeEnabled,harnessCatalogService),
+    roomsService:new RoomsService(rooms,roomWorkspace,events,harnessCatalogService),
     personasService:new PersonasService(personas,rooms,harnessCatalogService),
     userProfileService:new UserProfileService(userProfile),
     personaGroupsService:new PersonaGroupsService(personaGroups),
-    createMessageRound:new CreateMessageRound({personas,rooms,messages,events,harnesses:harnessCatalogService,activeRuns,runExecutor,roomWorkspace,planModeEnabled:config.planModeEnabled}),
-    runsService:new RunsService({runs,events,activeRuns,executor:runExecutor,planModeEnabled:config.planModeEnabled}),
+    createMessageRound:new CreateMessageRound({personas,rooms,messages,events,harnesses:harnessCatalogService,activeRuns,runExecutor,roomWorkspace}),
+    runsService:new RunsService({runs,events,activeRuns,executor:runExecutor}),
     harnessCatalogService,
     roomWorkspace,
     setupService:new SetupService(database,connector,workspaceRoot,harnessCatalogService,{logger,roomWorkspace}),

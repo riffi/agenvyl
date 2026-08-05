@@ -29,7 +29,7 @@ provider, account, or upstream version implements it identically.
 | Permission profiles | — | ✅ Standard or Auto-approve | ✅ Read only/workspace write/full access | ✅ Ask before edits or accept edits | ◐ Plan only or accept edits | ◐ Plan only or `--force` |
 | Agent variants | — | ◐ Upstream catalog | — | — | — | — |
 
-Plan workflow appears only when Agenvyl's experimental Plan Mode is enabled.
+Plan workflow is always available as a sticky room mode.
 For OpenCode, catalog agents marked hidden or as subagents are not offered as
 variants. The dedicated `plan` agent is represented as Plan workflow instead
 of an agent variant. OpenCode model variants are shown as reasoning effort
@@ -86,7 +86,9 @@ does not attach an old run to the new process: the run ends fail-closed.
   specific action.
 - **Native Plan** selects a plan mode implemented by the harness. In
   **instruction-only Plan**, Agenvyl asks a normal run to plan without editing,
-  but the harness does not provide a dedicated technical mode.
+  but the harness does not provide a dedicated technical mode. Instruction-only
+  enforcement cannot technically block external-project writes. Native Plan is
+  also not a universal operating-system sandbox.
 - **Streaming** publishes answer deltas while the harness is running.
   **Final-only** means Agenvyl receives one answer after the process exits; it
   must not invent intermediate output.

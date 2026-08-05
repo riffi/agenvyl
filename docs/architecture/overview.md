@@ -196,9 +196,12 @@ Several rules keep a room understandable and reproducible:
 - Only the selected completed attempt is included in later conversation
   history.
 
-Experimental Plan Mode adds a versioned `plan.md`, explicit plan approval, and
-an implementation handoff. It is disabled by default and does not change the
-basic room and run model.
+Each room stores a sticky `plan | work` workflow mode. Message creation locks
+the room row and snapshots that mode into every responder run, so a concurrent
+toggle and send cannot produce a mixed round. Retry copies the source run's
+snapshot instead of consulting the room's current mode. Plan is an exploration
+mode: agents inspect and discuss without implementing. `plan.md` has no special
+meaning and is handled like any other Markdown file.
 
 ### Workspace capture and publication
 

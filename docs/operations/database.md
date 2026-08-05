@@ -18,14 +18,21 @@ Plan/Work, reasoning effort, and approved-plan snapshots. Legacy mode values are
 intentionally not translated: rooms start in `Work` with `Auto` effort, while
 persona permissions and provider agent variants must be selected again.
 
-### Plan artifact clean break
+### Historical plan artifact migration
 
-Migration 015 replaces the persistent room Plan/Work mode and run-based plan
-approval with version references to the room workspace's root `plan.md`.
-Existing approval pointers are intentionally cleared; historical agent answers
-remain in the timeline. Plan creation is a one-message execution intent, while
-normal messages always run as Work. An explicit **Implement…** request snapshots
-the approved workspace version on every created run.
+Migration 015 historically replaced the first persistent Plan/Work design with
+version references to the room workspace's root `plan.md`. It cleared older
+approval pointers while keeping agent answers. That one-message intent and
+**Implement…** workflow is retained only in migration history and is removed by
+migration 027 below.
+
+### Persistent read-only room mode
+
+Migration 027 replaces that artifact workflow with `rooms.workflow_mode`,
+constrained to `plan | work` and defaulting to `work`. It removes approval and
+implementation-plan foreign keys, columns, legacy approval events, and the old
+execution-profile JSON key without deleting messages, run history, or workspace
+files. An existing `plan.md` remains an ordinary versioned Markdown file.
 
 ### Agent role removal
 

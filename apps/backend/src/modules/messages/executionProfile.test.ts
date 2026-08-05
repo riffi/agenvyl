@@ -19,7 +19,7 @@ describe("resolveExecutionProfile", () => {
         ...base,
         roomOverride: "high",
         personaDefault: null,
-        intent: { kind: "plan" },
+        workflowMode: "plan",
         model: {
           id: "gpt",
           reasoningEfforts: ["low", "high"],
@@ -35,7 +35,6 @@ describe("resolveExecutionProfile", () => {
       planEnforcement: "native",
       permissionProfileId: "workspace-write",
       agentVariantId: null,
-      implementationPlanVersionId: null,
     }));
 
   it("preserves the requested source when catalog drift causes fallback", () =>
@@ -44,10 +43,7 @@ describe("resolveExecutionProfile", () => {
         ...base,
         roomOverride: "max",
         personaDefault: null,
-        intent: {
-          kind: "implement",
-          approved_plan_version_id: "version-1",
-        },
+        workflowMode: "work",
         model: {
           id: "small",
           reasoningEfforts: ["low"],
@@ -66,7 +62,6 @@ describe("resolveExecutionProfile", () => {
       planEnforcement: null,
       permissionProfileId: "read-only",
       agentVariantId: "build",
-      implementationPlanVersionId: "version-1",
     }));
 
   it("resolves persona, model, and Auto inheritance in order", () => {
@@ -81,6 +76,7 @@ describe("resolveExecutionProfile", () => {
         roomOverride: null,
         personaDefault: "high",
         model,
+        workflowMode: "work",
       }),
     ).toMatchObject({
       requestedReasoningEffort: "high",
@@ -93,6 +89,7 @@ describe("resolveExecutionProfile", () => {
         roomOverride: null,
         personaDefault: null,
         model,
+        workflowMode: "work",
       }),
     ).toMatchObject({
       requestedReasoningEffort: "low",
@@ -105,6 +102,7 @@ describe("resolveExecutionProfile", () => {
         roomOverride: null,
         personaDefault: null,
         model: { id: "plain" },
+        workflowMode: "work",
       }),
     ).toMatchObject({
       requestedReasoningEffort: null,
@@ -113,23 +111,13 @@ describe("resolveExecutionProfile", () => {
     });
   });
 
-  it("does not carry an approved plan into ordinary Work", () =>
-    expect(
-      resolveExecutionProfile({
-        ...base,
-        roomOverride: null,
-        personaDefault: null,
-        model: { id: "small" },
-      }).implementationPlanVersionId,
-    ).toBeNull());
-
   it("marks unsupported Plan as instruction-only", () =>
     expect(
       resolveExecutionProfile({
         ...base,
         roomOverride: null,
         personaDefault: null,
-        intent: { kind: "plan" },
+        workflowMode: "plan",
         model: { id: "hermes" },
         controls: {
           nativeWorkflowModes: [],

@@ -11,7 +11,6 @@ import {
   MoreHorizontal,
   PanelLeft,
   Paperclip,
-  Pencil,
   RefreshCw,
   RotateCcw,
   Trash2,
@@ -31,17 +30,13 @@ type WorkspaceHeaderProps = {
   current?: WorkspaceVersion;
   viewed?: WorkspaceVersion;
   mode: WorkspaceViewMode;
-  approvedVersionId?: string;
-  planModeEnabled: boolean;
   deleted: boolean;
-  editingPlan: boolean;
   canAttach: boolean;
   onTreeToggle: () => void;
   onVersion: (version: WorkspaceVersion, followCurrent: boolean) => void;
   onMode: (mode: WorkspaceViewMode) => void;
   onRestoreVersion: () => void;
   onRestoreEntry: () => void;
-  onEditPlan: () => void;
   onAttach: () => void;
   onRename: () => void;
   onMove: () => void;
@@ -58,17 +53,13 @@ export const WorkspaceHeader = ({
   current,
   viewed,
   mode,
-  approvedVersionId,
-  planModeEnabled,
   deleted,
-  editingPlan,
   canAttach,
   onTreeToggle,
   onVersion,
   onMode,
   onRestoreVersion,
   onRestoreEntry,
-  onEditPlan,
   onAttach,
   onRename,
   onMove,
@@ -83,7 +74,6 @@ export const WorkspaceHeader = ({
   const newer = versions[viewedIndex - 1];
   const versionNumber = versions.length ? versions.length - viewedIndex : 1;
   const modes = attachment ? workspaceModesFor(attachment) : [];
-  const isPlan = planModeEnabled && entry?.path === 'plan.md';
   const isHistorical = Boolean(viewed && current && viewed.id !== current.id);
 
   const action = (callback: () => void) => () => {
@@ -159,7 +149,6 @@ export const WorkspaceHeader = ({
                   </span>
                   <span className={styles.versionBadges}>
                     {version.id === current?.id && <em>Current</em>}
-                    {version.id === approvedVersionId && <em>Approved</em>}
                     {selected && version.id !== current?.id && <em>Viewing</em>}
                   </span>
                 </button>;
@@ -184,10 +173,9 @@ export const WorkspaceHeader = ({
           {attachment && !deleted && <section>
             {canAttach && <button onClick={action(onAttach)}><Paperclip />Attach</button>}
             <a href={attachment.url} download onClick={() => actionsRef.current?.removeAttribute('open')}><Download />Download</a>
-            {isPlan && viewed?.id === current?.id && !editingPlan && <button onClick={action(onEditPlan)}><Pencil />Edit plan.md</button>}
           </section>}
 
-          {entry && !deleted && !isPlan && <section>
+          {entry && !deleted && <section>
             <button onClick={action(onRename)}><Type />Rename</button>
             <button onClick={action(onMove)}><FolderInput />Move</button>
             <button className={styles.dangerItem} onClick={action(onDelete)}><Trash2 />Delete</button>

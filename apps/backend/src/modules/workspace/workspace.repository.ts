@@ -25,13 +25,11 @@ export class WorkspaceRepository{
     return (await this.entry(roomId,path))!;
   }
 
-  async saveVersion(input:{roomId:string;path:string;size:number;mimeType:string;sha256:string;source:WorkspaceSource;runIds:string[];createdAt?:string;force?:boolean;artifactChange?:RunArtifact['change'];expectedCurrentVersionId?:string}){
+  async saveVersion(input:{roomId:string;path:string;size:number;mimeType:string;sha256:string;source:WorkspaceSource;runIds:string[];createdAt?:string;force?:boolean;artifactChange?:RunArtifact['change']}){
     return this.database.transaction(async tx=>{
       const now=input.createdAt??new Date().toISOString();
-      if(input.path==='plan.md')await tx`SELECT id FROM rooms WHERE id=${input.roomId} FOR UPDATE`;
       let entry=(await tx`SELECT * FROM workspace_entries WHERE room_id=${input.roomId} AND path=${input.path} FOR UPDATE`)[0];
       const created=!entry||entry.deleted_at!=null;
-      if(input.expectedCurrentVersionId!==undefined&&entry?.current_version_id!==input.expectedCurrentVersionId)throw new Error('plan_version_conflict');
       if(!entry){const id=crypto.randomUUID();await tx`INSERT INTO workspace_entries(id,room_id,path,kind,size,mime_type,status,created_at,updated_at) VALUES(${id},${input.roomId},${input.path},'file',${input.size},${input.mimeType},'tracked',${now},${now})`;entry=(await tx`SELECT * FROM workspace_entries WHERE id=${id}`)[0];}
       const current=entry.current_version_id?(await tx`SELECT sha256 FROM workspace_versions WHERE id=${entry.current_version_id as string}`)[0]:undefined;
       if(!input.force&&current?.sha256===input.sha256&&entry.deleted_at==null){await tx`UPDATE workspace_entries SET size=${input.size},mime_type=${input.mimeType},updated_at=${now},status='tracked' WHERE id=${entry.id as string}`;return{entry:toEntry({...entry,size:input.size,mime_type:input.mimeType,updated_at:now}),version:undefined,created:false};}

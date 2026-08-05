@@ -10,7 +10,6 @@ export const WorkspaceExplorer = ({
   selectedId,
   trash,
   loading,
-  planModeEnabled,
   onFile,
   onDirectory,
   onUpload,
@@ -22,7 +21,6 @@ export const WorkspaceExplorer = ({
   selectedId?: string;
   trash: boolean;
   loading: boolean;
-  planModeEnabled: boolean;
   onFile: (entry: WorkspaceEntry) => void;
   onDirectory: (path: string) => void;
   onUpload: (files: File[]) => void;
@@ -65,7 +63,7 @@ export const WorkspaceExplorer = ({
     }}>
       {loading && <ExplorerMessage>Loading workspace…</ExplorerMessage>}
       {!loading && !filtered.length && <ExplorerMessage>{search ? 'No results' : trash ? 'Trash is empty' : 'Workspace is empty'}</ExplorerMessage>}
-      {filtered.map(node => <TreeRow key={node.path} node={node} depth={0} expanded={effectiveExpanded} selectedId={selectedId} trash={trash} planModeEnabled={planModeEnabled} onFolder={toggleFolder} onFile={onFile} onRename={onRename} />)}
+      {filtered.map(node => <TreeRow key={node.path} node={node} depth={0} expanded={effectiveExpanded} selectedId={selectedId} trash={trash} onFolder={toggleFolder} onFile={onFile} onRename={onRename} />)}
     </nav>
     <button className={`${styles.trashToggle} ${trash ? styles.trashActive : ''}`} onClick={() => { setSearch(''); onTrashToggle(); }}><Trash2 />{trash ? 'Back to files' : 'Trash'}</button>
   </aside>;
@@ -77,7 +75,6 @@ const TreeRow = ({
   expanded,
   selectedId,
   trash,
-  planModeEnabled,
   onFolder,
   onFile,
   onRename,
@@ -87,7 +84,6 @@ const TreeRow = ({
   expanded: Set<string>;
   selectedId?: string;
   trash: boolean;
-  planModeEnabled: boolean;
   onFolder: (path: string) => void;
   onFile: (entry: WorkspaceEntry) => void;
   onRename: (entry: WorkspaceEntry) => void;
@@ -100,14 +96,14 @@ const TreeRow = ({
       style={{ paddingLeft: 9 + depth * 15 }}
       title={node.path}
       onClick={() => node.kind === 'directory' ? onFolder(node.path) : entry && onFile(entry)}
-      onDoubleClick={() => !trash && (!planModeEnabled || entry?.path !== 'plan.md') && entry && onRename(entry)}
+      onDoubleClick={() => !trash && entry && onRename(entry)}
     >
       {node.kind === 'directory' ? <ChevronRight className={`${styles.chevron} ${open ? styles.chevronOpen : ''}`} /> : <span className={styles.chevronSpace} />}
       {node.kind === 'directory' ? open ? <FolderOpen /> : <Folder /> : <File />}
       <span>{node.name}</span>
       {entry?.status === 'oversize' && <em>oversize</em>}
     </button>
-    {node.kind === 'directory' && open && node.children.map(child => <TreeRow key={child.path} node={child} depth={depth + 1} expanded={expanded} selectedId={selectedId} trash={trash} planModeEnabled={planModeEnabled} onFolder={onFolder} onFile={onFile} onRename={onRename} />)}
+    {node.kind === 'directory' && open && node.children.map(child => <TreeRow key={child.path} node={child} depth={depth + 1} expanded={expanded} selectedId={selectedId} trash={trash} onFolder={onFolder} onFile={onFile} onRename={onRename} />)}
   </div>;
 };
 

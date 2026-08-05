@@ -7,7 +7,7 @@ import {RoomWorkspaceService} from './RoomWorkspaceService.js';
 const roots:string[]=[];
 afterEach(async()=>{await Promise.all(roots.splice(0).map(root=>rm(root,{recursive:true,force:true})));});
 
-function fixture(root:string,max=1024,activeValues:()=>any[]=()=>[],planModeEnabled?:boolean){
+function fixture(root:string,max=1024,activeValues:()=>any[]=()=>[]){
   const entries=new Map<string,any>(),versions=new Map<string,any>();
   const repository={
     list:vi.fn(async()=>[...entries.values()]),entry:vi.fn(async(_room:string,p:string)=>entries.get(p)),entryById:vi.fn(async(_room:string,id:string)=>[...entries.values()].find(value=>value.id===id)),
@@ -19,8 +19,8 @@ function fixture(root:string,max=1024,activeValues:()=>any[]=()=>[],planModeEnab
     move:vi.fn(async(_room:string,id:string,nextPath:string)=>{const entry=[...entries.values()].find(value=>value.id===id);if(!entry)return undefined;entries.delete(entry.path);entry.path=nextPath;entry.name=path.basename(nextPath);entries.set(nextPath,entry);return entry;}),
     restoreEntry:vi.fn(),versions:vi.fn(),linkArtifacts:vi.fn(),
   };
-  const rooms={exists:vi.fn().mockResolvedValue(true),hasActivePlanRun:vi.fn().mockImplementation(async()=>activeValues().some(run=>run.executionProfile?.workflowMode==='plan'&&!run.terminal)),clearApprovedPlan:vi.fn().mockResolvedValue({plan:{approved:null}})},events={emit:vi.fn()};
-  const service=new RoomWorkspaceService(rooms as never,repository as never,events as never,{values:activeValues} as never,root,'/host/workspaces',max,planModeEnabled);
+  const rooms={exists:vi.fn().mockResolvedValue(true)},events={emit:vi.fn()};
+  const service=new RoomWorkspaceService(rooms as never,repository as never,events as never,{values:activeValues} as never,root,'/host/workspaces',max);
   return{service,repository,rooms,events};
 }
 
@@ -51,33 +51,12 @@ describe('RoomWorkspaceService',()=>{
     expect(repository.saveVersion).toHaveBeenCalledWith(expect.objectContaining({path:'result.txt',runIds:['running'],artifactChange:'created'}));service.close();
   });
 
-  it('creates plan.md from a run and conditionally saves manual versions',async()=>{
-    const root=await mkdtemp(path.join(tmpdir(),'room-plan-'));roots.push(root);const{service,repository}=fixture(root);
-    const created=await service.savePlanFromRun('room-1','plan-run','# First plan');
-    expect(created.entry.path).toBe('plan.md');
-    expect(repository.saveVersion).toHaveBeenCalledWith(expect.objectContaining({path:'plan.md',runIds:['plan-run'],artifactChange:'created',force:true}));
-    await expect(service.updatePlan('room-1','# Edited','stale')).rejects.toMatchObject({code:'plan_version_conflict'});
-    const edited=await service.updatePlan('room-1','# Edited',created.version.id);
-    expect(edited.version.id).not.toBe(created.version.id);
-    expect(await readFile(path.join(root,'room-1','plan.md'),'utf8')).toBe('# Edited');
-    service.close();
-  });
-
-  it('rejects a manual save while a Plan run is active',async()=>{
-    const root=await mkdtemp(path.join(tmpdir(),'room-plan-active-'));roots.push(root);const run={roomId:'room-1',terminal:false,executionProfile:{workflowMode:'plan'}},{service}=fixture(root,1024,()=>[run]);
-    await expect(service.updatePlan('room-1','# Concurrent edit','version-1')).rejects.toMatchObject({code:'plan_run_active',statusCode:409});
-    service.close();
-  });
-
-  it('blocks the Plan editor but treats plan.md as an ordinary movable and deletable file when disabled',async()=>{
-    const root=await mkdtemp(path.join(tmpdir(),'room-plan-disabled-'));roots.push(root);const{service,rooms}=fixture(root,1024,()=>[],false);
+  it('treats plan.md as an ordinary movable and deletable Markdown file',async()=>{
+    const root=await mkdtemp(path.join(tmpdir(),'room-plan-file-'));roots.push(root);const{service}=fixture(root);
     const uploaded=await service.upload('room-1','plan.md','text/markdown',Buffer.from('# Existing plan'));
-    await expect(service.updatePlan('room-1','# Edited',uploaded.version.id)).rejects.toMatchObject({code:'plan_mode_disabled',statusCode:409});
     await service.move('room-1',uploaded.entry.id,'notes/old-plan.md');
-    expect(rooms.clearApprovedPlan).toHaveBeenCalledTimes(1);
     const replacement=await service.upload('room-1','plan.md','text/markdown',Buffer.from('# Replacement'));
     await service.remove('room-1',replacement.entry.id);
-    expect(rooms.clearApprovedPlan).toHaveBeenCalledTimes(2);
     service.close();
   });
 });

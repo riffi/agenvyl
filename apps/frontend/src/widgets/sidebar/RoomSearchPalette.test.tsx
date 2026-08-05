@@ -6,8 +6,8 @@ import type { Room } from '../../entities/room';
 import { RoomSearchPalette } from './Sidebar';
 
 const rooms: Room[] = [
-  { id: 'one', title: 'Первая комната', created_at: '2026-07-20', participant_count: 1, last_message_at: null, last_message_text: null },
-  { id: 'two', title: 'Вторая комната', created_at: '2026-07-19', participant_count: 1, last_message_at: null, last_message_text: null },
+  { id: 'one', title: 'Первая комната', created_at: '2026-07-20', participant_count: 1, last_message_at: null, last_message_text: null, workflow_mode: 'work' },
+  { id: 'two', title: 'Вторая комната', created_at: '2026-07-19', participant_count: 1, last_message_at: null, last_message_text: null, workflow_mode: 'work' },
 ];
 
 afterEach(cleanup);

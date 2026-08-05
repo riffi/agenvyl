@@ -128,6 +128,13 @@ Or guide a software workflow:
 @architect @reviewer Check the change from different perspectives.
 ```
 
+Turn on the room's **Plan** switch when agents should inspect and discuss the
+project without implementing the request. The mode stays active for every new
+message and responder until you switch back to Work. Native Plan is the
+strongest mode each harness provides; an **Instruction-only** badge means the
+harness has no technical read-only control and can still write with your
+operating-system permissions.
+
 Rooms are useful beyond software: research, writing, document review, planning,
 and model comparison all use the same shared-history pattern.
 
@@ -137,6 +144,8 @@ and model comparison all use the same shared-history pattern.
 - Agenvyl adds no telemetry or remote analytics.
 - Connected harnesses use your normal operating-system permissions.
 - A room workspace is a shared working directory, **not a security sandbox**.
+- Plan protects the recommended external project through native harness controls
+  where available, but it is not a universal operating-system sandbox.
 - Do not enable a harness or permission profile you would not trust with the
   selected files.
 - Agenvyl has no public multi-user authorization layer.

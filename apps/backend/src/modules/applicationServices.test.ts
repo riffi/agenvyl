@@ -21,7 +21,6 @@ describe("application services", () => {
     planEnforcement: null,
     permissionProfileId: null,
     agentVariantId: null,
-    implementationPlanVersionId: null,
   };
   it("maps room repository outcomes to typed application errors", async () => {
     const service = new RoomsService({
@@ -146,29 +145,6 @@ describe("application services", () => {
       }),
     );
   });
-  it("requires exactly one responder for a one-shot Plan request", async () => {
-    const execute = new CreateMessageRound({
-      personas: { list: vi.fn().mockResolvedValue([]) },
-      messages: { find: vi.fn() },
-      events: {},
-      harnesses: { catalog: vi.fn() },
-      activeRuns: {},
-      runExecutor: {},
-    } as never);
-    await expect(
-      execute.execute({
-        roomId: "room",
-        text: "plan it",
-        targets: [],
-        executionIntent: { kind: "plan" },
-      }),
-    ).rejects.toEqual(
-      expect.objectContaining<AppError>({
-        code: "plan_requires_single_agent",
-        statusCode: 400,
-      }),
-    );
-  });
   it("validates runs against the selected Connector harness catalog", async () => {
     const persona = {
         id: "persona-opencode",
@@ -197,14 +173,7 @@ describe("application services", () => {
           list: vi.fn().mockResolvedValue([persona]),
           setEffectiveModel,
         },
-        rooms: {
-          executionState: vi
-            .fn()
-            .mockResolvedValue({
-              profile: { reasoning_effort: null },
-              plan: { path: "plan.md", current: null, approved: null },
-            }),
-        },
+        rooms: {},
         messages: {
           createRound: vi.fn(
             async (
@@ -217,12 +186,14 @@ describe("application services", () => {
                   default_reasoning_effort: null;
                 };
                 roomOverride: null;
+                workflowMode: 'work';
               }) => unknown,
             ) => {
               resolveProfile({
                 persona,
                 version: { ...persona, default_reasoning_effort: null },
                 roomOverride: null,
+                workflowMode: 'work',
               });
               return { duplicate: true, message: { id: "message" } };
             },

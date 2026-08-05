@@ -10,7 +10,6 @@ import {userProfileApi,userProfileKey,type LocalUserProfile} from '../../entitie
 import {projectKeys,projectsApi} from '../../entities/project';
 import { CreateRoomDialog, RoomAgentManager,RoomProjectDialog } from "../../features/room-dialogs";
 import {AttachmentPicker,useRoomAttachments} from '../../features/send-message';
-import {useRuntimeFeatures} from '../../shared/features';
 import { FakeRoomGateway, HttpRoomGateway, type RoomGateway } from "../../features/room-session";
 import { Button, EmptyState } from "../../shared/ui";
 import { WorkspaceWindow, workspaceRequestForTarget, workspaceRequestFromSearch, workspaceSearchWithRequest, type OpenWorkspaceArtifact, type WorkspaceOpenRequest, type WorkspaceRequestUpdate, type WorkspaceTarget } from '../workspace-window';
@@ -33,7 +32,7 @@ const unknownPersona = (handle: string): Persona => ({
   group_id:null,
   archived_at: null,
 });
-const fakeRooms: Room[] = [{id:'demo-room',title:'WebSocket architecture',created_at:new Date().toISOString(),participant_count:4,last_message_at:null,last_message_text:null}];
+const fakeRooms: Room[] = [{id:'demo-room',title:'WebSocket architecture',created_at:new Date().toISOString(),participant_count:4,last_message_at:null,last_message_text:null,workflow_mode:'work'}];
 const fakeModels = [
   { key: "sol", root: "anthropic/claude-sonnet-4", provider: "anthropic" },
   { key: "qwen", root: "qwen/qwen3-coder", provider: "qwen" },
@@ -64,7 +63,6 @@ export function WorkspaceApp({
   selectedPersonaId?:string;
   navigateToPersona:(id?:string,options?:{replace?:boolean})=>void;
 }) {
-  const{plan_mode:planModeEnabled}=useRuntimeFeatures();
   const [searchParams,setSearchParams]=useSearchParams();
   const fake=useMemo(()=>{const query=new URLSearchParams(location.search).get('gateway');return query==='fake'||(query!=='real'&&import.meta.env.VITE_GATEWAY_MODE==='fake')},[]);
   const queryClient=useQueryClient();
@@ -150,10 +148,11 @@ export function WorkspaceApp({
   const restoreRoomMutation=useMutation({mutationFn:(id:string)=>roomsApi.restore(id),onSuccess:()=>invalidateRooms()});
   const purgeRoomMutation=useMutation({mutationFn:(id:string)=>roomsApi.purge(id),onSuccess:()=>invalidateRooms()});
   const userProfileMutation=useMutation({mutationFn:userProfileApi.update,onSuccess:profile=>queryClient.setQueryData(userProfileKey,profile)});
-  const createRoom=async(title:string,personaIds:string[],projectId:string|null)=>{if(fake){const id=crypto.randomUUID();setDemoRooms(current=>[{id,title,created_at:new Date().toISOString(),participant_count:personaIds.length,last_message_at:null,last_message_text:null,project:null},...current]);setDemoPersonas([...fakePersonas].filter(persona=>personaIds.includes(persona.id)));navigateToRoom(id);return}const room=await createRoomMutation.mutateAsync({title,personaIds,projectId});navigateToRoom(room.id);};
+  const createRoom=async(title:string,personaIds:string[],projectId:string|null)=>{if(fake){const id=crypto.randomUUID();setDemoRooms(current=>[{id,title,created_at:new Date().toISOString(),participant_count:personaIds.length,last_message_at:null,last_message_text:null,project:null,workflow_mode:'work'},...current]);setDemoPersonas([...fakePersonas].filter(persona=>personaIds.includes(persona.id)));navigateToRoom(id);return}const room=await createRoomMutation.mutateAsync({title,personaIds,projectId});navigateToRoom(room.id);};
   const renameRoom=async(room:Room,title:string)=>{if(fake){setDemoRooms(current=>current.map(item=>item.id===room.id?{...item,title}:item));return}await renameRoomMutation.mutateAsync({id:room.id,title});};
   const saveRoomAgents=async(next:Set<string>)=>{if(fake){setDemoPersonas([...fakePersonas].filter(persona=>next.has(persona.id)));setDemoRooms(current=>current.map(room=>room.id===roomId?{...room,participant_count:next.size}:room));return}const current=new Set(personas.map(persona=>persona.id));await Promise.all([...next].filter(id=>!current.has(id)).map(id=>roomsApi.addParticipant(roomId,id)).concat([...current].filter(id=>!next.has(id)).map(id=>roomsApi.removeParticipant(roomId,id))));await Promise.all([invalidatePersonas(),invalidateRooms()]);};
   const updateParticipantReasoning=async(personaId:string,value:string|null)=>{if(fake)return;const updated=await roomsApi.updateParticipant(roomId,personaId,{reasoning_effort_override:value});queryClient.setQueryData<RoomPersona[]>(personaKeys.byRoom(roomId),current=>current?.map(item=>item.persona.id===personaId?updated:item)??[updated]);};
+  const updateWorkflowMode=async(workflowMode:import('@agenvyl/contracts').WorkflowMode)=>{if(fake)return;await roomsApi.updateWorkflowMode(roomId,workflowMode);queryClient.setQueryData<Room[]>(roomKeys.all,current=>current?.map(room=>room.id===roomId?{...room,workflow_mode:workflowMode}:room));};
   const deleteRoom=async(room:Room)=>{if(fake)return;await deleteRoomMutation.mutateAsync(room.id);const next=rooms.filter(item=>item.id!==room.id);if(room.id===roomId&&next[0])navigateToRoom(next[0].id,{replace:true});};
   const active = Object.values(state.runs).filter((r) =>
     [
@@ -175,8 +174,6 @@ export function WorkspaceApp({
     guardedNavigation('the agent catalog',navigateToPersonas);
   };
   const currentRoom=rooms.find(room=>room.id===roomId);
-  const approvePlan=async(versionId:string)=>{const approved=state.executionState.plan.approved;if(approved&&approved.version_id!==versionId&&!confirm('Replace the approved plan version?'))return;if(!fake)await roomsApi.approvePlan(roomId,versionId)};
-  const clearApprovedPlan=async()=>fake?state.executionState:roomsApi.clearApprovedPlan(roomId);
   const pushWorkspace=useCallback((request:WorkspaceOpenRequest)=>{
     setWorkspaceTransient(request);
     setSearchParams(workspaceSearchWithRequest(searchParams,request),{replace:false});
@@ -252,8 +249,8 @@ export function WorkspaceApp({
             openArtifacts={() => openWorkspace()}
             manageAgents={() => setManagingAgents(true)}
           />
-          <Timeline roomId={roomId} state={state} personas={personaCatalog} harnessCatalog={harnessCatalog} select={setSelected} gateway={gateway} loadOlder={loadOlder} loadingOlder={loadingOlder} initialLoading={!fake&&timelineQuery.isPending} onMentionPersona={handle=>composerRef.current?.insertMention(handle)} plan={state.executionState.plan} approvePlan={approvePlan} openWorkspace={openWorkspace} openArtifact={openArtifact} planModeEnabled={planModeEnabled}/>
-          <Composer ref={composerRef} gateway={gateway} active={active} personas={personas} roomPersonas={roomPersonas} updateParticipantReasoning={updateParticipantReasoning} harnessCatalog={harnessCatalog} catalogReady={gateway.mode === "fake" || (!catalogLoading && !catalogError)} onSent={async()=>{await invalidateRooms()}} openWorkspace={openWorkspace} openArtifact={openArtifact} roomId={roomId} attachments={attachments.items} attachmentsBusy={attachments.busy} openAttachmentPicker={()=>setAttachmentPicker(true)} uploadFiles={files=>void attachments.uploadFiles(files)} removeAttachment={attachments.remove} retryAttachment={attachments.retry} clearAttachments={attachments.clear} executionState={state.executionState} approvePlan={approvePlan} clearApprovedPlan={clearApprovedPlan} planModeEnabled={planModeEnabled}/>
+          <Timeline roomId={roomId} state={state} personas={personaCatalog} harnessCatalog={harnessCatalog} select={setSelected} gateway={gateway} loadOlder={loadOlder} loadingOlder={loadingOlder} initialLoading={!fake&&timelineQuery.isPending} onMentionPersona={handle=>composerRef.current?.insertMention(handle)} openWorkspace={openWorkspace} openArtifact={openArtifact}/>
+          <Composer ref={composerRef} gateway={gateway} active={active} personas={personas} roomPersonas={roomPersonas} updateParticipantReasoning={updateParticipantReasoning} harnessCatalog={harnessCatalog} catalogReady={gateway.mode === "fake" || (!catalogLoading && !catalogError)} onSent={async()=>{await invalidateRooms()}} openWorkspace={openWorkspace} openArtifact={openArtifact} roomId={roomId} attachments={attachments.items} attachmentsBusy={attachments.busy} openAttachmentPicker={()=>setAttachmentPicker(true)} uploadFiles={files=>void attachments.uploadFiles(files)} removeAttachment={attachments.remove} retryAttachment={attachments.retry} clearAttachments={attachments.clear} workflowMode={state.workflowMode} updateWorkflowMode={updateWorkflowMode}/>
         </>:<div className={styles['empty-chat']}><div className={styles['empty-mobile-header']}><button type="button" aria-label="Open menu" onClick={()=>setMenu(true)}><Menu /></button><strong>agenvyl</strong></div><EmptyState icon={<MessageCircle />} title="No rooms" description="Create a room to start a conversation with agents." action={<Button variant="primary" icon={<Plus />} onClick={()=>setCreatingRoom(true)}>Create room</Button>} /></div>):<PersonasScreen
           personas={personaCatalog}
           harnessCatalog={harnessCatalog}
@@ -280,7 +277,7 @@ export function WorkspaceApp({
         harnessCatalog={harnessCatalog}
         close={() => setSelected(undefined)}
       />
-      <WorkspaceWindow request={workspaceRequest} roomId={roomId} fake={fake} onAttach={attachment=>attachments.addExisting([attachment])} plan={state.executionState.plan} planModeEnabled={planModeEnabled} onClose={closeWorkspace} onRequestChange={updateWorkspaceRequest}/>
+      <WorkspaceWindow request={workspaceRequest} roomId={roomId} fake={fake} onAttach={attachment=>attachments.addExisting([attachment])} onClose={closeWorkspace} onRequestChange={updateWorkspaceRequest}/>
       <AttachmentPicker open={attachmentPicker} roomId={roomId} selected={attachments.ready} onClose={()=>setAttachmentPicker(false)} onConfirm={attachments.replaceReady} onUpload={files=>void attachments.uploadFiles(files)}/>
       {creatingRoom&&<CreateRoomDialog personas={personaCatalog.filter(persona=>!persona.archived_at)} catalog={harnessCatalog} groups={groups} projects={projectsQuery.data??[]} onClose={()=>setCreatingRoom(false)} onCreated={createRoom}/>}
       {managingAgents&&currentRoom&&<RoomAgentManager personas={personaCatalog.filter(persona=>!persona.archived_at)} catalog={harnessCatalog} groups={groups} roomPersonas={roomPersonas} onUpdateReasoning={updateParticipantReasoning} onClose={()=>setManagingAgents(false)} onSave={saveRoomAgents}/>}

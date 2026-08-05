@@ -19,13 +19,13 @@ describe('user profile settings',()=>{
 
 describe('room management dialogs',()=>{
   it('renders the current room name in the rename form',()=>{
-    const html=renderToStaticMarkup(<RenameRoomDialog room={{id:'room-1',title:'Проект',created_at:'2026-01-01',participant_count:2,last_message_at:null,last_message_text:null}} onClose={vi.fn()} onRename={vi.fn()}/>);
+    const html=renderToStaticMarkup(<RenameRoomDialog room={{id:'room-1',title:'Проект',created_at:'2026-01-01',participant_count:2,last_message_at:null,last_message_text:null,workflow_mode:'work'}} onClose={vi.fn()} onRename={vi.fn()}/>);
     expect(html).toContain('Rename room');
     expect(html).toContain('value="Проект"');
   });
 
   it('renders deleted rooms and both recovery actions',()=>{
-    const html=renderToStaticMarkup(<TrashDialog rooms={[{id:'room-1',title:'Удалённая комната',created_at:'2026-01-01',participant_count:2,last_message_at:null,last_message_text:null,deleted_at:'2026-07-20'}]} onClose={vi.fn()} restoreRoom={vi.fn()} purgeRoom={vi.fn()}/>);
+    const html=renderToStaticMarkup(<TrashDialog rooms={[{id:'room-1',title:'Удалённая комната',created_at:'2026-01-01',participant_count:2,last_message_at:null,last_message_text:null,workflow_mode:'work',deleted_at:'2026-07-20'}]} onClose={vi.fn()} restoreRoom={vi.fn()} purgeRoom={vi.fn()}/>);
     expect(html).toContain('Удалённая комната');
     expect(html).toContain('Restore room');
     expect(html).toContain('Permanently');

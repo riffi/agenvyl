@@ -1,7 +1,7 @@
 import { AppError } from "../../shared/errors/AppError.js";
 import type { RoomRepository } from "./rooms.repository.js";
 import type { RoomEventService } from "../room-events/RoomEventService.js";
-import { assertPlanModeEnabled } from "../features/planMode.js";
+import type {WorkflowMode} from '@agenvyl/contracts';
 
 export class RoomsService {
   constructor(
@@ -11,7 +11,6 @@ export class RoomsService {
       purgeFiles: (roomId: string, hashes: string[]) => Promise<void>;
     },
     private readonly events?: RoomEventService,
-    private readonly planModeEnabled?: boolean,
     private readonly harnesses?: {
       catalog(): Promise<{
         instances: Array<{
@@ -146,33 +145,11 @@ export class RoomsService {
     this.events?.publishPersisted(roomId, result.event);
     return result.participant;
   }
-  async executionState(roomId: string) {
-    const state = await this.rooms.executionState(roomId);
-    if (!state) throw new AppError("room_not_found", 404, "Room not found");
-    return state;
-  }
-  async approvePlan(roomId: string, versionId: string) {
-    assertPlanModeEnabled(this.planModeEnabled);
-    const state = await this.rooms.approvePlan(roomId, versionId);
-    if (!state)
-      throw new AppError(
-        "invalid_approved_plan",
-        409,
-        "Only the current plan.md version can be approved",
-      );
-    await this.events?.emit(roomId, "room.plan.approval.updated", {
-      approved: state.plan.approved,
-    });
-    return state;
-  }
-  async clearApprovedPlan(roomId: string) {
-    assertPlanModeEnabled(this.planModeEnabled);
-    const state = await this.rooms.clearApprovedPlan(roomId);
-    if (!state) throw new AppError("room_not_found", 404, "Room not found");
-    await this.events?.emit(roomId, "room.plan.approval.updated", {
-      approved: null,
-    });
-    return state;
+  async updateWorkflowMode(roomId:string,workflowMode:WorkflowMode){
+    const result=await this.rooms.updateWorkflowMode(roomId,workflowMode);
+    if(!result)throw new AppError('room_not_found',404,'Room not found');
+    this.events?.publishPersisted(roomId,result.event);
+    return{workflow_mode:result.workflowMode};
   }
 }
 

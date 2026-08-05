@@ -1,18 +1,16 @@
 import type {
   Database,
-  QueryContext,
 } from "../../infrastructure/database/Database.js";
 import type { PersonaRepository } from "../personas/personas.repository.js";
 import type { Room } from "../../types.js";
 import {
   upsertToolActivity,
-  type PlanVersionRef,
   type Persona,
-  type RoomExecutionState,
   type RoomPersona,
   type Run,
   type StructuredQuestion,
   type ToolActivity,
+  type WorkflowMode,
 } from "@agenvyl/contracts";
 import {
   number,
@@ -40,20 +38,12 @@ export class RoomRepository {
       )[0],
     );
   }
-  async hasActivePlanRun(id: string) {
-    return Boolean(
-      (
-        await this.database
-          .sql`SELECT 1 FROM agent_runs WHERE room_id=${id} AND execution_profile->>'workflowMode'='plan' AND status=ANY(${["queued", "streaming", "finalizing", "stopping", "waiting_approval", "waiting_clarification"]}) LIMIT 1`
-      )[0],
-    );
-  }
   async list(includeDeleted = false): Promise<Room[]> {
     const rows = includeDeleted
       ? await this.database
-          .sql`SELECT r.id,r.title,r.created_at,r.deleted_at,p.id project_id,p.name project_name,p.path project_path,COUNT(DISTINCT rp.persona_id)::int participant_count,(SELECT created_at FROM room_messages m WHERE m.room_id=r.id ORDER BY created_at DESC LIMIT 1) last_message_at,(SELECT text FROM room_messages m WHERE m.room_id=r.id ORDER BY created_at DESC LIMIT 1) last_message_text FROM rooms r LEFT JOIN local_projects p ON p.id=r.project_id LEFT JOIN room_participants rp ON rp.room_id=r.id GROUP BY r.id,p.id ORDER BY r.deleted_at NULLS FIRST,COALESCE((SELECT MAX(created_at) FROM room_messages m WHERE m.room_id=r.id),r.created_at) DESC`
+          .sql`SELECT r.id,r.title,r.created_at,r.deleted_at,r.workflow_mode,p.id project_id,p.name project_name,p.path project_path,COUNT(DISTINCT rp.persona_id)::int participant_count,(SELECT created_at FROM room_messages m WHERE m.room_id=r.id ORDER BY created_at DESC LIMIT 1) last_message_at,(SELECT text FROM room_messages m WHERE m.room_id=r.id ORDER BY created_at DESC LIMIT 1) last_message_text FROM rooms r LEFT JOIN local_projects p ON p.id=r.project_id LEFT JOIN room_participants rp ON rp.room_id=r.id GROUP BY r.id,p.id ORDER BY r.deleted_at NULLS FIRST,COALESCE((SELECT MAX(created_at) FROM room_messages m WHERE m.room_id=r.id),r.created_at) DESC`
       : await this.database
-          .sql`SELECT r.id,r.title,r.created_at,r.deleted_at,p.id project_id,p.name project_name,p.path project_path,COUNT(DISTINCT rp.persona_id)::int participant_count,(SELECT created_at FROM room_messages m WHERE m.room_id=r.id ORDER BY created_at DESC LIMIT 1) last_message_at,(SELECT text FROM room_messages m WHERE m.room_id=r.id ORDER BY created_at DESC LIMIT 1) last_message_text FROM rooms r LEFT JOIN local_projects p ON p.id=r.project_id LEFT JOIN room_participants rp ON rp.room_id=r.id WHERE r.deleted_at IS NULL GROUP BY r.id,p.id ORDER BY COALESCE((SELECT MAX(created_at) FROM room_messages m WHERE m.room_id=r.id),r.created_at) DESC`;
+          .sql`SELECT r.id,r.title,r.created_at,r.deleted_at,r.workflow_mode,p.id project_id,p.name project_name,p.path project_path,COUNT(DISTINCT rp.persona_id)::int participant_count,(SELECT created_at FROM room_messages m WHERE m.room_id=r.id ORDER BY created_at DESC LIMIT 1) last_message_at,(SELECT text FROM room_messages m WHERE m.room_id=r.id ORDER BY created_at DESC LIMIT 1) last_message_text FROM rooms r LEFT JOIN local_projects p ON p.id=r.project_id LEFT JOIN room_participants rp ON rp.room_id=r.id WHERE r.deleted_at IS NULL GROUP BY r.id,p.id ORDER BY COALESCE((SELECT MAX(created_at) FROM room_messages m WHERE m.room_id=r.id),r.created_at) DESC`;
     return rows.map(toRoom);
   }
   async timeline(
@@ -66,7 +56,7 @@ export class RoomRepository {
       "read only isolation level repeatable read",
       async (tx) => {
         const room = (
-          await tx`SELECT event_sequence,approved_plan_version_id FROM rooms WHERE id=${roomId}`
+          await tx`SELECT event_sequence,workflow_mode FROM rooms WHERE id=${roomId}`
         )[0];
         if (!room) return undefined;
         const cursor = before
@@ -151,12 +141,6 @@ export class RoomRepository {
           : [];
         const artifactMap = await this.workspace.artifacts(runIds, tx),
           embedMap = await this.workspace.runEmbeds(runIds, tx);
-        const plan = await planState(
-          tx,
-          this.workspace,
-          roomId,
-          room.approved_plan_version_id,
-        );
         return {
           messages,
           runs: runRows.map((row) => {
@@ -176,7 +160,7 @@ export class RoomRepository {
               text(row.selected_run_id),
             ]),
           ),
-          executionState: executionState(plan),
+          workflowMode: text(room.workflow_mode) as WorkflowMode,
           lastSequence: number(room.event_sequence),
           hasMore,
           nextCursor: hasMore ? messages[0]?.id : undefined,
@@ -245,10 +229,9 @@ export class RoomRepository {
         ).length
       )
         return "not_found" as const;
-      await tx`UPDATE rooms SET approved_plan_version_id=NULL WHERE id=${id}`;
       await tx`DELETE FROM room_events WHERE room_id=${id}`;
       await tx`UPDATE response_slots SET selected_run_id=NULL WHERE message_id IN(SELECT id FROM room_messages WHERE room_id=${id})`;
-      await tx`UPDATE agent_runs SET response_slot_id=NULL,implementation_plan_version_id=NULL WHERE room_id=${id}`;
+      await tx`UPDATE agent_runs SET response_slot_id=NULL WHERE room_id=${id}`;
       await tx`DELETE FROM agent_runs WHERE room_id=${id}`;
       await tx`DELETE FROM response_slots WHERE message_id IN(SELECT id FROM room_messages WHERE room_id=${id})`;
       await tx`DELETE FROM room_messages WHERE room_id=${id}`;
@@ -322,60 +305,13 @@ export class RoomRepository {
       return { status: "updated" as const, participant, event };
     });
   }
-  async executionState(
-    roomId: string,
-  ): Promise<RoomExecutionState | undefined> {
-    const row = (
-      await this.database
-        .sql`SELECT approved_plan_version_id FROM rooms WHERE id=${roomId} AND deleted_at IS NULL`
-    )[0];
-    if (!row) return undefined;
-    return executionState(
-      await planState(
-        this.database.sql,
-        this.workspace,
-        roomId,
-        row.approved_plan_version_id,
-      ),
-    );
-  }
-  async approvePlan(roomId: string, versionId: string) {
-    return this.database.transaction(async (tx) => {
-      if (
-        !(
-          await tx`SELECT id FROM rooms WHERE id=${roomId} AND deleted_at IS NULL FOR UPDATE`
-        ).length
-      )
-        return undefined;
-      const current = await this.workspace.currentVersion(
-        roomId,
-        "plan.md",
-        tx,
-      );
-      if (!current || current.id !== versionId) return undefined;
-      const row = (
-        await tx`UPDATE rooms SET approved_plan_version_id=${versionId} WHERE id=${roomId} RETURNING approved_plan_version_id`
-      )[0];
-      return executionState(
-        await planState(
-          tx,
-          this.workspace,
-          roomId,
-          row.approved_plan_version_id,
-        ),
-      );
+  async updateWorkflowMode(roomId:string,workflowMode:WorkflowMode){
+    return this.database.transaction(async tx=>{
+      const row=(await tx`UPDATE rooms SET workflow_mode=${workflowMode} WHERE id=${roomId} AND deleted_at IS NULL RETURNING workflow_mode`)[0];
+      if(!row)return undefined;
+      const event=await this.events.appendInTransaction(tx,roomId,'room.workflow_mode.updated',{workflowMode},new Date().toISOString());
+      return{workflowMode,event};
     });
-  }
-  async clearApprovedPlan(roomId: string) {
-    const row = (
-      await this.database
-        .sql`UPDATE rooms SET approved_plan_version_id=NULL WHERE id=${roomId} AND deleted_at IS NULL RETURNING approved_plan_version_id`
-    )[0];
-    return row
-      ? executionState(
-          await planState(this.database.sql, this.workspace, roomId, null),
-        )
-      : undefined;
   }
 }
 
@@ -422,28 +358,4 @@ function isStructuredQuestion(value: unknown): value is StructuredQuestion {
       ),
     )
   );
-}
-function executionState(plan: RoomExecutionState["plan"]): RoomExecutionState {
-  return { plan };
-}
-async function planState(
-  sql: QueryContext,
-  workspace: WorkspaceRepository,
-  roomId: string,
-  approvedId: unknown,
-): Promise<RoomExecutionState["plan"]> {
-  const current = await workspace.currentVersion(roomId, "plan.md", sql),
-    approved =
-      typeof approvedId === "string"
-        ? await workspace.version(roomId, approvedId, sql)
-        : undefined;
-  return {
-    path: "plan.md",
-    current: current ? planRef(current) : null,
-    approved: approved ? planRef(approved) : null,
-  };
-}
-function planRef(version: { id: string; entry_id?: string }): PlanVersionRef {
-  if(!version.entry_id)throw new Error('Published plan version is not attached to a workspace entry');
-  return { entry_id: version.entry_id, version_id: version.id };
 }

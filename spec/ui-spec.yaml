@@ -189,9 +189,6 @@ screens:
               - id: workspace_publication
                 columns: 12
                 purpose: "Результат публикации captured changes: применённые изменения, сохранённый без публикации snapshot или частичная публикация с review конфликтов по каждому пути."
-              - id: plan_approval
-                columns: 12
-                purpose: "Явное утверждение текущей immutable версии plan.md; последующие изменения плана не подменяют ранее одобренную версию."
               - id: attempt_carousel
                 columns: 12
                 purpose: "Навигация между retry-попытками одного response slot и создание другого варианта только пока линейная история допускает смену канонического ответа."
@@ -200,11 +197,11 @@ screens:
             purpose: "Состояние восстановления WebSocket и replay без потери уже показанного текста и без дублирования событий."
       - id: room_composer
         columns: 12
-        purpose: "Закреплённый composer для многострочного текста, mentions, Plan intent и versioned attachments; поддерживает выбор файлов, drag-and-drop, preview целей и безопасный повтор после ошибки API."
+        purpose: "Закреплённый composer для многострочного текста, mentions, постоянного режима Plan и versioned attachments; поддерживает выбор файлов, drag-and-drop, preview целей и безопасный повтор после ошибки API."
         blocks:
           - id: plan_workflow
             columns: 12
-            purpose: "Создание или обновление plan.md в read-only Plan workflow, выбор точной одобренной версии и handoff одному или нескольким агентам, после которого комната переключается в Work."
+            purpose: "Постоянный read-only режим комнаты для исследования и обсуждения без реализации; показывает Native Plan или постоянное предупреждение Instruction-only для каждого выбранного responder."
           - id: mention_editor
             columns: 8
             purpose: "Редактор с autocomplete для агентов комнаты, @all, клавиатурной навигацией и вставкой mention из ответа."
@@ -213,7 +210,7 @@ screens:
             purpose: "Фактические цели следующего fan-out и предупреждение, когда текст сохранится в комнате без запуска агентов."
           - id: composer_actions
             columns: 12
-            purpose: "Отправка, переключение Plan intent, выбор файлов из workspace, загрузка локальных вложений и отмена активных запусков раунда."
+            purpose: "Отправка, сохранение режима Plan или Work для комнаты, выбор файлов из workspace, загрузка локальных вложений и отмена активных запусков раунда."
       - id: run_details_drawer
         columns: 12
         purpose: "Контекстная панель попытки: пользовательский lifecycle, provider degradation, безопасное состояние Connector/checkpoint, запросы агента, tool details, immutable harness route, workflow и permission snapshots, project snapshot, token usage и ID запуска."

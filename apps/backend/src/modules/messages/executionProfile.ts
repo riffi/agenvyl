@@ -1,4 +1,4 @@
-import type {ExecutionIntent,ReasoningEffortSource,RunExecutionProfileSnapshot} from '@agenvyl/contracts';
+import type {ReasoningEffortSource,RunExecutionProfileSnapshot,WorkflowMode} from '@agenvyl/contracts';
 import type {ConnectorCatalogModel,ConnectorExecutionControls} from '@agenvyl/connector-contract';
 
 export function resolveExecutionProfile(input:{
@@ -8,10 +8,10 @@ export function resolveExecutionProfile(input:{
   controls:ConnectorExecutionControls;
   permissionProfileId:string|null;
   agentVariantId:string|null;
-  intent?:ExecutionIntent;
+  workflowMode:WorkflowMode;
 }):RunExecutionProfileSnapshot{
   const resolved=resolveReasoningEffort(input.roomOverride,input.personaDefault,input.model);
-  const workflowMode=input.intent?.kind==='plan'?'plan':'work';
+  const workflowMode=input.workflowMode;
   return{
     workflowMode,
     requestedReasoningEffort:resolved.requested,
@@ -21,7 +21,6 @@ export function resolveExecutionProfile(input:{
     planEnforcement:workflowMode==='plan'?(input.controls.nativeWorkflowModes.includes('plan')?'native':'instruction_only'):null,
     permissionProfileId:input.permissionProfileId??input.controls.permissionProfiles[0]?.id??null,
     agentVariantId:input.agentVariantId,
-    implementationPlanVersionId:input.intent?.kind==='implement'?input.intent.approved_plan_version_id:null,
   };
 }
 

@@ -109,9 +109,8 @@ These display limits do not change the workspace upload limit.
 The version counter shows the selected version and the total history. Its
 history list identifies:
 
-- **Current** — the version currently published in the room Workspace;
-- **Viewing** — an older version open without changing the current file; and
-- **Approved** — the approved `plan.md` version when Plan Mode is enabled.
+- **Current** — the version currently published in the room Workspace; and
+- **Viewing** — an older version open without changing the current file.
 
 Opening an older version is read-only and does not change the file. Select
 **Restore this version** from the actions menu to create a new current version
@@ -172,15 +171,11 @@ If the Workspace changes while the conflict panel is open, Agenvyl recalculates
 the conflicts and asks you to review them again. Captured response artifacts
 remain available even when some or all changes were not published.
 
-## Edit `plan.md`
+## Use `plan.md`
 
-When experimental Plan Mode is enabled, `plan.md` is a versioned Workspace
-file. Only its current version can be edited. Saving creates a new immutable
-version and refuses to overwrite a newer version that appeared while the
-editor was open.
-
-Approval refers to one exact `plan.md` version. A later edit does not silently
-change the approved plan.
+`plan.md` is an ordinary versioned Markdown file. It can be uploaded, viewed,
+renamed, moved, downloaded, or deleted under the same rules as any other file.
+Turning on Plan does not create or update it automatically.
 
 ## Close and return
 

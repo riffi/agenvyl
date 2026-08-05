@@ -42,7 +42,7 @@ sessions.
   block on an interactive workspace-trust prompt.
 - **Accept edits** requires a separate per-agent warning confirmation. Work runs
   use Cursor's `--force` flag and cannot request per-action approval in Agenvyl.
-- Agenvyl's global Plan workflow always selects native Plan mode, even for an
+- Agenvyl's room Plan workflow always selects native Plan mode, even for an
   agent saved with **Accept edits**.
 
 Agenvyl streams assistant text and tool activity from Cursor's documented

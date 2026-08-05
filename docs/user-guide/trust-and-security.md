@@ -80,6 +80,13 @@ not disable SmartScreen globally.
 - A selected local project is only a recommended path in the agent's
   instructions. It grants no access and does not restrict the agent to that
   folder; the harness permission profile remains authoritative.
+- Room Plan asks agents to inspect and discuss without implementation. Codex,
+  Claude, OpenCode, Cursor, and AGY receive their native Plan control. Hermes
+  and future harnesses without one are **Instruction-only**, which cannot
+  technically block writes to the recommended external project.
+- Native Plan is the strongest read-only mode a harness exposes, not a universal
+  operating-system sandbox. Managed run-workspace changes can still be captured
+  and published to the room Workspace.
 
 Do not enable an agent tool or permission profile that you would not trust with
 the selected files. Agenvyl has no public multi-user authorization layer. Put a
