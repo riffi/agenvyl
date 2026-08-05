@@ -1,8 +1,8 @@
 # Local projects
 
 A project is a named local folder that gives agents a preferred place to work.
-Register a folder once, then select it when creating a room or from the room's
-**Project…** action.
+Register a folder once, then select it with **Add project** when creating a room
+or from the room's **Project…** action.
 
 Projects are guidance, not storage or a security boundary:
 

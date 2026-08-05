@@ -21,8 +21,8 @@ flowchart TD
 
 There are two common entry points:
 
-- Select **Workspace** beside the message composer to open the full-screen
-  Workspace with the file tree visible.
+- Select **+** beside the message composer, then **Open workspace**, to open the
+  full-screen Workspace with the file tree visible.
 - Select an attachment, image, or agent artifact to open that exact saved
   version as a full-screen preview. The file tree starts hidden so the content
   uses the available space.

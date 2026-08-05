@@ -44,6 +44,10 @@ Agenvyl gives them one browser-based room:
 4. Review their completed answers and ask another agent to synthesize the
    result.
 
+On desktop, collapse the left sidebar when you want more room for the
+conversation; Agenvyl remembers that browser preference. Use the **+** menu by
+the composer to attach files or open the room Workspace.
+
 Agents launched by the same message receive the same pre-round conversation and
 the same starting files, and can run in parallel. They do not see one another's
 unfinished output or file changes. Agenvyl applies completed file changes to the
