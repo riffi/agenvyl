@@ -267,7 +267,6 @@ export class MessageRepository {
     for (const m of messages) {
       const answers =
         await db`SELECT r.id,r.persona_handle,r.text FROM response_slots s JOIN agent_runs r ON r.id=s.selected_run_id WHERE s.message_id=${m.id as string} AND r.status='completed' AND r.text<>'' ORDER BY r.persona_handle`;
-      if (!answers.length) continue;
       const embedMap = await this.workspace.runEmbeds(
           answers.map((answer) => String(answer.id)),
           db,

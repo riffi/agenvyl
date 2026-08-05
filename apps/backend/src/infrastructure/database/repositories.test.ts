@@ -761,6 +761,52 @@ describe("PostgreSQL repositories", () => {
     });
     await p.database.close();
   });
+  it("keeps human-only messages and their attachments in conversation context", async () => {
+    const p = await createRepositories(testDatabaseUrl("human_only_history"));
+    const attachment = await p.workspace.saveVersion({
+      roomId: "demo-room",
+      path: "proposal.md",
+      size: 8,
+      mimeType: "text/markdown",
+      sha256: "proposal-sha256",
+      source: "user",
+      runIds: [],
+    });
+    const first = await p.messages.createRound(
+      "demo-room",
+      "Review the attached proposal later",
+      [],
+      profiles([]),
+      undefined,
+      [attachment.version!.id],
+    );
+    const architect = (await p.personas.find("persona-architect"))!;
+    const next = await p.messages.createRound(
+      "demo-room",
+      "Review it now",
+      [architect],
+      profiles([architect]),
+    );
+
+    expect(first.runs).toEqual([]);
+    expect(next.runs[0].history).toEqual([
+      {
+        role: "user",
+        content:
+          "[Human user: User (@user); recipient: not specified (message without agent runs)]\nReview the attached proposal later",
+      },
+    ]);
+    await expect(
+      p.messages.conversationContextForRun(
+        "demo-room",
+        "architect",
+        next.message.id,
+      ),
+    ).resolves.toMatchObject({
+      references: [{ path: "proposal.md", versionId: attachment.version!.id }],
+    });
+    await p.database.close();
+  });
   it("reorders persona groups atomically into contiguous positions", async () => {
     const p = await createRepositories(testDatabaseUrl("group_reorder"));
     const first = await p.personaGroups.create("First"),
