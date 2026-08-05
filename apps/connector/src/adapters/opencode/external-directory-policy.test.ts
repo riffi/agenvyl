@@ -24,6 +24,16 @@ describe('OpenCode external-directory policy',()=>{
     },['C:\\work'])).toEqual({status:'allowlisted',requestedRoot:'C:\\work\\tmp\\beautiful-landscape'});
   });
 
+  it('allows nested resource-only directories emitted for one Bash command',()=>{
+    expect(assessExternalDirectoryRequest({
+      metadata:{},
+      resources:[
+        'C:\\work\\tmp\\beautiful-landscape\\src\\*',
+        'C:\\work\\tmp\\beautiful-landscape\\*',
+      ],
+    },['C:\\work'])).toEqual({status:'allowlisted',requestedRoot:'C:\\work\\tmp\\beautiful-landscape'});
+  });
+
   it('returns the concrete directory for a resource-only request outside the allowlist',()=>{
     expect(assessExternalDirectoryRequest({
       patterns:['C:\\work\\tmp\\beautiful-landscape\\**'],

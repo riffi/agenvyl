@@ -3,16 +3,16 @@ format_version: "0.0.3"
 
 metadata:
   name: agenvyl
-  description: "Персональное Web/PWA-приложение для групповой работы с несколькими AI-персонами через единый Connector. Пользователь собирает комнаты, явно вызывает агентов через упоминания, наблюдает параллельные попытки и управляет запросами агента, файлами и историей workspace."
-  version: "0.2.0"
+  description: "Локальное Web/PWA-приложение для совместной работы с несколькими coding-agent harnesses в общих комнатах. Пользователь настраивает локальные интеграции и агентов, собирает комнаты, явно вызывает агентов через упоминания, наблюдает параллельные попытки и управляет запросами, планами, проектным контекстом, файлами и историей workspace."
+  version: "0.5.0"
   theme: "Плотный рабочий мессенджер с устойчивой лентой длинных разговоров, ясным разделением голосов агентов и спокойной технической метаинформацией."
   background: "Нейтральная рабочая поверхность, сохраняющая визуальную устойчивость при нескольких одновременных потоках ответа и открытых контекстных панелях."
   palette:
     primary: "холодный акцент для основных действий и выбранного контекста"
-    agent_identity: "устойчивые индивидуальные акценты персон без конкуренции с содержанием"
-    success: "успешно завершённая попытка или файловая операция"
-    warning: "approval, clarification, provider retry и состояния, требующие внимания"
-    danger: "ошибка, конфликт, отмена или необратимое удаление"
+    agent_identity: "устойчивые индивидуальные акценты агентов без конкуренции с содержанием"
+    success: "успешно завершённая попытка, проверка подключения или файловая операция"
+    warning: "approval, clarification, provider retry, конфликт workspace и состояния, требующие внимания"
+    danger: "ошибка, рискованное разрешение, отмена или необратимое удаление"
     muted: "вторичная метаинформация, timestamps, технические snapshots и завершённая activity"
   breakpoints:
     mobile: "< 768px"
@@ -28,20 +28,20 @@ templates:
         position: left
         fullHeight: true
         fixed: true
-        purpose: "Постоянный доступ к разделам, комнатам, корзине и профилю локального пользователя."
+        purpose: "Постоянный доступ к основным разделам, комнатам, корзине и профилю локального пользователя."
         blocks:
           - id: product_identity
             type: logo
-            purpose: "Компактная идентификация Agenvyl и состояние подключения интерфейса."
+            purpose: "Компактная идентификация Agenvyl, поиск комнат и состояние подключения интерфейса."
           - id: primary_navigation
             type: main_navigation
-            purpose: "Переход между текущей комнатой и глобальным каталогом персон."
+            purpose: "Создание комнаты и переход к глобальным каталогам агентов и локальных проектов."
           - id: room_navigation
             type: custom
-            purpose: "Поиск и выбор комнат, создание новой комнаты, мягкое удаление, восстановление и подтверждаемая окончательная очистка."
+            purpose: "Поиск и выбор комнат, настройка рекомендованного проекта, переименование, мягкое удаление, восстановление и подтверждаемая окончательная очистка."
           - id: user_context
             type: user_profile
-            purpose: "Профиль локального человека с immutable snapshot имени и handle в новых сообщениях."
+            purpose: "Профиль локального человека, вход в настройки harnesses и корзину комнат; новые сообщения получают immutable snapshot имени и handle."
       - id: screen_content
         type: content
         position: center
@@ -53,6 +53,30 @@ templates:
         type: content
         position: center
         purpose: "Основная область с фокусом на текущем разговоре, каталоге или редакторе."
+  focused_flow:
+    purpose: "Сфокусированная полноэкранная поверхность для первичной настройки и простых системных состояний без навигации по комнатам."
+    regions:
+      - id: focused_content
+        type: content
+        position: center
+        purpose: "Основное содержимое текущего шага или состояния."
+  management_workspace:
+    purpose: "Отдельная поверхность управления локальным контекстом или Connector с возвратом в основное рабочее пространство."
+    regions:
+      - id: management_navigation
+        type: static
+        position: left
+        fullHeight: true
+        fixed: true
+        purpose: "Контекст раздела и возврат в рабочее пространство."
+        blocks:
+          - id: management_back_navigation
+            type: main_navigation
+            purpose: "Возврат к комнате, из которой пользователь открыл раздел, либо к текущему workspace."
+      - id: management_content
+        type: content
+        position: center
+        purpose: "Каталог и редактор управляемых объектов."
 
 default_template: desktop_workspace
 
@@ -62,19 +86,51 @@ navigation:
       label: "Чат"
       target: room_chat
     - id: nav_personas
-      label: "Персоны"
+      label: "Агенты"
       target: persona_catalog
+    - id: nav_projects
+      label: "Проекты"
+      target: project_catalog
+    - id: nav_harnesses
+      label: "Harnesses"
+      target: harness_settings
 
 screen_groups:
+  - id: onboarding
+    screens: [initial_setup]
   - id: conversation
     screens: [room_chat]
   - id: persona_management
     screens: [persona_catalog]
+  - id: local_context
+    screens: [project_catalog]
+  - id: connector_management
+    screens: [harness_settings]
+  - id: recovery
+    screens: [not_found]
 
 screens:
+  initial_setup:
+    title: "Первичная настройка workspace"
+    purpose: "Сфокусированный первый запуск: пользователь выбирает обнаруженные локальные harnesses, подтверждает экспериментальные или рискованные интеграции, задаёт локальный профиль, корневую папку workspace и первую комнату."
+    template: focused_flow
+    container_max_width: "100%"
+    blocks:
+      - id: setup_harness_discovery
+        columns: 12
+        purpose: "Каталог обнаруженных Connector-интеграций с доступностью, безопасным массовым выбором и явными opt-in подтверждениями для экспериментальных возможностей."
+      - id: setup_connector_options
+        columns: 12
+        purpose: "Настройки выбранных runtime-интеграций, включая владение OpenCode server и обязательные подтверждения для AGY, Claude subscription OAuth и experimental Cursor CLI."
+      - id: setup_workspace_identity
+        columns: 12
+        purpose: "Проверяемые display name и уникальный @handle пользователя, редактируемая корневая папка комнат с системным выбором каталога и название первой комнаты."
+      - id: setup_completion
+        columns: 12
+        purpose: "Создание локального workspace и первой комнаты; допускает продолжение без подключённых harnesses с возможностью настроить их позже."
   room_chat:
     title: "Групповой чат"
-    purpose: "Главная рабочая поверхность комнаты: durable история человека и агентов, явный fan-out по упоминаниям, параллельные Connector executions, retry-попытки, запросы агента и versioned workspace."
+    purpose: "Главная рабочая поверхность комнаты: durable история человека и агентов, явный fan-out по упоминаниям, параллельные Connector executions, retry-попытки, интерактивные запросы, Plan-to-Work workflow, рекомендованный локальный проект и versioned workspace."
     template:
       default: desktop_workspace
       mobile: mobile_workspace
@@ -84,14 +140,14 @@ screens:
     blocks:
       - id: room_header
         columns: 12
-        purpose: "Закреплённая шапка с названием комнаты, состоянием room stream, числом активных запусков, составом агентов и входом в workspace; на мобильном также открывает навигационную панель."
+        purpose: "Закреплённая шапка с названием комнаты, состоянием room stream, числом активных запусков, рекомендованным проектом, составом агентов и входом в workspace; на мобильном также открывает навигационную панель."
         blocks:
           - id: room_identity
             columns: 6
-            purpose: "Название комнаты, connected/reconnecting/recovery state и количество активных попыток."
+            purpose: "Название комнаты, connected/reconnecting/recovery state, количество активных попыток и текущий рекомендованный проект."
           - id: participant_roster
             columns: 3
-            purpose: "Компактный roster подключённых персон и действие управления составом комнаты."
+            purpose: "Компактный roster подключённых агентов и действие управления составом комнаты."
           - id: workspace_context
             columns: 3
             purpose: "Действие открытия файлов и версий канонического workspace комнаты."
@@ -104,14 +160,14 @@ screens:
             purpose: "Пустое состояние объясняет упоминания @handle и @all и предлагает подключить агентов к комнате."
           - id: user_message
             columns: 12
-            purpose: "Сообщение человека с immutable snapshot автора, выделенными mentions и прикреплёнными версиями файлов; сообщение без целей не запускает агентов."
+            purpose: "Сообщение человека с immutable snapshot автора, выделенными mentions и прикреплёнными версиями файлов; сообщение без целей сохраняется в комнате, но не запускает агентов."
           - id: response_round
             columns: 12
             purpose: "Стабильная группа response slots одного пользовательского хода; карточки могут располагаться рядом, не меняют порядок и независимо доходят до terminal state."
             blocks:
               - id: agent_response_card
                 columns: 12
-                purpose: "Ответ персоны с snapshot harness/model, streaming Markdown, workspace-only inline-изображениями, статусом, остановкой и повторным запуском."
+                purpose: "Ответ агента с immutable snapshot harness, модели, режима, permission profile и рекомендованного проекта, streaming Markdown, workspace-only inline-изображениями, статусом, остановкой и повторным запуском."
               - id: reasoning_panel
                 columns: 12
                 purpose: "Отдельный сворачиваемый reasoning-поток, который не смешивается с публичным ответом."
@@ -120,13 +176,22 @@ screens:
                 purpose: "Нетерминальное предупреждение о retry конкретного provider/model; run остаётся активным и состояние не трактуется как недоступность всего harness."
               - id: tool_activity
                 columns: 12
-                purpose: "Сворачиваемая хронология tool calls со статусами started, progress и completed и безопасными краткими деталями."
+                purpose: "Сворачиваемая хронология tool calls и публикации workspace с различимыми started, progress, completed, failed и cancelled состояниями."
               - id: approval_request
                 columns: 12
-                purpose: "Встроенный запрос разрешения с явными действиями Разрешить и Отклонить; execution продолжает ждать выбора пользователя."
+                purpose: "Один или несколько независимых встроенных запросов разрешения с явными действиями Разрешить и Отклонить; execution продолжает ждать незакрытых решений пользователя."
               - id: clarification_request
                 columns: 12
-                purpose: "Встроенный вопрос агента с suggested choices и свободным текстовым ответом внутри конкретной попытки."
+                purpose: "Структурированный вопрос агента, включая несколько вопросов, suggested choices и свободный текстовый ответ внутри конкретной попытки."
+              - id: run_artifacts
+                columns: 12
+                purpose: "Файлы точного captured snapshot под ответом; открываются в workspace viewer или скачиваются независимо от более новых версий."
+              - id: workspace_publication
+                columns: 12
+                purpose: "Результат публикации captured changes: применённые изменения, сохранённый без публикации snapshot или частичная публикация с review конфликтов по каждому пути."
+              - id: plan_approval
+                columns: 12
+                purpose: "Явное утверждение текущей immutable версии plan.md; последующие изменения плана не подменяют ранее одобренную версию."
               - id: attempt_carousel
                 columns: 12
                 purpose: "Навигация между retry-попытками одного response slot и создание другого варианта только пока линейная история допускает смену канонического ответа."
@@ -135,29 +200,42 @@ screens:
             purpose: "Состояние восстановления WebSocket и replay без потери уже показанного текста и без дублирования событий."
       - id: room_composer
         columns: 12
-        purpose: "Закреплённый composer для многострочного текста, mentions и versioned attachments; поддерживает выбор файлов, drag-and-drop, preview целей и безопасный повтор после ошибки API."
+        purpose: "Закреплённый composer для многострочного текста, mentions, Plan intent и versioned attachments; поддерживает выбор файлов, drag-and-drop, preview целей и безопасный повтор после ошибки API."
         blocks:
+          - id: plan_workflow
+            columns: 12
+            purpose: "Создание или обновление plan.md в read-only Plan workflow, выбор точной одобренной версии и handoff одному или нескольким агентам, после которого комната переключается в Work."
           - id: mention_editor
             columns: 8
             purpose: "Редактор с autocomplete для агентов комнаты, @all, клавиатурной навигацией и вставкой mention из ответа."
           - id: target_preview
             columns: 4
-            purpose: "Фактические цели следующего fan-out и предупреждение, когда текст не вызовет ни одного агента."
+            purpose: "Фактические цели следующего fan-out и предупреждение, когда текст сохранится в комнате без запуска агентов."
           - id: composer_actions
             columns: 12
-            purpose: "Отправка, выбор файлов из workspace, загрузка локальных вложений и отмена активных запусков раунда."
+            purpose: "Отправка, переключение Plan intent, выбор файлов из workspace, загрузка локальных вложений и отмена активных запусков раунда."
       - id: run_details_drawer
         columns: 12
-        purpose: "Контекстная панель попытки: пользовательский lifecycle, provider degradation, безопасное состояние Connector/checkpoint, запрос агента, tool details, immutable harness route, token usage и ID запуска."
+        purpose: "Контекстная панель попытки: пользовательский lifecycle, provider degradation, безопасное состояние Connector/checkpoint, запросы агента, tool details, immutable harness route, workflow и permission snapshots, project snapshot, token usage и ID запуска."
       - id: workspace_drawer
         columns: 12
-        purpose: "Панель канонического workspace комнаты с деревом файлов и корзиной, preview текста и изображений, загрузкой, созданием папок, rename/move/delete, скачиванием и восстановлением версий."
+        purpose: "Полноэкранное окно канонического workspace комнаты или точной версии артефакта: дерево и поиск файлов, trash, rendered/source preview, image zoom, история версий, upload, create folder, rename, move, delete, restore, attach и download."
+        blocks:
+          - id: workspace_explorer
+            columns: 3
+            purpose: "Переключаемое и изменяемое по ширине дерево текущих файлов с поиском, загрузкой, созданием папок и корзиной."
+          - id: workspace_viewer
+            columns: 9
+            purpose: "Просмотр выбранной immutable версии в подходящем rendered или source режиме, включая безопасную изоляцию документов, выбор encoding и галерею изображений."
+          - id: version_history
+            columns: 12
+            purpose: "Навигация по истории файла с различимыми Current, Viewing и Approved версиями и восстановлением старой версии как новой текущей."
       - id: room_management_dialogs
         columns: 12
-        purpose: "Диалоги создания комнаты и изменения состава: название, группированный выбор активных персон, счётчик выбранных элементов, валидация и сохранение."
+        purpose: "Диалоги создания комнаты, изменения состава и назначения рекомендованного локального проекта; проект влияет только на новые runs, а retry сохраняет исходный project snapshot."
   persona_catalog:
-    title: "Персоны"
-    purpose: "Единый master-detail workspace для каталога и редактора персон: на desktop список и выбранная персона видны рядом, а на mobile пользователь последовательно переходит из каталога в создание или редактирование и возвращается назад."
+    title: "Агенты"
+    purpose: "Единый master-detail workspace для каталога и редактора агентов: на desktop список и выбранный агент видны рядом, а на mobile пользователь последовательно переходит из каталога в создание или редактирование и возвращается назад."
     template:
       default: desktop_workspace
       mobile: mobile_workspace
@@ -165,39 +243,104 @@ screens:
     blocks:
       - id: persona_catalog_header
         columns: 12
-        purpose: "Заголовок раздела, действие создания новой персоны и доступ к общей навигации на мобильном."
+        purpose: "Заголовок раздела, обновление model catalog, действие создания нового агента и доступ к общей навигации на мобильном; stale catalog остаётся доступным с предупреждением."
       - id: persona_grouped_list
         columns:
           default: 4
           mobile: 12
-        purpose: "Компактный список активных и архивных персон по пользовательским группам с выбором, переносом между группами и управлением самими группами."
+        purpose: "Компактный список активных и архивных агентов по пользовательским группам с выбором, переносом между группами и управлением самими группами."
       - id: persona_editor_panel
         columns:
           default: 8
           mobile: 12
-        purpose: "Правая область desktop workspace или отдельное mobile-состояние: пустое приглашение, создание новой персоны либо редактирование выбранной записи."
+        purpose: "Правая область desktop workspace или отдельное mobile-состояние: пустое приглашение, создание нового агента либо редактирование выбранной записи."
         blocks:
           - id: persona_catalog_empty_state
             columns: 12
-            purpose: "Состояние без выбранной персоны предлагает открыть существующую запись или создать новую."
+            purpose: "Состояние без выбранного агента предлагает открыть существующую запись или создать новую."
           - id: persona_editor_header
             columns: 12
-            purpose: "Identity выбранной персоны, состояние saved/dirty/saving, основное действие сохранения и возврат к каталогу на мобильном."
+            purpose: "Identity выбранного агента, состояние saved/dirty/saving, основное действие сохранения и возврат к каталогу на мобильном."
           - id: persona_identity
             columns: 12
-            purpose: "Имя, уникальный @handle, группа и устойчивый цвет с немедленной клиентской валидацией."
+            purpose: "Имя, уникальный нормализованный @handle, группа и устойчивый цвет с немедленной клиентской валидацией."
           - id: persona_behavior
             columns: 12
-            purpose: "System prompt, определяющий поведение и область ответственности персоны."
+            purpose: "System prompt, определяющий поведение и область ответственности агента."
           - id: persona_harness_route
             columns: 12
-            purpose: "Выбор healthy Connector harness instance, модели и доступного mode; сохранённый недоступный маршрут остаётся видимым, но не может быть молча заменён."
+            purpose: "Выбор healthy или stale-but-usable harness instance, модели, agent variant, default reasoning effort и permission profile; рискованные Codex, AGY и Cursor profiles требуют явного подтверждения и недоступный сохранённый маршрут не заменяется молча."
           - id: room_membership
             columns: 12
-            purpose: "Явное добавление активной персоны в текущую комнату или удаление из её roster без изменения глобальной конфигурации."
+            purpose: "Явное добавление активного агента в текущую комнату или удаление из её roster без изменения глобальной конфигурации."
           - id: persona_lifecycle
             columns: 12
-            purpose: "Архивирование, восстановление и подтверждаемое окончательное удаление только допустимых персон."
+            purpose: "Архивирование, восстановление и подтверждаемое окончательное удаление только допустимых агентов."
           - id: unsaved_changes_guard
             columns: 12
-            purpose: "Подтверждение перехода к другой персоне, комнате или разделу при наличии несохранённого draft; пользователь может остаться или отбросить изменения."
+            purpose: "Подтверждение перехода к другому агенту, комнате или разделу при наличии несохранённого draft; пользователь может сохранить, остаться или отбросить изменения."
+          - id: reasoning_reset_guard
+            columns: 12
+            purpose: "Предупреждение при смене модели, если chat-specific reasoning settings больше не поддерживаются; подтверждение сбрасывает их в Auto, не меняя историю и активные runs."
+  project_catalog:
+    title: "Локальные проекты"
+    purpose: "Каталог именованных локальных папок, которые можно один раз зарегистрировать и затем рекомендовать агентам в любой комнате без изменения working directory или permission boundary."
+    template:
+      default: management_workspace
+      mobile: focused_flow
+    container_max_width: "100%"
+    blocks:
+      - id: project_catalog_header
+        columns: 12
+        purpose: "Сводка зарегистрированных папок, ручное обновление доступности и действие добавления проекта."
+      - id: project_list
+        columns: 12
+        purpose: "Карточки проектов с именем, canonical local path, состоянием доступности и действиями редактирования или подтверждаемого удаления из всех комнат без удаления самой папки."
+      - id: project_empty_state
+        columns: 12
+        purpose: "Объясняет пользу локального project context и предлагает зарегистрировать первую папку."
+      - id: project_editor
+        columns: 12
+        purpose: "Создание или редактирование уникального имени и абсолютного пути с native directory picker, когда он доступен, и ручным вводом как fallback."
+  harness_settings:
+    title: "Настройки harnesses"
+    purpose: "Master-detail управление локальными Connector-инстансами: обнаружение и добавление runtime, health status, безопасное редактирование, проверка подключения, перезапуск управляемого OpenCode и удаление неиспользуемых конфигураций."
+    template:
+      default: management_workspace
+      mobile: focused_flow
+    container_max_width: "100%"
+    blocks:
+      - id: harness_settings_header
+        columns: 12
+        purpose: "Сводка configured, healthy, issue и disabled инстансов, обновление статусов и вход в добавление harness."
+      - id: harness_instance_list
+        columns:
+          default: 4
+          mobile: 12
+        purpose: "Сгруппированный список настроенных инстансов с типом, состоянием подключения, enablement и выбором для редактирования."
+      - id: harness_instance_editor
+        columns:
+          default: 8
+          mobile: 12
+        purpose: "Редактор immutable instance ID и изменяемых enablement, endpoint и harness-specific настроек; показывает зависимых агентов, ошибки и доступные lifecycle actions."
+        blocks:
+          - id: harness_connection_controls
+            columns: 12
+            purpose: "Проверка подключения, сохранение или отмена draft и удаление только инстанса, который не используется агентами."
+          - id: opencode_controls
+            columns: 12
+            purpose: "Управляемый или внешний OpenCode server, явный allowlist внешних директорий и безопасный restart только без active executions и несохранённых изменений."
+          - id: claude_oauth_opt_in
+            columns: 12
+            purpose: "Экспериментальный opt-in для Claude subscription OAuth с обязательной фразой подтверждения."
+      - id: add_harness_drawer
+        columns: 12
+        purpose: "Каталог Detected, Needs setup и Not found runtime-интеграций, rescan, setup guidance и добавление обнаруженного runtime или custom Hermes/OpenCode endpoint с проверкой подключения."
+      - id: harness_unsaved_changes_guard
+        columns: 12
+        purpose: "Защита несохранённого instance draft при смене записи, добавлении harness или выходе: сохранить, отбросить либо остаться."
+  not_found:
+    title: "Страница не найдена"
+    purpose: "Восстановление после неизвестного URL: объясняет проблему и возвращает пользователя к доступной комнате через корневой маршрут."
+    template: focused_flow
+    container_max_width: "100%"

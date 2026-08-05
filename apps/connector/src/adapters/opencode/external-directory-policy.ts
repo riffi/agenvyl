@@ -65,12 +65,9 @@ const requestBoundary=(metadata:Record<string,unknown>|undefined,resources:unkno
     return parentDir;
   }
   if(!resources.every(resource=>typeof resource==='string'&&/[\\/](?:\*\*|\*)$/.test(resource.trim())))return;
-  const [first,...rest]=concreteResources;
-  if(!first||rest.some(resource=>!resource||resource.style!==first.style||pathKey(resource)!==pathKey(first)))return;
-  return first;
+  const boundary=concreteResources.find(candidate=>candidate&&concreteResources.every(resource=>resource&&contains(candidate,resource)));
+  return boundary;
 };
-
-const pathKey=(candidate:PortablePath)=>candidate.style==='win32'?candidate.value.toLowerCase():candidate.value;
 
 const contains=(root:PortablePath,target:PortablePath)=>{
   if(root.style!==target.style)return false;
