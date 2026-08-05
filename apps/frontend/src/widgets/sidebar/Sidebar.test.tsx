@@ -1,6 +1,28 @@
 import {renderToStaticMarkup} from 'react-dom/server';
 import {describe,expect,it,vi} from 'vitest';
-import {RenameRoomDialog,TrashDialog,UserProfileDialog} from './Sidebar';
+import {Sidebar,RenameRoomDialog,TrashDialog,UserProfileDialog} from './Sidebar';
+
+const sidebarProps={
+  open:false,close:vi.fn(),view:'chat' as const,openPersonas:vi.fn(),rooms:[],selectedRoomId:'',selectRoom:vi.fn(),createRoom:vi.fn(),renameRoom:vi.fn(),deleteRoom:vi.fn(),
+};
+
+describe('collapsible sidebar',()=>{
+  it('renders the compact navigation with named icon controls',()=>{
+    const html=renderToStaticMarkup(<Sidebar {...sidebarProps} collapsed toggleCollapsed={vi.fn()} openProjects={vi.fn()}/>);
+    expect(html).toContain('aria-label="Expand sidebar"');
+    expect(html).toContain('aria-label="New room"');
+    expect(html).toContain('aria-label="Search rooms"');
+    expect(html).toContain('aria-label="Agents"');
+    expect(html).toContain('aria-label="Projects"');
+    expect(html).not.toContain('aria-label="Room history"');
+  });
+
+  it('renders a collapse control and room history when expanded',()=>{
+    const html=renderToStaticMarkup(<Sidebar {...sidebarProps} toggleCollapsed={vi.fn()}/>);
+    expect(html).toContain('aria-label="Collapse sidebar"');
+    expect(html).toContain('aria-label="Room history"');
+  });
+});
 
 describe('user profile settings',()=>{
   it('renders loaded identity fields and explains agent-facing semantics',()=>{

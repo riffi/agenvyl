@@ -17,7 +17,7 @@ import { Composer, type ComposerHandle } from "../composer";
 import { PersonasScreen } from "../personas-screen";
 import { RoomHeader } from "../room-header";
 import { RunDrawer } from "../run-drawer";
-import { Sidebar } from "../sidebar";
+import { Sidebar, useSidebarCollapse } from "../sidebar";
 import { Timeline } from "../timeline";
 import type {RoomPersona} from '@agenvyl/contracts';
 import styles from "./Workspace.module.css";
@@ -64,6 +64,7 @@ export function WorkspaceApp({
   navigateToPersona:(id?:string,options?:{replace?:boolean})=>void;
 }) {
   const [searchParams,setSearchParams]=useSearchParams();
+  const sidebarCollapse=useSidebarCollapse();
   const fake=useMemo(()=>{const query=new URLSearchParams(location.search).get('gateway');return query==='fake'||(query!=='real'&&import.meta.env.VITE_GATEWAY_MODE==='fake')},[]);
   const queryClient=useQueryClient();
   const [demoRooms,setDemoRooms]=useState<Room[]>(fakeRooms);
@@ -210,6 +211,8 @@ export function WorkspaceApp({
       <Sidebar
         open={menu}
         close={() => setMenu(false)}
+        collapsed={sidebarCollapse.collapsed}
+        toggleCollapsed={sidebarCollapse.toggle}
         view={view}
         openPersonas={openPersonas}
         openHarnessSettings={navigateToHarnessSettings}
@@ -236,7 +239,7 @@ export function WorkspaceApp({
           onClick={() => setMenu(false)}
         />
       )}
-      <div className={styles.workspaceMain} onDragEnter={event=>{if(event.dataTransfer.types.includes('Files')){event.preventDefault();dragDepth.current+=1;setDraggingFiles(true)}}} onDragOver={event=>{if(event.dataTransfer.types.includes('Files'))event.preventDefault()}} onDragLeave={event=>{if(!event.dataTransfer.types.includes('Files'))return;dragDepth.current=Math.max(0,dragDepth.current-1);if(!dragDepth.current)setDraggingFiles(false)}} onDrop={event=>{if(!event.dataTransfer.files.length)return;event.preventDefault();dragDepth.current=0;setDraggingFiles(false);void attachments.uploadFiles([...event.dataTransfer.files])}}>
+      <div className={`${styles.workspaceMain} ${sidebarCollapse.collapsed ? styles.sidebarCollapsed : ''}`} onDragEnter={event=>{if(event.dataTransfer.types.includes('Files')){event.preventDefault();dragDepth.current+=1;setDraggingFiles(true)}}} onDragOver={event=>{if(event.dataTransfer.types.includes('Files'))event.preventDefault()}} onDragLeave={event=>{if(!event.dataTransfer.types.includes('Files'))return;dragDepth.current=Math.max(0,dragDepth.current-1);if(!dragDepth.current)setDraggingFiles(false)}} onDrop={event=>{if(!event.dataTransfer.files.length)return;event.preventDefault();dragDepth.current=0;setDraggingFiles(false);void attachments.uploadFiles([...event.dataTransfer.files])}}>
         {draggingFiles&&view==='chat'&&<div className={styles.dropzone}><Paperclip/><strong>Drop files to attach them</strong><span>They will be uploaded to the workspace Inbox</span></div>}
         {view==='chat'?(currentRoom?<>
           <RoomHeader

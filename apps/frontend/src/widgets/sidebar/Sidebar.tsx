@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Cable, Folder, MoreHorizontal, Plus, RotateCcw, Search, Settings, Trash2, Users, X } from 'lucide-react';
+import { Cable, Folder, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Plus, RotateCcw, Search, Settings, Trash2, Users, X } from 'lucide-react';
 import type { Room } from '../../entities/room';
 import type { LocalUserProfile, UpdateLocalUserProfileRequest } from '../../entities/user-profile';
 import { Alert, Button, Dialog, IconButton, Input } from '../../shared/ui';
@@ -13,6 +13,8 @@ const Portal = ({ children }: { children: ReactNode }) => typeof document === 'u
 export type SidebarProps = {
   open: boolean;
   close: () => void;
+  collapsed?: boolean;
+  toggleCollapsed?: () => void;
   view: 'chat' | 'personas';
   openPersonas: () => void;
   openHarnessSettings?: () => void;
@@ -36,7 +38,7 @@ export type SidebarProps = {
 type PositionedRoomMenu = { room: Room; top: number; left: number };
 type ProfileMenuPosition = { left: number; bottom: number; width: number };
 
-export function Sidebar({ open, close, view, openPersonas, openHarnessSettings,openProjects,configureRoomProject, rooms, selectedRoomId, selectRoom, createRoom, renameRoom, deleteRoom, deletedRooms = [], restoreRoom, purgeRoom, userProfile, userProfileLoading, userProfileError, saveUserProfile }: SidebarProps) {
+export function Sidebar({ open, close, collapsed = false, toggleCollapsed, view, openPersonas, openHarnessSettings,openProjects,configureRoomProject, rooms, selectedRoomId, selectRoom, createRoom, renameRoom, deleteRoom, deletedRooms = [], restoreRoom, purgeRoom, userProfile, userProfileLoading, userProfileError, saveUserProfile }: SidebarProps) {
   const [deleting, setDeleting] = useState<string>();
   const [roomError, setRoomError] = useState<string>();
   const [profileOpen, setProfileOpen] = useState(false);
@@ -108,24 +110,28 @@ export function Sidebar({ open, close, view, openPersonas, openHarnessSettings,o
     const rect = profileButtonRef.current?.getBoundingClientRect();
     if (!rect) return;
     setRoomMenu(undefined);
-    setProfileMenu({ left: rect.left + 10, bottom: window.innerHeight - rect.top + 6, width: rect.width - 20 });
+    setProfileMenu(collapsed
+      ? { left: rect.right + 6, bottom: window.innerHeight - rect.top + 6, width: 224 }
+      : { left: rect.left + 10, bottom: window.innerHeight - rect.top + 6, width: rect.width - 20 });
   };
 
   return (
-    <aside className={`${styles.sidebar} ${open ? styles.open : ''}`}>
+    <aside className={`${styles.sidebar} ${open ? styles.open : ''} ${collapsed ? styles.collapsed : ''}`}>
       <div className={styles.brand}>
         <span className={styles.logo} aria-hidden>A</span>
         <strong>agenvyl</strong>
-        <IconButton className={styles.searchButton} aria-label="Search rooms" title="Search rooms (Ctrl/Cmd+K)" onClick={openSearch}><Search /></IconButton>
+        <IconButton className={styles.searchButton} aria-label="Search rooms" title="Search rooms (Ctrl/Cmd+K)" onClick={openSearch}><Search aria-hidden /></IconButton>
+        {toggleCollapsed && <IconButton className={collapsed ? styles.compactBrandButton : styles.collapseButton} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} onClick={toggleCollapsed}>{collapsed ? <><span className={styles.logo} aria-hidden>A</span><PanelLeftOpen aria-hidden /></> : <PanelLeftClose aria-hidden />}</IconButton>}
       </div>
 
       <nav className={styles.mainNav} aria-label="Main navigation">
-        <button type="button" onClick={createRoom}><Plus /> <span>New room</span></button>
-        <button type="button" className={view === 'personas' ? styles.active : ''} onClick={openPersonas}><Users /> <span>Agents</span></button>
-        {openProjects&&<button type="button" onClick={openProjects}><Folder/><span>Projects</span></button>}
+        <button type="button" aria-label={collapsed ? 'New room' : undefined} title={collapsed ? 'New room' : undefined} onClick={createRoom}><Plus aria-hidden /> <span>New room</span></button>
+        {collapsed && <button type="button" aria-label="Search rooms" title="Search rooms (Ctrl/Cmd+K)" onClick={openSearch}><Search aria-hidden /><span>Search rooms</span></button>}
+        <button type="button" aria-label={collapsed ? 'Agents' : undefined} title={collapsed ? 'Agents' : undefined} aria-current={view === 'personas' ? 'page' : undefined} className={view === 'personas' ? styles.active : ''} onClick={openPersonas}><Users aria-hidden /> <span>Agents</span></button>
+        {openProjects&&<button type="button" aria-label={collapsed ? 'Projects' : undefined} title={collapsed ? 'Projects' : undefined} onClick={openProjects}><Folder aria-hidden /><span>Projects</span></button>}
       </nav>
 
-      <section className={styles.history} aria-label="Room history">
+      {!collapsed && <section className={styles.history} aria-label="Room history">
         {roomError && <Alert tone="error">{roomError}</Alert>}
         {roomList.length ? <div ref={scrollRef} className={styles.roomScroll} onScroll={() => setRoomMenu(undefined)}>
           <div className={styles.virtualList} style={{ height: virtualizer.getTotalSize() }}>
@@ -141,7 +147,7 @@ export function Sidebar({ open, close, view, openPersonas, openHarnessSettings,o
             })}
           </div>
         </div> : <p className={styles.emptyRooms}>No rooms yet</p>}
-      </section>
+      </section>}
 
       <button ref={profileButtonRef} type="button" className={styles.profile} onClick={toggleProfileMenu} aria-label="User profile menu" aria-haspopup="menu" aria-expanded={Boolean(profileMenu)}>
         <b>{userProfile?.displayName.trim().slice(0, 1).toUpperCase() || 'U'}</b>

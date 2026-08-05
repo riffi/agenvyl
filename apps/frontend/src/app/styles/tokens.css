@@ -13,5 +13,7 @@
   --muted: #64748b;
   --surface: #fff;
   --sidebar: #1e293b;
+  --sidebar-expanded-width: 260px;
+  --sidebar-collapsed-width: 56px;
 }
 

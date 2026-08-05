@@ -3,12 +3,13 @@
   inset: 0 auto 0 0;
   z-index: 20;
   display: flex;
-  width: 260px;
+  width: var(--sidebar-expanded-width);
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
   background: var(--sidebar);
   color: #cbd5e1;
+  transition: width .18s cubic-bezier(.2, 0, 0, 1);
 }
 
 .brand {
@@ -49,6 +50,46 @@
 .searchButton:hover,
 .searchButton:focus-visible {
   background: #ffffff12 !important;
+}
+
+.collapseButton {
+  width: 34px !important;
+  height: 34px !important;
+  color: #cbd5e1 !important;
+}
+
+.collapseButton:hover,
+.collapseButton:focus-visible {
+  background: #ffffff12 !important;
+}
+
+.compactBrandButton {
+  position: relative;
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 9px !important;
+}
+
+.compactBrandButton .logo,
+.compactBrandButton > svg {
+  position: absolute;
+  transition: opacity .12s cubic-bezier(.2, 0, 0, 1);
+}
+
+.compactBrandButton > svg {
+  width: 18px;
+  height: 18px;
+  opacity: 0;
+}
+
+.compactBrandButton:hover .logo,
+.compactBrandButton:focus-visible .logo {
+  opacity: 0;
+}
+
+.compactBrandButton:hover > svg,
+.compactBrandButton:focus-visible > svg {
+  opacity: 1;
 }
 
 .mainNav {
@@ -579,7 +620,60 @@
   box-shadow: none;
 }
 
+@media (min-width: 768px) {
+  .sidebar.collapsed {
+    width: var(--sidebar-collapsed-width);
+  }
+
+  .collapsed .brand {
+    height: 58px;
+    justify-content: center;
+    padding: 8px;
+  }
+
+  .collapsed .brand > .logo,
+  .collapsed .brand > strong,
+  .collapsed .searchButton {
+    display: none;
+  }
+
+  .collapsed .mainNav {
+    gap: 4px;
+    padding: 2px 8px 10px;
+  }
+
+  .collapsed .mainNav button {
+    width: 40px;
+    height: 40px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .collapsed .mainNav button span,
+  .collapsed .profile > span,
+  .collapsed .profile > svg {
+    display: none;
+  }
+
+  .collapsed .mainNav svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .collapsed .profile {
+    width: 40px;
+    height: 48px;
+    justify-content: center;
+    margin: auto 8px 8px;
+    padding: 8px 4px;
+  }
+}
+
 @media (max-width: 767px) {
+  .collapseButton {
+    display: none !important;
+  }
+
   .sidebar {
     width: min(300px, 88vw);
     transform: translateX(-100%);
@@ -588,6 +682,10 @@
 
   .sidebar.open {
     transform: none;
+  }
+
+  .sidebar.collapsed {
+    width: min(300px, 88vw);
   }
 
   .searchBackdrop {

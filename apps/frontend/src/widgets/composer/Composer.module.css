@@ -20,7 +20,7 @@
   box-shadow: none;
 }
 .composer {
-  --timeline-inline-padding: max(24px, calc((100vw - 260px - 940px) / 2));
+  --timeline-inline-padding: max(24px, calc((100vw - var(--app-sidebar-width, 260px) - 940px) / 2));
   --timeline-scrollbar-gutter: 15px;
   width: 100%;
   min-width: 0;

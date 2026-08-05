@@ -4,7 +4,7 @@
   overflow-y: auto;
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
-  padding: 0 max(24px, calc((100vw - 260px - 940px) / 2)) 24px;
+  padding: 0 max(24px, calc((100vw - var(--app-sidebar-width, 260px) - 940px) / 2)) 24px;
   scrollbar-gutter: stable;
 }
 .timeline::before {
