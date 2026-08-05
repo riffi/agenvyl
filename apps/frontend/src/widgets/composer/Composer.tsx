@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { FileText, FolderOpen, LoaderCircle, Paperclip, RefreshCw, Send, Shield, Square, X } from 'lucide-react';
+import { ArrowUp, FileText, LoaderCircle, RefreshCw, Shield, Square, X } from 'lucide-react';
 import {personaModelName,type HarnessCatalog} from '../../entities/harness';
 import type { Persona } from '../../entities/persona';
 import { FakeRoomGateway, type DemoKind, type RoomGateway } from '../../features/room-session';
@@ -10,6 +10,7 @@ import type {RoomPersona,WorkflowMode} from '@agenvyl/contracts';
 import {WorkspaceArtifactActions,type OpenWorkspaceArtifact,type WorkspaceTarget} from '../workspace-window';
 import styles from './Composer.module.css';
 import {ReasoningEffortChip,roomPersonaModel,roomPersonaReasoning} from '../../features/reasoning-effort';
+import {ComposerAddMenu} from './ComposerAddMenu';
 
 function highlightMentions(text:string,personas:readonly Persona[]):ReactNode[] {
   const known=new Map(personas.map(persona=>[persona.handle.toLowerCase(),persona]));
@@ -72,13 +73,24 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   const targetExecutionPreview=targets.map(handle=>{const participant=participantsByHandle.get(handle),persona=participant?.persona??byHandle.get(handle),instance=harnessCatalog?.instances.find(item=>item.id===persona?.harness_instance_id),model=participant?roomPersonaModel(participant,harnessCatalog):instance?.models.find(item=>item.id===persona?.model_id),reasoning=participant?roomPersonaReasoning(participant,model):{effective:model?.defaultReasoningEffort??null,fallback:false},native=instance?.controls.nativeWorkflowModes.includes('plan'),ceiling=workflowMode==='work'&&instance?.type==='antigravity'&&persona?.permission_profile_id==='plan';return{handle,mode:workflowMode==='plan'?(native?'Native Plan':'Instruction-only Plan'):ceiling?'Work · plan-only profile':'Work',effort:reasoning.effective??'Auto',fallback:reasoning.fallback,native};});
   const instructionOnlyTargets=workflowMode==='plan'?targetExecutionPreview.filter(item=>!item.native):[];
   const readyAttachments=attachments.flatMap(item=>item.attachment?[item.attachment]:[]);
+  const hasReadyAttachment=attachments.some(item=>item.status==='ready');
+  const composerExpanded=Boolean(text.length||attachments.length||targets.length);
+  const hasOutgoingContent=Boolean(text.trim()||hasReadyAttachment);
+  const composerStatus=!catalogReady
+    ? composerExpanded?'Agent catalog unavailable':''
+    : hasOutgoingContent&&!targets.length
+      ? `Posts to room — no agents invoked${text.length>=3600?` · ${text.length} / 4000`:''}`
+      : text.length>=3600
+        ? `${text.length} / 4000`
+        : '';
+  const composerPlaceholder=!catalogReady&&!composerExpanded?'Agent catalog unavailable':'Message @handle or @all…';
   const mentionCandidates=useMemo(()=>[
     {handle:'all',name:'All agents',detail:'Notify every participant',color:'#4f6ef7'},
     ...personas.map(persona=>({handle:persona.handle,name:persona.name,detail:personaModelName(persona,harnessCatalog),color:persona.color})),
   ].filter(candidate=>!mention||!mention.query||candidate.handle.toLowerCase().includes(mention.query)||candidate.name.toLowerCase().includes(mention.query)||candidate.detail.toLowerCase().includes(mention.query)).slice(0,8),[harnessCatalog,mention,personas]);
   useEffect(()=>setMentionIndex(0),[mention?.query]);
   useEffect(()=>{setText('');setMention(undefined);setSendError(undefined);setProfileError(undefined);setModeError(undefined)},[roomId]);
-  useEffect(()=>{const editor=editorRef.current;if(!editor)return;editor.style.height='auto';editor.style.height=`${Math.min(Math.max(editor.scrollHeight,72),220)}px`;if(mirrorRef.current){mirrorRef.current.scrollTop=editor.scrollTop;mirrorRef.current.scrollLeft=editor.scrollLeft}},[text]);
+  useEffect(()=>{const editor=editorRef.current;if(!editor)return;editor.style.height='auto';editor.style.height=`${Math.min(Math.max(editor.scrollHeight,composerExpanded?44:56),composerExpanded?168:56)}px`;if(mirrorRef.current){mirrorRef.current.scrollTop=editor.scrollTop;mirrorRef.current.scrollLeft=editor.scrollLeft}},[composerExpanded,text]);
   useLayoutEffect(()=>{if(!mention||!matchMedia('(max-width: 767px)').matches)return;const position=()=>{const popover=mentionPopoverRef.current,editor=editorRef.current;if(!popover||!editor)return;popover.style.setProperty('--mention-bottom',`${Math.max(0,window.innerHeight-editor.getBoundingClientRect().top)}px`)};position();window.visualViewport?.addEventListener('resize',position);addEventListener('resize',position);return()=>{window.visualViewport?.removeEventListener('resize',position);removeEventListener('resize',position)}},[mention,text,targets.length]);
   const updateMention=(value:string,caret:number)=>setMention(activeMentionQuery(value,caret));
   const chooseMention=(handle:string)=>{if(!mention)return;const next=`${text.slice(0,mention.start)}@${handle} ${text.slice(mention.end)}`,caret=mention.start+handle.length+2;setText(next);setMention(undefined);requestAnimationFrame(()=>{editorRef.current?.focus();editorRef.current?.setSelectionRange(caret,caret)});};
@@ -132,7 +144,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
       {instructionOnlyTargets.length>0&&<Alert className={styles['plan-warning']} tone="warning">Instruction-only for {instructionOnlyTargets.map(item=>`@${item.handle}`).join(', ')}: this mode does not technically block writes to the external project.</Alert>}
       {profileError&&<Alert className={styles['send-error']} tone="error">Could not apply execution settings: {profileError}</Alert>}
       {sendError&&<Alert className={styles['send-error']} tone="error">Failed to send: {sendError.message} <Button size="sm" variant="danger" onClick={()=>void send(sendError)} disabled={sending}>Retry</Button></Alert>}
-      <div className={styles['compose-card']}>
+      <div className={`${styles['compose-card']} ${composerExpanded?styles['compose-card-expanded']:styles['compose-card-compact']}`}>
         {attachments.length>0&&<div className={styles.attachments}>{attachments.map(item=><span key={item.id} className={[item.status==='error'?styles['attachment-error']:'',item.mimeType.startsWith('image/')&&item.attachment?styles['image-attachment']:''].filter(Boolean).join(' ')}>{item.status==='uploading'?<LoaderCircle className={styles.spinning}/>:item.mimeType.startsWith('image/')&&item.attachment?<img src={item.attachment.preview_url} alt=""/>:<FileText/>}<button type="button" disabled={!item.attachment} onClick={event=>item.attachment&&openArtifact(item.attachment,readyAttachments,event.currentTarget)}>{item.name}</button><small>{item.status==='uploading'?`${item.progress}%`:item.status==='error'?item.error:formatBytes(item.size)}</small>{item.status==='uploading'&&<i style={{width:`${item.progress}%`}}/>}{item.attachment&&<WorkspaceArtifactActions attachment={item.attachment} openWorkspace={openWorkspace}/>} {item.status==='error'&&<button type="button" aria-label={`Retry upload ${item.name}`} onClick={()=>retryAttachment(item.id)}><RefreshCw/></button>}<button type="button" aria-label={`Remove ${item.name}`} onClick={()=>removeAttachment(item.id)}><X/></button></span>)}</div>}
         {targets.length>0&&<div className={styles['target-row']}>
           <span>Responders:</span>
@@ -157,6 +169,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
             className={styles.editor}
             ref={editorRef}
             value={text}
+            rows={1}
             maxLength={4000}
             onChange={(e) => {setText(e.target.value);updateMention(e.target.value,e.target.selectionStart)}}
             onSelect={(e)=>updateMention(e.currentTarget.value,e.currentTarget.selectionStart)}
@@ -174,22 +187,25 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
                 e.preventDefault();void send();
               }
             }}
-            placeholder="Message… Use @handle or @all"
+            aria-label="Message"
+            placeholder={composerPlaceholder}
           />
         </div>
         <footer>
-        <div className={styles['compose-tools']}><Button className={`${styles['plan-button']} ${workflowMode==='plan'?styles['plan-button-active']:''}`} size="sm" variant="ghost" title="Plan: inspect the project without implementing changes" aria-pressed={workflowMode==='plan'} disabled={modeSaving} onClick={()=>void toggleWorkflowMode()} icon={modeSaving?<LoaderCircle className={styles.spinning}/>:<Shield/>}><span className={styles['action-label']}>Plan</span></Button><Button className={styles['attachment-button']} size="sm" variant="ghost" title="Attach files" aria-label="Attach files" disabled={attachments.length>=10} onClick={openAttachmentPicker} icon={attachmentsBusy?<LoaderCircle className={styles.spinning}/>:<Paperclip/>}><span className={styles['action-label']}>Attach</span></Button><Button className={styles['workspace-button']} size="sm" variant="ghost" title="Open room workspace" aria-label="Open room workspace" onClick={()=>openWorkspace()} icon={<FolderOpen />}><span className={styles['action-label']}>Workspace</span></Button></div>
-        <small>{!catalogReady?'Agent catalog unavailable':targets.length?`${workflowMode==='plan'?'Plan · ':''}${targets.length} ${targets.length===1?'responder':'responders'} · ${text.length} / 4000`:`No responders · posts to room · ${text.length} / 4000`}</small>
-        <Button
-          className={styles.send}
-          size="sm"
-          variant="primary"
-          aria-label={sending?'Sending message':targets.length?`Send to ${targets.length} ${targets.length===1?'agent':'agents'}`:'Post to room'}
-          disabled={(!text.trim()&&!attachments.some(item=>item.status==='ready')) || !catalogReady || sending || attachmentsBusy}
-          onClick={()=>void send()}
-        >
-          {sending?<><LoaderCircle className={styles.spinning}/><span className={styles['action-label']}>Sending…</span></>:<><span className={styles['action-label']}>{targets.length?`Send to ${targets.length}`:'Post to room'}</span><Send /></>}
-        </Button>
+          <ComposerAddMenu attachmentDisabled={attachments.length>=10||attachmentsBusy} onAttach={openAttachmentPicker} onOpenWorkspace={()=>openWorkspace()}/>
+          <small className={styles['composer-status']} role="status" aria-live="polite">{composerStatus}</small>
+          <Button className={`${styles['plan-button']} ${workflowMode==='plan'?styles['plan-button-active']:''}`} size="sm" variant="ghost" title="Plan: inspect the project without implementing changes" aria-pressed={workflowMode==='plan'} disabled={modeSaving} onClick={()=>void toggleWorkflowMode()} icon={modeSaving?<LoaderCircle className={styles.spinning}/>:<Shield/>}>Plan</Button>
+          <Button
+            className={styles.send}
+            size="sm"
+            variant="primary"
+            aria-label={sending?'Sending message':targets.length?`Send to ${targets.length} ${targets.length===1?'agent':'agents'}`:'Post to room'}
+            disabled={(!text.trim()&&!attachments.some(item=>item.status==='ready')) || !catalogReady || sending || attachmentsBusy}
+            onClick={()=>void send()}
+            title={targets.length?`Send to ${targets.length} ${targets.length===1?'agent':'agents'}`:'Post to room'}
+          >
+            {sending?<LoaderCircle className={styles.spinning}/>:<ArrowUp/>}
+          </Button>
         </footer>
       </div>
     </div>
