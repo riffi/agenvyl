@@ -8,6 +8,11 @@ first-run setup, the same selection appears in the browser. Agenvyl can
 automatically detect Codex CLI, Claude Code, OpenCode, AGY, and Cursor CLI. Hermes is
 different: its HTTP API server must already be running.
 
+These selections are stored as non-secret local policy in `connector.yaml`.
+The control center is the normal way to update it; see
+[Connector configuration](../user-guide/connector-configuration.md) if you
+need to inspect, back up, or recover the file.
+
 | Harness | Connection | Main safety boundary |
 | --- | --- | --- |
 | [Codex CLI](codex.md) | Agenvyl starts `codex app-server` | Workspace sandbox and approval policy |

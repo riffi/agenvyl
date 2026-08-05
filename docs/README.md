@@ -11,6 +11,7 @@ center, and your first room.
 Continue with:
 
 - [Command line and terminal control center](user-guide/cli-and-control-center.md)
+- [Connector configuration](user-guide/connector-configuration.md)
 - [Workspace and file previews](user-guide/workspace.md)
 - [Local projects](user-guide/projects.md)
 - [Data and backups](user-guide/data-and-backups.md)

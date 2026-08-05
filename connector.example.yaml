@@ -1,3 +1,6 @@
+# Development and custom-deployment template. A personal portable installation
+# creates and updates connector.yaml through Configure connectors or `agenvyl setup`.
+# Keep tokens, passwords, provider credentials, and command overrides out of YAML.
 version: 1
 
 listen:
@@ -15,6 +18,10 @@ instances:
   - id: local-opencode
     type: opencode
     enabled: false
+    # true: Connector owns the server process. false: attach to an external server.
+    managed: false
+    # Optional non-secret URL override for this instance, for example:
+    # endpoint: http://127.0.0.1:4096
     # Absolute OpenCode-server paths that agents may request outside a run workspace.
     externalDirectoryRoots: []
   - id: local-codex

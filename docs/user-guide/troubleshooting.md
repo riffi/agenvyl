@@ -172,6 +172,11 @@ harness endpoint, or a workspace path problem. PostgreSQL failures commonly
 mean a port conflict, interrupted initialization, filesystem permissions, or
 insufficient disk space. Do not delete `postgres/` as a troubleshooting step.
 
+If the Connector log reports that its YAML cannot be read, parsed, or
+validated, follow the recoverable procedure in
+[Connector configuration](connector-configuration.md#recover-an-unreadable-file).
+Do not add a token or harness credentials to the YAML while troubleshooting.
+
 ## Agenvyl does not start after an update
 
 1. Do not purge personal data.

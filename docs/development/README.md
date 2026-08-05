@@ -57,6 +57,9 @@ Edit the ignored `connector.yaml` to enable the harness instances you need.
 Keep endpoint credentials and executable overrides in the environment, not in
 YAML.
 
+The file format and harness-specific fields are documented in the
+[Connector operator reference](../operations/connector.md#configuration-schema).
+
 The [harness guides](../harnesses/README.md) describe normal installation and
 authentication. Development-only Connector variables are documented in the
 [operator reference](../operations/connector.md).
@@ -98,4 +101,3 @@ Read [How Agenvyl works](../architecture/overview.md) before changing component
 boundaries. Core must not read harness credentials or call a harness directly.
 
 Next, see [Testing](testing.md) and [Building](building.md).
-

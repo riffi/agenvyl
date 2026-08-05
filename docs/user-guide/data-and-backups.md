@@ -19,7 +19,7 @@ Important paths below those roots are:
 
 | Path | Purpose |
 | --- | --- |
-| `connector.yaml` | Non-secret Connector listen, workspace, and harness selection settings |
+| [`connector.yaml`](connector-configuration.md) | Application-managed, non-secret Connector listen, workspace, and harness selection settings |
 | `secrets.json` | Generated Connector token and managed PostgreSQL password |
 | `supervisor-settings.json` | Language, shortcuts, and owned command integration |
 | `postgres/` | Personal PostgreSQL cluster |
@@ -35,6 +35,11 @@ by hand. `.versions/` stores immutable file content; `.agenvyl/` contains
 application-managed run worktrees and markers. Configuration and backup files
 can contain sensitive local information and should not be committed or placed
 in a public cloud folder.
+
+For normal personal use, change harness and workspace selections through the
+control center rather than editing `connector.yaml`. See
+[Connector configuration](connector-configuration.md) for its lifecycle,
+contents, backup implications, and recovery procedure.
 
 ## What the backup command includes
 

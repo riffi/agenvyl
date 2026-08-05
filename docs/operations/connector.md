@@ -4,9 +4,11 @@ Connector is the only execution boundary between Core and installed harnesses.
 It runs with access to host-side CLI programs, endpoints, credential stores, and
 canonical room workspaces. Core never calls a harness directly.
 
-This page is an operator reference. For UI-first installation and
-authentication, use the [harness guides](../harnesses/README.md). Protocol
-ownership and recovery invariants are described in the
+This page is an operator reference. For a personal installation, first read
+[Connector configuration](../user-guide/connector-configuration.md) and use
+the control center rather than maintaining YAML by hand. UI-first installation
+and authentication are covered by the [harness guides](../harnesses/README.md).
+Protocol ownership and recovery invariants are described in the
 [architecture overview](../architecture/overview.md).
 
 ## Public configuration
@@ -61,6 +63,74 @@ instances:
     type: cursor
     enabled: false
 ```
+
+## Configuration schema
+
+Connector uses a strict schema. Unknown keys are errors at every level, and a
+configuration error prevents Connector from becoming ready. Sections shown as
+optional below receive their defaults when omitted.
+
+### Top-level fields
+
+| Field | Required | Default | Meaning |
+| --- | --- | --- | --- |
+| `version` | Yes | None | Configuration format. Must be the integer `1`. |
+| `listen` | No | `127.0.0.1:4310` | Connector HTTP listener. Keep it on loopback. |
+| `workspaces` | No | Platform workspace directory | Allowed canonical room workspace roots. |
+| `instances` | No | `[]` | Ordered harness instance definitions. |
+
+`listen` accepts only `host` and `port`. `host` must be a non-empty string;
+`port` must be an integer from `1` through `65535`.
+
+`workspaces` accepts only `roots`, an array of unique absolute paths. An omitted
+`workspaces` section or an empty `roots` array selects
+`AGENVYL_WORKSPACE_ROOT`, then the platform data-directory default. A configured
+root must already exist before an authenticated configuration update accepts
+it.
+
+### Instance fields
+
+| Field | Required | Applies to | Default | Meaning |
+| --- | --- | --- | --- | --- |
+| `id` | Yes | All | None | Unique local ID matching `^[a-z0-9][a-z0-9_-]*$`. |
+| `type` | Yes | All | None | `hermes`, `opencode`, `antigravity`, `codex`, `claude`, or `cursor`. |
+| `enabled` | No | All | `true` | Whether Connector creates an adapter for the instance. |
+| `endpoint` | No | Hermes, OpenCode | Harness environment value | Non-secret HTTP(S) server URL for this instance. |
+| `managed` | No | OpenCode | `false` | Whether Connector owns the OpenCode server process. |
+| `externalDirectoryRoots` | No | OpenCode | `[]` | Explicit allowlist for paths outside room workspaces. |
+| `allowSubscriptionOAuth` | No | Claude | `false` | Records the explicit Claude subscription OAuth opt-in. |
+
+An `endpoint` may not contain a username, password, query string, or fragment.
+Credentials stay in the matching environment variables. Connector consumes
+per-instance endpoints for Hermes and OpenCode; do not set `endpoint` for
+process-based harnesses.
+
+Every `externalDirectoryRoots` entry must be a concrete absolute path. Wildcard
+segments, `..` traversal, control characters, mixed path separators, and
+duplicates are rejected. The setting is invalid on non-OpenCode instances.
+`managed` is also OpenCode-only, and `allowSubscriptionOAuth` is Claude-only.
+
+The repository [configuration template](../../connector.example.yaml) shows
+all supported harness types. It is a development and custom-deployment
+starting point, not a file that portable users need to copy.
+
+## File ownership and reload behavior
+
+The portable supervisor creates `connector.yaml` only when it is missing; it
+does not overwrite an existing file during start or repair. Authenticated
+workspace and instance configuration APIs validate a complete candidate,
+prepare its runtime adapters, and then atomically rewrite the file. On a
+persistence or preparation failure, the active configuration remains in use.
+
+Because persistence serializes the complete normalized document, comments and
+custom formatting are not preserved. Connector loads a manually edited file at
+process startup and does not watch it for changes. Stop the personal runtime
+before a manual edit, or restart a separately managed Connector after editing.
+
+In the supervised personal runtime, keep the YAML listener consistent with the
+supervisor's `AGENVYL_CONNECTOR_PORT`. The supervisor uses that port for health
+checks and for Core's Connector URL, while Connector binds the value stored in
+the YAML.
 
 Every workspace root must already exist and be absolute. For each run,
 Connector resolves exactly one `<root>/<roomId>` and rejects traversal,
