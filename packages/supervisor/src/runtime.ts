@@ -13,6 +13,7 @@ import { inspectSettings } from './preferences.js';
 type Secrets = { connectorToken: string; postgresPassword: string };
 type ChildMap = Partial<Record<ManagedComponent, ChildProcess>>;
 type Check = { name: string; ok: boolean; detail: string };
+type SupervisorLock = { pid: number; createdAt?: string };
 
 export async function initializePortableRuntime(config: SupervisorConfig) {
   await prepareDirectories(config);
@@ -28,7 +29,12 @@ export async function startSupervisor(config: SupervisorConfig, cliPath: string,
   progress?.('preparing');
   await prepareDirectories(config);
   const current = await readState(config);
-  if (current && isProcessAlive(current.daemonPid) && current.phase === 'running') return current;
+  const owner = await liveRuntimeOwner(config, current);
+  if (owner) {
+    if (current?.daemonPid === owner && current.phase === 'running') return current;
+    const recovered = await waitForExistingSupervisor(config, owner);
+    if (recovered) return recovered;
+  }
   await cleanStaleRuntime(config, current);
   await assertRequiredFiles(config);
   await assertPortsAvailable(config);
@@ -115,6 +121,16 @@ export async function runSupervisorDaemon(config: SupervisorConfig, env = proces
           resolvePromise();
           return;
         }
+        if (!(await exists(config.stateFile))) {
+          try { await writeState(config, state); }
+          catch (error) {
+            state.failure = { message: `Unable to restore supervisor state: ${errorMessage(error)}` };
+            state.phase = 'failed';
+            clearInterval(timer);
+            resolvePromise();
+            return;
+          }
+        }
         for (const [name, component] of Object.entries(state.components) as [ManagedComponent, { pid: number }][]) {
           if (!isProcessAlive(component.pid)) {
             state.failure = { component: name, message: `${name} exited unexpectedly` };
@@ -139,9 +155,9 @@ export async function runSupervisorDaemon(config: SupervisorConfig, env = proces
     await writeState(config, state).catch(() => undefined);
     await stopChildren(config, children);
     await rm(config.stopRequestFile, { force: true });
-    await rm(config.stateFile, { force: true });
+    await removeOwnedState(config, process.pid);
     await lock.close();
-    await rm(config.lockFile, { force: true });
+    await removeOwnedLock(config, process.pid);
     await removeWindowsPostgresAliases(config);
     logEvent('supervisor_stopped', { pid: process.pid });
   }
@@ -149,16 +165,22 @@ export async function runSupervisorDaemon(config: SupervisorConfig, env = proces
 
 export async function stopSupervisor(config: SupervisorConfig) {
   const state = await readState(config);
-  if (!state) return { stopped: true, message: 'Agenvyl is not running' };
-  if (!isProcessAlive(state.daemonPid)) {
+  const lock = await readLock(config);
+  const daemonPid = state && isProcessAlive(state.daemonPid)
+    ? state.daemonPid
+    : lock && isProcessAlive(lock.pid) ? lock.pid : undefined;
+  if (!daemonPid) {
+    if (!state && !lock && !(await exists(config.lockFile))) return { stopped: true, message: 'Agenvyl is not running' };
     await cleanStaleRuntime(config, state);
     return { stopped: true, message: 'Removed stale runtime state' };
   }
   await writeFile(config.stopRequestFile, `${new Date().toISOString()}\n`, { mode: 0o600 });
+  const hadOwnedLock = lock?.pid === daemonPid;
   try {
-    await waitUntil(async () => !(await exists(config.stateFile)) || !isProcessAlive(state.daemonPid), config.gracePeriodMs * 2);
+    await waitUntil(async () => !isProcessAlive(daemonPid) || (hadOwnedLock && !(await lockOwnedBy(config, daemonPid))), config.gracePeriodMs * 2);
   } catch {
-    terminateProcessTree(state.daemonPid, config.platform);
+    terminateProcessTree(daemonPid, config.platform);
+    await waitUntil(() => !isProcessAlive(daemonPid), config.gracePeriodMs).catch(() => undefined);
     await cleanStaleRuntime(config, state);
   }
   return { stopped: true, message: 'Agenvyl stopped' };
@@ -166,7 +188,10 @@ export async function stopSupervisor(config: SupervisorConfig) {
 
 export async function getSupervisorStatus(config: SupervisorConfig): Promise<RuntimeStatus> {
   const state = await readState(config);
-  if (!state) return { running: false, stale: false, health: {} };
+  if (!state) {
+    const lock = await readLock(config);
+    return { running: false, stale: Boolean(lock) || await exists(config.lockFile), health: {} };
+  }
   const alive = isProcessAlive(state.daemonPid);
   const health: RuntimeStatus['health'] = {};
   if (alive) {
@@ -277,7 +302,8 @@ async function acquireLock(config: SupervisorConfig) {
   } catch (error) {
     if (!isExists(error)) throw error;
     const state = await readState(config);
-    if (state && isProcessAlive(state.daemonPid)) throw new Error(`Agenvyl is already managed by PID ${state.daemonPid}`);
+    const owner = await liveRuntimeOwner(config, state);
+    if (owner) throw new Error(`Agenvyl is already managed by PID ${owner}`);
     await cleanStaleRuntime(config, state);
     const handle = await open(config.lockFile, 'wx', 0o600);
     await handle.writeFile(`${JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() })}\n`);
@@ -286,12 +312,64 @@ async function acquireLock(config: SupervisorConfig) {
 }
 
 async function cleanStaleRuntime(config: SupervisorConfig, state: RuntimeState | undefined) {
-  if (state && !isProcessAlive(state.daemonPid)) {
-    for (const component of Object.values(state.components)) if (component && isProcessAlive(component.pid)) terminateProcessTree(component.pid, config.platform);
+  const current = await readState(config);
+  const lock = await readLock(config);
+  const liveStatePid = current && isProcessAlive(current.daemonPid) ? current.daemonPid : undefined;
+  const liveLockPid = lock && isProcessAlive(lock.pid) ? lock.pid : undefined;
+  const owner = liveStatePid ?? liveLockPid;
+  if (owner) throw new Error(`Agenvyl is already managed by PID ${owner}`);
+  const staleState = current ?? state;
+  if (staleState && !isProcessAlive(staleState.daemonPid)) {
+    for (const component of Object.values(staleState.components)) if (component && isProcessAlive(component.pid)) terminateProcessTree(component.pid, config.platform);
   }
   await rm(config.stateFile, { force: true });
   await rm(config.lockFile, { force: true });
   await rm(config.stopRequestFile, { force: true });
+}
+
+async function liveRuntimeOwner(config: SupervisorConfig, state?: RuntimeState) {
+  const current = state ?? await readState(config);
+  if (current && isProcessAlive(current.daemonPid)) return current.daemonPid;
+  const lock = await readLock(config);
+  return lock && isProcessAlive(lock.pid) ? lock.pid : undefined;
+}
+
+async function waitForExistingSupervisor(config: SupervisorConfig, daemonPid: number) {
+  let running: RuntimeState | undefined;
+  await waitUntil(async () => {
+    const state = await readState(config);
+    if (state?.daemonPid === daemonPid && state.phase === 'failed') throw new Error(state.failure?.message ?? 'Agenvyl failed to start');
+    if (state?.daemonPid === daemonPid && state.phase === 'running') {
+      running = state;
+      return true;
+    }
+    return !isProcessAlive(daemonPid) || !(await lockOwnedBy(config, daemonPid));
+  }, config.readinessTimeoutMs * (config.managedPostgres ? 4 : 3));
+  return running;
+}
+
+async function readLock(config: SupervisorConfig): Promise<SupervisorLock | undefined> {
+  try {
+    const value = JSON.parse(await readFile(config.lockFile, 'utf8')) as Partial<SupervisorLock>;
+    if (!Number.isSafeInteger(value.pid) || (value.pid ?? 0) < 1) return undefined;
+    return value as SupervisorLock;
+  } catch (error) {
+    if (isMissing(error) || error instanceof SyntaxError) return undefined;
+    throw new Error(`Invalid supervisor lock: ${errorMessage(error)}`);
+  }
+}
+
+async function lockOwnedBy(config: SupervisorConfig, daemonPid: number) {
+  return (await readLock(config))?.pid === daemonPid;
+}
+
+async function removeOwnedState(config: SupervisorConfig, daemonPid: number) {
+  const state = await readState(config);
+  if (state?.daemonPid === daemonPid) await rm(config.stateFile, { force: true });
+}
+
+async function removeOwnedLock(config: SupervisorConfig, daemonPid: number) {
+  if (await lockOwnedBy(config, daemonPid)) await rm(config.lockFile, { force: true });
 }
 
 async function initializePostgres(config: SupervisorConfig, secrets: Secrets) {
@@ -480,6 +558,14 @@ export async function purgeWindowsPostgresStorage(config: SupervisorConfig) {
 function managedDatabaseUrl(config: SupervisorConfig, secrets: Secrets, database = 'agenvyl') { return `postgresql://agenvyl:${encodeURIComponent(secrets.postgresPassword)}@127.0.0.1:${config.postgresPort}/${database}`; }
 
 async function writeState(config: SupervisorConfig, state: RuntimeState) {
+  const lock = await readLock(config);
+  if (lock && lock.pid !== state.daemonPid && isProcessAlive(lock.pid)) {
+    throw new Error(`Supervisor state is owned by PID ${lock.pid}`);
+  }
+  const current = await readState(config);
+  if (current && current.daemonPid !== state.daemonPid && isProcessAlive(current.daemonPid)) {
+    throw new Error(`Supervisor state is owned by PID ${current.daemonPid}`);
+  }
   state.updatedAt = new Date().toISOString();
   const temporary = `${config.stateFile}.${process.pid}.tmp`;
   try {

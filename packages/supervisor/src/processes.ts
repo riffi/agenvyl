@@ -26,7 +26,11 @@ export async function spawnLogged(
 
 export function isProcessAlive(pid: number) {
   if (!Number.isSafeInteger(pid) || pid < 1) return false;
-  try { process.kill(pid, 0); return true; } catch { return false; }
+  try { process.kill(pid, 0); return true; }
+  catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    return code === 'EPERM' || code === 'EACCES';
+  }
 }
 
 export async function terminateChild(child: ChildProcess, platform: AgenvylPlatform, gracePeriodMs: number) {
