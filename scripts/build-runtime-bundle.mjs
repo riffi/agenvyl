@@ -201,11 +201,11 @@ async function download(url, destination) {
   await writeFile(destination, Buffer.from(await response.arrayBuffer()));
 }
 function runNpm(args, cwd) {
-  const command = process.platform === 'win32' ? join(dirname(process.execPath), 'npm.cmd') : 'npm';
+  const command = process.platform === 'win32' ? 'npm.cmd' : 'npm';
   run(command, args, cwd);
 }
 function npmOutput(args, cwd) {
-  const command = process.platform === 'win32' ? join(dirname(process.execPath), 'npm.cmd') : 'npm';
+  const command = process.platform === 'win32' ? 'npm.cmd' : 'npm';
   const result = spawnSync(command, args, { cwd, encoding: 'utf8', windowsHide: true, shell: process.platform === 'win32' });
   if (result.status !== 0) throw new Error(`${command} failed: ${result.stderr || result.stdout}`);
   JSON.parse(result.stdout);
