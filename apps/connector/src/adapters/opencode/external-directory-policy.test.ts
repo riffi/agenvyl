@@ -65,6 +65,23 @@ describe('OpenCode external-directory policy',()=>{
     },[])).toEqual({status:'malformed'});
   });
 
+  it.each([
+    [
+      'C:\\Users\\Alice\\AppData\\Local\\Agenvyl\\workspaces\\room-1\\.agenvyl\\runs\\e3268baa-ecc3-4863-a760-528382e0bd6f\\workspace',
+      'C:\\Users\\Alice\\AppData\\Local\\Agenvyl\\workspaces\\room-1\\.agenvyl\\runs\\e3268baa-ecc3-4863-a760-528382ebd6f\\workspace',
+    ],
+    [
+      '/srv/agenvyl/workspaces/room-1/.agenvyl/runs/91100ea5-d000-4712-9706-377cf50b1cd8/workspace',
+      '/srv/agenvyl/workspaces/room-1/.agenvyl/runs/91100ea5-d-0004712-9706-377cf50b1cd8/workspace',
+    ],
+  ])('rejects a near-miss run workspace instead of offering it as an external root',(activeDirectory,requestedRoot)=>{
+    const separator=requestedRoot.includes('\\')?'\\':'/';
+    expect(assessExternalDirectoryRequest({
+      metadata:{filepath:`${requestedRoot}${separator}dashboard.html`,parentDir:requestedRoot},
+      resources:[`${requestedRoot}${separator}dashboard.html${separator}**`],
+    },[requestedRoot],activeDirectory)).toEqual({status:'workspace_escape',requestedRoot});
+  });
+
   it('defaults legacy null profiles to Standard and rejects unknown profile ids',()=>{
     expect(parseOpenCodePermissionProfile(null)).toBe('standard');
     expect(parseOpenCodePermissionProfile('standard')).toBe('standard');

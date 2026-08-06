@@ -49,6 +49,8 @@ describe('OpenCodeConnectorAdapter', () => {
     }));
     const system = vi.mocked(client.prompt).mock.calls[0]?.[0].system ?? '';
     expect(system).toContain('/srv/workspaces/room-1/subdir');
+    expect(system).toContain('Use paths relative to the current working directory');
+    expect(system).toContain('Never copy, reconstruct, or pass the absolute working-directory path into a tool argument');
     expect(system).toContain('never stage them in /tmp');
     expect(system).toContain('Do not use sudo');
     expect(system).toContain(JSON.stringify(startRequest().input.history));
@@ -330,6 +332,23 @@ describe('OpenCodeConnectorAdapter', () => {
     expect(grantExternalDirectoryRoot).toHaveBeenCalledWith('C:\\work');
     expect(client.replyPermission).toHaveBeenCalledWith(expect.objectContaining({requestID:'native-external',reply:'once'}));
     await expect(iterator.next()).resolves.toMatchObject({value:{type:'execution.completed'}});
+  });
+
+  it.each(['standard','auto-approve'] as const)('rejects a near-miss managed run workspace in %s without offering or persisting it',async permissionProfileId=>{
+    const client=fixtureClient(),grantExternalDirectoryRoot=vi.fn().mockResolvedValue(undefined);
+    const active='C:\\Users\\Alice\\AppData\\Local\\Agenvyl\\workspaces\\room-1\\.agenvyl\\runs\\e3268baa-ecc3-4863-a760-528382e0bd6f\\workspace';
+    const escaped='C:\\Users\\Alice\\AppData\\Local\\Agenvyl\\workspaces\\room-1\\.agenvyl\\runs\\e3268baa-ecc3-4863-a760-528382ebd6f\\workspace';
+    client.subscribe=vi.fn().mockResolvedValue(events([
+      externalPermission(`${escaped}\\dashboard.html`,escaped),
+      ...completedTurn('I kept the result inside the active workspace.'),
+      {type:'session.idle',properties:{sessionID:'session-1'}},
+    ]));
+    const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client,externalDirectoryRoots:[escaped],grantExternalDirectoryRoot});
+    const request={...startRequest(),workspace:{...startRequest().workspace,absolutePath:active},executionProfile:{...startRequest().executionProfile,permissionProfileId}};
+
+    await expect(collect(adapter.events(await adapter.start(request)))).resolves.toEqual([{type:'execution.completed',payload:{}}]);
+    expect(client.replyPermission).toHaveBeenCalledWith(expect.objectContaining({requestID:'native-external',reply:'reject'}));
+    expect(grantExternalDirectoryRoot).not.toHaveBeenCalled();
   });
 
   it('offers only once or deny for an allowlisted external directory without exposing the host path',async()=>{

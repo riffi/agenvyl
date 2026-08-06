@@ -248,8 +248,8 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
             return;
           }
           if (permission.externalDirectory) {
-            const assessment=assessExternalDirectoryRequest(asRecord(event.properties)??{},this.externalDirectoryRoots);
-            if(assessment.status==='malformed'){
+            const assessment=assessExternalDirectoryRequest(asRecord(event.properties)??{},this.externalDirectoryRoots,active.directory);
+            if(assessment.status==='malformed'||assessment.status==='workspace_escape'){
               await this.client.replyPermission({
                 sessionID:execution.upstreamId,
                 requestID:permission.pending.nativeRequestId,
@@ -557,6 +557,8 @@ function systemContext(request: AdapterStartExecutionRequest) {
   ].join(' '));
   sections.push([
     `Use ${request.workspace.absolutePath} as the working directory for this execution.`,
+    'The OpenCode session is already rooted in this directory. Use paths relative to the current working directory in every file-tool argument and shell command, for example `dashboard.html` or `src/app.ts`.',
+    'Never copy, reconstruct, or pass the absolute working-directory path into a tool argument.',
     'Do not access files outside this directory.',
     'Create, download, and move files directly within this directory; never stage them in /tmp or another external directory.',
     'Do not use sudo. If an operation would require an external path or elevated privileges, keep the operation inside the working directory instead.',

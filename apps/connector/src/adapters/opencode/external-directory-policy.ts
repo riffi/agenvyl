@@ -16,9 +16,10 @@ export const parseOpenCodePermissionProfile=(value:string|null):OpenCodePermissi
 export type ExternalDirectoryAssessment=
   |{status:'allowlisted';requestedRoot:string}
   |{status:'outside_allowlist';requestedRoot:string}
+  |{status:'workspace_escape';requestedRoot:string}
   |{status:'malformed'};
 
-export const assessExternalDirectoryRequest=(properties:Record<string,unknown>,roots:string[]):ExternalDirectoryAssessment=>{
+export const assessExternalDirectoryRequest=(properties:Record<string,unknown>,roots:string[],activeDirectory?:string):ExternalDirectoryAssessment=>{
   const metadata=record(properties.metadata);
   const resources=Array.isArray(properties.resources)?properties.resources:properties.patterns;
   if(!Array.isArray(resources)||resources.length===0)return{status:'malformed'};
@@ -26,6 +27,7 @@ export const assessExternalDirectoryRequest=(properties:Record<string,unknown>,r
   if(concreteResources.some(resource=>!resource))return{status:'malformed'};
   const boundary=requestBoundary(metadata,resources,concreteResources);
   if(!boundary)return{status:'malformed'};
+  if(activeDirectory&&escapesManagedWorkspace(activeDirectory,boundary))return{status:'workspace_escape',requestedRoot:boundary.value};
   const allowlisted=roots.some(root=>{
     const normalizedRoot=concreteAbsolutePath(root);
     return normalizedRoot?.style===boundary.style
@@ -74,6 +76,18 @@ const contains=(root:PortablePath,target:PortablePath)=>{
   const implementation=root.style==='win32'?path.win32:path.posix;
   const relative=implementation.relative(root.value,target.value);
   return relative===''||(!relative.startsWith(`..${implementation.sep}`)&&relative!=='..'&&!implementation.isAbsolute(relative));
+};
+
+const escapesManagedWorkspace=(activeDirectory:string,target:PortablePath)=>{
+  const active=concreteAbsolutePath(activeDirectory);
+  if(!active||active.style!==target.style||contains(active,target))return false;
+  const implementation=active.style==='win32'?path.win32:path.posix;
+  const comparable=active.style==='win32'?active.value.toLowerCase():active.value;
+  const marker=`${implementation.sep}.agenvyl${implementation.sep}`;
+  const markerIndex=comparable.lastIndexOf(marker);
+  if(markerIndex<0)return false;
+  const roomRoot:PortablePath={style:active.style,value:active.value.slice(0,markerIndex)};
+  return contains(roomRoot,target)||contains(target,roomRoot);
 };
 
 const hasTraversal=(value:string)=>value.split(/[\\/]/).some(segment=>segment==='..');
