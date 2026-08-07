@@ -8,6 +8,7 @@ export {
   type WorkspaceOpenRequest,
   type OpenWorkspaceArtifact,
   type WorkspaceRequestUpdate,
+  type WorkspaceSection,
   type WorkspaceTarget,
   type WorkspaceViewMode,
   type WorkspaceViewState,

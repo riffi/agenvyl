@@ -1,6 +1,7 @@
 import type { WorkspaceAttachment } from '@agenvyl/contracts';
 
 export type WorkspaceViewMode = 'rendered' | 'source';
+export type WorkspaceSection = 'app' | 'files';
 export type WorkspaceOpenOrigin = 'workspace' | 'artifact';
 export type WorkspaceEncoding = 'utf-8' | 'utf-16le' | 'utf-16be' | 'windows-1251' | 'windows-1252' | 'koi8-r';
 
@@ -27,6 +28,8 @@ export type WorkspaceViewState = {
 
 export type WorkspaceOpenRequest = {
   origin: WorkspaceOpenOrigin;
+  section?: WorkspaceSection;
+  buildRunId?: string;
   target?: WorkspaceTarget;
   mode?: WorkspaceViewMode;
   encoding?: WorkspaceEncoding;
@@ -40,6 +43,7 @@ export type OpenWorkspaceArtifact = (
   attachment: WorkspaceAttachment,
   gallery?: WorkspaceAttachment[],
   opener?: HTMLElement | null,
+  options?: { section?: WorkspaceSection; buildRunId?: string },
 ) => void;
 
 export const workspaceRequestForTarget = (
@@ -53,6 +57,8 @@ export const workspaceRequestForTarget = (
 });
 
 export type WorkspaceRequestUpdate = {
+  section?: WorkspaceSection;
+  buildRunId?: string;
   target?: WorkspaceTarget;
   mode?: WorkspaceViewMode;
   treeVisible?: boolean;
@@ -133,8 +139,12 @@ export const workspaceRequestFromSearch = (search: URLSearchParams): WorkspaceOp
   const versionId = search.get('wsVersion') || undefined;
   const modeValue = search.get('wsView');
   const mode = modeValue === 'source' || modeValue === 'rendered' ? modeValue : undefined;
+  const sectionValue = search.get('wsSection');
+  const section = sectionValue === 'app' || sectionValue === 'files' ? sectionValue : undefined;
   return {
     origin: search.get('wsOrigin') === 'artifact' ? 'artifact' : 'workspace',
+    section,
+    buildRunId: search.get('wsBuild') || undefined,
     treeVisible: search.get('wsTree') !== '0',
     mode,
     target: entryId || versionId ? { entryId, versionId } : undefined,
@@ -143,13 +153,15 @@ export const workspaceRequestFromSearch = (search: URLSearchParams): WorkspaceOp
 
 export const workspaceSearchWithRequest = (current: URLSearchParams, request?: WorkspaceOpenRequest | WorkspaceRequestUpdate) => {
   const next = new URLSearchParams(current);
-  ['workspace','wsEntry','wsVersion','wsView','wsTree','wsOrigin'].forEach(key => next.delete(key));
+  ['workspace','wsEntry','wsVersion','wsView','wsTree','wsOrigin','wsSection','wsBuild'].forEach(key => next.delete(key));
   if (!request) return next;
   next.set('workspace', '1');
   const target = request.target;
   if (target?.entryId) next.set('wsEntry', target.entryId);
   if (target?.versionId) next.set('wsVersion', target.versionId);
   if (request.mode) next.set('wsView', request.mode);
+  if (request.section) next.set('wsSection', request.section);
+  if (request.buildRunId) next.set('wsBuild', request.buildRunId);
   next.set('wsTree', request.treeVisible === false ? '0' : '1');
   if ('origin' in request) next.set('wsOrigin', request.origin);
   return next;

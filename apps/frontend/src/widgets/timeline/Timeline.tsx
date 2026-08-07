@@ -199,7 +199,7 @@ function RunCard({
         <RunFiles files={changedFiles} summary={run.artifactSummary} openWorkspace={openWorkspace}/>
         {(canApplyWorkspace||run.staticPreview||buildMissing)&&<div className={styles['run-output-actions']}>
           {canApplyWorkspace&&<button type="button" disabled={applyingWorkspace} onClick={()=>void applyWorkspace()}><FolderInput aria-hidden="true"/>{applyingWorkspace?'Applying…':'Apply changes'}</button>}
-          {run.staticPreview&&<button type="button" onClick={event=>openArtifact(run.staticPreview!,[run.staticPreview!],event.currentTarget)}><Eye aria-hidden="true"/>Preview</button>}
+          {run.staticPreview&&<button type="button" title="Open the app build captured for this response" aria-label="Open the app build captured for this response" onClick={event=>openArtifact(run.staticPreview!,[run.staticPreview!],event.currentTarget,{section:'app',buildRunId:run.id})}><Eye aria-hidden="true"/>Open this build</button>}
           {!run.staticPreview&&buildMissing&&<small>Preview unavailable · Build output not found</small>}
         </div>}
         {workspaceApplyError&&<Alert tone="error">{workspaceApplyError}</Alert>}

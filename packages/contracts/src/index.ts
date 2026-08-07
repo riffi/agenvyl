@@ -174,9 +174,19 @@ export type WorkspaceAttachment={
   version_id:string;entry_id?:string;snapshot_id?:string;name:string;path:string;size:number;mime_type:string;url:string;preview_url:string;
 };
 export type RoomStaticPreview=
-  | {status:'ready';attachment:WorkspaceAttachment;runId?:string}
+  | {status:'ready';attachment:WorkspaceAttachment;runId:string}
   | {status:'outdated';runId:string}
   | {status:'build_missing'};
+export type WorkspaceBuildPreview={
+  runId:string;
+  snapshotId:string;
+  agent:string;
+  createdAt:string;
+  runStatus:RunStatus;
+  publishStatus:RunWorkspaceResult['publish_status'];
+  sameBuildAsPrevious:boolean;
+  attachment:WorkspaceAttachment;
+};
 export type RunArtifact=WorkspaceAttachment&{change:'created'|'updated'|'deleted';attribution:'exact'|'shared'|'external'};
 export type RunArtifactSummary={total_count:number;project_count:number;hidden_count:number};
 export type RunEmbedError='invalid_path'|'not_found'|'unsupported_type'|'invalid_content'|'limit_exceeded';
@@ -196,7 +206,7 @@ export type WorkspaceConflictSide={kind:'file'|'directory';version_id?:string;at
 export type WorkspacePublishConflict={path:string;base?:WorkspaceConflictSide;current?:WorkspaceConflictSide;candidate?:WorkspaceConflictSide};
 export type WorkspaceConflictSet={run_id:string;expected_current_snapshot_id:string;conflicts:WorkspacePublishConflict[]};
 export type ResolveWorkspaceConflictsRequest={expected_current_snapshot_id:string;resolutions:Array<{path:string;choice:WorkspaceConflictChoice}>};
-export type RoomWorkspace={path:string;current_snapshot_id:string;materialization_status:'pending'|'ready'|'failed';entries:WorkspaceEntry[];staticPreview?:RoomStaticPreview};
+export type RoomWorkspace={path:string;current_snapshot_id:string;materialization_status:'pending'|'ready'|'failed';entries:WorkspaceEntry[];staticPreview?:RoomStaticPreview;previewHistory:WorkspaceBuildPreview[]};
 
 export type Persona = {
   id: string;

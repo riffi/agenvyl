@@ -32,8 +32,9 @@ export const useWorkspaceBytes = (url: string) => {
 };
 
 export const useCompactSourceViewer = () => {
-  const [compact, setCompact] = useState(() => matchMedia('(max-width: 899px)').matches);
+  const [compact, setCompact] = useState(() => typeof matchMedia === 'function' && matchMedia('(max-width: 899px)').matches);
   useEffect(() => {
+    if (typeof matchMedia !== 'function') return;
     const media = matchMedia('(max-width: 899px)');
     const update = () => setCompact(media.matches);
     media.addEventListener('change', update);

@@ -102,6 +102,14 @@ describe('isolated run workspace snapshots',()=>{
         artifactSummary:{total_count:8,project_count:4,hidden_count:4},
         staticPreview:{path:'dist/index.html'},
       });
+      expect((await service.list('demo-room')).previewHistory).toEqual([expect.objectContaining({
+        runId:run.id,
+        agent:persona.handle,
+        runStatus:'failed',
+        publishStatus:'not_published',
+        sameBuildAsPrevious:false,
+        attachment:expect.objectContaining({path:'dist/index.html',preview_url:`/api/v1/rooms/demo-room/runs/${run.id}/preview/`}),
+      })]);
 
       const messageCount=Number((await repositories.database.sql`SELECT COUNT(*) count FROM room_messages WHERE room_id='demo-room'`)[0]?.count);
       const [firstApply,secondApply]=await Promise.all([service.applyRunChanges('demo-room',run.id),service.applyRunChanges('demo-room',run.id)]);
@@ -118,10 +126,25 @@ describe('isolated run workspace snapshots',()=>{
         runId:run.id,
         attachment:{path:'dist/index.html',preview_url:`/api/v1/rooms/demo-room/runs/${run.id}/preview/`},
       });
+      const duplicate=(await repositories.messages.createRound('demo-room','same failed build',[persona],new Map([[persona.id,profile]]))).runs[0];
+      await service.prepareRun('demo-room',duplicate.id);
+      const duplicateRoot=service.runPath('demo-room',duplicate.id);
+      await Promise.all([mkdir(path.join(duplicateRoot,'dist','assets'),{recursive:true})]);
+      await Promise.all([
+        writeFile(path.join(duplicateRoot,'dist','index.html'),'<script type="module" src="/assets/app.js"></script>'),
+        writeFile(path.join(duplicateRoot,'dist','assets','app.js'),'document.body.dataset.ready="yes"'),
+      ]);
+      expect((await finalizeRun(repositories,service,duplicate.id,'failed'))?.publish_status).toBe('noop');
+      const duplicateProjection=await service.list('demo-room');
+      expect(duplicateProjection.staticPreview).toMatchObject({status:'ready',runId:duplicate.id});
+      expect(duplicateProjection.previewHistory.map(item=>({runId:item.runId,runStatus:item.runStatus,publishStatus:item.publishStatus,same:item.sameBuildAsPrevious}))).toEqual([
+        {runId:duplicate.id,runStatus:'failed',publishStatus:'noop',same:true},
+        {runId:run.id,runStatus:'failed',publishStatus:'published',same:false},
+      ]);
       await service.upload('demo-room','src/main.tsx','text/typescript',Buffer.from('export const ready = true'),'replace');
       expect((await service.list('demo-room')).staticPreview?.status).toBe('ready');
       await service.upload('demo-room','src/main.tsx','text/typescript',Buffer.from('export const ready = false'),'replace');
-      expect((await service.list('demo-room')).staticPreview).toMatchObject({status:'outdated',runId:run.id});
+      expect((await service.list('demo-room')).staticPreview).toMatchObject({status:'outdated',runId:duplicate.id});
       await service.upload('demo-room','dist/assets/app.js','text/javascript',Buffer.from('document.body.dataset.ready="changed"'));
       expect(await readFile((await service.resolveRunPreview('demo-room',run.id,'assets/app.js')).path,'utf8')).toContain('dataset.ready="yes"');
     }finally{service.close();await repositories.database.close()}

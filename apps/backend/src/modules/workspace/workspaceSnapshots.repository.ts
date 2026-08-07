@@ -1,6 +1,6 @@
 import type {Database,QueryContext} from '../../infrastructure/database/Database.js';
 import {number,text,timestamp} from '../../infrastructure/database/rowMappers.js';
-import type {RunWorkspaceResult,WorkspaceCaptureError,WorkspaceConflictChoice,WorkspaceConflictSet,WorkspacePublishConflict} from '@agenvyl/contracts';
+import type {RunStatus,RunWorkspaceResult,WorkspaceCaptureError,WorkspaceConflictChoice,WorkspaceConflictSet,WorkspacePublishConflict} from '@agenvyl/contracts';
 import {AppError} from '../../shared/errors/AppError.js';
 import {entryMap,manifestHash,mergeSnapshots,sameEntry,type SnapshotDescriptor,type SnapshotEntry} from './workspaceSnapshots.js';
 import {toAttachment,type WorkspaceVersionRow} from './workspace.repository.js';
@@ -60,28 +60,25 @@ export class WorkspaceSnapshotRepository{
     return result;
   }
 
-  async publishedPreviewCandidates(roomId:string,db:QueryContext=this.database.sql){
-    const rows=await db`SELECT w.run_id,w.result_snapshot_id
+  async previewCandidates(roomId:string,db:QueryContext=this.database.sql){
+    const rows=await db`SELECT w.run_id,w.result_snapshot_id,w.publish_status,w.conflict_count,w.updated_at result_updated_at,
+        r.persona_handle,r.status run_status,r.created_at run_created_at
       FROM run_workspace_results w
       JOIN agent_runs r ON r.id=w.run_id
       WHERE r.room_id=${roomId}
         AND w.capture_status='complete'
-        AND w.publish_status=ANY(ARRAY['published','noop'])
-        AND w.conflict_count=0
         AND w.result_snapshot_id IS NOT NULL
-        AND EXISTS(
-          SELECT 1 FROM workspace_snapshot_entries entry
-          WHERE entry.snapshot_id=w.result_snapshot_id
-            AND entry.kind='file'
-            AND (
-              lower(entry.path)=ANY(ARRAY['dist/index.html','build/index.html','out/index.html'])
-              OR lower(entry.path) LIKE '%/dist/index.html'
-              OR lower(entry.path) LIKE '%/build/index.html'
-              OR lower(entry.path) LIKE '%/out/index.html'
-            )
-        )
-      ORDER BY w.updated_at DESC,w.run_id`;
-    return rows.map(row=>({runId:text(row.run_id),snapshotId:text(row.result_snapshot_id)}));
+      ORDER BY r.created_at DESC,r.id DESC`;
+    return rows.map(row=>({
+      runId:text(row.run_id),
+      snapshotId:text(row.result_snapshot_id),
+      agent:text(row.persona_handle),
+      runStatus:text(row.run_status) as RunStatus,
+      publishStatus:text(row.publish_status) as RunWorkspaceResult['publish_status'],
+      conflictCount:number(row.conflict_count),
+      createdAt:timestamp(row.run_created_at),
+      updatedAt:timestamp(row.result_updated_at),
+    }));
   }
 
   async saveRunSnapshot(input:{roomId:string;runId:string;baseSnapshotId:string;entries:SnapshotEntry[];completeness:'complete'|'incomplete';errors:WorkspaceCaptureError[]}){

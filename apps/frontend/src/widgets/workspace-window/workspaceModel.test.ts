@@ -14,6 +14,8 @@ describe('workspace viewer model', () => {
       origin: 'artifact',
       target: { entryId: 'entry-1', versionId: 'version-2' },
       mode: 'source',
+      section: 'app',
+      buildRunId: 'run-7',
       treeVisible: false,
     });
     expect(search.get('gateway')).toBe('fake');
@@ -21,6 +23,8 @@ describe('workspace viewer model', () => {
       origin: 'artifact',
       target: { entryId: 'entry-1', versionId: 'version-2' },
       mode: 'source',
+      section: 'app',
+      buildRunId: 'run-7',
       treeVisible: false,
     });
   });

@@ -11,19 +11,20 @@ import {
   MoreHorizontal,
   PanelLeft,
   Paperclip,
-  Play,
   RefreshCw,
   RotateCcw,
   Trash2,
   Type,
   X,
 } from 'lucide-react';
-import type { RoomStaticPreview, WorkspaceAttachment, WorkspaceEntry, WorkspaceVersion } from '@agenvyl/contracts';
+import type { WorkspaceAttachment, WorkspaceBuildPreview, WorkspaceEntry, WorkspaceVersion } from '@agenvyl/contracts';
 import { IconButton } from '../../shared/ui';
-import { workspaceModesFor, type WorkspaceViewMode } from './workspaceModel';
+import { workspaceModesFor, type WorkspaceSection, type WorkspaceViewMode } from './workspaceModel';
+import { WorkspaceBuildPicker } from './WorkspaceBuildPicker';
 import styles from './WorkspaceWindow.module.css';
 
 type WorkspaceHeaderProps = {
+  section: WorkspaceSection;
   treeVisible: boolean;
   entry?: WorkspaceEntry;
   attachment?: WorkspaceAttachment;
@@ -33,7 +34,14 @@ type WorkspaceHeaderProps = {
   mode: WorkspaceViewMode;
   deleted: boolean;
   canAttach: boolean;
-  staticPreview?: RoomStaticPreview;
+  sourceOnly?: boolean;
+  builds: WorkspaceBuildPreview[];
+  selectedBuild?: WorkspaceBuildPreview;
+  currentBuildRunId?: string;
+  historicalBuild: boolean;
+  onSection: (section: WorkspaceSection) => void;
+  onBuild: (runId: string) => void;
+  onCurrentBuild: () => void;
   onTreeToggle: () => void;
   onVersion: (version: WorkspaceVersion, followCurrent: boolean) => void;
   onMode: (mode: WorkspaceViewMode) => void;
@@ -44,11 +52,11 @@ type WorkspaceHeaderProps = {
   onMove: () => void;
   onDelete: () => void;
   onRefresh: () => void;
-  onPreview: () => void;
   onClose: () => void;
 };
 
 export const WorkspaceHeader = ({
+  section,
   treeVisible,
   entry,
   attachment,
@@ -58,7 +66,14 @@ export const WorkspaceHeader = ({
   mode,
   deleted,
   canAttach,
-  staticPreview,
+  sourceOnly = false,
+  builds,
+  selectedBuild,
+  currentBuildRunId,
+  historicalBuild,
+  onSection,
+  onBuild,
+  onCurrentBuild,
   onTreeToggle,
   onVersion,
   onMode,
@@ -69,7 +84,6 @@ export const WorkspaceHeader = ({
   onMove,
   onDelete,
   onRefresh,
-  onPreview,
   onClose,
 }: WorkspaceHeaderProps) => {
   const actionsRef = useRef<HTMLDetailsElement>(null);
@@ -78,23 +92,17 @@ export const WorkspaceHeader = ({
   const older = versions[viewedIndex + 1];
   const newer = versions[viewedIndex - 1];
   const versionNumber = versions.length ? versions.length - viewedIndex : 1;
-  const modes = attachment ? workspaceModesFor(attachment) : [];
+  const modes = attachment ? sourceOnly ? ['source' as const] : workspaceModesFor(attachment) : [];
   const isHistorical = Boolean(viewed && current && viewed.id !== current.id);
-  const previewLabel = staticPreview?.status === 'ready' ? 'Preview' : staticPreview?.status === 'outdated' ? 'Preview outdated' : 'Preview unavailable';
-  const previewTitle = staticPreview?.status === 'ready'
-    ? 'Preview current workspace'
-    : staticPreview?.status === 'outdated'
-      ? 'Preview outdated — source files changed after this build'
-      : 'Preview unavailable — build output not found';
 
   const action = (callback: () => void) => () => {
     actionsRef.current?.removeAttribute('open');
     callback();
   };
 
-  return <header className={`${styles.globalHeader} ${treeVisible ? styles.treeHeader : styles.viewerHeader}`}>
+  return <header className={`${styles.globalHeader} ${section === 'app' ? styles.appHeader : treeVisible ? styles.treeHeader : styles.viewerHeader}`}>
     <div className={styles.headerLead}>
-      <IconButton
+      {section === 'files' && <IconButton
         aria-label={treeVisible ? 'Hide workspace files' : 'Show workspace files'}
         title={treeVisible ? 'Hide files' : 'Show files'}
         className={treeVisible ? styles.treeToggleActive : ''}
@@ -102,12 +110,12 @@ export const WorkspaceHeader = ({
       >
         <PanelLeft className={styles.desktopTreeIcon} />
         <ChevronLeft className={styles.mobileBackIcon} />
-      </IconButton>
+      </IconButton>}
 
       <div className={styles.workspaceIdentity}>
         <FolderOpen className={styles.workspaceIcon} />
         <strong>Workspace</strong>
-        {attachment && <>
+        {section === 'files' && attachment && <>
           <span className={styles.identityDivider}>/</span>
           <span className={styles.fileName} title={entry?.path ?? attachment.path}>{attachment.name}</span>
         </>}
@@ -115,7 +123,12 @@ export const WorkspaceHeader = ({
     </div>
 
     <div className={styles.headerCenter}>
-      {modes.length > 1 && <div className={styles.headerModeSwitch} aria-label="View mode">
+      <div className={styles.workspaceSectionSwitch} aria-label="Workspace view">
+        <button type="button" className={section === 'app' ? styles.workspaceSectionActive : ''} aria-pressed={section === 'app'} onClick={() => onSection('app')}>App preview</button>
+        <button type="button" className={section === 'files' ? styles.workspaceSectionActive : ''} aria-pressed={section === 'files'} onClick={() => onSection('files')}>Files</button>
+      </div>
+
+      {section === 'files' && modes.length > 1 && <div className={styles.headerModeSwitch} aria-label="View mode">
         <button
           aria-label="Rendered"
           title="Rendered"
@@ -132,7 +145,7 @@ export const WorkspaceHeader = ({
         ><Code2 /></button>
       </div>}
 
-      {versions.length > 0 && <div className={styles.versionCarousel}>
+      {section === 'files' && versions.length > 0 && <div className={styles.versionCarousel}>
         <IconButton aria-label="View older version" title="Older version" disabled={!older} onClick={() => older && onVersion(older, false)}><ChevronLeft /></IconButton>
         <details ref={versionsRef} className={styles.versionPicker} onBlur={closeOutside}>
           <summary role="button" aria-label={`Version ${versionNumber} of ${versions.length}`} title="Version history">
@@ -172,30 +185,22 @@ export const WorkspaceHeader = ({
     </div>
 
     <div className={styles.headerControls}>
-      {staticPreview && <button
-        type="button"
-        className={styles.workspacePreview}
-        aria-label={previewTitle}
-        aria-disabled={staticPreview.status !== 'ready'}
-        title={previewTitle}
-        onClick={() => staticPreview.status === 'ready' && onPreview()}
-      ><Play /><span>{previewLabel}</span></button>}
-
+      {section === 'app' && <WorkspaceBuildPicker builds={builds} selected={selectedBuild} currentRunId={currentBuildRunId} historical={historicalBuild} onSelect={onBuild} onBack={onCurrentBuild}/>}
       <details ref={actionsRef} className={styles.workspaceMenu} onBlur={closeOutside}>
         <summary role="button" aria-label="Workspace actions" title="Workspace actions"><MoreHorizontal /></summary>
         <div className={styles.workspaceMenuPopover}>
-          {attachment && <section>
+          {section === 'files' && attachment && <section>
             {versions.length > 0 && <button onClick={action(() => versionsRef.current?.setAttribute('open', ''))}><History />Version history</button>}
             {isHistorical && <button onClick={action(onRestoreVersion)}><RotateCcw />Restore this version</button>}
             {deleted && <button onClick={action(onRestoreEntry)}><RotateCcw />Restore file</button>}
           </section>}
 
-          {attachment && !deleted && <section>
+          {section === 'files' && attachment && !deleted && <section>
             {canAttach && <button onClick={action(onAttach)}><Paperclip />Attach</button>}
             <a href={attachment.url} download onClick={() => actionsRef.current?.removeAttribute('open')}><Download />Download</a>
           </section>}
 
-          {entry && !deleted && <section>
+          {section === 'files' && entry && !deleted && <section>
             <button onClick={action(onRename)}><Type />Rename</button>
             <button onClick={action(onMove)}><FolderInput />Move</button>
             <button className={styles.dangerItem} onClick={action(onDelete)}><Trash2 />Delete</button>

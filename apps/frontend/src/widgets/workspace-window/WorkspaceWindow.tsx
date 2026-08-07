@@ -6,6 +6,7 @@ import type { RoomWorkspace, WorkspaceAttachment, WorkspaceEntry } from '@agenvy
 import { Alert } from '../../shared/ui';
 import { roomsApi } from '../../entities/room';
 import { WorkspaceContent } from './WorkspaceContent';
+import { WorkspaceAppPreview } from './WorkspaceAppPreview';
 import { WorkspaceExplorer } from './WorkspaceExplorer';
 import { WorkspaceHeader } from './WorkspaceHeader';
 import { WorkspaceOperationDialog, type WorkspaceOperation } from './WorkspaceDialogs';
@@ -71,10 +72,21 @@ export const WorkspaceWindow = ({
   });
   const viewed = requestedVersion ?? metadataQuery.data ?? (!target?.versionId ? current : undefined);
   const attachment = transientAttachment ?? (viewed ? workspaceAttachmentFromVersion(viewed) : undefined);
-  const mode = attachment && request?.mode && ['rendered','source'].includes(request.mode)
+  const appEntry = Boolean(attachment && isAppEntryFile(attachment.path, entries));
+  const mode = appEntry ? 'source' : attachment && request?.mode && ['rendered','source'].includes(request.mode)
     ? request.mode
     : attachment ? defaultWorkspaceMode(attachment) : 'rendered';
+  const section = request?.section ?? (target ? 'files' : workspaceQuery.data?.staticPreview?.status === 'ready' ? 'app' : 'files');
   const treeVisible = request?.treeVisible ?? request?.origin === 'workspace';
+  const staticPreview = workspaceQuery.data?.staticPreview,previewHistory = workspaceQuery.data?.previewHistory ?? [];
+  const currentBuildRunId = staticPreview?.status === 'ready' ? staticPreview.runId : undefined;
+  const selectedBuild = previewHistory.find(build => build.runId === request?.buildRunId)
+    ?? (currentBuildRunId ? previewHistory.find(build => build.runId === currentBuildRunId) : undefined)
+    ?? previewHistory[0];
+  const latestOutdated = staticPreview?.status === 'outdated' ? previewHistory.find(build => build.runId === staticPreview.runId) ?? previewHistory[0] : undefined;
+  const outdatedGate = staticPreview?.status === 'outdated' && !request?.buildRunId;
+  const historicalBuild = section === 'app' && !outdatedGate && Boolean(selectedBuild && selectedBuild.runId !== currentBuildRunId);
+  const canReturnToCurrentBuild = Boolean(currentBuildRunId || staticPreview?.status === 'outdated');
 
   const mutation = useMutation({
     mutationFn: async (action: () => Promise<unknown>) => action(),
@@ -118,8 +130,8 @@ export const WorkspaceWindow = ({
   useEffect(() => {
     if (!open || !selected?.current_version_id || target?.versionId) return;
     const draft = attachmentForEntry(roomId, selected);
-    onRequestChange({ target: { entryId: selected.id, versionId: selected.current_version_id }, mode: defaultWorkspaceMode(draft), followCurrent: true });
-  }, [attachment, onRequestChange, open, roomId, selected, target?.versionId]);
+    onRequestChange({ target: { entryId: selected.id, versionId: selected.current_version_id }, mode: isAppEntryFile(selected.path, entries) ? 'source' : defaultWorkspaceMode(draft), section: 'files', followCurrent: true });
+  }, [attachment, entries, onRequestChange, open, roomId, selected, target?.versionId]);
 
   useEffect(() => {
     const currentId = selected?.current_version_id;
@@ -143,7 +155,8 @@ export const WorkspaceWindow = ({
     setUploadDirectory(parentPath(entry.path));
     onRequestChange({
       target: { entryId: entry.id, versionId: entry.current_version_id },
-      mode: defaultWorkspaceMode(nextAttachment),
+      mode: isAppEntryFile(entry.path, entries) ? 'source' : defaultWorkspaceMode(nextAttachment),
+      section: 'files',
       followCurrent: true,
       gallery: undefined,
       ...(isCompactWorkspace() ? { treeVisible: false } : {}),
@@ -205,6 +218,7 @@ export const WorkspaceWindow = ({
 
   return createPortal(<section className={styles.window} role="dialog" aria-modal="true" aria-label="Workspace">
     <WorkspaceHeader
+      section={section}
       treeVisible={treeVisible}
       entry={selected}
       attachment={attachment}
@@ -214,7 +228,14 @@ export const WorkspaceWindow = ({
       mode={mode}
       deleted={Boolean(selected?.deleted_at)}
       canAttach={Boolean(onAttach)}
-      staticPreview={workspaceQuery.data?.staticPreview}
+      sourceOnly={appEntry}
+      builds={previewHistory}
+      selectedBuild={selectedBuild}
+      currentBuildRunId={currentBuildRunId}
+      historicalBuild={historicalBuild}
+      onSection={nextSection => onRequestChange({ section: nextSection, ...(nextSection === 'app' ? { treeVisible: false } : {}) })}
+      onBuild={buildRunId => onRequestChange({ section: 'app', buildRunId })}
+      onCurrentBuild={() => canReturnToCurrentBuild ? onRequestChange({ section: 'app', buildRunId: undefined }) : onRequestChange({ section: 'files', treeVisible: true })}
       onTreeToggle={() => onRequestChange({ treeVisible: !treeVisible })}
       onVersion={(version, followCurrent) => onRequestChange({ target: { entryId: version.entry_id ?? target?.entryId, versionId: version.id }, followCurrent, mode })}
       onMode={nextMode => onRequestChange({ mode: nextMode })}
@@ -229,24 +250,21 @@ export const WorkspaceWindow = ({
       onMove={() => selected && setOperation({ kind: 'move', entry: selected })}
       onDelete={() => selected && setOperation({ kind: 'delete', entry: selected })}
       onRefresh={() => void workspaceQuery.refetch()}
-      onPreview={() => {
-        const preview = workspaceQuery.data?.staticPreview;
-        if(preview?.status !== 'ready') return;
-        const item = preview.attachment;
-        onRequestChange({
-          target: { versionId: item.version_id, snapshotId: item.snapshot_id, path: item.path },
-          gallery: [item],
-          mode: 'rendered',
-          followCurrent: false,
-          treeVisible: false,
-        });
-      }}
       onClose={onClose}
     />
     {error && <div className={styles.alert}><Alert tone="error">{error}</Alert></div>}
     {workspaceQuery.error && <div className={styles.alert}><Alert tone="error">{workspaceQuery.error instanceof Error ? workspaceQuery.error.message : String(workspaceQuery.error)}</Alert></div>}
     {notice && <button className={styles.notice} onClick={() => setNotice(undefined)}>{notice}<X /></button>}
-    <div className={`${styles.layout} ${treeVisible ? styles.treePane : ''}`}>
+    {section === 'app'
+      ? <WorkspaceAppPreview
+        selected={selectedBuild}
+        latestOutdated={latestOutdated}
+        staticPreview={staticPreview}
+        selectedRunId={request.buildRunId}
+        onSelect={buildRunId => onRequestChange({ section: 'app', buildRunId })}
+        onFiles={() => onRequestChange({ section: 'files', treeVisible: true })}
+      />
+      : <div className={`${styles.layout} ${treeVisible ? styles.treePane : ''}`}>
       {treeVisible && <div className={styles.explorerShell} style={{ width: explorerWidth }}>
         <WorkspaceExplorer
           entries={visibleEntries}
@@ -279,12 +297,14 @@ export const WorkspaceWindow = ({
                     mode: defaultWorkspaceMode(item),
                     followCurrent: false,
                   })}
+                  appEntry={appEntry}
+                  onOpenAppPreview={() => onRequestChange({ section: 'app', buildRunId: undefined, treeVisible: false })}
                 />
               </div>
             </>
             : <ViewerEmpty title={treeVisible ? 'Select a file' : 'No file selected'} detail={treeVisible ? 'Its contents will open here.' : 'Open the file tree to browse the workspace.'} />}
       </main>
-    </div>
+    </div>}
     {operation && <WorkspaceOperationDialog operation={operation} directory={uploadDirectory} pending={mutation.isPending} onClose={() => setOperation(undefined)} onSubmit={submitOperation} />}
   </section>, document.body);
 };
@@ -314,5 +334,10 @@ const fetchDeletedWorkspace = async (roomId: string, signal?: AbortSignal): Prom
 };
 
 const parentPath = (path: string) => path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+const isAppEntryFile = (filePath: string, entries: WorkspaceEntry[]) => {
+  if (!/(^|\/)index\.html?$/i.test(filePath)) return false;
+  const directory = parentPath(filePath),packagePath = directory ? `${directory}/package.json` : 'package.json';
+  return entries.some(entry => entry.kind === 'file' && entry.path.toLowerCase() === packagePath.toLowerCase());
+};
 const clampWidth = (value: number) => Math.max(220, Math.min(460, value));
 const isCompactWorkspace = () => typeof matchMedia === 'function' && matchMedia('(max-width: 899px)').matches;

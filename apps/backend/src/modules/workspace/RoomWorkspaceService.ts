@@ -9,7 +9,7 @@ import type {WorkspaceRepository} from './workspace.repository.js';
 import {runPreviewUrl,toAttachment,toWorkspaceVersion} from './workspace.repository.js';
 import type {RoomEventService} from '../room-events/RoomEventService.js';
 import type {ActiveRunRegistry} from '../runs/ActiveRunRegistry.js';
-import type {ResolveWorkspaceConflictsRequest,RoomStaticPreview,RunArtifact,RunArtifactSummary,RunEmbed,RunWorkspaceResult,WorkspaceAttachment,WorkspaceCaptureError} from '@agenvyl/contracts';
+import type {ResolveWorkspaceConflictsRequest,RoomStaticPreview,RunArtifact,RunArtifactSummary,RunEmbed,RunWorkspaceResult,WorkspaceAttachment,WorkspaceBuildPreview,WorkspaceCaptureError} from '@agenvyl/contracts';
 import {extractWorkspaceImageReferences} from './workspaceEmbeds.js';
 import type {WorkspaceSnapshotRepository} from './workspaceSnapshots.repository.js';
 import {diffSnapshots,entryMap,manifestHash,sameEntry,type SnapshotEntry} from './workspaceSnapshots.js';
@@ -26,6 +26,8 @@ type WorkspaceOptimizationOptions={noopMode:WorkspaceOptimizationMode;warmSlotsM
 type PreparedRunPath=RunWorkspaceDriverPath&{lease?:WorkspaceSlotLease};
 type CaptureResult={entries:SnapshotEntry[];errors:WorkspaceCaptureError[];fingerprints:WorkspaceStatFingerprint[];scannedFiles:number;hashedFiles:number;hashedBytes:number;cacheHits:number;cacheState:'valid'|'invalid'|'unsupported';capabilityKey?:string;cacheMismatch:boolean;verifiedGeneration?:number};
 type RunArtifactProjection={artifacts:RunArtifact[];artifactSummary:RunArtifactSummary;staticPreview?:WorkspaceAttachment;staticPreviewStatus?:'ready'|'build_missing'};
+type PreviewCandidate=Awaited<ReturnType<WorkspaceSnapshotRepository['previewCandidates']>>[number];
+type ProjectedPreview={candidate:PreviewCandidate;attachment:WorkspaceAttachment;buildManifest:string};
 
 const defaultOptimizationOptions:WorkspaceOptimizationOptions={noopMode:'off',warmSlotsMode:'off',statCacheMode:'off',slotLeaseMs:20*60_000};
 
@@ -79,14 +81,16 @@ export class RoomWorkspaceService{
   async list(roomId:string,includeDeleted=false){
     await this.ensure(roomId);await this.reconcile(roomId);
     const current=await this.snapshots?.current(roomId),entries=await this.repository.list(roomId,includeDeleted);
-    let staticPreview:RoomStaticPreview|undefined;
+    let staticPreview:RoomStaticPreview|undefined,previewHistory:WorkspaceBuildPreview[]=[];
     if(!includeDeleted&&current&&this.snapshots){
-      staticPreview=await this.resolveRoomStaticPreview(roomId,current.id).catch(error=>{
+      const projection=await this.resolveRoomPreviewProjection(roomId,current.id).catch(error=>{
         this.logger?.warn({metric:'workspace.preview_projection',roomId,error:error instanceof Error?error.message:String(error)},'Room preview projection failed');
         return undefined;
       });
+      staticPreview=projection?.staticPreview;
+      previewHistory=projection?.previewHistory??[];
     }
-    return{path:this.agentRoomPath(roomId),current_snapshot_id:current?.id??'',materialization_status:current?.materializationStatus??'ready' as const,entries,...(staticPreview?{staticPreview}:{})};
+    return{path:this.agentRoomPath(roomId),current_snapshot_id:current?.id??'',materialization_status:current?.materializationStatus??'ready' as const,entries,...(staticPreview?{staticPreview}:{}),previewHistory};
   }
   async recover(){
     if(!this.snapshots)return;
@@ -552,21 +556,41 @@ export class RoomWorkspaceService{
     const project=policy.projectCandidate([],entries),versionIds=project.flatMap(entry=>entry.versionId?[entry.versionId]:[]),hashes=await this.repository.versionHashes(versionIds);
     return manifestHash(project.map(entry=>entry.versionId?{...entry,versionId:hashes.get(entry.versionId)??`missing:${entry.versionId}`}:entry));
   }
-  private async resolveRoomStaticPreview(roomId:string,currentSnapshotId:string):Promise<RoomStaticPreview|undefined>{
-    if(!this.snapshots)return undefined;
+  private async resolveRoomPreviewProjection(roomId:string,currentSnapshotId:string):Promise<{staticPreview?:RoomStaticPreview;previewHistory:WorkspaceBuildPreview[]}>{
+    if(!this.snapshots)return{previewHistory:[]};
+    const candidates=await this.snapshots.previewCandidates(roomId),projected=(await Promise.all(candidates.map(candidate=>this.projectPreviewCandidate(roomId,candidate)))).filter((item):item is ProjectedPreview=>Boolean(item));
+    const previewHistory=projected.map((item,index)=>({
+      runId:item.candidate.runId,
+      snapshotId:item.candidate.snapshotId,
+      agent:item.candidate.agent,
+      createdAt:item.candidate.createdAt,
+      runStatus:item.candidate.runStatus,
+      publishStatus:item.candidate.publishStatus,
+      sameBuildAsPrevious:Boolean(projected[index+1]&&projected[index+1]!.buildManifest===item.buildManifest),
+      attachment:item.attachment,
+    }));
     const currentEntries=await this.snapshots.entries(currentSnapshotId),currentPaths=currentEntries.filter(entry=>entry.kind==='file').map(entry=>entry.path);
-    if(!hasUnbuiltWebProject(currentPaths))return undefined;
-    const currentPolicy=await this.artifactPolicy(roomId,currentEntries),currentManifest=await this.projectContentManifest(currentEntries,currentPolicy),candidates=await this.snapshots.publishedPreviewCandidates(roomId);
-    for(const candidate of candidates){
-      const resultEntries=await this.snapshots.entries(candidate.snapshotId),previewPath=selectStaticPreviewPath(resultEntries.filter(entry=>entry.kind==='file').map(entry=>entry.path));
-      if(!previewPath)continue;
-      const policy=await this.artifactPolicy(roomId,resultEntries);
+    if(!hasUnbuiltWebProject(currentPaths))return{previewHistory};
+    const currentPolicy=await this.artifactPolicy(roomId,currentEntries),currentManifest=await this.projectContentManifest(currentEntries,currentPolicy);
+    const published=projected.filter(item=>['published','noop'].includes(item.candidate.publishStatus)&&item.candidate.conflictCount===0).sort((left,right)=>right.candidate.updatedAt.localeCompare(left.candidate.updatedAt));
+    for(const item of published){
+      const resultEntries=await this.snapshots.entries(item.candidate.snapshotId),policy=await this.artifactPolicy(roomId,resultEntries);
       if((await this.projectContentManifest(resultEntries,policy))!==currentManifest)continue;
-      const version=await this.snapshots.snapshotFile(roomId,candidate.snapshotId,previewPath);
-      if(!version)continue;
-      return{status:'ready',runId:candidate.runId,attachment:{...toAttachment(version,candidate.snapshotId),preview_url:runPreviewUrl(roomId,candidate.runId)}};
+      return{staticPreview:{status:'ready',runId:item.candidate.runId,attachment:item.attachment},previewHistory};
     }
-    return candidates.length?{status:'outdated',runId:candidates[0]!.runId}:{status:'build_missing'};
+    return{staticPreview:published.length?{status:'outdated',runId:published[0]!.candidate.runId}:{status:'build_missing'},previewHistory};
+  }
+  private async projectPreviewCandidate(roomId:string,candidate:PreviewCandidate):Promise<ProjectedPreview|undefined>{
+    if(!this.snapshots)return undefined;
+    const entries=await this.snapshots.entries(candidate.snapshotId),previewPath=selectStaticPreviewPath(entries.filter(entry=>entry.kind==='file').map(entry=>entry.path));
+    if(!previewPath)return undefined;
+    const version=await this.snapshots.snapshotFile(roomId,candidate.snapshotId,previewPath);
+    if(!version)return undefined;
+    const directory=previewPath.includes('/')?previewPath.slice(0,previewPath.lastIndexOf('/')):'';
+    const buildEntries=directory?entries.filter(entry=>entry.path===directory||entry.path.startsWith(`${directory}/`)):entries;
+    const versionIds=buildEntries.flatMap(entry=>entry.versionId?[entry.versionId]:[]),hashes=await this.repository.versionHashes(versionIds);
+    const buildManifest=manifestHash(buildEntries.map(entry=>entry.versionId?{...entry,versionId:hashes.get(entry.versionId)??`missing:${entry.versionId}`}:entry));
+    return{candidate,buildManifest,attachment:{...toAttachment(version,candidate.snapshotId),preview_url:runPreviewUrl(roomId,candidate.runId)}};
   }
   private classifiedChanges(base:SnapshotEntry[],result:SnapshotEntry[],policy:RunArtifactPolicy){
     return diffSnapshots(base,result).flatMap(change=>{

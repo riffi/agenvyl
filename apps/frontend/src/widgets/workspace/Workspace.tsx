@@ -122,6 +122,8 @@ export function WorkspaceApp({
     ...workspaceTransient,
     target:{...workspaceTransient?.target,...urlWorkspaceRequest.target},
     mode:urlWorkspaceRequest.mode??workspaceTransient?.mode,
+    section:urlWorkspaceRequest.section??workspaceTransient?.section,
+    buildRunId:urlWorkspaceRequest.buildRunId??workspaceTransient?.buildRunId,
     treeVisible:urlWorkspaceRequest.treeVisible,
   }:undefined,[urlWorkspaceRequest,workspaceTransient]);
   const composerRef=useRef<ComposerHandle>(null);
@@ -183,7 +185,7 @@ export function WorkspaceApp({
     setSearchParams(workspaceSearchWithRequest(searchParams,request),{replace:false});
   },[searchParams,setSearchParams]);
   const openWorkspace=useCallback((target?:WorkspaceTarget)=>pushWorkspace(workspaceRequestForTarget(target)),[pushWorkspace]);
-  const openArtifact=useCallback<OpenWorkspaceArtifact>((attachment,gallery,opener)=>{
+  const openArtifact=useCallback<OpenWorkspaceArtifact>((attachment,gallery,opener,options)=>{
     const candidates=gallery?.some(item=>item.version_id===attachment.version_id)?gallery:[attachment,...(gallery??[])];
     pushWorkspace({
       origin:'artifact',
@@ -192,6 +194,7 @@ export function WorkspaceApp({
       gallery:candidates,
       opener,
       followCurrent:false,
+      ...options,
     });
   },[pushWorkspace]);
   const updateWorkspaceRequest=useCallback((update:WorkspaceRequestUpdate)=>{

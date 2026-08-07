@@ -146,8 +146,10 @@ describe('Timeline run details', () => {
     expect(screen.getByRole('button',{name:'file-5.ts'})).toBeTruthy();
     expect(screen.getByRole('button',{name:'Show less'})).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button',{name:'Preview'}));
-    expect(openArtifact).toHaveBeenCalledWith(preview,[preview],expect.any(HTMLButtonElement));
+    const openBuild=screen.getByRole('button',{name:'Open the app build captured for this response'});
+    expect(openBuild.textContent).toContain('Open this build');
+    fireEvent.click(openBuild);
+    expect(openArtifact).toHaveBeenCalledWith(preview,[preview],expect.any(HTMLButtonElement),{section:'app',buildRunId:'run-1'});
     fireEvent.click(screen.getByRole('button',{name:'Apply changes'}));
     expect(confirm).toHaveBeenCalledWith('Apply 6 project files to the room workspace? 2 non-project files will remain only in the run snapshot.');
     expect((screen.getByRole('button',{name:'Applying…'}) as HTMLButtonElement).disabled).toBe(true);

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Download, Expand, File } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, Expand, File, Play } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { WorkspaceAttachment } from '@agenvyl/contracts';
@@ -38,6 +38,8 @@ export const WorkspaceContent = ({
   gallery,
   onEncodingChange,
   onGalleryNavigate,
+  appEntry = false,
+  onOpenAppPreview,
 }: {
   attachment: WorkspaceAttachment;
   mode: WorkspaceViewMode;
@@ -45,10 +47,17 @@ export const WorkspaceContent = ({
   gallery?: WorkspaceAttachment[];
   onEncodingChange?: (encoding?: WorkspaceEncoding) => void;
   onGalleryNavigate?: (attachment: WorkspaceAttachment) => void;
+  appEntry?: boolean;
+  onOpenAppPreview?: () => void;
 }) => {
   const renderer = resolveWorkspaceRenderer(attachment);
   const effectiveMode = workspaceModesFor(attachment).includes(mode) ? mode : renderer.modes[0];
-  if (effectiveMode === 'source') return <SourceViewer attachment={attachment} encoding={encoding} onEncodingChange={onEncodingChange} />;
+  if (effectiveMode === 'source') return appEntry
+    ? <div className={styles.appEntryContent}>
+      <div className={styles.appEntryNotice} role="note"><span><strong>App entry file</strong><small>This HTML starts the source app and needs its build pipeline to render correctly.</small></span><button type="button" onClick={onOpenAppPreview}><Play aria-hidden="true"/>Open app preview</button></div>
+      <SourceViewer attachment={attachment} encoding={encoding} onEncodingChange={onEncodingChange} />
+    </div>
+    : <SourceViewer attachment={attachment} encoding={encoding} onEncodingChange={onEncodingChange} />;
   if (renderer.id === 'html') return <IsolatedHtmlPreview className={styles.frame} title={attachment.name} previewUrl={attachment.preview_url} />;
   if (renderer.id === 'markdown') return <RenderedMarkdown attachment={attachment} encoding={encoding} />;
   if (renderer.id === 'svg') return <ImageGallery attachment={attachment} />;
