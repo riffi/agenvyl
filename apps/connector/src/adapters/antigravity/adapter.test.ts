@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AdapterStartExecutionRequest } from '../../adapter.js';
-import { AntigravityConnectorAdapter, antigravityPrompt, shouldDetachAntigravityProcess } from './adapter.js';
+import { AntigravityConnectorAdapter, antigravityPrompt, shouldDetachAntigravityProcess, windowsCommandLineLength } from './adapter.js';
 
 const directories: string[] = [];
 afterEach(async () => { await Promise.all(directories.splice(0).map(directory => rm(directory, { recursive: true, force: true }))); });
@@ -79,6 +79,20 @@ describe('AntigravityConnectorAdapter', () => {
     const failed = fixture.adapter({ env: { FAKE_AGY_EXIT: '7', FAKE_AGY_STDERR: 'token=secret-value failed' } });
     const failedHandle = await failed.start({ ...execution(fixture.directory), executionId: 'failed' });
     await expect(collect(failed.events(failedHandle))).resolves.toEqual([{ type: 'execution.failed', payload: { error: { code: 'agy_execution_failed', message: 'token=[REDACTED] failed' } } }]);
+  });
+
+  it('keeps the current request and newest contiguous history inside the command-line boundary',async()=>{
+    const fixture=await fakeAgy(),capturePath=join(fixture.directory,'bounded-capture.json');
+    const adapter=fixture.adapter({env:{FAKE_AGY_CAPTURE:capturePath},maxCommandChars:4_000});
+    const request={...execution(fixture.directory),executionId:'bounded',input:{systemPrompt:'Act as coder.',history:Array.from({length:8},(_,index)=>({role:index%2?'assistant' as const:'user' as const,content:`history-${index}-`+'x'.repeat(700)})),message:'Keep this current request.'}};
+    const handle=await adapter.start(request);await collect(adapter.events(handle));
+    const capture=JSON.parse(await readFile(capturePath,'utf8')) as{args:string[]};
+    const prompt=capture.args.at(-1)!,payload=JSON.parse(prompt.split('\n')[1]!) as{conversationHistory:Array<{content:string}>;currentUserMessage:string};
+    expect(payload.currentUserMessage).toBe('Keep this current request.');
+    expect(payload.conversationHistory.length).toBeGreaterThan(0);
+    expect(payload.conversationHistory.at(-1)?.content).toContain('history-7-');
+    expect(payload.conversationHistory[0]?.content).not.toContain('history-0-');
+    expect(windowsCommandLineLength(process.execPath,[join(fixture.directory,'agy.cjs'),...capture.args])).toBeLessThanOrEqual(4_000);
   });
 
   it('terminates a stubborn process tree and reports cancellation', async () => {

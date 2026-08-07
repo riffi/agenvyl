@@ -16,6 +16,7 @@ export type AntigravityAdapterOptions = {
   catalogTimeoutMs?: number;
   stopGraceMs?: number;
   maxPromptBytes?: number;
+  maxCommandChars?: number;
   maxOutputBytes?: number;
 };
 
@@ -47,6 +48,7 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
   private readonly catalogTimeoutMs: number;
   private readonly stopGraceMs: number;
   private readonly maxPromptBytes: number;
+  private readonly maxCommandChars: number;
   private readonly maxOutputBytes: number;
   private readonly executions = new Map<string, ActiveExecution>();
   private versionCheck?: Promise<void>;
@@ -62,6 +64,7 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
     this.catalogTimeoutMs = positiveInteger(options.catalogTimeoutMs, 10_000, 'catalogTimeoutMs');
     this.stopGraceMs = positiveInteger(options.stopGraceMs, 2_000, 'stopGraceMs');
     this.maxPromptBytes = positiveInteger(options.maxPromptBytes, 120 * 1_024, 'maxPromptBytes');
+    this.maxCommandChars = positiveInteger(options.maxCommandChars, process.platform === 'win32' ? 30_000 : Number.MAX_SAFE_INTEGER, 'maxCommandChars');
     this.maxOutputBytes = positiveInteger(options.maxOutputBytes, 1_024 * 1_024, 'maxOutputBytes');
   }
 
@@ -85,16 +88,17 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
     if (this.executions.has(request.executionId)) throw new Error('Antigravity execution already exists');
     const configuredMode=parseAntigravityPermission(request.executionProfile.permissionProfileId);
     const mode=request.executionProfile.workflowMode==='plan'?'plan':configuredMode;
-    const prompt = antigravityPrompt(request);
-    if (Buffer.byteLength(prompt, 'utf8') > this.maxPromptBytes) throw new Error('Antigravity prompt exceeds the configured 120 KiB argv boundary');
-    const args = [
+    const executable = await this.resolveAgyCommand();
+    const fixedArgs = [
       '--dangerously-skip-permissions',
       '--mode', mode,
       '--model', request.modelId,
       '--print-timeout', `${this.printTimeoutMs}ms`,
-      '--print', prompt,
     ];
-    const child = await this.spawnAgy(args, request.workspace.absolutePath);
+    const fits = (prompt:string) => Buffer.byteLength(prompt, 'utf8') <= this.maxPromptBytes
+      && windowsCommandLineLength(executable, [...this.commandArgsPrefix, ...fixedArgs, '--print', prompt]) <= this.maxCommandChars;
+    const prompt = boundedAntigravityPrompt(request, fits);
+    const child = await this.spawnAgy([...fixedArgs, '--print', prompt], request.workspace.absolutePath, executable);
     const active: ActiveExecution = {
       child,
       completion: collectProcess(child, this.maxOutputBytes),
@@ -171,8 +175,12 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
     return result;
   }
 
-  private async spawnAgy(args: string[], cwd?: string) {
-    const executable = await (this.resolvedCommand ??= resolveCommand(this.command, { env: this.env }));
+  private resolveAgyCommand() {
+    return this.resolvedCommand ??= resolveCommand(this.command, { env: this.env });
+  }
+
+  private async spawnAgy(args: string[], cwd?: string, resolvedExecutable?:string) {
+    const executable = resolvedExecutable ?? await this.resolveAgyCommand();
     const invocation = commandInvocation(executable, [...this.commandArgsPrefix, ...args], process.platform, this.env);
     return spawn(invocation.file, invocation.args, {
       ...(cwd ? { cwd } : {}),
@@ -227,6 +235,33 @@ export function antigravityPrompt(request: AdapterStartExecutionRequest) {
       },
     }),
   ].join('\n');
+}
+
+function boundedAntigravityPrompt(request:AdapterStartExecutionRequest,fits:(prompt:string)=>boolean){
+  const promptFor=(history:AdapterStartExecutionRequest['input']['history'])=>antigravityPrompt({...request,input:{...request.input,history}});
+  let history:AdapterStartExecutionRequest['input']['history']=[],prompt=promptFor(history);
+  if(!fits(prompt))throw new Error('Antigravity current request exceeds the configured CLI argv boundary');
+  for(const item of [...request.input.history].reverse()){
+    const candidate=[{...item,content:item.content.slice(0,16_000)},...history],candidatePrompt=promptFor(candidate);
+    if(!fits(candidatePrompt))break;
+    history=candidate;prompt=candidatePrompt;
+  }
+  return prompt;
+}
+
+export function windowsCommandLineLength(executable:string,args:string[]){
+  return [executable,...args].reduce((length,value,index)=>length+(index?1:0)+windowsArgumentLength(value),0);
+}
+
+function windowsArgumentLength(value:string){
+  if(value&& !/[\s"]/u.test(value))return value.length;
+  let length=2,backslashes=0;
+  for(const character of value){
+    if(character==='\\'){backslashes+=1;continue;}
+    if(character==='"'){length+=backslashes*2+2;backslashes=0;continue;}
+    length+=backslashes+character.length;backslashes=0;
+  }
+  return length+backslashes*2;
 }
 
 type RunningChild = ChildProcessByStdio<null, Readable, Readable>;
