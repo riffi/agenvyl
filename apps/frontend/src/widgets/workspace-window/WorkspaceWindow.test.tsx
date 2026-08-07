@@ -94,6 +94,7 @@ describe('WorkspaceWindow', () => {
     expect(screen.queryByRole('navigation', { name: 'Workspace files' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Show workspace files' })).toBeTruthy();
     await waitFor(() => expect(screen.getByRole('button', { name: 'Version 2 of 2' })).toBeTruthy());
+    expect(screen.getByRole('button', { name: 'Version 2 of 2' }).textContent).toBe('v2/2');
     expect(screen.getByText('page.html')).toBeTruthy();
     const sourceAction = screen.getByRole('button', { name: 'Source' });
     expect(sourceAction.closest('details')).toBeNull();
@@ -162,6 +163,17 @@ describe('WorkspaceWindow', () => {
     await waitFor(() => expect(appPreview.getAttribute('aria-pressed')).toBe('true'));
     expect(screen.getByRole('button', { name: 'Choose app build' }).getAttribute('title')).toContain('@builder');
     expect(onRequestChange).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Files' }));
+    expect(onRequestChange).toHaveBeenLastCalledWith({
+      section: 'files',
+      treeVisible: true,
+      target: undefined,
+      gallery: undefined,
+      mode: undefined,
+      encoding: undefined,
+      followCurrent: false,
+    });
   });
 
   it('explains when the room preview no longer matches current sources', async () => {

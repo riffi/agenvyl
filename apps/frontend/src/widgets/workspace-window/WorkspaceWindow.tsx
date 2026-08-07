@@ -216,6 +216,16 @@ export const WorkspaceWindow = ({
     addEventListener('pointerup', stop);
   };
 
+  const openFiles = () => onRequestChange({
+    section: 'files',
+    treeVisible: true,
+    target: undefined,
+    gallery: undefined,
+    mode: undefined,
+    encoding: undefined,
+    followCurrent: false,
+  });
+
   return createPortal(<section className={styles.window} role="dialog" aria-modal="true" aria-label="Workspace">
     <WorkspaceHeader
       section={section}
@@ -233,9 +243,9 @@ export const WorkspaceWindow = ({
       selectedBuild={selectedBuild}
       currentBuildRunId={currentBuildRunId}
       historicalBuild={historicalBuild}
-      onSection={nextSection => onRequestChange({ section: nextSection, ...(nextSection === 'app' ? { treeVisible: false } : {}) })}
+      onSection={nextSection => nextSection === 'files' ? openFiles() : onRequestChange({ section: 'app', treeVisible: false })}
       onBuild={buildRunId => onRequestChange({ section: 'app', buildRunId })}
-      onCurrentBuild={() => canReturnToCurrentBuild ? onRequestChange({ section: 'app', buildRunId: undefined }) : onRequestChange({ section: 'files', treeVisible: true })}
+      onCurrentBuild={() => canReturnToCurrentBuild ? onRequestChange({ section: 'app', buildRunId: undefined }) : openFiles()}
       onTreeToggle={() => onRequestChange({ treeVisible: !treeVisible })}
       onVersion={(version, followCurrent) => onRequestChange({ target: { entryId: version.entry_id ?? target?.entryId, versionId: version.id }, followCurrent, mode })}
       onMode={nextMode => onRequestChange({ mode: nextMode })}
@@ -262,7 +272,7 @@ export const WorkspaceWindow = ({
         staticPreview={staticPreview}
         selectedRunId={request.buildRunId}
         onSelect={buildRunId => onRequestChange({ section: 'app', buildRunId })}
-        onFiles={() => onRequestChange({ section: 'files', treeVisible: true })}
+        onFiles={openFiles}
       />
       : <div className={`${styles.layout} ${treeVisible ? styles.treePane : ''}`}>
       {treeVisible && <div className={styles.explorerShell} style={{ width: explorerWidth }}>

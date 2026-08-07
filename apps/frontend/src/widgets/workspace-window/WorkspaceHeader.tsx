@@ -127,7 +127,9 @@ export const WorkspaceHeader = ({
         <button type="button" className={section === 'app' ? styles.workspaceSectionActive : ''} aria-pressed={section === 'app'} onClick={() => onSection('app')}>App preview</button>
         <button type="button" className={section === 'files' ? styles.workspaceSectionActive : ''} aria-pressed={section === 'files'} onClick={() => onSection('files')}>Files</button>
       </div>
+    </div>
 
+    <div className={styles.headerControls}>
       {section === 'files' && modes.length > 1 && <div className={styles.headerModeSwitch} aria-label="View mode">
         <button
           aria-label="Rendered"
@@ -149,7 +151,7 @@ export const WorkspaceHeader = ({
         <IconButton aria-label="View older version" title="Older version" disabled={!older} onClick={() => older && onVersion(older, false)}><ChevronLeft /></IconButton>
         <details ref={versionsRef} className={styles.versionPicker} onBlur={closeOutside}>
           <summary role="button" aria-label={`Version ${versionNumber} of ${versions.length}`} title="Version history">
-            <span>{versionNumber}</span><i>/</i><span>{versions.length}</span>
+            <span>v{versionNumber}</span><i>/</i><span>{versions.length}</span>
           </summary>
           <div className={styles.versionPopover}>
             <header><strong>Version history</strong><span>{versions.length} versions</span></header>
@@ -182,9 +184,6 @@ export const WorkspaceHeader = ({
         </details>
         <IconButton aria-label="View newer version" title="Newer version" disabled={!newer} onClick={() => newer && onVersion(newer, newer.id === current?.id)}><ChevronRight /></IconButton>
       </div>}
-    </div>
-
-    <div className={styles.headerControls}>
       {section === 'app' && <WorkspaceBuildPicker builds={builds} selected={selectedBuild} currentRunId={currentBuildRunId} historical={historicalBuild} onSelect={onBuild} onBack={onCurrentBuild}/>}
       <details ref={actionsRef} className={styles.workspaceMenu} onBlur={closeOutside}>
         <summary role="button" aria-label="Workspace actions" title="Workspace actions"><MoreHorizontal /></summary>

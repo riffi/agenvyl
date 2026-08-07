@@ -1,6 +1,7 @@
 export { WorkspaceWindow } from './WorkspaceWindow';
 export { WorkspaceArtifactActions } from './WorkspaceArtifactActions';
 export {
+  applyWorkspaceRequestUpdate,
   defaultWorkspaceMode,
   workspaceRequestFromSearch,
   workspaceRequestForTarget,

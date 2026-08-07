@@ -67,6 +67,18 @@ export type WorkspaceRequestUpdate = {
   gallery?: WorkspaceAttachment[];
 };
 
+export const applyWorkspaceRequestUpdate = (
+  current: WorkspaceOpenRequest,
+  update: WorkspaceRequestUpdate,
+): WorkspaceOpenRequest => ({
+  ...current,
+  ...update,
+  target: Object.prototype.hasOwnProperty.call(update, 'target')
+    ? update.target ? { ...current.target, ...update.target } : undefined
+    : current.target,
+  gallery: Object.prototype.hasOwnProperty.call(update, 'gallery') ? update.gallery : current.gallery,
+});
+
 const sourceExtensions = new Set([
   'bash','c','cc','cfg','conf','cpp','cs','css','csv','env','go','graphql','h','hpp','ini','java','js','jsx',
   'json','kt','log','lua','md','mjs','php','properties','ps1','py','rb','rs','scss','sh','sql','swift','toml',

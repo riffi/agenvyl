@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { decodeWorkspaceBytes, detectWorkspaceEncoding } from './workspaceText';
-import { workspaceModesFor, workspaceRequestForTarget, workspaceRequestFromSearch, workspaceSearchWithRequest } from './workspaceModel';
+import { applyWorkspaceRequestUpdate, workspaceModesFor, workspaceRequestForTarget, workspaceRequestFromSearch, workspaceSearchWithRequest } from './workspaceModel';
 
 describe('workspace viewer model', () => {
   it('assigns rendered and source modes without trusting MIME alone', () => {
@@ -39,6 +39,29 @@ describe('workspace viewer model', () => {
     });
     expect(workspaceRequestForTarget(target, false).treeVisible).toBe(true);
     expect(workspaceRequestForTarget(undefined, true).treeVisible).toBe(true);
+  });
+
+  it('clears the active file preview without forgetting the selected app build', () => {
+    const current = {
+      origin: 'artifact' as const,
+      section: 'app' as const,
+      buildRunId: 'run-7',
+      target: { entryId: 'entry-1', versionId: 'version-2' },
+      treeVisible: false,
+      gallery: [{ version_id: 'version-2', path: 'dist/index.html', name: 'index.html', size: 42, mime_type: 'text/html', url: '/version', preview_url: '/preview' }],
+    };
+
+    const next = applyWorkspaceRequestUpdate(current, {
+      section: 'files',
+      treeVisible: true,
+      target: undefined,
+      gallery: undefined,
+    });
+
+    expect(next.target).toBeUndefined();
+    expect(next.gallery).toBeUndefined();
+    expect(next.treeVisible).toBe(true);
+    expect(next.buildRunId).toBe('run-7');
   });
 
   it('detects BOM, strict UTF-8 and supports manual Cyrillic decoding', () => {

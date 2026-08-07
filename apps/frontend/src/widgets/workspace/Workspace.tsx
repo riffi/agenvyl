@@ -12,7 +12,7 @@ import { CreateRoomDialog, RoomAgentManager,RoomProjectDialog } from "../../feat
 import {AttachmentPicker,useRoomAttachments} from '../../features/send-message';
 import { FakeRoomGateway, HttpRoomGateway, type RoomGateway } from "../../features/room-session";
 import { Button, EmptyState } from "../../shared/ui";
-import { WorkspaceWindow, workspaceRequestForTarget, workspaceRequestFromSearch, workspaceSearchWithRequest, type OpenWorkspaceArtifact, type WorkspaceOpenRequest, type WorkspaceRequestUpdate, type WorkspaceTarget } from '../workspace-window';
+import { applyWorkspaceRequestUpdate, WorkspaceWindow, workspaceRequestForTarget, workspaceRequestFromSearch, workspaceSearchWithRequest, type OpenWorkspaceArtifact, type WorkspaceOpenRequest, type WorkspaceRequestUpdate, type WorkspaceTarget } from '../workspace-window';
 import { Composer, type ComposerHandle, type ComposerInterventionTarget } from "../composer";
 import { PersonasScreen } from "../personas-screen";
 import { RoomHeader } from "../room-header";
@@ -199,12 +199,7 @@ export function WorkspaceApp({
   },[pushWorkspace]);
   const updateWorkspaceRequest=useCallback((update:WorkspaceRequestUpdate)=>{
     if(!workspaceRequest)return;
-    const next:WorkspaceOpenRequest={
-      ...workspaceRequest,
-      ...update,
-      target:update.target?{...workspaceRequest.target,...update.target}:workspaceRequest.target,
-      gallery:Object.prototype.hasOwnProperty.call(update,'gallery')?update.gallery:workspaceRequest.gallery,
-    };
+    const next=applyWorkspaceRequestUpdate(workspaceRequest,update);
     setWorkspaceTransient(next);
     setSearchParams(workspaceSearchWithRequest(searchParams,next),{replace:true});
   },[searchParams,setSearchParams,workspaceRequest]);
