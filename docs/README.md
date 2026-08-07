@@ -13,6 +13,7 @@ Continue with:
 - [Command line and terminal control center](user-guide/cli-and-control-center.md)
 - [Connector configuration](user-guide/connector-configuration.md)
 - [Workspace and file previews](user-guide/workspace.md)
+- [App builds and previews](user-guide/app-builds.md)
 - [Local projects](user-guide/projects.md)
 - [Data and backups](user-guide/data-and-backups.md)
 - [Updates and uninstall](user-guide/update-and-uninstall.md)
@@ -35,6 +36,10 @@ tool:
 
 Read [How Agenvyl works](architecture/overview.md) for the product model,
 component boundaries, execution flow, persistence, and security model.
+
+The [app build architecture](architecture/app-builds.md) describes captured
+static output, artifact filtering, current-build selection, history, and the
+separate preview-serving boundary.
 
 The [bundled PostgreSQL supply chain](architecture/postgres-runtime.md) records
 how the native database payload is built and verified.
@@ -65,4 +70,6 @@ Contribution policy remains in the repository
 
 Maintainers should follow the
 [Prerelease and stable release runbook](releases/README.md). Version-specific notes
-are archived beside it, beginning with [v0.1.0](releases/v0.1.0.md).
+are archived beside it, beginning with [v0.1.0](releases/v0.1.0.md). Changes on
+`main` after the latest tag are summarized in the
+[unreleased notes](releases/unreleased.md).

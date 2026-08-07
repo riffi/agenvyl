@@ -228,6 +228,14 @@ The captured result remains addressable independently of publication. This is
 why a response can still preview or download an exact artifact when its run was
 only partially published or could not publish an incomplete capture.
 
+Complete result snapshots can also expose a static app build. Generated output
+is retained with the run while artifact policy excludes it from ordinary source
+publication. The room-level current build is selected only when its published,
+conflict-free project manifest still matches the current workspace; all other
+complete builds remain historical. See
+[App build architecture](app-builds.md) for detection, projection, preview
+serving, and frontend navigation.
+
 For the task-oriented UI, version, and conflict workflow, see
 [Workspace and file previews](../user-guide/workspace.md). Operational
 materialization, cleanup, and recovery rules are in the

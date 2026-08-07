@@ -54,6 +54,11 @@ unfinished output or file changes. Agenvyl applies completed file changes to the
 room and asks you to resolve a conflict instead of silently overwriting newer
 work. Completed selected answers become context for later turns.
 
+When an agent produces a static web build, Agenvyl captures it with that exact
+response. Open the current app from the Workspace, inspect any response's build,
+or compare build history without replacing the room's source files. Agenvyl
+warns when later source changes make the latest applied build outdated.
+
 A message without an `@mention` is saved in the room but starts no agent.
 
 For components, persistence, retries, and security boundaries, read
@@ -161,6 +166,7 @@ Use the [documentation map](docs/README.md) to choose a route:
 - [Install and use Agenvyl](docs/user-guide/installation.md)
 - [Use the command line and terminal control center](docs/user-guide/cli-and-control-center.md)
 - [Work with Workspace files and previews](docs/user-guide/workspace.md)
+- [Open and compare captured app builds](docs/user-guide/app-builds.md)
 - [Register and use local projects](docs/user-guide/projects.md)
 - [Connect an agent tool](docs/harnesses/README.md)
 - [Understand the architecture](docs/architecture/overview.md)

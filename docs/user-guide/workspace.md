@@ -4,6 +4,10 @@ Each room has a Workspace for files shared across its conversation. Agenvyl
 keeps earlier file versions, lets you preview agent output, and protects
 parallel work from silently overwriting newer changes.
 
+The Workspace also has an **App** view for static builds captured from agent
+runs. See [App builds and previews](app-builds.md) for the functional workflow,
+history labels, stale-build behavior, and supported output layouts.
+
 ## At a glance
 
 ```mermaid
@@ -12,6 +16,7 @@ flowchart TD
   Artifact[Attachment or agent artifact] -->|Exact saved version; tree hidden| Window
   Window --> Tree[Browse and manage files]
   Window --> Preview[Rendered or Source view]
+  Window --> App[Current or historical app build]
   Window --> History[Version history]
   History --> Older[View an older version without changing the file]
   Older -->|Restore| Current[Create a new current version]
@@ -44,6 +49,10 @@ together:
 - The actions menu contains the operations available for the selected file,
   such as Attach, Download, Restore, Rename, Move, Delete, and Refresh.
 - The close button exits the Workspace.
+
+When the room contains a captured static app, **App** and **Files** switch
+between the runnable build and the editable project tree. App build history is
+separate from the version history of an individual file.
 
 Hover over an icon to see its label.
 
