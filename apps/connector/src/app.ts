@@ -3,6 +3,7 @@ import { Readable } from 'node:stream';
 import Fastify, { type FastifyRequest } from 'fastify';
 import {
   CONNECTOR_API_VERSION,
+  isCreateExecutionInterventionRequest,
   isResolveConnectorRequest,
   isConfigureConnectorInstancesRequest,
   isTestConnectorInstanceRequest,
@@ -13,6 +14,7 @@ import {
   type ConnectorCatalog,
   type ConnectorDiscovery,
   type TestConnectorInstanceResult,
+  type CreateExecutionInterventionRequest,
 } from '@agenvyl/connector-contract';
 import type { ConnectorAdapter } from './adapter.js';
 import { AdapterGenerationManager, type PreparedAdapterRuntime } from './adapter-generations.js';
@@ -61,12 +63,12 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
     options.now,
   );
   const instanceSnapshot=(instance:ConnectorConfig['instances'][number])=>{
-    const adapter=generations.current.adapters.get(instance.id),ownership=instance.type==='opencode'&&instance.managed!==undefined?{managed:instance.managed}:{},activeExecutions=registry.activeCount(instance.id),runtimeError=runtimeErrors.get(instance.id);
+    const adapter=generations.current.adapters.get(instance.id),ownership=instance.type==='opencode'&&instance.managed!==undefined?{managed:instance.managed}:{},intervention=adapter?.interventionMode?{interventionMode:adapter.interventionMode}:{},activeExecutions=registry.activeCount(instance.id),runtimeError=runtimeErrors.get(instance.id);
     if(runtimeError)return{id:instance.id,type:instance.type,status:'unavailable' as const,capabilities:[],...ownership,activeExecutions,error:runtimeError};
     if(adapter?.type!==instance.type)return{id:instance.id,type:instance.type,status:'unavailable' as const,capabilities:[],...ownership,activeExecutions,error:{code:'adapter_not_loaded',message:'Adapter module is not loaded in this Connector build'}};
     return workspacePolicy.configured
-      ?{id:instance.id,type:instance.type,status:'healthy' as const,capabilities:adapter.capabilities,...ownership,activeExecutions}
-      :{id:instance.id,type:instance.type,status:'degraded' as const,capabilities:adapter.capabilities,...ownership,activeExecutions,error:{code:'workspace_not_configured',message:'Connector workspace roots are not configured'}};
+      ?{id:instance.id,type:instance.type,status:'healthy' as const,capabilities:adapter.capabilities,...intervention,...ownership,activeExecutions}
+      :{id:instance.id,type:instance.type,status:'degraded' as const,capabilities:adapter.capabilities,...intervention,...ownership,activeExecutions,error:{code:'workspace_not_configured',message:'Connector workspace roots are not configured'}};
   };
 
   app.addHook('onClose',async()=>{await configurationQueue;await generations.close();});
@@ -231,6 +233,14 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
     } catch (caught) {
       return error(reply, caught);
     }
+  });
+
+  app.post<{Params:{id:string};Body:CreateExecutionInterventionRequest}>('/v2/executions/:id/interventions',{
+    schema:{body:{type:'object',additionalProperties:false,required:['interventionId','text'],properties:{interventionId:{type:'string',format:'uuid'},text:{type:'string',minLength:1,maxLength:2_000,pattern:'\\S'}}}},
+  },async(request,reply)=>{
+    if(!isCreateExecutionInterventionRequest(request.body))return error(reply,new RegistryError('invalid_request','Intervention does not match Connector v2 contract',400));
+    try{return reply.code(202).send(registry.intervene(request.params.id,request.body));}
+    catch(caught){return error(reply,caught);}
   });
 
   app.post<{Params:{id:string}}>('/v2/instances/:id/restart',async(request,reply)=>{

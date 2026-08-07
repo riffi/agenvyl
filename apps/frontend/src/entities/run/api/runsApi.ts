@@ -8,4 +8,5 @@ export const runsApi = {
   cancel: (runId: string) => apiRequest(`/api/v1/runs/${encodeURIComponent(runId)}/cancel`, { method: 'POST', body: {} }),
   retry: (runId: string) => apiRequest(`/api/v1/runs/${encodeURIComponent(runId)}/retry`, { method: 'POST', body: {} }),
   select: (runId: string) => apiRequest(`/api/v1/runs/${encodeURIComponent(runId)}/select`, { method: 'POST', body: {} }),
+  intervene: (runId:string,text:string,interventionId:string=crypto.randomUUID()) => apiRequest<{intervention_id:string;status:'pending'}>(`/api/v1/runs/${encodeURIComponent(runId)}/interventions`,{method:'POST',body:{intervention_id:interventionId,text}}),
 };

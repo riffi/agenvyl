@@ -15,6 +15,25 @@ beforeAll(async () => {
 afterAll(async () => { await rm(workspaceRoot, { recursive: true, force: true }); });
 
 describe('ExecutionRegistry live subscriptions', () => {
+  it('serializes idempotent interventions and publishes strict cursor order',async()=>{
+    const adapter=new RedirectAdapter(),registry=createRegistry(adapter),request=structuredClone(connectorContractFixtures.startExecution) as StartExecutionRequest;
+    registry.start(request);await waitFor(()=>registry.inspect(request.executionId).status==='running');
+    const first={interventionId:'c226f522-d864-4f1c-a53f-25d22dc9109f',text:'Focus on the API'};
+    expect(registry.intervene(request.executionId,first).intervention.status).toBe('pending');
+    expect(registry.intervene(request.executionId,first).intervention.status).toBe('pending');
+    expect(adapter.calls).toEqual([first]);
+    expect(()=>registry.intervene(request.executionId,{...first,text:'Different'})).toThrow('different text');
+    expect(()=>registry.intervene(request.executionId,{interventionId:'777f7444-e6a9-4e85-818f-20d536876ff7',text:'Second'})).toThrow('already in progress');
+    adapter.apply();await waitFor(()=>registry.inspect(request.executionId).cursor>=5);
+    const second={interventionId:'777f7444-e6a9-4e85-818f-20d536876ff7',text:'Second'};
+    registry.intervene(request.executionId,second);adapter.apply();await waitFor(()=>registry.inspect(request.executionId).cursor>=7);
+    adapter.emit({type:'execution.completed',payload:{}});await waitFor(()=>registry.inspect(request.executionId).status==='completed');
+    const events=await collect(registry.subscribe(request.executionId,0));
+    expect(events.filter(event=>event.type.startsWith('execution.intervention')).map(event=>[event.type,'interventionId' in event.payload?event.payload.interventionId:undefined])).toEqual([
+      ['execution.intervention.accepted',first.interventionId],['execution.intervention.applied',first.interventionId],
+      ['execution.intervention.accepted',second.interventionId],['execution.intervention.applied',second.interventionId],
+    ]);
+  });
   it('delivers events emitted after replay capture without a cursor gap', async () => {
     const adapter = new LiveAdapter();
     const registry = createRegistry(adapter);
@@ -226,6 +245,17 @@ async function collect<T>(source: AsyncIterable<T>) {
   const values: T[] = [];
   for await (const value of source) values.push(value);
   return values;
+}
+
+class RedirectAdapter extends LiveAdapter{
+  readonly interventionMode='interrupt_then_continue' as const;
+  readonly calls:Array<{interventionId:string;text:string}>=[];
+  private pending?:{input:{interventionId:string;text:string};resolve:()=>void};
+  intervene(_execution:AdapterExecution,input:{interventionId:string;text:string}){
+    this.calls.push({...input});
+    return new Promise<void>(resolve=>{this.pending={input:{...input},resolve};});
+  }
+  apply(){const pending=this.pending;if(!pending)throw new Error('No pending intervention');this.pending=undefined;this.emit({type:'execution.intervention.applied',payload:pending.input});pending.resolve();}
 }
 
 function createRegistry(adapter:ConnectorAdapter){

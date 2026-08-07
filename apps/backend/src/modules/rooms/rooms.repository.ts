@@ -8,6 +8,7 @@ import {
   type Persona,
   type RoomPersona,
   type Run,
+  type RunIntervention,
   type StructuredQuestion,
   type ToolActivity,
   type WorkflowMode,
@@ -83,11 +84,11 @@ export class RoomRepository {
           : [];
         const runIds = runRows.map((row) => text(row.id));
         const eventRows = runIds.length
-          ? await tx`SELECT type,payload FROM room_events WHERE room_id=${roomId} AND sequence<=${Number(room.event_sequence)} AND type=ANY(${["tool.updated", "request.created", "request.resolved"]}) AND payload->>'runId'=ANY(${runIds}) ORDER BY sequence`
+          ? await tx`SELECT type,payload FROM room_events WHERE room_id=${roomId} AND sequence<=${Number(room.event_sequence)} AND type=ANY(${["tool.updated", "request.created", "request.resolved", "run.intervention.updated"]}) AND payload->>'runId'=ANY(${runIds}) ORDER BY sequence`
           : [];
         const extras = new Map<
           string,
-          { tools: ToolActivity[]; requests:Map<string,NonNullable<Run["requests"]>[number]> }
+          { tools: ToolActivity[]; requests:Map<string,NonNullable<Run["requests"]>[number]>;interventions:Map<string,RunIntervention> }
         >();
         for (const event of eventRows) {
           if (!event.payload || typeof event.payload !== "object") continue;
@@ -95,7 +96,7 @@ export class RoomRepository {
             runId =
               typeof payload.runId === "string" ? payload.runId : undefined;
           if (!runId) continue;
-          const extra = extras.get(runId) ?? { tools: [],requests:new Map() },
+          const extra = extras.get(runId) ?? { tools: [],requests:new Map(),interventions:new Map() },
             tool = payload.tool;
           if (event.type === "tool.updated" && isTool(tool)) {
             extra.tools = upsertToolActivity(extra.tools,tool);
@@ -134,6 +135,13 @@ export class RoomRepository {
             const request=extra.requests.get(payload.requestId);
             if(request)extra.requests.set(payload.requestId,{...request,resolved:payload.resolution});
           }
+          if(event.type==='run.intervention.updated'&&payload.intervention&&typeof payload.intervention==='object'){
+            const intervention=payload.intervention as Record<string,unknown>;
+            if(typeof intervention.id==='string'&&typeof intervention.text==='string'&&['pending','applied','failed'].includes(String(intervention.status))){
+              const prior=extra.interventions.get(intervention.id);
+              extra.interventions.set(intervention.id,{...prior,id:intervention.id,text:intervention.text,status:intervention.status as RunIntervention['status'],...(typeof intervention.supersededText==='string'?{supersededText:intervention.supersededText}:{}),...(typeof intervention.error==='string'?{error:intervention.error}:{})});
+            }
+          }
           extras.set(runId, extra);
         }
         const selectedRows = messageIds.length
@@ -150,6 +158,7 @@ export class RoomRepository {
               row,
               extra?.tools ?? [],
               [...(extra?.requests.values()??[])],
+              [...(extra?.interventions.values()??[])],
               artifactMap.get(id) ?? [],
               embedMap.get(id) ?? [],
             );

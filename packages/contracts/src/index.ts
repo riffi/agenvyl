@@ -57,6 +57,14 @@ export type RunRequest = {
   resolved?: string;
 };
 
+export type RunIntervention = {
+  id: string;
+  text: string;
+  status: 'pending' | 'applied' | 'failed';
+  supersededText?: string;
+  error?: string;
+};
+
 export function upsertToolActivity(tools:ToolActivity[],incoming:ToolActivity):ToolActivity[]{
   const index=tools.findIndex(tool=>tool.id===incoming.id);
   const prior=index<0?undefined:tools[index];
@@ -118,6 +126,7 @@ export type Run = {
   responseSlotId?: string;
   attemptNumber?: number;
   requests?: RunRequest[];
+  interventions: RunIntervention[];
   error?: string;
   errorCode?: string;
   artifacts?: RunArtifact[];
@@ -244,6 +253,8 @@ export type McpElicitation={mode:'form'|'openai/form';serverName:string;message:
 export type McpElicitationAnswer={action:'accept';content:JsonValue}|{action:'decline'|'cancel';content:null};
 export type RunRequestResolution={resolution:string}|{answers:Record<string,string[]>}|{elicitation:McpElicitationAnswer};
 export type ResolveRunRequest = RunRequestResolution;
+export type CreateRunInterventionRequest = { intervention_id:string;text:string };
+export type CreateRunInterventionResult = { intervention_id:string;status:'pending' };
 export type ApprovalRequest = ResolveRunRequest;
 export type PersonaInput = Pick<Persona, 'handle' | 'name' | 'color' | 'group_id'> & {
   requested_model?: string | null;
@@ -279,6 +290,7 @@ export type ServerRoomEvent =
   | Envelope<'tool.updated', { runId: string; tool: ToolActivity }>
   | Envelope<'request.created', { runId: string; requestId:string; kind: 'approval' | 'clarification' | 'elicitation'; prompt: string;directory?:string;choices?: string[];questions?:StructuredQuestion[];elicitation?:McpElicitation;autoResolutionMs?:number }>
   | Envelope<'request.resolved', { runId: string; requestId:string; resolution: string }>
+  | Envelope<'run.intervention.updated', { runId:string; intervention:RunIntervention }>
   | Envelope<'run.selected', { responseSlotId: string; runId: string }>
   | Envelope<'room.participant.updated', RoomPersona>
   | Envelope<'room.workflow_mode.updated', { workflowMode: WorkflowMode }>
@@ -300,6 +312,7 @@ const eventTypes = new Set<ServerRoomEvent['type']>([
   'tool.updated',
   'request.created',
   'request.resolved',
+  'run.intervention.updated',
   'run.selected',
   'room.participant.updated',
   'room.workflow_mode.updated',
@@ -318,7 +331,7 @@ export function isServerRoomEvent(value: unknown): value is ServerRoomEvent {
   const payload = value.payload;
   switch (value.type) {
     case 'message.created': return typeof payload.id === 'string' && typeof payload.text === 'string' && Array.isArray(payload.targets) && Array.isArray(payload.runIds) && (payload.attachments===undefined||Array.isArray(payload.attachments)) && isRecord(payload.author) && strings(payload.author,'profileId','displayName','handle') && typeof payload.addressedToAll==='boolean';
-    case 'run.created': return typeof payload.id === 'string' && typeof payload.messageId === 'string' && typeof payload.agent === 'string' && (payload.requestedModel === undefined || typeof payload.requestedModel === 'string') && strings(payload,'harnessInstanceId','harnessType','modelId') && (payload.adapterGeneration===undefined||(Number.isSafeInteger(payload.adapterGeneration)&&Number(payload.adapterGeneration)>0)) && isRunExecutionProfile(payload.executionProfile) && typeof payload.status === 'string' && runStatuses.has(payload.status as RunStatus) && (payload.upstreamStatus===undefined||(isRecord(payload.upstreamStatus)&&payload.upstreamStatus.state!=='recovered'&&isUpstreamStatusEvent(payload.upstreamStatus))) && (payload.usage===undefined||isTokenUsage(payload.usage)) && typeof payload.text === 'string' && (payload.reasoning===undefined||typeof payload.reasoning==='string') && Array.isArray(payload.tools) && (payload.artifacts===undefined||Array.isArray(payload.artifacts)) && (payload.embeds===undefined||Array.isArray(payload.embeds)) && (payload.workspaceResult===undefined||isRunWorkspaceResult(payload.workspaceResult));
+    case 'run.created': return typeof payload.id === 'string' && typeof payload.messageId === 'string' && typeof payload.agent === 'string' && (payload.requestedModel === undefined || typeof payload.requestedModel === 'string') && strings(payload,'harnessInstanceId','harnessType','modelId') && (payload.adapterGeneration===undefined||(Number.isSafeInteger(payload.adapterGeneration)&&Number(payload.adapterGeneration)>0)) && isRunExecutionProfile(payload.executionProfile) && typeof payload.status === 'string' && runStatuses.has(payload.status as RunStatus) && (payload.upstreamStatus===undefined||(isRecord(payload.upstreamStatus)&&payload.upstreamStatus.state!=='recovered'&&isUpstreamStatusEvent(payload.upstreamStatus))) && (payload.usage===undefined||isTokenUsage(payload.usage)) && typeof payload.text === 'string' && (payload.reasoning===undefined||typeof payload.reasoning==='string') && Array.isArray(payload.tools) && Array.isArray(payload.interventions) && payload.interventions.every(isRunIntervention) && (payload.artifacts===undefined||Array.isArray(payload.artifacts)) && (payload.embeds===undefined||Array.isArray(payload.embeds)) && (payload.workspaceResult===undefined||isRunWorkspaceResult(payload.workspaceResult));
     case 'run.delta': case 'run.reasoning.delta': return strings(payload, 'runId', 'text');
     case 'run.status': return strings(payload, 'runId', 'status') && runStatuses.has(payload.status as RunStatus) && (payload.error===undefined||typeof payload.error==='string') && (payload.errorCode===undefined||typeof payload.errorCode==='string');
     case 'run.upstream_status': return typeof payload.runId === 'string' && isUpstreamStatusEvent(payload);
@@ -327,6 +340,7 @@ export function isServerRoomEvent(value: unknown): value is ServerRoomEvent {
     case 'tool.updated': return typeof payload.runId === 'string' && isRecord(payload.tool) && strings(payload.tool, 'id', 'name', 'detail', 'status') && (payload.tool.input === undefined || typeof payload.tool.input === 'string') && toolStatuses.has(payload.tool.status as ToolActivity['status']);
     case 'request.created': return strings(payload, 'runId', 'requestId', 'kind', 'prompt') && ['approval','clarification','elicitation'].includes(String(payload.kind)) && (payload.directory===undefined||typeof payload.directory==='string') && (payload.choices===undefined||(Array.isArray(payload.choices)&&payload.choices.every(choice=>typeof choice==='string'))) && (payload.questions===undefined||isStructuredQuestions(payload.questions)) && (payload.elicitation===undefined||isMcpElicitation(payload.elicitation)) && (payload.kind==='elicitation'?payload.elicitation!==undefined:payload.elicitation===undefined) && (payload.autoResolutionMs===undefined||Number.isSafeInteger(payload.autoResolutionMs));
     case 'request.resolved': return strings(payload, 'runId', 'requestId', 'resolution');
+    case 'run.intervention.updated': return typeof payload.runId === 'string' && isRunIntervention(payload.intervention);
     case 'run.selected': return strings(payload, 'responseSlotId', 'runId');
     case 'room.participant.updated': return isRoomPersona(payload);
     case 'room.workflow_mode.updated': return payload.workflowMode==='plan'||payload.workflowMode==='work';
@@ -342,6 +356,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 function isTokenUsage(value:unknown):value is TokenUsage{if(!isRecord(value)||!tokenCount(value.inputTokens)||!tokenCount(value.outputTokens))return false;return['totalTokens','reasoningTokens','cacheReadTokens','cacheWriteTokens'].every(key=>value[key]===undefined||tokenCount(value[key]));}
+function isRunIntervention(value:unknown):value is RunIntervention{return isRecord(value)&&strings(value,'id','text','status')&&['pending','applied','failed'].includes(String(value.status))&&(value.supersededText===undefined||typeof value.supersededText==='string')&&(value.error===undefined||typeof value.error==='string');}
 function isRunWorkspaceResult(value:unknown):value is RunWorkspaceResult{if(!isRecord(value)||typeof value.base_snapshot_id!=='string'||typeof value.capture_status!=='string'||typeof value.publish_status!=='string'||!Number.isSafeInteger(value.conflict_count)||!Array.isArray(value.errors))return false;return['preparing','ready','finalizing','complete','incomplete','failed'].includes(value.capture_status)&&['pending','published','partially_published','not_published','noop','failed'].includes(value.publish_status);}
 function isRunProjectSnapshot(value:unknown):value is RunProjectSnapshot{return isRecord(value)&&strings(value,'id','name','path','availability')&&['available','unavailable','unknown'].includes(String(value.availability));}
 function isRunExecutionProfile(value:unknown):value is RunExecutionProfileSnapshot{return isRecord(value)&&(value.workflowMode==='plan'||value.workflowMode==='work')&&(value.requestedReasoningEffort===null||typeof value.requestedReasoningEffort==='string')&&(value.reasoningEffort===null||typeof value.reasoningEffort==='string')&&typeof value.reasoningEffortFallback==='boolean'&&['room_override','persona_default','model_default','auto'].includes(String(value.reasoningEffortSource))&&(value.planEnforcement===null||value.planEnforcement==='native'||value.planEnforcement==='instruction_only')&&(value.permissionProfileId===null||typeof value.permissionProfileId==='string')&&(value.agentVariantId===null||typeof value.agentVariantId==='string');}

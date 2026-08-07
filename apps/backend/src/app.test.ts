@@ -158,6 +158,27 @@ function personaCatalogFetch(
   });
 }
 describe("backend smoke", () => {
+  it("validates run intervention commands at the HTTP boundary", async () => {
+    const app = await buildApp({
+      databaseUrl: testDatabaseUrl("run_intervention_route"),
+      fetch: vi.fn<typeof fetch>().mockResolvedValue(new Response("{}", { status: 503 })),
+      distPath: "missing-dist",
+    });
+    for (const payload of [
+      { intervention_id: "not-a-uuid", text: "Change direction" },
+      { intervention_id: "11111111-1111-4111-8111-111111111111", text: "   " },
+      { intervention_id: "11111111-1111-4111-8111-111111111111", text: "x".repeat(2_001) },
+    ]) {
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/v1/runs/missing/interventions",
+        payload,
+      });
+      expect(response.statusCode, response.body).toBe(400);
+    }
+    await app.close();
+  });
+
   it("separates liveness from dependency-aware readiness", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()

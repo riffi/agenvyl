@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Archive, Ban, Brain, Check, ChevronDown, ChevronUp, CircleCheck, CircleHelp, CircleX, Clock3, FolderCheck, Info, LoaderCircle, Paperclip, RotateCcw, Square, TriangleAlert } from 'lucide-react';
+import { Archive, Ban, Brain, Check, ChevronDown, ChevronUp, CircleCheck, CircleHelp, CircleX, Clock3, CornerUpLeft, FolderCheck, Info, LoaderCircle, Paperclip, RotateCcw, Square, TriangleAlert } from 'lucide-react';
 import type {UpstreamStatus,WorkspaceAttachment,WorkspaceConflictChoice,WorkspaceConflictSide} from '@agenvyl/contracts';
 import {WorkspaceArtifactActions,type OpenWorkspaceArtifact,type WorkspaceTarget} from '../workspace-window';
 import {HarnessIcon,type HarnessCatalog} from '../../entities/harness';
@@ -97,6 +97,8 @@ function RunCard({
   persona,
   select,
   cancel,
+  redirect,
+  canRedirect,
   retry,
   canRetry,
   attemptIndex,
@@ -116,6 +118,8 @@ function RunCard({
   persona: Persona;
   select: () => void;
   cancel: () => void;
+  redirect:()=>void;
+  canRedirect:boolean;
   retry: () => Promise<void>;
   canRetry:boolean;
   attemptIndex:number;
@@ -162,6 +166,7 @@ function RunCard({
             <StatusIcon status={run.status}/>
             <span className={styles['run-actions']}>
               <IconButton className={styles['run-details']} onClick={select} title="Run details" aria-label={`Run details: ${persona.name}`}><Info/></IconButton>
+              {canRedirect&&<IconButton className={styles['redirect-run']} onClick={redirect} title="Redirect" aria-label={`Redirect ${persona.name} response`}><CornerUpLeft/></IconButton>}
               {canCancel&&<IconButton className={styles['stop-run']} onClick={cancel} title="Stop" aria-label={`Stop ${persona.name} response`}><Square/></IconButton>}
               {canRetry&&<IconButton className={styles['retry-run']} disabled={retrying} onClick={()=>void retryRun()} title={retrying?'Starting…':retryLabel} aria-label={`${retryLabel}: ${persona.name}`}>{retrying?<LoaderCircle className={styles['action-spinner']}/>:<RotateCcw/>}</IconButton>}
             </span>
@@ -170,6 +175,7 @@ function RunCard({
         {run.upstreamStatus&&<UpstreamStatusNotice status={run.upstreamStatus}/>}
         {run.status==='finalizing'&&<div className={`${styles['workspace-state']} ${styles['workspace-state-progress']}`} role="status" aria-live="polite"><LoaderCircle aria-hidden="true"/><span>Finalizing files…</span></div>}
         {run.workspaceResult?.publish_status==='partially_published'&&<WorkspaceConflictPanel roomId={roomId} runId={run.id}/>}
+        {run.interventions.map(intervention=><section key={intervention.id} className={`${styles.intervention} ${styles[`intervention-${intervention.status}`]}`} role="status" aria-live="polite"><header><CornerUpLeft aria-hidden="true"/><strong>Redirect</strong><span>{intervention.status==='pending'?'Redirecting…':intervention.status==='applied'?'Applied':'Failed'}</span></header><p>{intervention.text}</p>{intervention.supersededText!==undefined&&<details><summary>Earlier output before redirect</summary><pre>{intervention.supersededText||'No output was produced before the redirect.'}</pre></details>}{intervention.error&&<small>{intervention.error}</small>}</section>)}
         {run.reasoning&&<ReasoningBlock text={run.reasoning} harnessType={run.harnessType}/>}
         <div className={`${styles.answer} ${collapsed?styles['answer-collapsed']:''}`}>
           <MarkdownAnswer text={answer} run={run} personas={personas} onMentionPersona={onMentionPersona} openWorkspace={attachment=>openWorkspace({entryId:attachment.entry_id,versionId:attachment.version_id})}/>
@@ -212,6 +218,7 @@ export function Timeline({
   openWorkspace=()=>{},
   openArtifact=()=>{},
   roomId='',
+  redirectRun,
 }: {
   state: RoomState;
   personas: Persona[];
@@ -225,6 +232,7 @@ export function Timeline({
   openWorkspace?:(target:WorkspaceTarget)=>void;
   openArtifact?:OpenWorkspaceArtifact;
   roomId?:string;
+  redirectRun?:(runId:string)=>void;
 }) {
   const byHandle = new Map(personas.map((p) => [p.handle, p]));
   const [attemptView,setAttemptView]=useState<Record<string,string>>({});
@@ -320,6 +328,8 @@ export function Timeline({
                     }
                     select={() => select(id)}
                     cancel={() => gateway.cancel(id)}
+                    redirect={()=>redirectRun?.(id)}
+                    canRedirect={Boolean(redirectRun&&run.status==='streaming'&&harnessCatalog?.instances.find(instance=>instance.id===run.harnessInstanceId)?.interventionMode==='interrupt_then_continue'&&!(run.requests??[]).some(request=>!request.resolved)&&!run.interventions.some(intervention=>intervention.status==='pending'))}
                     retry={async()=>{setAttemptView(current=>{const next={...current};delete next[slot];return next});await gateway.retry(id)}}
                     canRetry={messageIndex===state.messages.length-1&&['completed','failed','cancelled'].includes(state.runs[id].status)&&!activeAttempt&&gateway.mode==='real'}
                     attemptIndex={shownIndex}

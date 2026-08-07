@@ -354,6 +354,12 @@ export class RunExecutor {
         run.pendingRequests??=new Map();run.pendingRequests.set(event.payload.requestId,{id:event.payload.requestId,kind:event.payload.kind as import('@agenvyl/contracts').RunRequest['kind'],prompt:String(event.payload.prompt??''),...(typeof event.payload.directory==='string'?{directory:event.payload.directory}:{}),...(Array.isArray(event.payload.choices)?{choices:event.payload.choices as string[]}:{}),...(Array.isArray(event.payload.questions)?{questions:event.payload.questions as import('@agenvyl/contracts').StructuredQuestion[]}:{}),...(event.payload.elicitation?{elicitation:event.payload.elicitation as import('@agenvyl/contracts').McpElicitation}:{}),...(typeof event.payload.autoResolutionMs==='number'?{autoResolutionMs:event.payload.autoResolutionMs}:{})});
       }
       if(event.type==='request.resolved'&&typeof event.payload.requestId==='string')run.pendingRequests?.delete(event.payload.requestId);
+      if(event.type==='run.intervention.updated'&&event.payload.intervention&&typeof event.payload.intervention==='object'){
+        const intervention=event.payload.intervention as {id?:unknown;text?:unknown;status?:unknown};
+        if(intervention.status==='pending'&&typeof intervention.id==='string'&&typeof intervention.text==='string')run.pendingIntervention={id:intervention.id,text:intervention.text};
+        if((intervention.status==='applied'||intervention.status==='failed')&&run.pendingIntervention?.id===intervention.id)run.pendingIntervention=undefined;
+        if(intervention.status==='applied')run.responseText='';
+      }
     }
     if(mapping.terminal)await this.terminal(run,mapping.terminal.status,mapping.terminal.error,mapping.terminal.errorCode);
   }

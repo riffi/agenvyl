@@ -7,8 +7,13 @@ import {buildCodexCatalog,parseCodexPermission} from './mode-catalog.js';
 
 type RpcId=string|number;
 type PendingRequest={rpcId:RpcId;method:string};
+type CollaborationMode={mode:string;settings:{model:string;reasoning_effort:string|null;developer_instructions:null}};
+type InterventionTransition={
+  interventionId:string;text:string;phase:'interrupting'|'starting';buffered:AppServerMessage[];
+  promise:Promise<void>;resolve:()=>void;reject:(error:Error)=>void;
+};
 type ExecutionState={
-  id:string;threadId:string;turnId?:string;status:ExecutionStatus;queue:EventQueue;client:CodexAppServerPort;pending:Map<string,PendingRequest>;itemText:Map<string,number>;textItems:Set<string>;reasoningIndexes:Map<string,number>;forceStopTimer?:ReturnType<typeof setTimeout>;settling?:Promise<void>;unsubscribeMessage:()=>void;unsubscribeExit:()=>void;
+  id:string;threadId:string;turnId?:string;status:ExecutionStatus;queue:EventQueue;client:CodexAppServerPort;collaborationMode:CollaborationMode;pending:Map<string,PendingRequest>;itemText:Map<string,number>;textItems:Set<string>;reasoningIndexes:Map<string,number>;usageOffset?:TokenUsage;turnUsage?:TokenUsage;intervention?:InterventionTransition;forceStopTimer?:ReturnType<typeof setTimeout>;settling?:Promise<void>;unsubscribeMessage:()=>void;unsubscribeExit:()=>void;
 };
 
 export type CodexAdapterOptions={command?:string;env?:NodeJS.ProcessEnv;client?:CodexAppServerPort;clientFactory?:()=>CodexAppServerPort;stopGraceMs?:number};
@@ -16,6 +21,7 @@ export type CodexAdapterOptions={command?:string;env?:NodeJS.ProcessEnv;client?:
 export class CodexConnectorAdapter implements ConnectorAdapter{
   readonly type='codex';
   readonly capabilities:ConnectorAdapter['capabilities']=['model_catalog','execution_profiles','text_streaming','reasoning','tools','approvals','clarifications','elicitations','usage'];
+  readonly interventionMode='interrupt_then_continue' as const;
   private readonly clientFactory:()=>CodexAppServerPort;
   private readonly stopGraceMs:number;
   private readonly clients=new Set<CodexAppServerPort>();
@@ -54,11 +60,11 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
       const thread=record(threadResponse?.thread),threadId=typeof thread?.id==='string'?thread.id:undefined;
       if(!threadId)throw new Error('Codex thread/start response is invalid');
       const queue=new EventQueue();
-      state={id:request.executionId,threadId,status:'running',queue,client,pending:new Map(),itemText:new Map(),textItems:new Set(),reasoningIndexes:new Map(),unsubscribeMessage:()=>{},unsubscribeExit:()=>{}};
+      const collaborationMode:CollaborationMode={mode:profile.workflowMode==='plan'?'plan':'default',settings:{model:request.modelId,reasoning_effort:profile.reasoningEffort,developer_instructions:null}};
+      state={id:request.executionId,threadId,status:'running',queue,client,collaborationMode,pending:new Map(),itemText:new Map(),textItems:new Set(),reasoningIndexes:new Map(),unsubscribeMessage:()=>{},unsubscribeExit:()=>{}};
       state.unsubscribeMessage=client.onMessage(message=>this.onMessage(state!,message));
       state.unsubscribeExit=client.onExit(error=>this.onExit(state!,error));
       this.executions.set(request.executionId,state);
-      const collaborationMode={mode:profile.workflowMode==='plan'?'plan':'default',settings:{model:request.modelId,reasoning_effort:profile.reasoningEffort,developer_instructions:null}};
       const turnResponse=record(await client.request('turn/start',{threadId,input:[{type:'text',text:request.input.message,text_elements:[]}],summary:'auto',collaborationMode}));
       const turn=record(turnResponse?.turn),turnId=typeof turn?.id==='string'?turn.id:undefined;
       if(!turnId)throw new Error('Codex turn/start response is invalid');
@@ -90,11 +96,26 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
     return{outcome:'answered' as const};
   }
 
+  intervene(execution:AdapterExecution,input:{interventionId:string;text:string}){
+    const state=this.require(execution.upstreamId);
+    if(state.status!=='running'||!state.turnId)throw new Error('Codex execution is not running');
+    if(state.pending.size)throw new Error('Codex is waiting for user input');
+    if(state.intervention)throw new Error('A Codex redirect is already in progress');
+    let resolve!:()=>void,reject!:(error:Error)=>void;
+    const promise=new Promise<void>((resolvePromise,rejectPromise)=>{resolve=resolvePromise;reject=rejectPromise;});
+    const transition:InterventionTransition={...input,phase:'interrupting',buffered:[],promise,resolve,reject};
+    state.intervention=transition;
+    void this.interruptForIntervention(state,transition);
+    return promise;
+  }
+
   async stop(execution:AdapterExecution){
     const state=this.require(execution.upstreamId);
     if(!state.turnId||isTerminal(state.status))return;
+    if(state.intervention)this.rejectIntervention(state,state.intervention,'execution_stopped','Redirect was cancelled because the run was stopped');
     state.status='stopping';
-    await state.client.request('turn/interrupt',{threadId:state.threadId,turnId:state.turnId});
+    try{await state.client.request('turn/interrupt',{threadId:state.threadId,turnId:state.turnId});}
+    catch(error){if(!isNoActiveTurnError(error))throw error;}
     this.armForcedStop(state);
   }
 
@@ -106,6 +127,7 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
   private onMessage(state:ExecutionState,message:AppServerMessage){
     const params=record(message.params),threadId=typeof params?.threadId==='string'?params.threadId:undefined;
     if(!threadId||threadId!==state.threadId||!params)return;
+    if(state.intervention?.phase==='starting'&&typeof params.turnId==='string'&&params.turnId!==state.turnId){state.intervention.buffered.push(message);return;}
     if(message.id!==undefined&&message.method){this.onServerRequest(state,message.id,message.method,params);return;}
     if(!message.method)return;
     this.onNotification(state,message.method,params);
@@ -144,7 +166,7 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
     if((method==='item/commandExecution/outputDelta'||method==='item/fileChange/outputDelta'||method==='item/fileChange/patchUpdated')&&typeof params.itemId==='string'){state.queue.push({type:'tool.updated',payload:{toolId:params.itemId,name:method.includes('fileChange')?'fileChange':'commandExecution',safeSummary:redactConnectorText(typeof params.delta==='string'?params.delta:'File patch updated',500)}});return;}
     if(method==='item/mcpToolCall/progress'&&typeof params.itemId==='string'){state.queue.push({type:'tool.updated',payload:{toolId:params.itemId,name:'mcpToolCall',safeSummary:redactConnectorText(typeof params.message==='string'?params.message:'MCP tool in progress',500)}});return;}
     if(method==='item/completed'){this.completeItem(state,params.item);return;}
-    if(method==='thread/tokenUsage/updated'){const usage=tokenUsage(params.tokenUsage);if(usage)state.queue.push({type:'usage.updated',payload:{usage}});return;}
+    if(method==='thread/tokenUsage/updated'){const usage=tokenUsage(params.tokenUsage);if(usage){state.turnUsage=usage;state.queue.push({type:'usage.updated',payload:{usage:addUsage(state.usageOffset,usage)}});}return;}
     if(method==='serverRequest/resolved'){this.resolveExternally(state,params.requestId);return;}
     if(method==='error'){const error=record(params.error);if(params.willRetry!==true)this.fail(state,'codex_turn_error',redactConnectorText(String(error?.message??'Codex turn failed'),500));return;}
     if(method==='turn/completed')this.completeTurn(state,params.turn);
@@ -179,9 +201,44 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
   }
   private completeTurn(state:ExecutionState,value:unknown){
     const turn=record(value),status=turn?.status;
+    if(state.intervention&&(status==='completed'||status==='interrupted')){void this.continueAfterIntervention(state,state.intervention);return;}
     if(status==='completed'){void this.settle(state,'completed');}
     else if(status==='interrupted'){void this.settle(state,'cancelled');}
     else{this.fail(state,'codex_turn_failed',redactConnectorText(String(record(turn?.error)?.message??'Codex turn failed'),500));return;}
+  }
+  private async interruptForIntervention(state:ExecutionState,transition:InterventionTransition){
+    try{await state.client.request('turn/interrupt',{threadId:state.threadId,turnId:state.turnId});}
+    catch(error){if(state.intervention===transition&&transition.phase==='interrupting')this.rejectIntervention(state,transition,'codex_interrupt_failed',error instanceof Error?error.message:'Codex interrupt failed');}
+  }
+  private async continueAfterIntervention(state:ExecutionState,transition:InterventionTransition){
+    if(state.intervention!==transition||state.status!=='running'||transition.phase!=='interrupting')return;
+    transition.phase='starting';
+    if(state.turnUsage){state.usageOffset=addUsage(state.usageOffset,state.turnUsage);state.turnUsage=undefined;}
+    try{
+      const response=record(await state.client.request('turn/start',{threadId:state.threadId,input:[{type:'text',text:transition.text,text_elements:[]}],summary:'auto',collaborationMode:state.collaborationMode}));
+      const turn=record(response?.turn),turnId=typeof turn?.id==='string'?turn.id:undefined;
+      if(!turnId)throw new Error('Codex turn/start response is invalid');
+      if(state.intervention!==transition||state.status!=='running'){
+        state.turnId=turnId;
+        if((state.status as ExecutionStatus)==='stopping')await state.client.request('turn/interrupt',{threadId:state.threadId,turnId});
+        return;
+      }
+      state.turnId=turnId;state.itemText.clear();state.textItems.clear();state.reasoningIndexes.clear();
+      state.queue.push({type:'execution.intervention.applied',payload:{interventionId:transition.interventionId,text:transition.text}});
+      const buffered=transition.buffered.splice(0);state.intervention=undefined;transition.resolve();
+      for(const message of buffered)this.onMessage(state,message);
+    }catch(error){
+      if(state.intervention===transition){
+        this.rejectIntervention(state,transition,'codex_turn_start_failed',error instanceof Error?error.message:'Codex could not start the redirected turn');
+        this.fail(state,'codex_turn_start_failed','Codex could not start the redirected turn');
+      }
+    }
+  }
+  private rejectIntervention(state:ExecutionState,transition:InterventionTransition,code:string,message:string){
+    if(state.intervention!==transition)return;
+    const safeMessage=redactConnectorText(message,500)||'Redirect failed';
+    state.queue.push({type:'execution.intervention.failed',payload:{interventionId:transition.interventionId,text:transition.text,error:{code,message:safeMessage}}});
+    state.intervention=undefined;transition.reject(new Error(safeMessage));
   }
   private fail(state:ExecutionState,code:string,message:string){if(isTerminal(state.status)||state.settling)return;void this.settle(state,'failed',{code,message});}
   private onExit(state:ExecutionState,error:Error){if(state.settling||this.executions.get(state.id)!==state)return;this.fail(state,'codex_app_server_exited',redactConnectorText(error.message,500));}
@@ -196,6 +253,7 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
   }
   private settle(state:ExecutionState,status:'completed'|'failed'|'cancelled',error?:{code:string;message:string}){
     if(state.settling)return state.settling;
+    if(state.intervention)this.rejectIntervention(state,state.intervention,status==='cancelled'?'execution_stopped':'execution_ended',status==='cancelled'?'Redirect was cancelled because the run was stopped':'Redirect could not be applied before the run ended');
     state.status=status;
     state.settling=this.finish(state,status,error);
     return state.settling;
@@ -272,6 +330,8 @@ const redactToolInputValue=(value:unknown,depth=0):unknown=>{
 };
 const isSensitiveToolInputKey=(key:string)=>{const normalized=key.replace(/[-_]/g,'').toLowerCase();return['apikey','accesstoken','auth','authorization','password','passwd','secret','token','cookie','setcookie'].some(suffix=>normalized===suffix||normalized.endsWith(suffix));};
 const tokenUsage=(value:unknown):TokenUsage|undefined=>{const usage=record(value),last=record(usage?.last);if(!last||!safeInteger(last.inputTokens)||!safeInteger(last.outputTokens))return;return{inputTokens:Number(last.inputTokens),outputTokens:Number(last.outputTokens),...(safeInteger(last.totalTokens)?{totalTokens:Number(last.totalTokens)}:{}),...(safeInteger(last.reasoningOutputTokens)?{reasoningTokens:Number(last.reasoningOutputTokens)}:{}),...(safeInteger(last.cachedInputTokens)?{cacheReadTokens:Number(last.cachedInputTokens)}:{}),...(safeInteger(last.cacheWriteInputTokens)?{cacheWriteTokens:Number(last.cacheWriteInputTokens)}:{})};};
+const addUsage=(left:TokenUsage|undefined,right:TokenUsage):TokenUsage=>({inputTokens:(left?.inputTokens??0)+right.inputTokens,outputTokens:(left?.outputTokens??0)+right.outputTokens,...(left?.totalTokens!==undefined||right.totalTokens!==undefined?{totalTokens:(left?.totalTokens??0)+(right.totalTokens??right.inputTokens+right.outputTokens)}:{}),...(left?.reasoningTokens!==undefined||right.reasoningTokens!==undefined?{reasoningTokens:(left?.reasoningTokens??0)+(right.reasoningTokens??0)}:{}),...(left?.cacheReadTokens!==undefined||right.cacheReadTokens!==undefined?{cacheReadTokens:(left?.cacheReadTokens??0)+(right.cacheReadTokens??0)}:{}),...(left?.cacheWriteTokens!==undefined||right.cacheWriteTokens!==undefined?{cacheWriteTokens:(left?.cacheWriteTokens??0)+(right.cacheWriteTokens??0)}:{})});
 const record=(value:unknown):Record<string,unknown>|undefined=>value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:undefined;
 const safeInteger=(value:unknown)=>Number.isSafeInteger(value)&&Number(value)>=0;
+const isNoActiveTurnError=(error:unknown)=>error instanceof Error&&/no active turn to interrupt/i.test(error.message);
 const isTerminal=(status:ExecutionStatus)=>status==='completed'||status==='failed'||status==='cancelled';

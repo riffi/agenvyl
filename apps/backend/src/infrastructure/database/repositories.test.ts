@@ -391,6 +391,20 @@ describe("PostgreSQL repositories", () => {
     ).toHaveLength(1);
     await p.database.close();
   });
+  it('atomically supersedes partial output when a redirect is applied',async()=>{
+    const p=await createRepositories(testDatabaseUrl('run_intervention_projection')),persona=(await p.personas.find('persona-architect'))!,round=await p.messages.createRound('demo-room','question',[persona],profiles([persona])),runId=round.runs[0].id,checkpoint={executionId:'execution-redirect',connectorEpoch:'epoch-1',cursor:2};
+    await p.runs.bindConnectorExecution(runId,checkpoint);
+    await p.runs.acceptConnectorTransition(runId,{...checkpoint,cursor:3},[{type:'run.delta',payload:{runId,text:'Earlier answer'}},{type:'run.reasoning.delta',payload:{runId,text:'Earlier reasoning'}}]);
+    await p.runs.acceptConnectorTransition(runId,{...checkpoint,cursor:4},[{type:'run.intervention.updated',payload:{runId,intervention:{id:'c226f522-d864-4f1c-a53f-25d22dc9109f',text:'Change direction',status:'pending'}}}]);
+    const applied=await p.runs.acceptConnectorTransition(runId,{...checkpoint,cursor:5},[{type:'run.intervention.updated',payload:{runId,intervention:{id:'c226f522-d864-4f1c-a53f-25d22dc9109f',text:'Change direction',status:'applied'}}}]);
+    expect(applied.events[0]?.payload).toMatchObject({intervention:{status:'applied',supersededText:'Earlier answer'}});
+    expect((await p.database.sql`SELECT connector_cursor,text,reasoning FROM agent_runs WHERE id=${runId}`)[0]).toEqual({connector_cursor:'5',text:'',reasoning:''});
+    await p.runs.acceptConnectorTransition(runId,{...checkpoint,cursor:6},[{type:'run.delta',payload:{runId,text:'Replacement answer'}}]);
+    const timeline=await p.rooms.timeline('demo-room',undefined,10),run=timeline?.runs.find(item=>item.id===runId);
+    expect(run).toMatchObject({text:'Replacement answer',interventions:[{text:'Change direction',status:'applied',supersededText:'Earlier answer'}]});
+    expect((await p.database.sql`SELECT COUNT(*)::int count FROM room_messages WHERE room_id='demo-room'`)[0]?.count).toBe(1);
+    await p.database.close();
+  });
   it("durably projects and replays transient upstream state across timeline reload", async () => {
     const p = await createRepositories(testDatabaseUrl("upstream_status")),
       persona = (await p.personas.find("persona-architect"))!,

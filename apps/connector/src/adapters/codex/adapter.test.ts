@@ -69,12 +69,64 @@ describe('Codex connector adapter',()=>{
     await expect(adapter.inspect(execution)).resolves.toEqual({status:'running'});
   });
   it('supports concurrent threads and interrupts only the selected turn',async()=>{const client=new FakeAppServer(),adapter=new CodexConnectorAdapter({client});const first=await adapter.start(input('one')),second=await adapter.start(input('two'));await adapter.stop(second);expect(client.requests.at(-1)).toEqual({method:'turn/interrupt',params:{threadId:'thread-2',turnId:'turn-2'}});expect(await adapter.inspect(first)).toEqual({status:'running'});});
+  it('interrupts and starts a redirected turn in the same thread before releasing new output',async()=>{
+    const client=new FakeAppServer(),baseRequest=client.request.bind(client);let turnStarts=0;
+    client.request=vi.fn(async(method:string,params:unknown)=>{const result=await baseRequest(method,params);if(method==='turn/start'&&++turnStarts===2)client.emit({method:'item/agentMessage/delta',params:{threadId:'thread-1',turnId:'turn-2',itemId:'redirected',delta:'New answer'}});return result;});
+    const adapter=new CodexConnectorAdapter({client}),execution=await adapter.start(input()),iterator=adapter.events(execution)[Symbol.asyncIterator]();
+    client.emit({method:'item/agentMessage/delta',params:{threadId:'thread-1',turnId:'turn-1',itemId:'old',delta:'Old partial'}});
+    expect(await iterator.next()).toMatchObject({value:{type:'output.text.delta',payload:{text:'Old partial'}}});
+    const redirect=adapter.intervene(execution,{interventionId:'c226f522-d864-4f1c-a53f-25d22dc9109f',text:'Focus on the API'});
+    await vi.waitFor(()=>expect(client.requests.at(-1)).toMatchObject({method:'turn/interrupt',params:{threadId:'thread-1',turnId:'turn-1'}}));
+    client.emit({method:'turn/completed',params:{threadId:'thread-1',turn:{id:'turn-1',status:'interrupted'}}});
+    await redirect;
+    expect(client.requests.filter(request=>request.method==='turn/start').at(-1)).toMatchObject({params:{threadId:'thread-1',input:[{text:'Focus on the API'}],collaborationMode:{mode:'default'}}});
+    expect(await iterator.next()).toMatchObject({value:{type:'execution.intervention.applied',payload:{interventionId:'c226f522-d864-4f1c-a53f-25d22dc9109f'}}});
+    expect(await iterator.next()).toMatchObject({value:{type:'output.text.delta',payload:{text:'New answer'}}});
+    client.emit({method:'turn/completed',params:{threadId:'thread-1',turn:{id:'turn-2',status:'completed'}}});
+    expect(await iterator.next()).toMatchObject({value:{type:'execution.completed'}});
+  });
+  it('continues after the old turn wins the completion race',async()=>{
+    const client=new FakeAppServer(),adapter=new CodexConnectorAdapter({client}),execution=await adapter.start(input()),iterator=adapter.events(execution)[Symbol.asyncIterator]();
+    const redirect=adapter.intervene(execution,{interventionId:'777f7444-e6a9-4e85-818f-20d536876ff7',text:'Now summarize'});
+    client.emit({method:'turn/completed',params:{threadId:'thread-1',turn:{id:'turn-1',status:'completed'}}});
+    await redirect;
+    expect(client.requests.filter(request=>request.method==='turn/start')).toHaveLength(2);
+    expect(await iterator.next()).toMatchObject({value:{type:'execution.intervention.applied'}});
+  });
+  it('fails a redirect and the execution when the replacement turn cannot start',async()=>{
+    const client=new FakeAppServer(),baseRequest=client.request.bind(client);let turnStarts=0;
+    client.request=vi.fn(async(method:string,params:unknown)=>{if(method==='turn/start'&&++turnStarts===2)throw new Error('replacement failed');return baseRequest(method,params);});
+    const adapter=new CodexConnectorAdapter({client}),execution=await adapter.start(input()),iterator=adapter.events(execution)[Symbol.asyncIterator]();
+    const redirect=adapter.intervene(execution,{interventionId:'f09539ab-ee9c-4555-9cf9-e9b2831fbc26',text:'Try a different path'});
+    client.emit({method:'turn/completed',params:{threadId:'thread-1',turn:{id:'turn-1',status:'interrupted'}}});
+    await expect(redirect).rejects.toThrow('replacement failed');
+    expect(await iterator.next()).toMatchObject({value:{type:'execution.intervention.failed',payload:{error:{code:'codex_turn_start_failed'}}}});
+    expect(await iterator.next()).toMatchObject({value:{type:'execution.failed',payload:{error:{code:'codex_turn_start_failed'}}}});
+  });
+  it('lets Stop win before a redirected turn starts',async()=>{
+    const client=new FakeAppServer(),adapter=new CodexConnectorAdapter({client}),execution=await adapter.start(input()),iterator=adapter.events(execution)[Symbol.asyncIterator]();
+    const redirect=adapter.intervene(execution,{interventionId:'45725d43-5fd7-4cc4-94a8-56b66362c52f',text:'Change direction'});
+    const rejected=expect(redirect).rejects.toThrow('stopped');await adapter.stop(execution);await rejected;
+    expect(client.requests.filter(request=>request.method==='turn/start')).toHaveLength(1);
+    expect(await iterator.next()).toMatchObject({value:{type:'execution.intervention.failed',payload:{error:{code:'execution_stopped'}}}});
+    client.emit({method:'turn/completed',params:{threadId:'thread-1',turn:{id:'turn-1',status:'interrupted'}}});
+    expect(await iterator.next()).toMatchObject({value:{type:'execution.cancelled'}});
+  });
   it('force closes a lone app-server when an interrupted turn never settles',async()=>{
     vi.useFakeTimers();
     try{
       const client=new FakeAppServer(),adapter=new CodexConnectorAdapter({client,stopGraceMs:25}),execution=await adapter.start(input()),iterator=adapter.events(execution)[Symbol.asyncIterator]();
       await adapter.stop(execution);await vi.advanceTimersByTimeAsync(25);
       expect(client.close).toHaveBeenCalledTimes(2);
+      expect(await iterator.next()).toMatchObject({value:{type:'execution.cancelled'}});
+    }finally{vi.useRealTimers();}
+  });
+  it('keeps Stop authoritative during the app-server turn activation race',async()=>{
+    vi.useFakeTimers();
+    try{
+      const client=new FakeAppServer(),baseRequest=client.request.bind(client);client.request=vi.fn(async(method:string,params:unknown)=>{if(method==='turn/interrupt')throw new Error('no active turn to interrupt');return baseRequest(method,params);});
+      const adapter=new CodexConnectorAdapter({client,stopGraceMs:25}),execution=await adapter.start(input()),iterator=adapter.events(execution)[Symbol.asyncIterator]();
+      await expect(adapter.stop(execution)).resolves.toBeUndefined();await vi.advanceTimersByTimeAsync(25);
       expect(await iterator.next()).toMatchObject({value:{type:'execution.cancelled'}});
     }finally{vi.useRealTimers();}
   });

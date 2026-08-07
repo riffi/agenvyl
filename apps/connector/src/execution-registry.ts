@@ -1,5 +1,7 @@
 import type {
   ConnectorExecutionEvent,
+  CreateExecutionInterventionRequest,
+  ExecutionIntervention,
   ConnectorRequestSnapshot,
   ConnectorRequestAnswer,
   ExecutionSnapshot,
@@ -51,6 +53,8 @@ type ExecutionRecord = {
   events: ConnectorExecutionEvent[];
   pendingRequests: Map<string, ConnectorRequestSnapshot>;
   requestResolutions: Map<string, { answerKey: string; promise: Promise<ConnectorRequestSnapshot> }>;
+  interventions: Map<string, ExecutionIntervention>;
+  activeInterventionId?: string;
   error?: { code: string; message: string };
   upstreamStatus?: UpstreamStatus;
   usage?: TokenUsage;
@@ -106,6 +110,7 @@ export class ExecutionRegistry {
       events: [],
       pendingRequests: new Map(),
       requestResolutions: new Map(),
+      interventions: new Map(),
       listeners: new Set(),
       startPromise: Promise.resolve(),
     };
@@ -126,6 +131,7 @@ export class ExecutionRegistry {
   async stop(executionId: string): Promise<ExecutionSnapshot> {
     const record = this.require(executionId);
     if (terminalStatuses.has(record.status)) return this.snapshot(record);
+    this.failActiveIntervention(record, { code: 'execution_stopped', message: 'Redirect was cancelled because the run was stopped' });
     if (record.status !== 'stopping') {
       record.status = 'stopping';
       this.append(record, 'execution.status', { status: 'stopping' });
@@ -174,6 +180,27 @@ export class ExecutionRegistry {
       if (error instanceof RegistryError) throw error;
       throw new RegistryError('adapter_request_failed', 'Adapter failed to resolve the pending request', 502);
     }
+  }
+
+  intervene(executionId:string,input:CreateExecutionInterventionRequest):{execution:ExecutionSnapshot;intervention:ExecutionIntervention}{
+    const record=this.require(executionId);
+    const text=input.text.trim();
+    const existing=record.interventions.get(input.interventionId);
+    if(existing){
+      if(existing.text!==text)throw new RegistryError('intervention_conflict','Intervention ID is already used with different text',409);
+      return{execution:this.snapshot(record),intervention:structuredClone(existing)};
+    }
+    if(record.status!=='running')throw new RegistryError('execution_not_intervenable','Only a running execution can be redirected',409);
+    if(record.pendingRequests.size)throw new RegistryError('execution_waiting_for_user','Resolve the pending request before redirecting this run',409);
+    if(record.activeInterventionId)throw new RegistryError('intervention_in_progress','Another redirect is already in progress',409);
+    if(record.adapter.interventionMode!=='interrupt_then_continue'||!record.adapter.intervene)throw new RegistryError('intervention_unsupported','This Connector instance does not support redirecting active runs',409);
+    if(!record.upstream)throw new RegistryError('adapter_unavailable','Adapter execution is not available',503);
+    const intervention:ExecutionIntervention={interventionId:input.interventionId,text,status:'pending'};
+    record.interventions.set(intervention.interventionId,intervention);
+    record.activeInterventionId=intervention.interventionId;
+    this.append(record,'execution.intervention.accepted',{interventionId:intervention.interventionId,text});
+    void this.applyIntervention(record,record.upstream,intervention);
+    return{execution:this.snapshot(record),intervention:structuredClone(intervention)};
   }
 
   subscribe(executionId: string, after: number, signal?: AbortSignal): AsyncIterable<ConnectorExecutionEvent> {
@@ -232,6 +259,15 @@ export class ExecutionRegistry {
     return resolvedRequest;
   }
 
+  private async applyIntervention(record:ExecutionRecord,upstream:AdapterExecution,intervention:ExecutionIntervention){
+    try{await record.adapter.intervene!(upstream,{interventionId:intervention.interventionId,text:intervention.text});}
+    catch(error){
+      const current=record.interventions.get(intervention.interventionId);
+      if(current?.status!=='pending')return;
+      this.failIntervention(record,current,safeAdapterError(error,'adapter_intervention_failed'));
+    }
+  }
+
   private applyAdapterEvent(record: ExecutionRecord, event: AdapterExecutionEvent) {
     if (upstreamConfirmationEvents.has(event.type)) this.recoverUpstream(record);
     switch (event.type) {
@@ -260,6 +296,20 @@ export class ExecutionRegistry {
           this.append(record, 'execution.status', { status: 'running' });
         }
         return;
+      case 'execution.intervention.applied': {
+        const intervention=record.interventions.get(event.payload.interventionId);
+        if(!intervention||intervention.status!=='pending'||intervention.text!==event.payload.text)return;
+        intervention.status='applied';
+        if(record.activeInterventionId===intervention.interventionId)record.activeInterventionId=undefined;
+        this.append(record,event.type,event.payload);
+        return;
+      }
+      case 'execution.intervention.failed': {
+        const intervention=record.interventions.get(event.payload.interventionId);
+        if(!intervention||intervention.status!=='pending'||intervention.text!==event.payload.text)return;
+        this.failIntervention(record,intervention,event.payload.error);
+        return;
+      }
       case 'usage.updated':
         if(equalUsage(record.usage,event.payload.usage))return;
         record.usage=structuredClone(event.payload.usage);
@@ -290,6 +340,7 @@ export class ExecutionRegistry {
 
   private appendTerminal(record: ExecutionRecord, type: 'execution.completed' | 'execution.failed' | 'execution.cancelled', payload: Record<string, never> | { error: { code: string; message: string } }) {
     if (terminalStatuses.has(record.status)) return;
+    this.failActiveIntervention(record,{code:'execution_ended',message:'Redirect could not be applied before the run ended'});
     const requestOutcome = type === 'execution.completed' ? 'superseded' : 'cancelled';
     for (const request of record.pendingRequests.values()) this.append(record, 'request.resolved', { requestId: request.id, outcome: requestOutcome });
     record.status = type === 'execution.completed' ? 'completed' : type === 'execution.cancelled' ? 'cancelled' : 'failed';
@@ -301,6 +352,18 @@ export class ExecutionRegistry {
     record.listeners.clear();
     record.releaseGeneration?.();
     record.releaseGeneration = undefined;
+  }
+
+  private failActiveIntervention(record:ExecutionRecord,error:{code:string;message:string}){
+    if(!record.activeInterventionId)return;
+    const intervention=record.interventions.get(record.activeInterventionId);
+    if(intervention?.status==='pending')this.failIntervention(record,intervention,error);
+  }
+
+  private failIntervention(record:ExecutionRecord,intervention:ExecutionIntervention,error:{code:string;message:string}){
+    intervention.status='failed';intervention.error={...error};
+    if(record.activeInterventionId===intervention.interventionId)record.activeInterventionId=undefined;
+    this.append(record,'execution.intervention.failed',{interventionId:intervention.interventionId,text:intervention.text,error:{...error}});
   }
 
   private fail(record: ExecutionRecord, code: string, message: string) {
@@ -447,6 +510,7 @@ function normalizeRequestAnswer(answer: ConnectorRequestAnswer): ConnectorReques
     if (!resolution) throw new RegistryError('invalid_resolution', 'Resolution must not be empty', 400);
     return { resolution };
   }
+
   if('elicitation'in answer)return{elicitation:structuredClone(answer.elicitation)};
   const entries = Object.entries(answer.answers).sort(([left], [right]) => left.localeCompare(right));
   if (!entries.length) throw new RegistryError('invalid_resolution', 'Answer map must not be empty', 400);

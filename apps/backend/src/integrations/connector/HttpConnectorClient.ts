@@ -1,4 +1,4 @@
-import { isConnectorCatalog, isConnectorCommandResult, isConnectorConfigurationResult, isConnectorDirectoryPickerResult, isConnectorDirectoryValidation, isConnectorDiscovery, isConnectorExecutionEvent, isConnectorHealth, isConnectorInstanceList, isConnectorRequestCommandResult, isExecutionSnapshot, isRestartConnectorInstanceResult, isTestConnectorInstanceResult, type ConfigureConnectorInstancesRequest, type ConnectorCatalog, type ConnectorConfigurationResult, type ConnectorDirectoryPickerResult, type ConnectorDirectoryValidation, type ConnectorDiscovery, type ConnectorExecutionEvent, type ConnectorHealth, type ConnectorInstanceList, type ConnectorRequestAnswer, type ConnectorRequestCommandResult, type ExecutionSnapshot, type RestartConnectorInstanceResult, type StartExecutionRequest, type TestConnectorInstanceRequest, type TestConnectorInstanceResult } from '@agenvyl/connector-contract';
+import { isConnectorCatalog, isConnectorCommandResult, isConnectorConfigurationResult, isConnectorDirectoryPickerResult, isConnectorDirectoryValidation, isConnectorDiscovery, isConnectorExecutionEvent, isConnectorHealth, isConnectorInstanceList, isConnectorInterventionCommandResult, isConnectorRequestCommandResult, isExecutionSnapshot, isRestartConnectorInstanceResult, isTestConnectorInstanceResult, type ConfigureConnectorInstancesRequest, type ConnectorCatalog, type ConnectorConfigurationResult, type ConnectorDirectoryPickerResult, type ConnectorDirectoryValidation, type ConnectorDiscovery, type ConnectorExecutionEvent, type ConnectorHealth, type ConnectorInstanceList, type ConnectorInterventionCommandResult, type ConnectorRequestAnswer, type ConnectorRequestCommandResult, type CreateExecutionInterventionRequest, type ExecutionSnapshot, type RestartConnectorInstanceResult, type StartExecutionRequest, type TestConnectorInstanceRequest, type TestConnectorInstanceResult } from '@agenvyl/connector-contract';
 import type { ConnectorExecutionClient, ConnectorLifecycleErrorCode } from '../../modules/connector/connector.ports.js';
 import {parseSse} from '../../infrastructure/http/parseSse.js';
 
@@ -117,6 +117,12 @@ export class HttpConnectorClient implements ConnectorExecutionClient {
       this.options.onStreamRetry?.({executionId,cursor,attempt:retryAttempt,delayMs,error:lastError});
       await abortableDelay(delayMs,options.signal);
     }
+  }
+
+  async intervene(executionId:string,input:CreateExecutionInterventionRequest):Promise<ConnectorInterventionCommandResult>{
+    const value=await this.json(`/v2/executions/${encodeURIComponent(executionId)}/interventions`,'POST',input,'execution');
+    if(!isConnectorInterventionCommandResult(value)||value.execution.executionId!==executionId||value.intervention.interventionId!==input.interventionId)throw invalidResponse('Connector returned an invalid intervention response');
+    return value;
   }
 
   private async openEventStream(executionId:string,after:number,signal:AbortSignal){

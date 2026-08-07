@@ -435,6 +435,26 @@ describe('Connector shell', () => {
     expect(replay.body).toContain('[ABSOLUTE_PATH]');
     await app.close();
   });
+  it('advertises and serves interrupt-then-continue interventions',async()=>{
+    const adapter=new IntervenableControlledAdapter(),app=buildConnectorApp(config,{connectorEpoch:'epoch-test',adapters:new Map([['local-hermes',adapter]])});
+    expect((await app.inject({url:'/v2/instances',headers:auth})).json().instances[0]).toMatchObject({interventionMode:'interrupt_then_continue'});
+    const request={...structuredClone(connectorContractFixtures.startExecution),executionId:'run-redirect'} as StartExecutionRequest;
+    await app.inject({method:'POST',url:'/v2/executions',headers:auth,payload:request});await waitForStatus(app,request.executionId,'running');
+    const intervention={interventionId:'c226f522-d864-4f1c-a53f-25d22dc9109f',text:'Focus on the API'};
+    expect((await app.inject({method:'POST',url:`/v2/executions/${request.executionId}/interventions`,headers:auth,payload:{...intervention,interventionId:'bad'}})).statusCode).toBe(400);
+    const accepted=await app.inject({method:'POST',url:`/v2/executions/${request.executionId}/interventions`,headers:auth,payload:intervention});
+    expect(accepted.statusCode).toBe(202);expect(accepted.json()).toMatchObject({intervention:{...intervention,status:'pending'}});
+    await waitForCursor(app,request.executionId,5);
+    expect(adapter.interventions).toEqual([intervention]);
+    const repeated=await app.inject({method:'POST',url:`/v2/executions/${request.executionId}/interventions`,headers:auth,payload:intervention});
+    expect(repeated.statusCode).toBe(202);expect(adapter.interventions).toHaveLength(1);
+    const conflict=await app.inject({method:'POST',url:`/v2/executions/${request.executionId}/interventions`,headers:auth,payload:{...intervention,text:'Different'}});
+    expect(conflict.statusCode).toBe(409);expect(conflict.json()).toMatchObject({error:'intervention_conflict'});
+    await app.inject({method:'POST',url:`/v2/executions/${request.executionId}/stop`,headers:auth});
+    const replay=await app.inject({url:`/v2/executions/${request.executionId}/events?after=0`,headers:auth});
+    expect(parseEvents(replay.body).filter(event=>event.type.startsWith('execution.intervention')).map(event=>event.type)).toEqual(['execution.intervention.accepted','execution.intervention.applied']);
+    await app.close();
+  });
 });
 
 class ControlledAdapter implements ConnectorAdapter {
@@ -516,6 +536,17 @@ function parseEvents(body: string) {
 function sequenceClock() {
   let second = 0;
   return () => `2026-07-17T00:00:${String(second++).padStart(2, '0')}.000Z`;
+}
+
+async function waitForCursor(app:ReturnType<typeof buildConnectorApp>,executionId:string,cursor:number){
+  for(let attempt=0;attempt<50;attempt+=1){const response=await app.inject({url:`/v2/executions/${executionId}`,headers:auth});if(Number(response.json().execution?.cursor)>=cursor)return;await new Promise(resolve=>setTimeout(resolve,1));}
+  throw new Error(`Execution ${executionId} did not reach cursor ${cursor}`);
+}
+
+class IntervenableControlledAdapter extends ControlledAdapter{
+  readonly interventionMode='interrupt_then_continue' as const;
+  readonly interventions:Array<{interventionId:string;text:string}>=[];
+  async intervene(execution:AdapterExecution,input:{interventionId:string;text:string}){this.interventions.push({...input});this.emit(execution.upstreamId,{type:'execution.intervention.applied',payload:input});}
 }
 
 async function waitFor(predicate:()=>boolean){for(let attempt=0;attempt<50;attempt+=1){if(predicate())return;await new Promise(resolve=>setTimeout(resolve,1));}throw new Error('Condition was not reached');}

@@ -51,15 +51,17 @@ export function sanitizeAdapterEvent(event: AdapterExecutionEvent): AdapterExecu
     case 'request.resolved':
       return { type: event.type, payload: { requestId: safeIdentifier(event.payload.requestId, 'request'), outcome: event.payload.outcome } };
     case 'execution.failed':
+    case 'execution.intervention.failed':
       return {
         type: event.type,
         payload: {
+          ...('interventionId' in event.payload ? { interventionId:event.payload.interventionId,text:event.payload.text } : {}),
           error: {
             code: safeErrorCode(event.payload.error.code),
-            message: redactConnectorText(event.payload.error.message, 500) || 'Adapter execution failed',
+            message: redactConnectorText(event.payload.error.message, 500) || (event.type === 'execution.intervention.failed' ? 'Redirect failed' : 'Adapter execution failed'),
           },
         },
-      };
+      } as AdapterExecutionEvent;
     case 'execution.upstream_status':
       return {
         type: event.type,

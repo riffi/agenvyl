@@ -65,6 +65,24 @@ Recovered pending approvals are restored into the active run context, so approva
 cancel controls continue through the Connector after a Core restart. Connector runs
 aborted by graceful Core shutdown remain non-terminal for this recovery path.
 
+## Run redirect
+
+An active Codex run may accept one redirect at a time. Redirect is a single lifecycle
+command: Connector interrupts the current Codex turn and starts a replacement turn in
+the same thread with the original model, workflow, sandbox and approval settings. It
+does not create a room message, conversation round, workspace, or scheduler state.
+
+Connector publishes accepted, applied and failed intervention events with the
+intervention ID and text. These events use the normal durable execution cursor, so a
+same-epoch Core restart reconstructs the command through replay. Connector restart
+keeps the existing fail-closed behavior. Stop has priority over a redirect and prevents
+a replacement turn from starting.
+
+When applied, Core advances the Connector cursor, archives the partial answer as the
+intervention's `supersededText`, clears the active answer and reasoning, and writes the
+room event in one database transaction. Tool activity and workspace side effects are
+not rolled back. Usage and execution timeout continue across both turns of the run.
+
 ## Shutdown
 
 On Fastify close the executor:

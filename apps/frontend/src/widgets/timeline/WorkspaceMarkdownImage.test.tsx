@@ -22,6 +22,7 @@ const run = (value: Partial<Run> = {}): Run => ({
   text: '',
   tools: [],
   ...value,
+  interventions:value.interventions??[],
 });
 
 const attachment = (name: string): WorkspaceAttachment => ({

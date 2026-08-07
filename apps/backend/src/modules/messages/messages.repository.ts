@@ -199,6 +199,7 @@ export class MessageRepository {
               status: "queued",
               text: "",
               tools: [],
+              interventions: [],
               artifacts: [],
               responseSlotId: x.id,
               attemptNumber: 1,

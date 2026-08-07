@@ -63,6 +63,11 @@ export class ConnectorRunAdapter implements RunGateway,RunEventStream,RunRecover
     return this.controlCheckpoint(result.execution);
   }
 
+  async intervene(executionId:string,intervention:{interventionId:string;text:string}){
+    const result=await this.connector.intervene(executionId,intervention);
+    return{checkpoint:this.controlCheckpoint(result.execution),status:result.intervention.status};
+  }
+
   async *stream(executionId:string,localRunId:string,signal:AbortSignal):AsyncIterable<RunEventMapping>{
     const state=this.executions.get(executionId);
     if(!state)throw new Error('Connector execution state is not initialized');
@@ -105,6 +110,9 @@ function mapConnectorEvent(localRunId:string,event:ConnectorExecutionEvent):RunE
     case'tool.started':case'tool.updated':case'tool.completed':case'tool.failed':case'tool.cancelled':return{events:[{type:'tool.updated',payload:{runId:localRunId,tool:{id:event.payload.toolId,name:event.payload.name,detail:event.payload.safeSummary,...(event.payload.safeInput===undefined?{}:{input:event.payload.safeInput}),status:event.type==='tool.started'?'started':event.type==='tool.completed'?'completed':event.type==='tool.failed'?'failed':event.type==='tool.cancelled'?'cancelled':'progress'}}}]};
     case'request.opened':return{events:[{type:'request.created',payload:{runId:localRunId,requestId:event.payload.request.id,kind:event.payload.request.kind,prompt:event.payload.request.prompt,...(event.payload.request.directory?{directory:event.payload.request.directory}:{}),...(event.payload.request.choices?{choices:event.payload.request.choices}:{}),...(event.payload.request.questions?{questions:event.payload.request.questions}:{}),...(event.payload.request.elicitation?{elicitation:event.payload.request.elicitation}:{}),...(event.payload.request.autoResolutionMs?{autoResolutionMs:event.payload.request.autoResolutionMs}:{})}}],status:event.payload.request.kind==='approval'?'waiting_approval':'waiting_clarification'};
     case'request.resolved':return{events:[{type:'request.resolved',payload:{runId:localRunId,requestId:event.payload.requestId,resolution:event.payload.outcome}}]};
+    case'execution.intervention.accepted':return{events:[{type:'run.intervention.updated',payload:{runId:localRunId,intervention:{id:event.payload.interventionId,text:event.payload.text,status:'pending'}}}]};
+    case'execution.intervention.applied':return{events:[{type:'run.intervention.updated',payload:{runId:localRunId,intervention:{id:event.payload.interventionId,text:event.payload.text,status:'applied'}}}]};
+    case'execution.intervention.failed':return{events:[{type:'run.intervention.updated',payload:{runId:localRunId,intervention:{id:event.payload.interventionId,text:event.payload.text,status:'failed',error:event.payload.error.message}}}]};
     case'execution.completed':return{events:[],terminal:{status:'completed'}};
     case'execution.cancelled':return{events:[],terminal:{status:'cancelled'}};
     case'execution.failed':return{events:[],terminal:{status:'failed',error:event.payload.error.message,errorCode:event.payload.error.code}};

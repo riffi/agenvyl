@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Persona } from '../../entities/persona';
 import { initialState, roomsApi } from '../../entities/room';
@@ -11,11 +11,18 @@ import type { WorkspaceAttachment } from '@agenvyl/contracts';
 import styles from './Timeline.module.css';
 
 const persona: Persona = { id: 'persona-1', handle: 'coder', name: 'Coder', color: '#64748b', requested_model: 'sol', effective_model: null, harness_instance_id: 'local-hermes', harness_type: 'hermes', model_id: 'sol', permission_profile_id:null,agent_variant_id:null, default_reasoning_effort:null, group_id: null, archived_at: null };
-const run: Run = { id: 'run-1', messageId: 'message-1', agent: 'coder', harnessInstanceId: 'local-hermes', harnessType: 'hermes', modelId: 'sol', executionProfile:{workflowMode:'work',requestedReasoningEffort:null,reasoningEffort:null,reasoningEffortFallback:false,reasoningEffortSource:'auto',planEnforcement:null,permissionProfileId:null,agentVariantId:null}, status: 'completed', text: 'Готово', tools: [], usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 } };
-const gateway: RoomGateway = { mode: 'fake', subscribe: vi.fn(() => vi.fn()), send: vi.fn(), resolve: vi.fn(), cancel: vi.fn(), retry: vi.fn(), select: vi.fn(), dispose: vi.fn() };
-afterEach(()=>vi.restoreAllMocks());
+const run: Run = { id: 'run-1', messageId: 'message-1', agent: 'coder', harnessInstanceId: 'local-hermes', harnessType: 'hermes', modelId: 'sol', executionProfile:{workflowMode:'work',requestedReasoningEffort:null,reasoningEffort:null,reasoningEffortFallback:false,reasoningEffortSource:'auto',planEnforcement:null,permissionProfileId:null,agentVariantId:null}, status: 'completed', text: 'Готово', tools: [],interventions:[], usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 } };
+const gateway: RoomGateway = { mode: 'fake', subscribe: vi.fn(() => vi.fn()), send: vi.fn(), resolve: vi.fn(), intervene:vi.fn(), cancel: vi.fn(), retry: vi.fn(), select: vi.fn(), dispose: vi.fn() };
+afterEach(()=>{cleanup();vi.restoreAllMocks();});
 
 describe('Timeline run details', () => {
+  it('offers Redirect only for an explicitly supported streaming run',()=>{
+    const redirect=vi.fn(),streamingRun:Run={...run,status:'streaming',harnessInstanceId:'local-codex',harnessType:'codex'},state={...initialState,hydrated:true,messages:[{id:'message-1',text:'@coder work',createdAt:'2026-07-20T12:00:00.000Z',targets:['coder' as const],runIds:['run-1'],author:{profileId:'local-user',displayName:'User',handle:'user'},addressedToAll:false}],runs:{'run-1':streamingRun},runOrder:['run-1']},catalog={connectorEpoch:'epoch',cache:{state:'fresh' as const,refreshedAt:'2026-07-20T00:00:00.000Z',expiresAt:'2026-07-20T01:00:00.000Z'},instances:[{id:'local-codex',type:'codex',status:'healthy' as const,capabilities:[],interventionMode:'interrupt_then_continue' as const,models:[],controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]},catalogCache:{state:'fresh' as const,refreshedAt:'2026-07-20T00:00:00.000Z'}}]};
+    const view=render(<Timeline state={state} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()} harnessCatalog={catalog} redirectRun={redirect}/>);
+    fireEvent.click(screen.getByRole('button',{name:'Redirect Coder response'}));expect(redirect).toHaveBeenCalledWith('run-1');
+    view.rerender(<Timeline state={{...state,runs:{'run-1':{...streamingRun,interventions:[{id:'redirect',text:'Change direction',status:'pending'}]}}}} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()} harnessCatalog={catalog} redirectRun={redirect}/>);
+    expect(screen.queryByRole('button',{name:'Redirect Coder response'})).toBeNull();expect(screen.getByText('Redirecting…')).toBeTruthy();
+  });
   it('offers run details when the run has usage but no tool calls', () => {
     const historicalRun={...run,harnessInstanceId:'local-opencode',harnessType:'opencode'};
     const state = { ...initialState, hydrated: true, messages: [{ id: 'message-1', text: '@coder ответь', createdAt: '2026-07-20T12:00:00.000Z', targets: ['coder' as const], runIds: ['run-1'], author: { profileId: 'local-user', displayName: 'User', handle: 'user' }, addressedToAll: false }], runs: { 'run-1': historicalRun }, runOrder: ['run-1'] };

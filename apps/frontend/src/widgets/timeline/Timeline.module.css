@@ -254,6 +254,8 @@
   height: 16px;
   stroke-width: 2;
 }
+.run-actions .redirect-run { color:#738199; }
+.run-actions .redirect-run:hover { background:#eef2ff;color:#4f46e5; }
 .status-icon.queued,
 .status-icon.streaming {
   color: #71839b;
@@ -346,6 +348,20 @@
 .upstream-status > svg { width: 15px; height: 15px; flex: none; animation: status-spin 1.4s linear infinite; }
 .upstream-status > span { display: flex; flex-direction: column; }
 .upstream-status small { color: #a18452; font-size: 9px; }
+.intervention { display:grid;gap:5px;margin:8px 0;padding:8px 9px;border:1px solid #dbe3ee;border-radius:8px;background:#f8fafc;color:#475569;font-size:11px; }
+.intervention header { display:flex;align-items:center;gap:6px; }
+.intervention header svg { width:14px;height:14px;flex:none; }
+.intervention header span { margin-left:auto;color:#64748b;font-size:10px;font-weight:600; }
+.intervention p { margin:0;white-space:pre-wrap;overflow-wrap:anywhere; }
+.intervention details { min-width:0; }
+.intervention summary { width:max-content;max-width:100%;color:#64748b;cursor:pointer;font-size:10px;font-weight:600; }
+.intervention pre { max-height:220px;margin:6px 0 0;padding:8px;overflow:auto;border:1px solid #e2e8f0;border-radius:6px;background:white;color:#64748b;font:10px/1.5 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;white-space:pre-wrap; }
+.intervention > small { color:#9f5555; }
+.intervention-pending { border-color:#c7d2fe;background:#eef2ff; }
+.intervention-pending header svg { animation:blink .9s infinite;color:#4f46e5; }
+.intervention-applied header svg { color:#4f8060; }
+.intervention-failed { border-color:#fecaca;background:#fef2f2; }
+.intervention-failed header svg { color:#a85c5c; }
 .answer {
   font-size: 13px;
   line-height: 1.5;

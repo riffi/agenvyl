@@ -3,6 +3,7 @@ export const CONNECTOR_API_VERSION = 'v2' as const;
 export type ConnectorApiVersion = typeof CONNECTOR_API_VERSION;
 export type ConnectorStatus = 'ready' | 'degraded';
 export type ConnectorInstanceStatus = 'healthy' | 'degraded' | 'unavailable';
+export type InterventionMode = 'interrupt_then_continue';
 export type ConnectorCapability =
   | 'model_catalog'
   | 'execution_profiles'
@@ -48,6 +49,7 @@ export type ConnectorInstance = {
   type: string;
   status: ConnectorInstanceStatus;
   capabilities: ConnectorCapability[];
+  interventionMode?: InterventionMode;
   managed?: boolean;
   activeExecutions?: number;
   error?: ConnectorError;
@@ -219,6 +221,15 @@ export type ExecutionSnapshot = {
   error?: ConnectorError;
 };
 
+export type ExecutionInterventionStatus = 'pending' | 'applied' | 'failed';
+export type ExecutionIntervention = {
+  interventionId: string;
+  text: string;
+  status: ExecutionInterventionStatus;
+  error?: ConnectorError;
+};
+export type CreateExecutionInterventionRequest = Pick<ExecutionIntervention, 'interventionId' | 'text'>;
+
 type EventEnvelope<T extends string, P> = {
   apiVersion: ConnectorApiVersion;
   connectorEpoch: string;
@@ -240,6 +251,9 @@ export type ConnectorExecutionEvent =
   | EventEnvelope<'tool.started' | 'tool.updated' | 'tool.completed' | 'tool.failed' | 'tool.cancelled', { toolId: string; name: string; safeSummary: string; safeInput?: string }>
   | EventEnvelope<'request.opened', { request: ConnectorRequestSnapshot }>
   | EventEnvelope<'request.resolved', { requestId: string; outcome: ConnectorRequestResolution }>
+  | EventEnvelope<'execution.intervention.accepted', { interventionId: string; text: string }>
+  | EventEnvelope<'execution.intervention.applied', { interventionId: string; text: string }>
+  | EventEnvelope<'execution.intervention.failed', { interventionId: string; text: string; error: ConnectorError }>
   | EventEnvelope<'execution.completed' | 'execution.cancelled', Record<string, never>>
   | EventEnvelope<'execution.failed', { error: ConnectorError }>;
 
@@ -247,6 +261,7 @@ export type ConnectorRequestAnswer = { resolution: string } | { answers: Record<
 export type ResolveConnectorRequest = ConnectorRequestAnswer;
 export type ConnectorCommandResult = { execution: ExecutionSnapshot };
 export type ConnectorRequestCommandResult = ConnectorCommandResult & { request: ConnectorRequestSnapshot };
+export type ConnectorInterventionCommandResult = ConnectorCommandResult & { intervention: ExecutionIntervention };
 
 export const connectorContractFixtures = {
   health: {
@@ -294,6 +309,7 @@ export function isConnectorInstanceList(value: unknown): value is ConnectorInsta
   return isRecord(value) && value.apiVersion === CONNECTOR_API_VERSION && typeof value.connectorEpoch === 'string' && Array.isArray(value.instances)
     && value.instances.every(instance => isRecord(instance) && strings(instance, 'id', 'type', 'status') && ['healthy', 'degraded', 'unavailable'].includes(String(instance.status))
       && Array.isArray(instance.capabilities) && instance.capabilities.every(capability => typeof capability === 'string' && capabilities.has(capability))
+      && (instance.interventionMode === undefined || instance.interventionMode === 'interrupt_then_continue')
       && (instance.managed === undefined || typeof instance.managed === 'boolean')
       && (instance.type === 'opencode' || instance.managed === undefined)
       && (instance.activeExecutions === undefined || (Number.isSafeInteger(instance.activeExecutions) && Number(instance.activeExecutions) >= 0))
@@ -359,6 +375,16 @@ export function isConnectorRequestCommandResult(value:unknown):value is Connecto
   return isConnectorCommandResult(value);
 }
 
+export function isCreateExecutionInterventionRequest(value:unknown):value is CreateExecutionInterventionRequest {
+  return isRecord(value) && Object.keys(value).every(key => key === 'interventionId' || key === 'text')
+    && isUuid(value.interventionId) && validInterventionText(value.text);
+}
+
+export function isConnectorInterventionCommandResult(value:unknown):value is ConnectorInterventionCommandResult {
+  if(!isRecord(value)||!isExecutionIntervention(value.intervention))return false;
+  return isConnectorCommandResult(value);
+}
+
 export function isExecutionSnapshot(value: unknown): value is ExecutionSnapshot {
   if (!isRecord(value) || value.apiVersion !== CONNECTOR_API_VERSION || !strings(value, 'executionId', 'connectorEpoch', 'harnessInstanceId', 'harnessType', 'modelId', 'status')) return false;
   return executionStatuses.has(String(value.status)) && isExecutionProfile(value.executionProfile) && integers(value, 'cursor', 'earliestReplayableCursor', 'adapterGeneration')
@@ -399,6 +425,8 @@ export function isConnectorExecutionEvent(value: unknown): value is ConnectorExe
       && (value.payload.safeInput === undefined || (typeof value.payload.safeInput === 'string' && value.payload.safeInput.length <= 8_000));
     case 'request.opened': return isRequest(value.payload.request);
     case 'request.resolved': return strings(value.payload, 'requestId', 'outcome') && requestResolutions.has(String(value.payload.outcome));
+    case 'execution.intervention.accepted': case 'execution.intervention.applied': return isInterventionPayload(value.payload);
+    case 'execution.intervention.failed': return isInterventionPayload(value.payload) && isError(value.payload.error);
     case 'execution.failed': return isError(value.payload.error);
     default: return false;
   }
@@ -411,6 +439,13 @@ const requestResolutions = new Set<string>(['answered', 'declined', 'cancelled',
 const upstreamStatusStates = new Set<string>(['waiting_upstream', 'retrying', 'recovered']);
 const upstreamStatusReasons = new Set<string>(['awaiting_response', 'provider_unavailable', 'rate_limited', 'provider_timeout', 'model_unavailable', 'authentication_failed', 'harness_unavailable', 'connector_unreachable']);
 function isError(value: unknown): value is ConnectorError { return isRecord(value) && strings(value, 'code', 'message'); }
+function isExecutionIntervention(value:unknown):value is ExecutionIntervention {
+  return isRecord(value) && isInterventionPayload(value) && ['pending','applied','failed'].includes(String(value.status))
+    && (value.error === undefined || isError(value.error)) && (value.status === 'failed' || value.error === undefined);
+}
+function isInterventionPayload(value:Record<string,unknown>):boolean{return isUuid(value.interventionId)&&validInterventionText(value.text);}
+function validInterventionText(value:unknown):value is string{return typeof value === 'string' && value.trim().length > 0 && value.length <= 2_000;}
+function isUuid(value:unknown):value is string{return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);}
 function isUpstreamStatus(value: unknown): value is UpstreamStatus {
   return isRecord(value) && typeof value.state === 'string' && upstreamStatusStates.has(value.state)
     && typeof value.reason === 'string' && upstreamStatusReasons.has(value.reason) && typeof value.retryable === 'boolean'

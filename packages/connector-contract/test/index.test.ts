@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { connectorContractFixtures, isConfigureConnectorInstancesRequest, isConnectorCatalog, isConnectorCommandResult, isConnectorExecutionEvent, isConnectorHealth, isConnectorInstanceList, isConnectorRequestCommandResult, isExecutionSnapshot, isResolveConnectorRequest, isRestartConnectorInstanceResult, isStartExecutionRequest } from '../src/index.js';
+import { connectorContractFixtures, isConfigureConnectorInstancesRequest, isConnectorCatalog, isConnectorCommandResult, isConnectorExecutionEvent, isConnectorHealth, isConnectorInstanceList, isConnectorInterventionCommandResult, isConnectorRequestCommandResult, isCreateExecutionInterventionRequest, isExecutionSnapshot, isResolveConnectorRequest, isRestartConnectorInstanceResult, isStartExecutionRequest } from '../src/index.js';
 
 describe('Connector v1 contract fixtures', () => {
   it('keeps health, discovery, execution and events runtime-valid', () => {
@@ -18,6 +18,12 @@ describe('Connector v1 contract fixtures', () => {
     expect(isResolveConnectorRequest({elicitation:{action:'accept',content:{workspace:'main'}}})).toBe(true);
     expect(isResolveConnectorRequest({elicitation:{action:'decline',content:null}})).toBe(true);
     expect(isConnectorExecutionEvent({...connectorContractFixtures.textEvent,type:'request.opened',payload:{request:{id:'elicit-1',kind:'elicitation',prompt:'Choose',elicitation:{mode:'form',serverName:'nodexium',message:'Choose',requestedSchema:{type:'object',properties:{workspace:{type:'string'}}}}}}})).toBe(true);
+    const intervention={interventionId:'c226f522-d864-4f1c-a53f-25d22dc9109f',text:'Focus on the API'};
+    expect(isCreateExecutionInterventionRequest(intervention)).toBe(true);
+    expect(isConnectorExecutionEvent({...connectorContractFixtures.textEvent,type:'execution.intervention.accepted',payload:intervention})).toBe(true);
+    expect(isConnectorExecutionEvent({...connectorContractFixtures.textEvent,type:'execution.intervention.applied',payload:intervention})).toBe(true);
+    expect(isConnectorExecutionEvent({...connectorContractFixtures.textEvent,type:'execution.intervention.failed',payload:{...intervention,error:{code:'redirect_failed',message:'Failed'}}})).toBe(true);
+    expect(isConnectorInterventionCommandResult({execution:connectorContractFixtures.execution,intervention:{...intervention,status:'pending'}})).toBe(true);
   });
 
   it('rejects malformed epochs, cursors and payloads', () => {
@@ -42,6 +48,8 @@ describe('Connector v1 contract fixtures', () => {
     expect(isResolveConnectorRequest({ resolution: 'x'.repeat(2_001) })).toBe(false);
     expect(isResolveConnectorRequest({elicitation:{action:'decline',content:{}}})).toBe(false);
     expect(isConnectorExecutionEvent({...connectorContractFixtures.textEvent,type:'request.opened',payload:{request:{id:'elicit-1',kind:'elicitation',prompt:'Open',elicitation:{mode:'url',serverName:'nodexium',message:'Open',url:'javascript:alert(1)',elicitationId:'flow'}}}})).toBe(false);
+    expect(isCreateExecutionInterventionRequest({interventionId:'not-a-uuid',text:'redirect'})).toBe(false);
+    expect(isCreateExecutionInterventionRequest({interventionId:'c226f522-d864-4f1c-a53f-25d22dc9109f',text:' '})).toBe(false);
   });
 
   it('accepts boolean managed ownership and rejects non-boolean values',()=>{
@@ -56,6 +64,8 @@ describe('Connector v1 contract fixtures', () => {
     expect(isConnectorInstanceList({...connectorContractFixtures.instances,instances:[instance]})).toBe(true);
     expect(isConnectorInstanceList({...connectorContractFixtures.instances,instances:[{...instance,activeExecutions:-1}]})).toBe(false);
     expect(isRestartConnectorInstanceResult({apiVersion:'v2',connectorEpoch:'epoch-1',instance,catalog:{models:[],controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]}}})).toBe(true);
+    expect(isConnectorInstanceList({...connectorContractFixtures.instances,instances:[{...instance,interventionMode:'interrupt_then_continue'}]})).toBe(true);
+    expect(isConnectorInstanceList({...connectorContractFixtures.instances,instances:[{...instance,interventionMode:'pause'}]})).toBe(false);
   });
 
   it('accepts only concrete absolute external-directory roots on OpenCode instances',()=>{

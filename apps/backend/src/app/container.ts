@@ -17,6 +17,7 @@ import {ConnectorRunAdapter} from '../integrations/connector/ConnectorRunAdapter
 import {UserProfileService} from '../modules/user-profile/userProfile.service.js';
 import {SetupService} from '../modules/setup/SetupService.js';
 import {ProjectsService} from '../modules/projects/projects.service.js';
+import {RunInterventionService} from '../modules/runs/RunInterventionService.js';
 
 export async function createAppContainer(config: AppConfig, fetchImplementation?: typeof fetch,logger?:FastifyBaseLogger,legacySeed?:boolean) {
   const {database,personas,userProfile,personaGroups,projects,rooms,roomEvents,messages,runs,workspace,workspaceSnapshots,workspaceSlots}=await createRepositories(config.databaseUrl,{legacySeed:legacySeed??process.env.NODE_ENV==='test'});
@@ -40,6 +41,7 @@ export async function createAppContainer(config: AppConfig, fetchImplementation?
   },workspaceSlots);
 
   const runExecutor=new RunExecutor({ personas, runs, events, runGateway:connectorRuns, runEvents:connectorRuns, connectorExecution:connectorRuns,activeRuns,concurrency:config.runConcurrency,runTimeoutMs:config.runTimeoutMs,logger,roomWorkspace,messages,connector });
+  const runInterventions=new RunInterventionService({runs,activeRuns,gateway:connectorRuns});
   await roomWorkspace.recover();
   await runExecutor.reconcilePersistedRuns();
   await roomWorkspace.recoverRuns();
@@ -58,7 +60,7 @@ export async function createAppContainer(config: AppConfig, fetchImplementation?
     userProfileService:new UserProfileService(userProfile),
     personaGroupsService:new PersonaGroupsService(personaGroups),
     createMessageRound:new CreateMessageRound({personas,rooms,messages,events,harnesses:harnessCatalogService,activeRuns,runExecutor,roomWorkspace}),
-    runsService:new RunsService({runs,events,activeRuns,executor:runExecutor}),
+    runsService:new RunsService({runs,events,activeRuns,executor:runExecutor,interventions:runInterventions}),
     harnessCatalogService,
     roomWorkspace,
     setupService:new SetupService(database,connector,workspaceRoot,harnessCatalogService,{logger,roomWorkspace}),

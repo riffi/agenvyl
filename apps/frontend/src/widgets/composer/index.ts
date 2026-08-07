@@ -1,1 +1,1 @@
-export { Composer, type ComposerHandle } from './Composer';
+export { Composer, type ComposerHandle, type ComposerInterventionTarget } from './Composer';

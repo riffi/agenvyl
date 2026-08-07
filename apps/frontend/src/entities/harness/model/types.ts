@@ -13,6 +13,7 @@ export type HarnessInstance = {
   type: string;
   status: 'healthy' | 'degraded' | 'unavailable';
   capabilities: string[];
+  interventionMode?:'interrupt_then_continue';
   models: HarnessCatalogModel[];
   controls:{nativeWorkflowModes:Array<'plan'|'work'>;permissionProfiles:HarnessCatalogItem[];agentVariants:HarnessCatalogItem[]};
   catalogCache:HarnessInstanceCatalogCache;
