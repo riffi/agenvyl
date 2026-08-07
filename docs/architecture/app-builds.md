@@ -188,4 +188,3 @@ historical selection rather than redirecting to the current build.
 | Separate-origin relay | `apps/backend/src/app/buildPreviewApp.ts` |
 | App view and build history | `apps/frontend/src/widgets/workspace-window/` |
 | Cross-layer types and events | `packages/contracts/src/index.ts` |
-
