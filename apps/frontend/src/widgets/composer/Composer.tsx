@@ -81,7 +81,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   const instructionOnlyTargets=workflowMode==='plan'?targetExecutionPreview.filter(item=>!item.native):[];
   const readyAttachments=attachments.flatMap(item=>item.attachment?[item.attachment]:[]);
   const hasReadyAttachment=attachments.some(item=>item.status==='ready');
-  const composerExpanded=Boolean(text.length||(!interventionTarget&&attachments.length)||(!interventionTarget&&targets.length));
+  const composerExpanded=Boolean(interventionTarget||text.length||attachments.length||targets.length);
   const hasOutgoingContent=Boolean(text.trim()||(!interventionTarget&&hasReadyAttachment));
   const composerStatus=interventionTarget
     ? `${text.length} / 2000`

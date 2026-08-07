@@ -11,13 +11,14 @@ import {
   MoreHorizontal,
   PanelLeft,
   Paperclip,
+  Play,
   RefreshCw,
   RotateCcw,
   Trash2,
   Type,
   X,
 } from 'lucide-react';
-import type { WorkspaceAttachment, WorkspaceEntry, WorkspaceVersion } from '@agenvyl/contracts';
+import type { RoomStaticPreview, WorkspaceAttachment, WorkspaceEntry, WorkspaceVersion } from '@agenvyl/contracts';
 import { IconButton } from '../../shared/ui';
 import { workspaceModesFor, type WorkspaceViewMode } from './workspaceModel';
 import styles from './WorkspaceWindow.module.css';
@@ -32,6 +33,7 @@ type WorkspaceHeaderProps = {
   mode: WorkspaceViewMode;
   deleted: boolean;
   canAttach: boolean;
+  staticPreview?: RoomStaticPreview;
   onTreeToggle: () => void;
   onVersion: (version: WorkspaceVersion, followCurrent: boolean) => void;
   onMode: (mode: WorkspaceViewMode) => void;
@@ -42,6 +44,7 @@ type WorkspaceHeaderProps = {
   onMove: () => void;
   onDelete: () => void;
   onRefresh: () => void;
+  onPreview: () => void;
   onClose: () => void;
 };
 
@@ -55,6 +58,7 @@ export const WorkspaceHeader = ({
   mode,
   deleted,
   canAttach,
+  staticPreview,
   onTreeToggle,
   onVersion,
   onMode,
@@ -65,6 +69,7 @@ export const WorkspaceHeader = ({
   onMove,
   onDelete,
   onRefresh,
+  onPreview,
   onClose,
 }: WorkspaceHeaderProps) => {
   const actionsRef = useRef<HTMLDetailsElement>(null);
@@ -75,6 +80,12 @@ export const WorkspaceHeader = ({
   const versionNumber = versions.length ? versions.length - viewedIndex : 1;
   const modes = attachment ? workspaceModesFor(attachment) : [];
   const isHistorical = Boolean(viewed && current && viewed.id !== current.id);
+  const previewLabel = staticPreview?.status === 'ready' ? 'Preview' : staticPreview?.status === 'outdated' ? 'Preview outdated' : 'Preview unavailable';
+  const previewTitle = staticPreview?.status === 'ready'
+    ? 'Preview current workspace'
+    : staticPreview?.status === 'outdated'
+      ? 'Preview outdated — source files changed after this build'
+      : 'Preview unavailable — build output not found';
 
   const action = (callback: () => void) => () => {
     actionsRef.current?.removeAttribute('open');
@@ -161,6 +172,15 @@ export const WorkspaceHeader = ({
     </div>
 
     <div className={styles.headerControls}>
+      {staticPreview && <button
+        type="button"
+        className={styles.workspacePreview}
+        aria-label={previewTitle}
+        aria-disabled={staticPreview.status !== 'ready'}
+        title={previewTitle}
+        onClick={() => staticPreview.status === 'ready' && onPreview()}
+      ><Play /><span>{previewLabel}</span></button>}
+
       <details ref={actionsRef} className={styles.workspaceMenu} onBlur={closeOutside}>
         <summary role="button" aria-label="Workspace actions" title="Workspace actions"><MoreHorizontal /></summary>
         <div className={styles.workspaceMenuPopover}>

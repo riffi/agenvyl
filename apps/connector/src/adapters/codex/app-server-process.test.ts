@@ -7,7 +7,7 @@ import {CodexAppServerClient} from './app-server-client.js';
 const roots:string[]=[];afterEach(async()=>{for(const root of roots.splice(0))await rm(root,{recursive:true,force:true});});
 
 describe('Codex app-server subprocess protocol',()=>{
-  it('opts into experimental and MCP form APIs, parses fragmented JSONL and correlates out-of-order responses',async()=>{const root=await mkdtemp(join(tmpdir(),'agenvyl-codex-process-'));roots.push(root);const fixture=join(root,'fixture.mjs'),command=process.platform==='win32'?join(root,'codex.cmd'):join(root,'codex');await writeFile(fixture,serverSource);if(process.platform==='win32')await writeFile(command,`@echo off\r\n"${process.execPath}" "${fixture}" %*\r\n`);else{await writeFile(command,`#!/bin/sh\nexec "${process.execPath}" "${fixture}" "$@"\n`);await chmod(command,0o755);}const client=new CodexAppServerClient(command);try{await client.start();const [first,second]=await Promise.all([client.request('echo',{value:'first'}),client.request('echo',{value:'second'})]);expect(first).toEqual({value:'first'});expect(second).toEqual({value:'second'});}finally{await client.close();}});
+  it('opts into experimental and MCP form APIs, preserves UTF-8 JSONL and correlates out-of-order responses',async()=>{const root=await mkdtemp(join(tmpdir(),'agenvyl-codex-process-'));roots.push(root);const fixture=join(root,'fixture server.mjs'),command=process.platform==='win32'?join(root,'codex command.cmd'):join(root,'codex command');await writeFile(fixture,serverSource);if(process.platform==='win32')await writeFile(command,`@echo off\r\n"${process.execPath}" "${fixture}" %*\r\n`);else{await writeFile(command,`#!/bin/sh\nexec "${process.execPath}" "${fixture}" "$@"\n`);await chmod(command,0o755);}const client=new CodexAppServerClient(command);try{await client.start();const [first,second]=await Promise.all([client.request('echo',{value:'первый 🌱'}),client.request('echo',{value:'second'})]);expect(first).toEqual({value:'первый 🌱'});expect(second).toEqual({value:'second'});}finally{await client.close();}});
   it('terminates descendants that hold a run workspace as their current directory',async()=>{
     const root=await mkdtemp(join(tmpdir(),'agenvyl-codex-tree-'));roots.push(root);
     const workspace=join(root,'workspace'),pidFile=join(root,'child.pid'),fixture=join(root,'fixture.mjs'),command=process.platform==='win32'?join(root,'codex.cmd'):join(root,'codex');
@@ -20,6 +20,20 @@ describe('Codex app-server subprocess protocol',()=>{
     await client.close();
     await expect.poll(()=>processExists(childPid),{timeout:5_000}).toBe(false);
     await expect(rm(workspace,{recursive:true})).resolves.toBeUndefined();
+  });
+  it('terminates descendants when the app-server exits before client cleanup',async()=>{
+    const root=await mkdtemp(join(tmpdir(),'agenvyl-codex-orphan-'));roots.push(root);
+    const workspace=join(root,'workspace'),pidFile=join(root,'child.pid'),fixture=join(root,'fixture.mjs'),command=process.platform==='win32'?join(root,'codex.cmd'):join(root,'codex');
+    await mkdir(workspace);await writeFile(fixture,treeServerSource);
+    if(process.platform==='win32')await writeFile(command,`@echo off\r\n"${process.execPath}" "${fixture}" %*\r\n`);
+    else{await writeFile(command,`#!/bin/sh\nexec "${process.execPath}" "${fixture}" "$@"\n`);await chmod(command,0o755);}
+    const client=new CodexAppServerClient(command,{...process.env,AGENVYL_TEST_HOLD_CWD:workspace,AGENVYL_TEST_CHILD_PID_FILE:pidFile,AGENVYL_TEST_EXIT_AFTER_INIT:'1'});
+    const exited=new Promise<void>(resolve=>client.onExit(()=>resolve()));
+    await client.start();const childPid=Number(await readFile(pidFile,'utf8'));expect(processExists(childPid)).toBe(true);
+    await exited;
+    await expect.poll(()=>processExists(childPid),{timeout:5_000}).toBe(false);
+    await expect(rm(workspace,{recursive:true})).resolves.toBeUndefined();
+    await client.close();
   });
 });
 
@@ -37,7 +51,7 @@ import readline from 'node:readline';
 const child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{cwd:process.env.AGENVYL_TEST_HOLD_CWD,stdio:'ignore'});
 writeFileSync(process.env.AGENVYL_TEST_CHILD_PID_FILE,String(child.pid));
 const lines=readline.createInterface({input:process.stdin});
-lines.on('line',line=>{const message=JSON.parse(line);if(message.method==='initialize')process.stdout.write(JSON.stringify({id:message.id,result:{serverInfo:{name:'tree-fixture'}}})+'\\n');});
+lines.on('line',line=>{const message=JSON.parse(line);if(message.method==='initialize'){process.stdout.write(JSON.stringify({id:message.id,result:{serverInfo:{name:'tree-fixture'}}})+'\\n');if(process.env.AGENVYL_TEST_EXIT_AFTER_INIT)setTimeout(()=>process.exit(0),10);}});
 `;
 
 const processExists=(pid:number)=>{try{process.kill(pid,0);return true;}catch{return false;}};

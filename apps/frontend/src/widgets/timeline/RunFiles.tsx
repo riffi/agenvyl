@@ -1,6 +1,6 @@
 import { FileMinus2, FilePenLine, FilePlus2, Files } from 'lucide-react';
 import { useState } from 'react';
-import type { RunArtifact } from '@agenvyl/contracts';
+import type { RunArtifact,RunArtifactSummary } from '@agenvyl/contracts';
 import type { WorkspaceTarget } from '../workspace-window';
 import styles from './Timeline.module.css';
 
@@ -14,20 +14,23 @@ const changeMeta = {
 
 export const RunFiles = ({
   files,
+  summary,
   openWorkspace,
 }: {
   files: RunArtifact[];
+  summary?:RunArtifactSummary;
   openWorkspace: (target: WorkspaceTarget) => void;
 }) => {
   const [expanded, setExpanded] = useState(false);
-  if (!files.length) return null;
+  if (!files.length&&!summary?.total_count) return null;
 
   const visibleFiles = expanded ? files : files.slice(0, initiallyVisible);
   const hiddenCount = files.length - visibleFiles.length;
 
   return <section className={styles['run-files']} aria-label="Files changed by agent">
     <span className={styles['run-files-label']}><Files aria-hidden="true" />Changed files</span>
-    <span className={styles['run-files-list']}>
+    <span className={styles['run-files-content']}>
+    <span className={`${styles['run-files-list']} ${expanded?styles['run-files-list-expanded']:''}`}>
       {visibleFiles.map(file => {
         const meta = changeMeta[file.change];
         const ChangeIcon = meta.icon;
@@ -47,8 +50,10 @@ export const RunFiles = ({
           <span>{file.name}</span>
         </button>;
       })}
-      {hiddenCount > 0 && <button type="button" className={styles['run-files-more']} onClick={() => setExpanded(true)}>+{hiddenCount} more</button>}
-      {expanded && files.length > initiallyVisible && <button type="button" className={styles['run-files-more']} onClick={() => setExpanded(false)}>Show less</button>}
+      {hiddenCount > 0 && <button type="button" className={styles['run-files-more']} onClick={() => setExpanded(true)} aria-expanded={false}>Show {hiddenCount} more</button>}
+      {expanded && files.length > initiallyVisible && <button type="button" className={styles['run-files-more']} onClick={() => setExpanded(false)} aria-expanded={true}>Show less</button>}
+    </span>
+    <small className={styles['run-files-summary']}>{summary?.project_count??files.length} project {(summary?.project_count??files.length)===1?'file':'files'}{Boolean(summary?.hidden_count)&&<> · {summary!.hidden_count} non-project files hidden</>}</small>
     </span>
   </section>;
 };

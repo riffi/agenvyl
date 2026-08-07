@@ -22,6 +22,7 @@ describe('room event contract', () => {
     expect(isServerRoomEvent({id:'event-6',sequence:6,type:'run.upstream_status',payload:{runId:'run-1',state:'waiting_upstream',reason:'awaiting_response',retryable:true}})).toBe(true);
     expect(isServerRoomEvent({id:'event-7',sequence:7,type:'room.workflow_mode.updated',payload:{workflowMode:'plan'}})).toBe(true);
     expect(isServerRoomEvent({id:'event-8',sequence:8,type:'run.workspace.finalized',payload:{runId:'run-1',workspaceResult:{base_snapshot_id:'base',result_snapshot_id:'base',capture_status:'complete',publish_status:'noop',conflict_count:0,errors:[]}}})).toBe(true);
+    expect(isServerRoomEvent({id:'event-9',sequence:9,type:'run.workspace.finalized',payload:{runId:'run-1',workspaceResult:{base_snapshot_id:'base',result_snapshot_id:'result',capture_status:'complete',publish_status:'not_published',conflict_count:0,errors:[]},artifacts:[{version_id:'v1',snapshot_id:'result',path:'src/app.ts',name:'app.ts',size:10,mime_type:'text/typescript',url:'/v1',preview_url:'/v1/preview',change:'created',attribution:'exact'}],artifactSummary:{total_count:4,project_count:1,hidden_count:3},staticPreview:{version_id:'preview',snapshot_id:'result',path:'dist/index.html',name:'index.html',size:20,mime_type:'text/html',url:'/preview',preview_url:'/run-preview'},staticPreviewStatus:'ready'}})).toBe(true);
   });
 
   it('rejects unknown and malformed events', () => {

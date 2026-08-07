@@ -65,16 +65,17 @@
   box-shadow: 0 0 0 3px #4f6ef71a,0 3px 12px #0f172a0a;
 }
 .redirect-card { border-color:#a5b4fc;background:#f7f8ff; }
-.redirect-header { display:flex;min-height:36px;align-items:center;justify-content:space-between;padding:6px 9px;border-bottom:1px solid #dfe3ff;color:#3730a3; }
+.redirect-header { display:flex;min-height:36px;align-items:center;justify-content:space-between;padding:6px 13px;border-bottom:1px solid #dfe3ff;color:#3730a3; }
 .redirect-header > span { display:flex;align-items:center;gap:7px;font-size:11px; }
 .redirect-header svg { width:15px;height:15px; }
 .redirect-header > button { display:grid;width:28px;height:28px;padding:0;border:0;border-radius:7px;background:transparent;color:#64748b;cursor:pointer;place-items:center; }
 .redirect-header > button:hover { background:#e8eaff;color:#3730a3; }
 .redirect-header > button:focus-visible { outline:2px solid #4f6ef7;outline-offset:1px; }
 .redirect-header > button svg { width:14px;height:14px; }
-.compose-card footer.redirect-footer { grid-template-columns:minmax(0,1fr) auto; }
-.redirect-card footer .send { width:auto!important;min-width:94px;padding:0 13px!important;border-radius:10px!important;gap:6px; }
-.redirect-card footer .send span { color:white;font-size:11px;font-weight:700; }
+.compose-card footer.redirect-footer { position:relative;inset-inline:auto;inset-block:auto;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:6px 13px 10px; }
+.compose-card.redirect-card footer .send { width:auto!important;height:32px;min-width:0;padding:0 11px!important;border-radius:9px!important;gap:5px; }
+.compose-card.redirect-card footer .send svg { width:15px;height:15px; }
+.compose-card.redirect-card footer .send span { color:white;font-size:11px;font-weight:700; }
 .compose-card-expanded {
   min-height: 96px;
 }

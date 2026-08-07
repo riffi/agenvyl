@@ -48,15 +48,40 @@ export class WorkspaceSnapshotRepository{
   async markReady(runId:string){await this.database.sql`UPDATE run_workspace_results SET capture_status='ready',updated_at=now() WHERE run_id=${runId} AND capture_status='preparing'`;}
   async markFinalizing(runId:string){await this.database.sql`UPDATE run_workspace_results SET capture_status='finalizing',updated_at=now() WHERE run_id=${runId} AND capture_status=ANY(ARRAY['preparing','ready','finalizing'])`;}
   async markFailed(runId:string,error:WorkspaceCaptureError){await this.database.sql`UPDATE run_workspace_results SET capture_status='failed',publish_status='failed',errors=${this.database.sql.json([error])},updated_at=now() WHERE run_id=${runId} AND result_snapshot_id IS NULL`;}
-  async markNotPublished(runId:string){await this.database.sql`UPDATE run_workspace_results SET publish_status='not_published',updated_at=now() WHERE run_id=${runId} AND result_snapshot_id IS NOT NULL`;}
+  async markPublicationOutcome(runId:string,outcome:'not_published'|'noop'){await this.database.sql`UPDATE run_workspace_results SET publish_status=${outcome},updated_at=now() WHERE run_id=${runId} AND result_snapshot_id IS NOT NULL`;}
 
   async result(runId:string,db:QueryContext=this.database.sql){const row=(await db`SELECT * FROM run_workspace_results WHERE run_id=${runId}`)[0];return row?toRunWorkspaceResult(row):undefined;}
+  async resultForRoom(roomId:string,runId:string,db:QueryContext=this.database.sql){const row=(await db`SELECT w.* FROM run_workspace_results w JOIN agent_runs r ON r.id=w.run_id WHERE w.run_id=${runId} AND r.room_id=${roomId}`)[0];return row?toRunWorkspaceResult(row):undefined;}
   async runIsTerminal(runId:string){const row=(await this.database.sql`SELECT status FROM agent_runs WHERE id=${runId}`)[0];return Boolean(row&&['completed','failed','cancelled'].includes(text(row.status)));}
   async results(runIds:string[],db:QueryContext=this.database.sql){
     const result=new Map<string,RunWorkspaceResult>();
     if(!runIds.length)return result;
     for(const row of await db`SELECT * FROM run_workspace_results WHERE run_id=ANY(${runIds})`)result.set(text(row.run_id),toRunWorkspaceResult(row));
     return result;
+  }
+
+  async publishedPreviewCandidates(roomId:string,db:QueryContext=this.database.sql){
+    const rows=await db`SELECT w.run_id,w.result_snapshot_id
+      FROM run_workspace_results w
+      JOIN agent_runs r ON r.id=w.run_id
+      WHERE r.room_id=${roomId}
+        AND w.capture_status='complete'
+        AND w.publish_status=ANY(ARRAY['published','noop'])
+        AND w.conflict_count=0
+        AND w.result_snapshot_id IS NOT NULL
+        AND EXISTS(
+          SELECT 1 FROM workspace_snapshot_entries entry
+          WHERE entry.snapshot_id=w.result_snapshot_id
+            AND entry.kind='file'
+            AND (
+              lower(entry.path)=ANY(ARRAY['dist/index.html','build/index.html','out/index.html'])
+              OR lower(entry.path) LIKE '%/dist/index.html'
+              OR lower(entry.path) LIKE '%/build/index.html'
+              OR lower(entry.path) LIKE '%/out/index.html'
+            )
+        )
+      ORDER BY w.updated_at DESC,w.run_id`;
+    return rows.map(row=>({runId:text(row.run_id),snapshotId:text(row.result_snapshot_id)}));
   }
 
   async saveRunSnapshot(input:{roomId:string;runId:string;baseSnapshotId:string;entries:SnapshotEntry[];completeness:'complete'|'incomplete';errors:WorkspaceCaptureError[]}){
@@ -86,33 +111,47 @@ export class WorkspaceSnapshotRepository{
     });
   }
 
-  async replaceRunArtifacts(runId:string,changes:Array<{versionId:string;change:'created'|'updated'|'deleted'}>){
+  async replaceRunArtifacts(runId:string,changes:Array<{versionId:string;change:'created'|'updated'|'deleted';visibility:'project'|'hidden'}>){
     await this.database.transaction(async tx=>{
       await tx`DELETE FROM run_artifacts WHERE run_id=${runId}`;
       const now=new Date().toISOString();
-      for(const change of changes)await tx`INSERT INTO run_artifacts(run_id,version_id,change,attribution,created_at) VALUES(${runId},${change.versionId},${change.change},'exact',${now})`;
+      for(const change of changes)await tx`INSERT INTO run_artifacts(run_id,version_id,change,attribution,visibility,created_at) VALUES(${runId},${change.versionId},${change.change},'exact',${change.visibility},${now})`;
     });
   }
 
-  async publishRun(roomId:string,runId:string){
+  async publishRun(roomId:string,runId:string,input:{candidateEntries:SnapshotEntry[];mode:'automatic'|'manual'}){
     return this.database.transaction(async tx=>{
       const room=(await tx`SELECT current_workspace_snapshot_id FROM rooms WHERE id=${roomId} FOR UPDATE`)[0];
-      const resultRow=(await tx`SELECT * FROM run_workspace_results WHERE run_id=${runId} FOR UPDATE`)[0];
+      const resultRow=(await tx`SELECT w.*,r.status run_status FROM run_workspace_results w JOIN agent_runs r ON r.id=w.run_id AND r.room_id=${roomId} WHERE w.run_id=${runId} FOR UPDATE OF w`)[0];
       if(!room||!resultRow)throw new AppError('workspace_result_not_found',404,'Run workspace result not found');
+      const publishStatus=text(resultRow.publish_status);
+      if(['published','partially_published','noop'].includes(publishStatus))return toRunWorkspaceResult(resultRow);
+      if(input.mode==='automatic'&&publishStatus!=='pending')return toRunWorkspaceResult(resultRow);
+      if(input.mode==='manual'&&(publishStatus!=='not_published'||!['failed','cancelled'].includes(text(resultRow.run_status))))throw new AppError('workspace_apply_unavailable',409,'Captured changes cannot be applied in the current run state');
       if(text(resultRow.capture_status)!=='complete'||!resultRow.result_snapshot_id){
-        await tx`UPDATE run_workspace_results SET publish_status='not_published',updated_at=now() WHERE run_id=${runId}`;
+        throw new AppError('workspace_apply_unavailable',409,'Only a complete captured workspace can be applied');
+      }
+      const currentId=text(room.current_workspace_snapshot_id),baseId=text(resultRow.base_snapshot_id);
+      const [base,current]=await Promise.all([this.entries(baseId,tx),this.entries(currentId,tx)]),now=new Date().toISOString();
+      if(entriesEqual(base,input.candidateEntries)){
+        await tx`DELETE FROM workspace_publish_conflicts WHERE run_id=${runId}`;
+        await tx`UPDATE run_workspace_results SET published_snapshot_id=NULL,publish_status='noop',conflict_count=0,updated_at=${now} WHERE run_id=${runId}`;
         return toRunWorkspaceResult((await tx`SELECT * FROM run_workspace_results WHERE run_id=${runId}`)[0]);
       }
-      const currentId=text(room.current_workspace_snapshot_id),baseId=text(resultRow.base_snapshot_id),candidateId=text(resultRow.result_snapshot_id);
-      const [base,current,candidate]=await Promise.all([this.entries(baseId,tx),this.entries(currentId,tx),this.entries(candidateId,tx)]);
-      const merged=mergeSnapshots(base,current,candidate),publishedId=crypto.randomUUID(),now=new Date().toISOString();
+      const merged=mergeSnapshots(base,current,input.candidateEntries);
+      if(!merged.conflicts.length&&entriesEqual(current,merged.entries)){
+        await tx`DELETE FROM workspace_publish_conflicts WHERE run_id=${runId}`;
+        await tx`UPDATE run_workspace_results SET published_snapshot_id=NULL,publish_status='noop',conflict_count=0,updated_at=${now} WHERE run_id=${runId}`;
+        return toRunWorkspaceResult((await tx`SELECT * FROM run_workspace_results WHERE run_id=${runId}`)[0]);
+      }
+      const publishedId=crypto.randomUUID();
       await insertSnapshot(tx,{id:publishedId,roomId,kind:'published',baseSnapshotId:currentId,sourceRunId:undefined,entries:merged.entries,completeness:'complete',createdAt:now});
       await tx`DELETE FROM workspace_publish_conflicts WHERE run_id=${runId}`;
       for(const conflict of merged.conflicts)await insertConflict(tx,runId,conflict,now);
       await applyPublishedEntries(tx,roomId,merged.entries,now);
       await tx`UPDATE rooms SET current_workspace_snapshot_id=${publishedId},workspace_materialization_status='pending' WHERE id=${roomId}`;
-      const publishStatus=merged.conflicts.length?'partially_published':'published';
-      await tx`UPDATE run_workspace_results SET published_snapshot_id=${publishedId},publish_status=${publishStatus},conflict_count=${merged.conflicts.length},updated_at=${now} WHERE run_id=${runId}`;
+      const nextPublishStatus=merged.conflicts.length?'partially_published':'published';
+      await tx`UPDATE run_workspace_results SET published_snapshot_id=${publishedId},publish_status=${nextPublishStatus},conflict_count=${merged.conflicts.length},updated_at=${now} WHERE run_id=${runId}`;
       return toRunWorkspaceResult((await tx`SELECT * FROM run_workspace_results WHERE run_id=${runId}`)[0]);
     });
   }
@@ -259,6 +298,12 @@ const descriptor=(row:Record<string,unknown>,prefix:'base'|'current'|'candidate'
   if(!kind)return undefined;
   const version=row[`${prefix}_version_id`];
   return{kind:text(kind) as SnapshotDescriptor['kind'],...(version?{versionId:text(version)}:{})};
+};
+
+const entriesEqual=(left:SnapshotEntry[],right:SnapshotEntry[])=>{
+  if(left.length!==right.length)return false;
+  const compared=entryMap(right);
+  return left.every(entry=>sameEntry(entry,compared.get(entry.path)));
 };
 
 const toRunWorkspaceResult=(row:Record<string,unknown>):RunWorkspaceResult=>({

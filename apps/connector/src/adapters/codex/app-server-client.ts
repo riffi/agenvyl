@@ -1,6 +1,7 @@
 import {spawn,spawnSync,type ChildProcessByStdio} from 'node:child_process';
 import type {Readable,Writable} from 'node:stream';
 import {commandInvocation,resolveCommand} from '../../discovery.js';
+import {spawnStdioInWindowsJob} from '../../windows-job-object.js';
 
 type RpcId=string|number;
 export type AppServerMessage={id?:RpcId;method?:string;params?:unknown;result?:unknown;error?:unknown};
@@ -52,6 +53,15 @@ export class CodexAppServerClient implements CodexAppServerPort{
     this.pending.clear();
     if(!child||child.exitCode!==null)return;
     const closed=new Promise<void>(resolve=>child.once('close',()=>resolve()));
+    if(process.platform==='win32'){
+      child.kill();
+      await waitForClose(closed,2_000);
+      if(child.exitCode===null){killProcessTree(child);await waitForClose(closed,2_000);}
+      return;
+    }
+    child.stdin.end();
+    await waitForClose(closed,2_000);
+    if(child.exitCode!==null)return;
     stopProcessTree(child);
     await waitForClose(closed,2_000);
     if(child.exitCode!==null)return;
@@ -61,8 +71,10 @@ export class CodexAppServerClient implements CodexAppServerPort{
 
   private async open(){
     const executable=await resolveCommand(this.command,{env:this.env});
-    const invocation=commandInvocation(executable,['app-server','--listen','stdio://'],process.platform,this.env);
-    const child=spawn(invocation.file,invocation.args,{env:this.env,stdio:['pipe','pipe','pipe'],detached:process.platform!=='win32',windowsHide:true,windowsVerbatimArguments:invocation.windowsVerbatimArguments});
+    const args=['app-server','--listen','stdio://'],invocation=commandInvocation(executable,args,process.platform,this.env);
+    const child=(process.platform==='win32'
+      ?spawnStdioInWindowsJob({file:executable,args},this.env,spawn)
+      :spawn(invocation.file,invocation.args,{env:this.env,stdio:['pipe','pipe','pipe'],detached:true,windowsHide:true,windowsVerbatimArguments:invocation.windowsVerbatimArguments})) as RunningChild;
     this.child=child;
     let stderr='';child.stderr.on('data',chunk=>{if(stderr.length<64_000)stderr+=String(chunk).slice(0,64_000-stderr.length);});
     this.decoder=new JsonLineDecoder();child.stdout.on('data',chunk=>this.readChunk(String(chunk)));
@@ -106,7 +118,9 @@ export class CodexAppServerClient implements CodexAppServerPort{
 
   private terminated(error:Error){
     if(!this.child&&!this.startPromise)return;
+    const child=this.child;
     this.child=undefined;this.startPromise=undefined;
+    if(child&&process.platform!=='win32')killProcessTree(child);
     for(const pending of this.pending.values())pending.reject(error);this.pending.clear();
     for(const listener of this.exitListeners)listener(error);
   }

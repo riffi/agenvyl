@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Archive, Ban, Brain, Check, ChevronDown, ChevronUp, CircleCheck, CircleHelp, CircleX, Clock3, CornerUpLeft, FolderCheck, Info, LoaderCircle, Paperclip, RotateCcw, Square, TriangleAlert } from 'lucide-react';
+import { Archive, Ban, Brain, Check, ChevronDown, ChevronUp, CircleCheck, CircleHelp, CircleX, Clock3, CornerUpLeft, Eye, FolderCheck, FolderInput, Info, LoaderCircle, Paperclip, RotateCcw, Square, TriangleAlert } from 'lucide-react';
 import type {UpstreamStatus,WorkspaceAttachment,WorkspaceConflictChoice,WorkspaceConflictSide} from '@agenvyl/contracts';
 import {WorkspaceArtifactActions,type OpenWorkspaceArtifact,type WorkspaceTarget} from '../workspace-window';
 import {HarnessIcon,type HarnessCatalog} from '../../entities/harness';
@@ -112,6 +112,7 @@ function RunCard({
   personas,
   onMentionPersona,
   openWorkspace,
+  openArtifact,
   roomId,
 }: {
   run: Run;
@@ -133,17 +134,28 @@ function RunCard({
   personas:Persona[];
   onMentionPersona:(handle:string)=>void;
   openWorkspace:(target:WorkspaceTarget)=>void;
+  openArtifact:OpenWorkspaceArtifact;
   roomId:string;
 }) {
   const [retrying,setRetrying]=useState(false);const [retryError,setRetryError]=useState<string>();
+  const [applyingWorkspace,setApplyingWorkspace]=useState(false),[workspaceApplyError,setWorkspaceApplyError]=useState<string>();
   const answer = run.text || (run.status === "queued" ? "Waiting for an available slot…" : "Analyzing…");
   const canCancel=['queued','streaming','waiting_approval','waiting_clarification'].includes(run.status);
   const retryLabel=run.status==='completed'?'Create another response':'Run again';
   const retryRun=async()=>{setRetrying(true);setRetryError(undefined);try{await retry()}catch(error){setRetryError(error instanceof Error?error.message:String(error))}finally{setRetrying(false)}};
-  const publishedFileCount=run.artifacts?.filter(item=>item.attribution==='exact').length??0;
+  const publishedFileCount=run.artifactSummary?.project_count??run.artifacts?.filter(item=>item.attribution==='exact').length??0;
   const changedFiles=run.artifacts?.filter(item=>item.attribution==='exact'&&!run.embeds?.some(embed=>embed.status==='resolved'&&embed.attachment?.version_id===item.version_id))??[];
-  const workspaceActivity=run.workspaceResult?.publish_status==='published'||run.workspaceResult?.publish_status==='not_published';
+  const hasProjectChanges=publishedFileCount>0;
+  const workspaceActivity=hasProjectChanges&&(run.workspaceResult?.publish_status==='published'||run.workspaceResult?.publish_status==='not_published');
   const hasActivity=Boolean(workspaceActivity||run.tools.length);
+  const canApplyWorkspace=Boolean(roomId&&hasProjectChanges&&['failed','cancelled'].includes(run.status)&&run.workspaceResult?.capture_status==='complete'&&run.workspaceResult.publish_status==='not_published');
+  const buildMissing=hasProjectChanges&&run.staticPreviewStatus==='build_missing';
+  const applyWorkspace=async()=>{
+    const projectCount=run.artifactSummary?.project_count??changedFiles.length,hiddenCount=run.artifactSummary?.hidden_count??0;
+    if(!confirm(`Apply ${projectCount} project ${projectCount===1?'file':'files'} to the room workspace?${hiddenCount?` ${hiddenCount} non-project files will remain only in the run snapshot.`:''}`))return;
+    setApplyingWorkspace(true);setWorkspaceApplyError(undefined);
+    try{await roomsApi.applyRunWorkspace(roomId,run.id)}catch(value){setWorkspaceApplyError(value instanceof Error?value.message:String(value))}finally{setApplyingWorkspace(false)}
+  };
   return (
     <article
       className={`${styles['run-card']} ${styles[run.status]}`}
@@ -184,7 +196,13 @@ function RunCard({
         {isLongAnswer(run.text)&&run.status==='completed'&&<button className={`${styles['answer-toggle']} ${collapsed?styles.expand:styles.collapse}`} type="button" onClick={toggleCollapsed} aria-expanded={!collapsed}>{collapsed?<><span>Expand response</span><ChevronDown/></>:<><span>Collapse response</span><ChevronUp/></>}</button>}
         {run.status==='failed'&&<RunFailureNotice errorCode={run.errorCode} error={run.error}/>}
         {(run.requests??[]).some(request=>!request.resolved)&&<section className={styles['request-list']} aria-label="Pending agent requests"><strong>{(run.requests??[]).filter(request=>!request.resolved).length} pending {(run.requests??[]).filter(request=>!request.resolved).length===1?'request':'requests'}</strong>{(run.requests??[]).filter(request=>!request.resolved).map(request=><RunRequest key={request.id} request={request} resolve={value=>resolve(request.id,value)}/>)}</section>}
-        <RunFiles files={changedFiles} openWorkspace={openWorkspace}/>
+        <RunFiles files={changedFiles} summary={run.artifactSummary} openWorkspace={openWorkspace}/>
+        {(canApplyWorkspace||run.staticPreview||buildMissing)&&<div className={styles['run-output-actions']}>
+          {canApplyWorkspace&&<button type="button" disabled={applyingWorkspace} onClick={()=>void applyWorkspace()}><FolderInput aria-hidden="true"/>{applyingWorkspace?'Applying…':'Apply changes'}</button>}
+          {run.staticPreview&&<button type="button" onClick={event=>openArtifact(run.staticPreview!,[run.staticPreview!],event.currentTarget)}><Eye aria-hidden="true"/>Preview</button>}
+          {!run.staticPreview&&buildMissing&&<small>Preview unavailable · Build output not found</small>}
+        </div>}
+        {workspaceApplyError&&<Alert tone="error">{workspaceApplyError}</Alert>}
         {hasActivity&&<div className={styles['run-meta-row']}>
           <RunActivity actionCount={run.tools.length} hasWorkspaceEvent={workspaceActivity}>
             {run.workspaceResult?.publish_status==='published'&&publishedFileCount>0&&<div className={`${styles['workspace-state']} ${styles['workspace-state-success']}`} role="status" title="The agent’s captured files are now the current versions in this room."><FolderCheck aria-hidden="true"/><span>Changes applied to room workspace</span><small>· {publishedFileCount} {publishedFileCount===1?'file':'files'}</small></div>}
@@ -343,6 +361,7 @@ export function Timeline({
                     personas={personas}
                     onMentionPersona={onMentionPersona}
                     openWorkspace={openWorkspace}
+                    openArtifact={openArtifact}
                     roomId={roomId}
                   />
                   </div>

@@ -43,4 +43,5 @@ export const roomsApi = {
   restoreVersion:(roomId:string,id:string)=>apiRequest(`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace/versions/${encodeURIComponent(id)}/restore`,{method:'POST'}),
   workspaceConflicts:(roomId:string,runId:string,signal?:AbortSignal)=>apiRequest<WorkspaceConflictSet>(`/api/v1/rooms/${encodeURIComponent(roomId)}/runs/${encodeURIComponent(runId)}/workspace/conflicts`,{signal}),
   resolveWorkspaceConflicts:(roomId:string,runId:string,input:ResolveWorkspaceConflictsRequest)=>apiRequest<RunWorkspaceResult>(`/api/v1/rooms/${encodeURIComponent(roomId)}/runs/${encodeURIComponent(runId)}/workspace/conflicts/resolve`,{method:'POST',body:input}),
+  applyRunWorkspace:(roomId:string,runId:string)=>apiRequest<RunWorkspaceResult>(`/api/v1/rooms/${encodeURIComponent(roomId)}/runs/${encodeURIComponent(runId)}/workspace/apply`,{method:'POST'}),
 };

@@ -1,8 +1,10 @@
 import type {Database,QueryContext} from '../../infrastructure/database/Database.js';
 import {number,stringArray,text,timestamp} from '../../infrastructure/database/rowMappers.js';
-import type {RunArtifact,RunEmbed,WorkspaceAttachment,WorkspaceEntry,WorkspaceSource,WorkspaceVersion} from '@agenvyl/contracts';
+import type {RunArtifact,RunArtifactSummary,RunEmbed,WorkspaceAttachment,WorkspaceEntry,WorkspaceSource,WorkspaceVersion} from '@agenvyl/contracts';
+import {hasUnbuiltWebProject,selectStaticPreviewPath} from './runStaticPreview.js';
 
 type VersionRow={id:string;entry_id?:string;room_id:string;path:string;size:number;mime_type:string;sha256:string;source:WorkspaceSource;run_ids:string[];created_at:string;origin_snapshot_id?:string};
+export type RunArtifactProjection={artifacts:RunArtifact[];artifactSummary:RunArtifactSummary;staticPreview?:WorkspaceAttachment;staticPreviewStatus?:'ready'|'build_missing'};
 
 export class WorkspaceRepository{
   constructor(private readonly database:Database){}
@@ -61,12 +63,42 @@ export class WorkspaceRepository{
   async versions(roomId:string,entryId:string){return(await this.database.sql`SELECT v.* FROM workspace_versions v WHERE v.room_id=${roomId} AND v.entry_id=${entryId} ORDER BY v.created_at DESC`).map(toVersionRow);}
   async validateVersions(roomId:string,ids:string[],db:QueryContext=this.database.sql){if(!ids.length)return[];const rows=await db`SELECT * FROM workspace_versions WHERE room_id=${roomId} AND id=ANY(${ids})`;const map=new Map(rows.map(row=>[text(row.id),toVersionRow(row)]));return ids.map(id=>map.get(id)).filter((item):item is VersionRow=>Boolean(item));}
   async currentVersion(roomId:string,filePath:string,db:QueryContext=this.database.sql){const row=(await db`SELECT v.* FROM workspace_entries e JOIN workspace_versions v ON v.id=e.current_version_id WHERE e.room_id=${roomId} AND e.path=${filePath} AND e.deleted_at IS NULL AND e.kind='file' AND e.status='tracked'`)[0];return row?toVersionRow(row):undefined;}
+  async versionHashes(versionIds:string[],db:QueryContext=this.database.sql){
+    const result=new Map<string,string>();
+    if(!versionIds.length)return result;
+    for(const row of await db`SELECT id,sha256 FROM workspace_versions WHERE id=ANY(${versionIds})`)result.set(text(row.id),text(row.sha256));
+    return result;
+  }
 
   async messageAttachments(messageIds:string[],db:QueryContext=this.database.sql){if(!messageIds.length)return new Map<string,WorkspaceAttachment[]>();const rows=await db`SELECT ma.message_id,ma.position,ma.snapshot_id,v.* FROM message_attachments ma JOIN workspace_versions v ON v.id=ma.version_id WHERE ma.message_id=ANY(${messageIds}) ORDER BY ma.message_id,ma.position`;const result=new Map<string,WorkspaceAttachment[]>();for(const row of rows){const id=text(row.message_id),items=result.get(id)??[],version=toVersionRow(row),snapshotId=row.snapshot_id?text(row.snapshot_id):undefined;items.push(toAttachment(version,snapshotId));result.set(id,items);}return result;}
   async attachMessage(messageId:string,versionIds:string[],db:QueryContext){for(let position=0;position<versionIds.length;position++){const version=(await db`SELECT origin_snapshot_id FROM workspace_versions WHERE id=${versionIds[position]}`)[0],snapshotId=version?.origin_snapshot_id?text(version.origin_snapshot_id):null;await db`INSERT INTO message_attachments(message_id,version_id,position,snapshot_id) VALUES(${messageId},${versionIds[position]},${position},${snapshotId})`;}}
 
-  async linkArtifacts(runIds:string[],version:VersionRow,change:RunArtifact['change'],attribution:RunArtifact['attribution']){const now=new Date().toISOString();for(const runId of runIds)await this.database.sql`INSERT INTO run_artifacts(run_id,version_id,change,attribution,created_at) VALUES(${runId},${version.id},${change},${attribution},${now}) ON CONFLICT DO NOTHING`;}
-  async artifacts(runIds:string[],db:QueryContext=this.database.sql){if(!runIds.length)return new Map<string,RunArtifact[]>();const rows=await db`SELECT ra.run_id,ra.change,ra.attribution,CASE WHEN ra.change='deleted' THEN rwr.base_snapshot_id ELSE rwr.result_snapshot_id END artifact_snapshot_id,v.* FROM run_artifacts ra JOIN workspace_versions v ON v.id=ra.version_id LEFT JOIN run_workspace_results rwr ON rwr.run_id=ra.run_id WHERE ra.run_id=ANY(${runIds}) ORDER BY ra.created_at`;const result=new Map<string,RunArtifact[]>();for(const row of rows){const id=text(row.run_id),items=result.get(id)??[],snapshotId=row.artifact_snapshot_id?text(row.artifact_snapshot_id):undefined;items.push({...toAttachment(toVersionRow(row),snapshotId),change:text(row.change) as RunArtifact['change'],attribution:text(row.attribution) as RunArtifact['attribution']});result.set(id,items);}return result;}
+  async linkArtifacts(runIds:string[],version:VersionRow,change:RunArtifact['change'],attribution:RunArtifact['attribution']){const now=new Date().toISOString();for(const runId of runIds)await this.database.sql`INSERT INTO run_artifacts(run_id,version_id,change,attribution,visibility,created_at) VALUES(${runId},${version.id},${change},${attribution},'project',${now}) ON CONFLICT DO NOTHING`;}
+  async artifactProjections(runIds:string[],db:QueryContext=this.database.sql){
+    const result=new Map<string,RunArtifactProjection>();
+    if(!runIds.length)return result;
+    const ensure=(runId:string)=>{const existing=result.get(runId);if(existing)return existing;const created:RunArtifactProjection={artifacts:[],artifactSummary:{total_count:0,project_count:0,hidden_count:0}};result.set(runId,created);return created};
+    for(const row of await db`SELECT ra.run_id,ra.change,ra.attribution,CASE WHEN ra.change='deleted' THEN rwr.base_snapshot_id ELSE rwr.result_snapshot_id END artifact_snapshot_id,v.* FROM run_artifacts ra JOIN workspace_versions v ON v.id=ra.version_id LEFT JOIN run_workspace_results rwr ON rwr.run_id=ra.run_id WHERE ra.run_id=ANY(${runIds}) AND ra.visibility='project' ORDER BY ra.created_at,v.path`){
+      const runId=text(row.run_id),snapshotId=row.artifact_snapshot_id?text(row.artifact_snapshot_id):undefined;
+      ensure(runId).artifacts.push({...toAttachment(toVersionRow(row),snapshotId),change:text(row.change) as RunArtifact['change'],attribution:text(row.attribution) as RunArtifact['attribution']});
+    }
+    for(const row of await db`SELECT run_id,COUNT(*)::int total_count,COUNT(*) FILTER(WHERE visibility='project')::int project_count,COUNT(*) FILTER(WHERE visibility='hidden')::int hidden_count FROM run_artifacts WHERE run_id=ANY(${runIds}) GROUP BY run_id`){
+      ensure(text(row.run_id)).artifactSummary={total_count:number(row.total_count),project_count:number(row.project_count),hidden_count:number(row.hidden_count)};
+    }
+    const previewRows=await db`SELECT rwr.run_id,rwr.result_snapshot_id,se.path preview_path,v.* FROM run_workspace_results rwr JOIN workspace_snapshot_entries se ON se.snapshot_id=rwr.result_snapshot_id LEFT JOIN workspace_versions v ON v.id=se.version_id WHERE rwr.run_id=ANY(${runIds}) AND se.kind='file' AND (se.path='package.json' OR se.path='index.html' OR lower(se.path)=ANY(ARRAY['dist/index.html','build/index.html','out/index.html']) OR lower(se.path) LIKE '%/dist/index.html' OR lower(se.path) LIKE '%/build/index.html' OR lower(se.path) LIKE '%/out/index.html') ORDER BY rwr.run_id,se.path`;
+    const candidates=new Map<string,Array<Record<string,unknown>>>();
+    for(const row of previewRows){const runId=text(row.run_id),items=candidates.get(runId)??[];items.push(row);candidates.set(runId,items);}
+    for(const runId of runIds){
+      const rows=candidates.get(runId)??[],paths=rows.map(row=>text(row.preview_path)),previewPath=selectStaticPreviewPath(paths),projection=ensure(runId);
+      if(!previewPath){if(hasUnbuiltWebProject(paths))projection.staticPreviewStatus='build_missing';continue;}
+      const row=rows.find(item=>text(item.preview_path)===previewPath);
+      if(!row?.id)continue;
+      const snapshotId=text(row.result_snapshot_id),attachment=toAttachment(toVersionRow(row),snapshotId);
+      projection.staticPreview={...attachment,preview_url:runPreviewUrl(text(row.room_id),runId)};
+      projection.staticPreviewStatus='ready';
+    }
+    return result;
+  }
   async saveRunEmbeds(runId:string,embeds:RunEmbed[]){await this.database.transaction(async tx=>{await tx`DELETE FROM run_embeds WHERE run_id=${runId}`;for(let position=0;position<embeds.length;position++){const embed=embeds[position];await tx`INSERT INTO run_embeds(run_id,position,kind,path,version_id,error) VALUES(${runId},${position},${embed.kind},${embed.path},${embed.attachment?.version_id??null},${embed.error??null})`;}});}
   async runEmbeds(runIds:string[],db:QueryContext=this.database.sql){if(!runIds.length)return new Map<string,RunEmbed[]>();const rows=await db`SELECT re.run_id,re.position,re.kind,re.path embed_path,re.error,rwr.result_snapshot_id,v.id version_id,v.entry_id,v.path version_path,v.size,v.mime_type,v.room_id FROM run_embeds re LEFT JOIN workspace_versions v ON v.id=re.version_id LEFT JOIN run_workspace_results rwr ON rwr.run_id=re.run_id WHERE re.run_id=ANY(${runIds}) ORDER BY re.run_id,re.position`;const result=new Map<string,RunEmbed[]>();for(const row of rows){const id=text(row.run_id),items=result.get(id)??[],error=row.error?text(row.error) as NonNullable<RunEmbed['error']>:undefined;let attachment:WorkspaceAttachment|undefined;if(row.version_id){const roomId=text(row.room_id),versionId=text(row.version_id),versionPath=text(row.version_path),snapshotId=row.result_snapshot_id?text(row.result_snapshot_id):undefined;attachment={version_id:versionId,...(row.entry_id?{entry_id:text(row.entry_id)}:{}),...(snapshotId?{snapshot_id:snapshotId}:{}),path:versionPath,name:versionPath.split('/').pop()??versionPath,size:number(row.size),mime_type:text(row.mime_type),url:versionUrl(roomId,versionId),preview_url:snapshotId?snapshotPreviewUrl(roomId,snapshotId,versionPath):`${versionUrl(roomId,versionId)}/preview`};}items.push({kind:'image',path:text(row.embed_path),status:attachment?'resolved':'error',...(attachment?{attachment}:{error:error??'not_found'})});result.set(id,items);}return result;}
   async roomHashes(roomId:string){return(await this.database.sql`SELECT DISTINCT sha256 FROM workspace_versions WHERE room_id=${roomId}`).map(row=>text(row.sha256));}
@@ -79,4 +111,5 @@ export function toWorkspaceVersion(value:VersionRow):WorkspaceVersion{const snap
 export function toAttachment(value:VersionRow,snapshotId?:string):WorkspaceAttachment{return{version_id:value.id,...(value.entry_id?{entry_id:value.entry_id}:{}),...(snapshotId?{snapshot_id:snapshotId}:{}),path:value.path,name:value.path.split('/').pop()??value.path,size:value.size,mime_type:value.mime_type,url:versionUrl(value.room_id,value.id),preview_url:snapshotId?snapshotPreviewUrl(value.room_id,snapshotId,value.path):`${versionUrl(value.room_id,value.id)}/preview`};}
 function versionUrl(roomId:string,id:string){return`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace/versions/${encodeURIComponent(id)}`;}
 export function snapshotPreviewUrl(roomId:string,snapshotId:string,filePath:string){return`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace/snapshots/${encodeURIComponent(snapshotId)}/preview/${filePath.split('/').map(encodeURIComponent).join('/')}`;}
+export function runPreviewUrl(roomId:string,runId:string){return`/api/v1/rooms/${encodeURIComponent(roomId)}/runs/${encodeURIComponent(runId)}/preview/`;}
 export type WorkspaceVersionRow=VersionRow;

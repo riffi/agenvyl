@@ -706,6 +706,65 @@
   flex-wrap: wrap;
   gap: 4px;
 }
+.run-files-content {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 4px;
+}
+.run-files-list-expanded {
+  max-block-size: 176px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-inline-end: 4px;
+}
+.run-files-summary {
+  color: #8a96a6;
+  font-size: 10px;
+  line-height: 1.35;
+}
+.run-output-actions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.run-output-actions button {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid #d8e0eb;
+  border-radius: 7px;
+  background: #fff;
+  color: #42516a;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.run-output-actions button:hover:not(:disabled) {
+  border-color: #b9c7dc;
+  background: #f5f8fc;
+}
+.run-output-actions button:focus-visible {
+  outline-offset: 2px;
+}
+.run-output-actions button:disabled {
+  cursor: default;
+  opacity: .62;
+}
+.run-output-actions button svg {
+  width: 14px;
+  height: 14px;
+}
+.run-output-actions small {
+  color: #8793a3;
+  font-size: 10px;
+}
 .run-file,
 .run-files-more {
   display: inline-flex;

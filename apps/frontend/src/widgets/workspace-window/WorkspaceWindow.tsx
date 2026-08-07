@@ -214,6 +214,7 @@ export const WorkspaceWindow = ({
       mode={mode}
       deleted={Boolean(selected?.deleted_at)}
       canAttach={Boolean(onAttach)}
+      staticPreview={workspaceQuery.data?.staticPreview}
       onTreeToggle={() => onRequestChange({ treeVisible: !treeVisible })}
       onVersion={(version, followCurrent) => onRequestChange({ target: { entryId: version.entry_id ?? target?.entryId, versionId: version.id }, followCurrent, mode })}
       onMode={nextMode => onRequestChange({ mode: nextMode })}
@@ -228,6 +229,18 @@ export const WorkspaceWindow = ({
       onMove={() => selected && setOperation({ kind: 'move', entry: selected })}
       onDelete={() => selected && setOperation({ kind: 'delete', entry: selected })}
       onRefresh={() => void workspaceQuery.refetch()}
+      onPreview={() => {
+        const preview = workspaceQuery.data?.staticPreview;
+        if(preview?.status !== 'ready') return;
+        const item = preview.attachment;
+        onRequestChange({
+          target: { versionId: item.version_id, snapshotId: item.snapshot_id, path: item.path },
+          gallery: [item],
+          mode: 'rendered',
+          followCurrent: false,
+          treeVisible: false,
+        });
+      }}
       onClose={onClose}
     />
     {error && <div className={styles.alert}><Alert tone="error">{error}</Alert></div>}

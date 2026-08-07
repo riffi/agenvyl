@@ -33,7 +33,7 @@ describe('isolated run workspace snapshots',()=>{
       const workspaces=await Promise.all(round.runs.map(run=>service.prepareRun('demo-room',run.id)));
       expect(new Set(workspaces.map(workspace=>workspace.absolutePath)).size).toBe(3);
       expect(await stat(path.join(root,'demo-room','.agenvyl','.managed')).then(item=>item.isFile())).toBe(true);
-      await finalizeRun(repositories,service,third.id,'failed');
+      expect(await finalizeRun(repositories,service,third.id,'failed')).toMatchObject({capture_status:'complete',publish_status:'noop'});
       await Promise.all([
         writeFile(path.join(service.runPath('demo-room',first.id),'site','style.css'),'body{color:red}'),
         writeFile(path.join(service.runPath('demo-room',second.id),'site','style.css'),'body{color:blue}'),
@@ -56,18 +56,123 @@ describe('isolated run workspace snapshots',()=>{
     }finally{service.close();await repositories.database.close()}
   });
 
-  it('saves but does not publish a failed run snapshot',async()=>{
+  it('keeps a complete failed snapshot, projects project files, previews its build, and applies it idempotently',async()=>{
     const root=await mkdtemp(path.join(tmpdir(),'failed-snapshot-'));roots.push(root);
     const repositories=await createRepositories(testDatabaseUrl('failed_run_snapshot'));
-    const service=new RoomWorkspaceService(repositories.rooms,repositories.workspace,new RoomEventService(repositories.roomEvents,new RoomEventBus()),new ActiveRunRegistry(),root,root,1024*1024,repositories.workspaceSnapshots);
+    const events=new RoomEventService(repositories.roomEvents,new RoomEventBus()),service=new RoomWorkspaceService(repositories.rooms,repositories.workspace,events,new ActiveRunRegistry(),root,root,1024*1024,repositories.workspaceSnapshots);
     try{
       const [persona]=(await repositories.personas.list('demo-room')),round=await repositories.messages.createRound('demo-room','failed edit',[persona],new Map([[persona.id,profile]])),run=round.runs[0];
-      await service.prepareRun('demo-room',run.id);await writeFile(path.join(service.runPath('demo-room',run.id),'draft.txt'),'captured');
+      await service.prepareRun('demo-room',run.id);
+      const runRoot=service.runPath('demo-room',run.id);
+      await Promise.all([
+        mkdir(path.join(runRoot,'src'),{recursive:true}),
+        mkdir(path.join(runRoot,'scratch'),{recursive:true}),
+        mkdir(path.join(runRoot,'node_modules','lib'),{recursive:true}),
+        mkdir(path.join(runRoot,'dist','assets'),{recursive:true}),
+      ]);
+      await Promise.all([
+        writeFile(path.join(runRoot,'.gitignore'),'scratch/**\n'),
+        writeFile(path.join(runRoot,'package.json'),'{}'),
+        writeFile(path.join(runRoot,'index.html'),'<div id="root"></div>'),
+        writeFile(path.join(runRoot,'src','main.tsx'),'export const ready = true'),
+        writeFile(path.join(runRoot,'scratch','debug.log'),'ignored'),
+        writeFile(path.join(runRoot,'node_modules','lib','index.js'),'dependency'),
+        writeFile(path.join(runRoot,'dist','index.html'),'<script type="module" src="/assets/app.js"></script>'),
+        writeFile(path.join(runRoot,'dist','assets','app.js'),'document.body.dataset.ready="yes"'),
+      ]);
       const result=await finalizeRun(repositories,service,run.id,'failed');
       expect(result).toMatchObject({capture_status:'complete',publish_status:'not_published'});
       expect(await stat(path.dirname(service.runPath('demo-room',run.id))).then(()=>true).catch(()=>false)).toBe(false);
-      expect(await repositories.workspace.currentVersion('demo-room','draft.txt')).toBeUndefined();
-      expect(await service.resolveSnapshotFile('demo-room',result!.result_snapshot_id!,'draft.txt')).toMatchObject({contentType:'text/plain'});
+      expect(await repositories.workspace.currentVersion('demo-room','src/main.tsx')).toBeUndefined();
+      expect(await service.resolveSnapshotFile('demo-room',result!.result_snapshot_id!,'node_modules/lib/index.js')).toMatchObject({contentType:'text/javascript'});
+
+      const timeline=(await repositories.rooms.timeline('demo-room',undefined,20))!,projected=timeline.runs.find(item=>item.id===run.id)!;
+      expect(projected.artifactSummary).toEqual({total_count:8,project_count:4,hidden_count:4});
+      expect(projected.artifacts.map(item=>item.path)).toEqual(['.gitignore','index.html','package.json','src/main.tsx']);
+      expect(projected.staticPreview).toMatchObject({path:'dist/index.html',preview_url:`/api/v1/rooms/demo-room/runs/${run.id}/preview/`});
+      expect(projected.staticPreviewStatus).toBe('ready');
+      expect(await readFile((await service.resolveRunPreview('demo-room',run.id)).path,'utf8')).toContain('/assets/app.js');
+      expect(await readFile((await service.resolveRunPreview('demo-room',run.id,'assets/app.js')).path,'utf8')).toContain('dataset.ready');
+      await expect(service.resolveRunPreview('demo-room',run.id,'..%2Fpackage.json')).rejects.toMatchObject({statusCode:404});
+      await expect(service.resolveRunPreview('other-room',run.id)).rejects.toMatchObject({statusCode:404});
+      const runEvents=await events.replay('demo-room',0);
+      expect(runEvents.filter(event=>event.type==='artifact.created'&&(event.payload as {runId?:string}).runId===run.id)).toHaveLength(0);
+      expect(runEvents.find(event=>event.type==='run.workspace.finalized'&&(event.payload as {runId?:string}).runId===run.id)?.payload).toMatchObject({
+        runId:run.id,
+        artifactSummary:{total_count:8,project_count:4,hidden_count:4},
+        staticPreview:{path:'dist/index.html'},
+      });
+
+      const messageCount=Number((await repositories.database.sql`SELECT COUNT(*) count FROM room_messages WHERE room_id='demo-room'`)[0]?.count);
+      const [firstApply,secondApply]=await Promise.all([service.applyRunChanges('demo-room',run.id),service.applyRunChanges('demo-room',run.id)]);
+      expect(firstApply.publish_status).toBe('published');
+      expect(secondApply).toEqual(firstApply);
+      expect(await readFile(path.join(root,'demo-room','src','main.tsx'),'utf8')).toContain('ready');
+      expect(await stat(path.join(root,'demo-room','node_modules')).then(()=>true).catch(()=>false)).toBe(false);
+      expect(await stat(path.join(root,'demo-room','dist')).then(()=>true).catch(()=>false)).toBe(false);
+      expect(await stat(path.join(root,'demo-room','scratch')).then(()=>true).catch(()=>false)).toBe(false);
+      expect((await repositories.database.sql`SELECT status FROM agent_runs WHERE id=${run.id}`)[0]?.status).toBe('failed');
+      expect(Number((await repositories.database.sql`SELECT COUNT(*) count FROM room_messages WHERE room_id='demo-room'`)[0]?.count)).toBe(messageCount);
+      expect((await service.list('demo-room')).staticPreview).toMatchObject({
+        status:'ready',
+        runId:run.id,
+        attachment:{path:'dist/index.html',preview_url:`/api/v1/rooms/demo-room/runs/${run.id}/preview/`},
+      });
+      await service.upload('demo-room','src/main.tsx','text/typescript',Buffer.from('export const ready = true'),'replace');
+      expect((await service.list('demo-room')).staticPreview?.status).toBe('ready');
+      await service.upload('demo-room','src/main.tsx','text/typescript',Buffer.from('export const ready = false'),'replace');
+      expect((await service.list('demo-room')).staticPreview).toMatchObject({status:'outdated',runId:run.id});
+      await service.upload('demo-room','dist/assets/app.js','text/javascript',Buffer.from('document.body.dataset.ready="changed"'));
+      expect(await readFile((await service.resolveRunPreview('demo-room',run.id,'assets/app.js')).path,'utf8')).toContain('dataset.ready="yes"');
+    }finally{service.close();await repositories.database.close()}
+  });
+
+  it('filters non-project output from automatic publication and permits a cancelled-run apply',async()=>{
+    const root=await mkdtemp(path.join(tmpdir(),'artifact-policy-publish-'));roots.push(root);
+    const repositories=await createRepositories(testDatabaseUrl('artifact_policy_publish'));
+    const service=new RoomWorkspaceService(repositories.rooms,repositories.workspace,new RoomEventService(repositories.roomEvents,new RoomEventBus()),new ActiveRunRegistry(),root,root,1024*1024,repositories.workspaceSnapshots);
+    try{
+      const [persona]=(await repositories.personas.list('demo-room')),profiles=new Map([[persona.id,profile]]);
+      const completed=(await repositories.messages.createRound('demo-room','completed app',[persona],profiles)).runs[0];
+      await service.prepareRun('demo-room',completed.id);
+      const completedRoot=service.runPath('demo-room',completed.id);
+      await Promise.all([mkdir(path.join(completedRoot,'src'),{recursive:true}),mkdir(path.join(completedRoot,'node_modules','pkg'),{recursive:true}),mkdir(path.join(completedRoot,'dist'),{recursive:true})]);
+      await Promise.all([
+        writeFile(path.join(completedRoot,'src','app.ts'),'export {}'),
+        writeFile(path.join(completedRoot,'node_modules','pkg','index.js'),'dependency'),
+        writeFile(path.join(completedRoot,'dist','index.html'),'generated'),
+      ]);
+      expect((await finalizeRun(repositories,service,completed.id,'completed'))?.publish_status).toBe('published');
+      expect(await repositories.workspace.currentVersion('demo-room','src/app.ts')).toBeDefined();
+      expect(await repositories.workspace.currentVersion('demo-room','node_modules/pkg/index.js')).toBeUndefined();
+      expect(await repositories.workspace.currentVersion('demo-room','dist/index.html')).toBeUndefined();
+
+      const cancelled=(await repositories.messages.createRound('demo-room','cancelled app',[persona],profiles)).runs[0];
+      await service.prepareRun('demo-room',cancelled.id);
+      const cancelledRoot=service.runPath('demo-room',cancelled.id);
+      await writeFile(path.join(cancelledRoot,'cancelled.ts'),'export const recovered=true');
+      expect((await finalizeRun(repositories,service,cancelled.id,'cancelled'))?.publish_status).toBe('not_published');
+      expect((await service.applyRunChanges('demo-room',cancelled.id)).publish_status).toBe('published');
+      expect(await repositories.workspace.currentVersion('demo-room','cancelled.ts')).toBeDefined();
+      expect((await repositories.database.sql`SELECT status FROM agent_runs WHERE id=${cancelled.id}`)[0]?.status).toBe('cancelled');
+    }finally{service.close();await repositories.database.close()}
+  });
+
+  it('uses the existing three-way conflict flow for competing failed-run applies',async()=>{
+    const root=await mkdtemp(path.join(tmpdir(),'failed-apply-conflict-'));roots.push(root);
+    const repositories=await createRepositories(testDatabaseUrl('failed_apply_conflict'));
+    const service=new RoomWorkspaceService(repositories.rooms,repositories.workspace,new RoomEventService(repositories.roomEvents,new RoomEventBus()),new ActiveRunRegistry(),root,root,1024*1024,repositories.workspaceSnapshots);
+    try{
+      await service.upload('demo-room','value.txt','text/plain',Buffer.from('base'));
+      const [persona]=(await repositories.personas.list('demo-room')),profiles=new Map([[persona.id,profile]]),first=(await repositories.messages.createRound('demo-room','failed red',[persona],profiles)).runs[0],second=(await repositories.messages.createRound('demo-room','failed blue',[persona],profiles)).runs[0];
+      await Promise.all([service.prepareRun('demo-room',first.id),service.prepareRun('demo-room',second.id)]);
+      await Promise.all([writeFile(path.join(service.runPath('demo-room',first.id),'value.txt'),'red'),writeFile(path.join(service.runPath('demo-room',second.id),'value.txt'),'blue')]);
+      await Promise.all([finalizeRun(repositories,service,first.id,'failed'),finalizeRun(repositories,service,second.id,'failed')]);
+      expect((await service.applyRunChanges('demo-room',first.id)).publish_status).toBe('published');
+      const conflicted=await service.applyRunChanges('demo-room',second.id);
+      expect(conflicted).toMatchObject({publish_status:'partially_published',conflict_count:1});
+      expect((await service.conflicts('demo-room',second.id)).conflicts).toMatchObject([{path:'value.txt'}]);
+      expect(await readFile(path.join(root,'demo-room','value.txt'),'utf8')).toBe('red');
     }finally{service.close();await repositories.database.close()}
   });
 
@@ -115,6 +220,7 @@ describe('isolated run workspace snapshots',()=>{
       expect(result).toMatchObject({capture_status:'incomplete',publish_status:'not_published'});
       expect(result?.errors).toContainEqual({path:'.agenvyl',code:'reserved'});
       expect(result?.result_snapshot_id).not.toBe(result?.base_snapshot_id);
+      await expect(service.applyRunChanges('demo-room',run.id)).rejects.toMatchObject({statusCode:409});
     }finally{service.close();await repositories.database.close()}
   });
 

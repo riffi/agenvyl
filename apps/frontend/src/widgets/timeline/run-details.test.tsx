@@ -13,7 +13,7 @@ import styles from './Timeline.module.css';
 const persona: Persona = { id: 'persona-1', handle: 'coder', name: 'Coder', color: '#64748b', requested_model: 'sol', effective_model: null, harness_instance_id: 'local-hermes', harness_type: 'hermes', model_id: 'sol', permission_profile_id:null,agent_variant_id:null, default_reasoning_effort:null, group_id: null, archived_at: null };
 const run: Run = { id: 'run-1', messageId: 'message-1', agent: 'coder', harnessInstanceId: 'local-hermes', harnessType: 'hermes', modelId: 'sol', executionProfile:{workflowMode:'work',requestedReasoningEffort:null,reasoningEffort:null,reasoningEffortFallback:false,reasoningEffortSource:'auto',planEnforcement:null,permissionProfileId:null,agentVariantId:null}, status: 'completed', text: 'Готово', tools: [],interventions:[], usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 } };
 const gateway: RoomGateway = { mode: 'fake', subscribe: vi.fn(() => vi.fn()), send: vi.fn(), resolve: vi.fn(), intervene:vi.fn(), cancel: vi.fn(), retry: vi.fn(), select: vi.fn(), dispose: vi.fn() };
-afterEach(()=>{cleanup();vi.restoreAllMocks();});
+afterEach(()=>{cleanup();vi.restoreAllMocks();vi.unstubAllGlobals();});
 
 describe('Timeline run details', () => {
   it('offers Redirect only for an explicitly supported streaming run',()=>{
@@ -80,6 +80,15 @@ describe('Timeline run details', () => {
     expect(screen.queryByText('Snapshot saved')).toBeNull();
   });
 
+  it('does not offer workspace actions for a cancelled run without project changes',()=>{
+    const cancelledRun:Run={...run,status:'cancelled',artifactSummary:{total_count:0,project_count:0,hidden_count:0},staticPreviewStatus:'build_missing',workspaceResult:{base_snapshot_id:'base',result_snapshot_id:'result',capture_status:'complete',publish_status:'not_published',conflict_count:0,errors:[]}};
+    const state={...initialState,hydrated:true,messages:[{id:'message-1',text:'@coder inspect',createdAt:'2026-07-20T12:00:00.000Z',targets:['coder' as const],runIds:['run-1'],author:{profileId:'local-user',displayName:'User',handle:'user'},addressedToAll:false}],runs:{'run-1':cancelledRun},runOrder:['run-1']};
+    render(<Timeline roomId="room-1" state={state} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()}/>);
+    expect(screen.queryByRole('button',{name:'Apply changes'})).toBeNull();
+    expect(screen.queryByText('Preview unavailable · Build output not found')).toBeNull();
+    expect(screen.queryByRole('button',{name:/Run activity/})).toBeNull();
+  });
+
   it('opens changed files in workspace and message attachments in the immutable viewer', () => {
     const file:WorkspaceAttachment={version_id:'version-synopsis',entry_id:'entry-synopsis',path:'prvaya-popytka-synopsis.md',name:'prvaya-popytka-synopsis.md',size:8287,mime_type:'text/markdown',url:'/version-synopsis',preview_url:'/version-synopsis/preview'};
     const artifactRun:Run={...run,artifacts:[{...file,change:'created',attribution:'exact'}],workspaceResult:{base_snapshot_id:'base',result_snapshot_id:'result',published_snapshot_id:'published',capture_status:'complete',publish_status:'published',conflict_count:0,errors:[]}};
@@ -99,6 +108,51 @@ describe('Timeline run details', () => {
     expect(screen.getByText('Changes applied to room workspace')).toBeTruthy();
     expect(screen.getByText('· 1 file')).toBeTruthy();
     expect(screen.queryByText('Published')).toBeNull();
+  });
+
+  it('keeps failed-run artifacts compact and exposes Apply and immutable Preview actions',async()=>{
+    const files=Array.from({length:6},(_,index)=>({
+      version_id:`version-${index+1}`,
+      path:`src/file-${index+1}.ts`,
+      name:`file-${index+1}.ts`,
+      size:10,
+      mime_type:'text/typescript',
+      url:`/version-${index+1}`,
+      preview_url:`/version-${index+1}/preview`,
+      change:'created' as const,
+      attribution:'exact' as const,
+    }));
+    const preview:WorkspaceAttachment={version_id:'preview-version',snapshot_id:'result',path:'dist/index.html',name:'index.html',size:100,mime_type:'text/html',url:'/preview-version',preview_url:'/api/v1/rooms/room-1/runs/run-1/preview/'};
+    const failedRun:Run={...run,status:'failed',artifacts:files,artifactSummary:{total_count:8,project_count:6,hidden_count:2},staticPreview:preview,staticPreviewStatus:'ready',workspaceResult:{base_snapshot_id:'base',result_snapshot_id:'result',capture_status:'complete',publish_status:'not_published',conflict_count:0,errors:[]}};
+    const state={...initialState,hydrated:true,messages:[{id:'message-1',text:'@coder build',createdAt:'2026-07-23T07:31:58.341Z',targets:['coder' as const],runIds:['run-1'],author:{profileId:'local-user',displayName:'User',handle:'user'},addressedToAll:false}],runs:{'run-1':failedRun},runOrder:['run-1']};
+    const openArtifact=vi.fn(),confirm=vi.fn(()=>true);
+    vi.stubGlobal('confirm',confirm);
+    let finishApply!:(value:Awaited<ReturnType<typeof roomsApi.applyRunWorkspace>>)=>void;
+    const apply=vi.spyOn(roomsApi,'applyRunWorkspace').mockImplementation(()=>new Promise(resolve=>{finishApply=resolve}));
+    render(<Timeline roomId="room-1" state={state} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()} openArtifact={openArtifact}/>);
+
+    expect(screen.getByText('6 project files · 2 non-project files hidden')).toBeTruthy();
+    expect(screen.queryByRole('button',{name:'file-5.ts'})).toBeNull();
+    fireEvent.click(screen.getByRole('button',{name:'Show 2 more'}));
+    expect(screen.getByRole('button',{name:'file-5.ts'})).toBeTruthy();
+    expect(screen.getByRole('button',{name:'Show less'})).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button',{name:'Preview'}));
+    expect(openArtifact).toHaveBeenCalledWith(preview,[preview],expect.any(HTMLButtonElement));
+    fireEvent.click(screen.getByRole('button',{name:'Apply changes'}));
+    expect(confirm).toHaveBeenCalledWith('Apply 6 project files to the room workspace? 2 non-project files will remain only in the run snapshot.');
+    expect((screen.getByRole('button',{name:'Applying…'}) as HTMLButtonElement).disabled).toBe(true);
+    finishApply({base_snapshot_id:'base',result_snapshot_id:'result',published_snapshot_id:'published',capture_status:'complete',publish_status:'published',conflict_count:0,errors:[]});
+    await waitFor(()=>expect(apply).toHaveBeenCalledWith('room-1','run-1'));
+    await waitFor(()=>expect((screen.getByRole('button',{name:'Apply changes'}) as HTMLButtonElement).disabled).toBe(false));
+  });
+
+  it('explains when a detected web project has no static build',()=>{
+    const webRun:Run={...run,artifactSummary:{total_count:1,project_count:1,hidden_count:0},staticPreviewStatus:'build_missing'};
+    const state={...initialState,hydrated:true,messages:[{id:'message-1',text:'@coder build',createdAt:'2026-07-23T07:31:58.341Z',targets:['coder' as const],runIds:['run-1'],author:{profileId:'local-user',displayName:'User',handle:'user'},addressedToAll:false}],runs:{'run-1':webRun},runOrder:['run-1']};
+    render(<Timeline state={state} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()}/>);
+    expect(screen.getByText('Preview unavailable · Build output not found')).toBeTruthy();
+    expect(screen.queryByRole('button',{name:'Preview'})).toBeNull();
   });
 
   it('hides resolved requests but keeps unresolved requests visible',()=>{

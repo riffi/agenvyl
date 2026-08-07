@@ -147,7 +147,7 @@ export class RoomRepository {
         const selectedRows = messageIds.length
           ? await tx`SELECT id,selected_run_id FROM response_slots WHERE message_id=ANY(${messageIds}) AND selected_run_id IS NOT NULL`
           : [];
-        const artifactMap = await this.workspace.artifacts(runIds, tx),
+        const artifactMap = await this.workspace.artifactProjections(runIds, tx),
           embedMap = await this.workspace.runEmbeds(runIds, tx);
         return {
           messages,
@@ -159,8 +159,11 @@ export class RoomRepository {
               extra?.tools ?? [],
               [...(extra?.requests.values()??[])],
               [...(extra?.interventions.values()??[])],
-              artifactMap.get(id) ?? [],
+              artifactMap.get(id)?.artifacts ?? [],
               embedMap.get(id) ?? [],
+              artifactMap.get(id)?.artifactSummary,
+              artifactMap.get(id)?.staticPreview,
+              artifactMap.get(id)?.staticPreviewStatus,
             );
           }),
           selectedRuns: Object.fromEntries(

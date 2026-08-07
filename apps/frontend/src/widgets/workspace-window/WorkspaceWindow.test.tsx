@@ -130,6 +130,66 @@ describe('WorkspaceWindow', () => {
     expect(screen.getByRole('navigation', { name: 'Workspace files' })).toBeTruthy();
   });
 
+  it('opens the current room preview from the workspace header', async () => {
+    const preview: WorkspaceAttachment = {
+      version_id: 'build-version',
+      snapshot_id: 'run-snapshot',
+      path: 'dist/index.html',
+      name: 'index.html',
+      size: 42,
+      mime_type: 'text/html',
+      url: '/versions/build-version',
+      preview_url: '/api/v1/rooms/room/runs/run-1/preview/',
+    };
+    vi.spyOn(roomsApi, 'workspace').mockResolvedValue({
+      path: '/room',
+      current_snapshot_id: 'snapshot',
+      materialization_status: 'ready',
+      entries: [entry],
+      staticPreview: { status: 'ready', runId: 'run-1', attachment: preview },
+    });
+    const onRequestChange = vi.fn();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><WorkspaceWindow
+      request={{ origin: 'workspace', treeVisible: true }}
+      roomId="room"
+      onClose={vi.fn()}
+      onRequestChange={onRequestChange}
+    /></QueryClientProvider>);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Preview current workspace' }));
+    expect(onRequestChange).toHaveBeenCalledWith({
+      target: { versionId: preview.version_id, snapshotId: preview.snapshot_id, path: preview.path },
+      gallery: [preview],
+      mode: 'rendered',
+      followCurrent: false,
+      treeVisible: false,
+    });
+  });
+
+  it('explains when the room preview no longer matches current sources', async () => {
+    vi.spyOn(roomsApi, 'workspace').mockResolvedValue({
+      path: '/room',
+      current_snapshot_id: 'snapshot',
+      materialization_status: 'ready',
+      entries: [entry],
+      staticPreview: { status: 'outdated', runId: 'run-1' },
+    });
+    const onRequestChange = vi.fn();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><WorkspaceWindow
+      request={{ origin: 'workspace', treeVisible: true }}
+      roomId="room"
+      onClose={vi.fn()}
+      onRequestChange={onRequestChange}
+    /></QueryClientProvider>);
+
+    const preview = await screen.findByRole('button', { name: 'Preview outdated — source files changed after this build' });
+    expect(preview.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(preview);
+    expect(onRequestChange).not.toHaveBeenCalled();
+  });
+
   it('switches from the full-width mobile tree to the file viewer after selection', async () => {
     vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true })));
     vi.spyOn(roomsApi, 'workspace').mockResolvedValue({ path: '/room', current_snapshot_id: 'snapshot', materialization_status: 'ready', entries: [entry] });

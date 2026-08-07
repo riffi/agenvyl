@@ -6,10 +6,10 @@ import mime from 'mime';
 import {AppError} from '../../shared/errors/AppError.js';
 import type {RoomRepository} from '../rooms/rooms.repository.js';
 import type {WorkspaceRepository} from './workspace.repository.js';
-import {toWorkspaceVersion} from './workspace.repository.js';
+import {runPreviewUrl,toAttachment,toWorkspaceVersion} from './workspace.repository.js';
 import type {RoomEventService} from '../room-events/RoomEventService.js';
 import type {ActiveRunRegistry} from '../runs/ActiveRunRegistry.js';
-import type {ResolveWorkspaceConflictsRequest,RunEmbed,RunWorkspaceResult,WorkspaceCaptureError} from '@agenvyl/contracts';
+import type {ResolveWorkspaceConflictsRequest,RoomStaticPreview,RunArtifact,RunArtifactSummary,RunEmbed,RunWorkspaceResult,WorkspaceAttachment,WorkspaceCaptureError} from '@agenvyl/contracts';
 import {extractWorkspaceImageReferences} from './workspaceEmbeds.js';
 import type {WorkspaceSnapshotRepository} from './workspaceSnapshots.repository.js';
 import {diffSnapshots,entryMap,manifestHash,sameEntry,type SnapshotEntry} from './workspaceSnapshots.js';
@@ -18,11 +18,14 @@ import type {WorkspaceOptimizationMode} from '../../app/config.js';
 import {contentHash,exactEntriesEqual,fingerprintMatches,probeStatCapability,scanWorkspaceTree,stableReadWorkspaceFile,toStatFingerprint,workspaceContentManifest} from './workspaceCapture.js';
 import type {WorkspaceSlotRepository,WorkspaceSlotLease,WorkspaceStatFingerprint} from './workspaceSlots.repository.js';
 import {LegacyRunWorkspaceDriver,WarmSlotWorkspaceDriver,type RunWorkspaceDriverPath} from './runWorkspaceDrivers.js';
+import {RunArtifactPolicy} from './RunArtifactPolicy.js';
+import {hasUnbuiltWebProject,selectStaticPreviewPath} from './runStaticPreview.js';
 
 type WorkspaceLogger={info:(context:Record<string,unknown>,message:string)=>void;warn:(context:Record<string,unknown>,message:string)=>void};
 type WorkspaceOptimizationOptions={noopMode:WorkspaceOptimizationMode;warmSlotsMode:WorkspaceOptimizationMode;statCacheMode:WorkspaceOptimizationMode;slotLeaseMs:number};
 type PreparedRunPath=RunWorkspaceDriverPath&{lease?:WorkspaceSlotLease};
 type CaptureResult={entries:SnapshotEntry[];errors:WorkspaceCaptureError[];fingerprints:WorkspaceStatFingerprint[];scannedFiles:number;hashedFiles:number;hashedBytes:number;cacheHits:number;cacheState:'valid'|'invalid'|'unsupported';capabilityKey?:string;cacheMismatch:boolean;verifiedGeneration?:number};
+type RunArtifactProjection={artifacts:RunArtifact[];artifactSummary:RunArtifactSummary;staticPreview?:WorkspaceAttachment;staticPreviewStatus?:'ready'|'build_missing'};
 
 const defaultOptimizationOptions:WorkspaceOptimizationOptions={noopMode:'off',warmSlotsMode:'off',statCacheMode:'off',slotLeaseMs:20*60_000};
 
@@ -73,7 +76,18 @@ export class RoomWorkspaceService{
   slotPath(roomId:string,lease:Pick<WorkspaceSlotLease,'personaId'|'slotIndex'>){return path.join(this.roomPath(roomId),'.agenvyl','agents',lease.personaId,'slots',String(lease.slotIndex),'workspace');}
 
   async ensure(roomId:string){await this.assertRoom(roomId);const directory=this.roomPath(roomId);await mkdir(directory,{recursive:true});this.startWatcher(roomId,directory);return directory;}
-  async list(roomId:string,includeDeleted=false){await this.ensure(roomId);await this.reconcile(roomId);const current=await this.snapshots?.current(roomId);return{path:this.agentRoomPath(roomId),current_snapshot_id:current?.id??'',materialization_status:current?.materializationStatus??'ready' as const,entries:await this.repository.list(roomId,includeDeleted)};}
+  async list(roomId:string,includeDeleted=false){
+    await this.ensure(roomId);await this.reconcile(roomId);
+    const current=await this.snapshots?.current(roomId),entries=await this.repository.list(roomId,includeDeleted);
+    let staticPreview:RoomStaticPreview|undefined;
+    if(!includeDeleted&&current&&this.snapshots){
+      staticPreview=await this.resolveRoomStaticPreview(roomId,current.id).catch(error=>{
+        this.logger?.warn({metric:'workspace.preview_projection',roomId,error:error instanceof Error?error.message:String(error)},'Room preview projection failed');
+        return undefined;
+      });
+    }
+    return{path:this.agentRoomPath(roomId),current_snapshot_id:current?.id??'',materialization_status:current?.materializationStatus??'ready' as const,entries,...(staticPreview?{staticPreview}:{})};
+  }
   async recover(){
     if(!this.snapshots)return;
     const started=Date.now(),materializations=await this.snapshots.materializationsToRecover();
@@ -137,6 +151,32 @@ export class RoomWorkspaceService{
     }
   }
   runWorkspaceResult(runId:string){return this.snapshots?.result(runId);}
+  async applyRunChanges(roomId:string,runId:string){
+    if(!this.snapshots)throw new AppError('workspace_snapshots_unavailable',409,'Workspace snapshots are unavailable');
+    const result=await this.snapshots.resultForRoom(roomId,runId);
+    if(!result?.result_snapshot_id)throw new AppError('workspace_result_not_found',404,'Run workspace result not found');
+    if(result.capture_status!=='complete')throw new AppError('workspace_apply_unavailable',409,'Only a complete captured workspace can be applied');
+    const base=await this.snapshots.entries(result.base_snapshot_id),candidate=await this.snapshots.entries(result.result_snapshot_id),policy=await this.artifactPolicy(roomId,candidate);
+    const published=await this.publishCandidate(roomId,runId,policy.projectCandidate(base,candidate),'manual');
+    await this.events.emit(roomId,'run.workspace.publish.updated',{runId,workspaceResult:published});
+    return published;
+  }
+
+  async resolveRunPreview(roomId:string,runId:string,assetInput=''){
+    if(!this.snapshots)throw new AppError('version_not_found',404,'Run preview not found');
+    const result=await this.snapshots.resultForRoom(roomId,runId);
+    if(!result?.result_snapshot_id)throw new AppError('version_not_found',404,'Run preview not found');
+    const entries=await this.snapshots.entries(result.result_snapshot_id),entryPath=selectStaticPreviewPath(entries.filter(entry=>entry.kind==='file').map(entry=>entry.path));
+    if(!entryPath)throw new AppError('version_not_found',404,'Run preview not found');
+    const root=path.posix.dirname(entryPath);
+    let relative='index.html';
+    if(assetInput){
+      try{relative=safeRelative(decodeURIComponent(assetInput));}catch{throw new AppError('version_not_found',404,'Run preview file not found')}
+    }
+    const logical=root==='.'?relative:path.posix.join(root,relative),version=await this.snapshots.snapshotFile(roomId,result.result_snapshot_id,logical);
+    if(!version)throw new AppError('version_not_found',404,'Run preview file not found');
+    return{path:this.objectPath(version.sha256),contentType:version.mime_type,version:toWorkspaceVersion(version),snapshotId:result.result_snapshot_id};
+  }
   async cleanupFinalizedRun(roomId:string,runId:string){
     const result=await this.snapshots?.result(runId);
     if(!result)return;
@@ -151,18 +191,21 @@ export class RoomWorkspaceService{
     if(existing.capture_status==='failed'){await this.finishRunWorkspace(roomId,runId,existing.base_snapshot_id,false).catch(()=>{});return existing}
     if(existing.result_snapshot_id){
       let resumed=existing;
-      const baseEntries=await this.snapshots.entries(existing.base_snapshot_id),resultEntries=await this.snapshots.entries(existing.result_snapshot_id),changes=diffSnapshots(baseEntries,resultEntries).flatMap(change=>{const versionId=change.next?.versionId??change.prior?.versionId;return versionId?[{versionId,change:change.change}]:[]});
+      const baseEntries=await this.snapshots.entries(existing.base_snapshot_id),resultEntries=await this.snapshots.entries(existing.result_snapshot_id),policy=await this.artifactPolicy(roomId,resultEntries),candidateEntries=policy.projectCandidate(baseEntries,resultEntries),changes=this.classifiedChanges(baseEntries,resultEntries,policy);
       await this.snapshots.replaceRunArtifacts(runId,changes);
       if(status==='completed'&&existing.capture_status==='complete'&&existing.publish_status==='pending'){
-        resumed=await this.withPublication(roomId,async()=>{const publishStarted=Date.now(),before=(await this.snapshots!.current(roomId))?.id,published=await this.snapshots!.publishRun(roomId,runId);if(published.published_snapshot_id){await this.materializeSnapshot(roomId,published.published_snapshot_id).catch(()=>{});if(before)await this.emitPublishedChanges(roomId,before,published.published_snapshot_id)}this.logger?.info({metric:'workspace.publish',roomId,runId,durationMs:Date.now()-publishStarted,publishStatus:published.publish_status,conflicts:published.conflict_count,recovered:true},'Recovered run workspace published');return published});
+        const publishStarted=Date.now();
+        resumed=await this.publishCandidate(roomId,runId,candidateEntries,'automatic');
+        this.logger?.info({metric:'workspace.publish',roomId,runId,durationMs:Date.now()-publishStarted,publishStatus:resumed.publish_status,conflicts:resumed.conflict_count,recovered:true},'Recovered run workspace published');
       }else if(status!=='completed'&&existing.publish_status==='pending'){
-        await this.snapshots.markNotPublished(runId);resumed=(await this.snapshots.result(runId))!;
+        const outcome=existing.capture_status==='complete'&&exactEntriesEqual(baseEntries,candidateEntries)?'noop':'not_published';
+        await this.snapshots.markPublicationOutcome(runId,outcome);resumed=(await this.snapshots.result(runId))!;
       }
       if(status==='completed'&&resumed.published_snapshot_id&&existing.publish_status!=='pending')await this.withPublication(roomId,()=>this.materializeSnapshot(roomId,resumed.published_snapshot_id!).catch(()=>{}));
       await this.finishRunWorkspace(roomId,runId,existing.result_snapshot_id,resumed.capture_status==='complete').catch(error=>{
         this.logger?.warn({metric:'workspace.cleanup',roomId,runId,error:error instanceof Error?error.message:String(error)},'Recovered finalized workspace cleanup was deferred');
       });
-      await this.events.emit(roomId,'run.workspace.finalized',{runId,workspaceResult:resumed}).catch(()=>{});
+      await this.emitFinalized(roomId,runId,resumed);
       if(resumed.publish_status==='published'||resumed.publish_status==='partially_published')await this.events.emit(roomId,'run.workspace.publish.updated',{runId,workspaceResult:resumed}).catch(()=>{});
       this.logger?.info({metric:'workspace.capture',roomId,runId,durationMs:Date.now()-started,captureStatus:resumed.capture_status,publishStatus:resumed.publish_status,conflicts:resumed.conflict_count,recovered:true},'Run workspace finalization resumed');
       return resumed;
@@ -190,21 +233,18 @@ export class RoomWorkspaceService{
         resultSnapshotId=await this.snapshots.saveRunSnapshot({roomId,runId,baseSnapshotId:existing.base_snapshot_id,entries:captured.entries,completeness,errors:captured.errors});
         result=(await this.snapshots.result(runId))!;
       }
-      const resultEntries=await this.snapshots.entries(resultSnapshotId),changes=diffSnapshots(base,resultEntries).flatMap(change=>{
-        const versionId=change.next?.versionId??change.prior?.versionId;
-        return versionId?[{versionId,change:change.change}]:[];
-      });
+      const resultEntries=await this.snapshots.entries(resultSnapshotId),policy=await this.artifactPolicy(roomId,resultEntries),candidateEntries=policy.projectCandidate(base,resultEntries),changes=this.classifiedChanges(base,resultEntries,policy);
       await this.snapshots.replaceRunArtifacts(runId,changes);
       result=(await this.snapshots.result(runId))!;
       if(status==='completed'&&completeness==='complete'&&result.publish_status==='pending'){
-        result=await this.withPublication(roomId,async()=>{const publishStarted=Date.now(),before=(await this.snapshots!.current(roomId))?.id,published=await this.snapshots!.publishRun(roomId,runId);if(published.published_snapshot_id){await this.materializeSnapshot(roomId,published.published_snapshot_id).catch(()=>{});if(before)await this.emitPublishedChanges(roomId,before,published.published_snapshot_id)}this.logger?.info({metric:'workspace.publish',roomId,runId,durationMs:Date.now()-publishStarted,publishStatus:published.publish_status,conflicts:published.conflict_count},'Run workspace published');return published});
-      }else if(result.publish_status==='pending')await this.snapshots.markNotPublished(runId);
-      result=(await this.snapshots.result(runId))!;
-      for(const change of changes){
-        const version=await this.repository.version(roomId,change.versionId);if(!version)continue;
-        const snapshotId=change.change==='deleted'?existing.base_snapshot_id:resultSnapshotId;
-          await this.events.emit(roomId,'artifact.created',{runId,artifact:{version_id:version.id,...(version.entry_id?{entry_id:version.entry_id}:{}),snapshot_id:snapshotId,path:version.path,name:path.basename(version.path),size:version.size,mime_type:version.mime_type,url:`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace/versions/${encodeURIComponent(version.id)}`,preview_url:`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace/snapshots/${encodeURIComponent(snapshotId)}/preview/${version.path.split('/').map(encodeURIComponent).join('/')}`,change:change.change,attribution:'exact'}}).catch(()=>{});
+        const publishStarted=Date.now();
+        result=await this.publishCandidate(roomId,runId,candidateEntries,'automatic');
+        this.logger?.info({metric:'workspace.publish',roomId,runId,durationMs:Date.now()-publishStarted,publishStatus:result.publish_status,conflicts:result.conflict_count},'Run workspace published');
+      }else if(result.publish_status==='pending'){
+        const outcome=completeness==='complete'&&exactEntriesEqual(base,candidateEntries)?'noop':'not_published';
+        await this.snapshots.markPublicationOutcome(runId,outcome);
       }
+      result=(await this.snapshots.result(runId))!;
       await this.persistSlotCache(runId,prepared,captured,completeness).catch(async error=>{
         if(prepared.lease)await this.slots?.invalidateCache(runId,prepared.lease.generation).catch(()=>{});
         this.logger?.warn({metric:'workspace.stat_cache',roomId,runId,error:error instanceof Error?error.message:String(error)},'Workspace stat cache update failed');
@@ -212,9 +252,10 @@ export class RoomWorkspaceService{
       await this.finishRunWorkspace(roomId,runId,resultSnapshotId,completeness==='complete').catch(error=>{
         this.logger?.warn({metric:'workspace.cleanup',roomId,runId,error:error instanceof Error?error.message:String(error)},'Finalized workspace cleanup was deferred');
       });
-      await this.events.emit(roomId,'run.workspace.finalized',{runId,workspaceResult:result}).catch(()=>{});
+      await this.emitFinalized(roomId,runId,result);
       if(result.publish_status==='published'||result.publish_status==='partially_published')await this.events.emit(roomId,'run.workspace.publish.updated',{runId,workspaceResult:result}).catch(()=>{});
-      this.logger?.info({metric:'workspace.capture',roomId,runId,durationMs:Date.now()-started,captureStatus:result.capture_status,publishStatus:result.publish_status,conflicts:result.conflict_count,errorCount:result.errors.length,changedPaths:changes.length,scannedFiles:captured.scannedFiles,hashedFiles:captured.hashedFiles,hashedBytes:captured.hashedBytes,cacheHits:captured.cacheHits,workspaceNoop:result.publish_status==='noop',snapshotRowsCreated:result.publish_status==='noop'?0:1,snapshotEntriesCreated:result.publish_status==='noop'?0:captured.entries.length},'Run workspace finalized');
+      const createdRunSnapshot=resultSnapshotId===existing.base_snapshot_id?0:1;
+      this.logger?.info({metric:'workspace.capture',roomId,runId,durationMs:Date.now()-started,captureStatus:result.capture_status,publishStatus:result.publish_status,conflicts:result.conflict_count,errorCount:result.errors.length,changedPaths:changes.length,scannedFiles:captured.scannedFiles,hashedFiles:captured.hashedFiles,hashedBytes:captured.hashedBytes,cacheHits:captured.cacheHits,workspaceNoop:result.publish_status==='noop',snapshotRowsCreated:createdRunSnapshot,snapshotEntriesCreated:createdRunSnapshot?captured.entries.length:0},'Run workspace finalized');
       return result;
     }catch(error){
       await this.snapshots.markFailed(runId,{path:'',code:'read_failed'});
@@ -498,6 +539,57 @@ export class RoomWorkspaceService{
     if(!this.snapshots||beforeSnapshotId===afterSnapshotId)return;
     const changes=diffSnapshots(await this.snapshots.entries(beforeSnapshotId),await this.snapshots.entries(afterSnapshotId));
     for(const change of changes){const entry=await this.repository.entry(roomId,change.path);if(entry)await this.events.emit(roomId,'workspace.changed',{entry,change:change.change}).catch(()=>{});}
+  }
+  private async artifactPolicy(roomId:string,resultEntries:SnapshotEntry[]){
+    const gitignore=resultEntries.find(entry=>entry.path==='.gitignore'&&entry.kind==='file'&&entry.versionId);
+    if(!gitignore?.versionId)return new RunArtifactPolicy();
+    const version=await this.repository.version(roomId,gitignore.versionId);
+    if(!version)return new RunArtifactPolicy();
+    const source=await readFile(this.objectPath(version.sha256),'utf8').catch(()=> '');
+    return new RunArtifactPolicy(source);
+  }
+  private async projectContentManifest(entries:SnapshotEntry[],policy:RunArtifactPolicy){
+    const project=policy.projectCandidate([],entries),versionIds=project.flatMap(entry=>entry.versionId?[entry.versionId]:[]),hashes=await this.repository.versionHashes(versionIds);
+    return manifestHash(project.map(entry=>entry.versionId?{...entry,versionId:hashes.get(entry.versionId)??`missing:${entry.versionId}`}:entry));
+  }
+  private async resolveRoomStaticPreview(roomId:string,currentSnapshotId:string):Promise<RoomStaticPreview|undefined>{
+    if(!this.snapshots)return undefined;
+    const currentEntries=await this.snapshots.entries(currentSnapshotId),currentPaths=currentEntries.filter(entry=>entry.kind==='file').map(entry=>entry.path);
+    if(!hasUnbuiltWebProject(currentPaths))return undefined;
+    const currentPolicy=await this.artifactPolicy(roomId,currentEntries),currentManifest=await this.projectContentManifest(currentEntries,currentPolicy),candidates=await this.snapshots.publishedPreviewCandidates(roomId);
+    for(const candidate of candidates){
+      const resultEntries=await this.snapshots.entries(candidate.snapshotId),previewPath=selectStaticPreviewPath(resultEntries.filter(entry=>entry.kind==='file').map(entry=>entry.path));
+      if(!previewPath)continue;
+      const policy=await this.artifactPolicy(roomId,resultEntries);
+      if((await this.projectContentManifest(resultEntries,policy))!==currentManifest)continue;
+      const version=await this.snapshots.snapshotFile(roomId,candidate.snapshotId,previewPath);
+      if(!version)continue;
+      return{status:'ready',runId:candidate.runId,attachment:{...toAttachment(version,candidate.snapshotId),preview_url:runPreviewUrl(roomId,candidate.runId)}};
+    }
+    return candidates.length?{status:'outdated',runId:candidates[0]!.runId}:{status:'build_missing'};
+  }
+  private classifiedChanges(base:SnapshotEntry[],result:SnapshotEntry[],policy:RunArtifactPolicy){
+    return diffSnapshots(base,result).flatMap(change=>{
+      const descriptor=change.next??change.prior,versionId=descriptor?.versionId;
+      return descriptor&&versionId?[{versionId,change:change.change,visibility:policy.visibility(change.path,descriptor.kind)}]:[];
+    });
+  }
+  private async artifactProjection(runId:string):Promise<RunArtifactProjection>{
+    return(await this.repository.artifactProjections([runId])).get(runId)??{artifacts:[],artifactSummary:{total_count:0,project_count:0,hidden_count:0}};
+  }
+  private async emitFinalized(roomId:string,runId:string,workspaceResult:RunWorkspaceResult){
+    const projection=await this.artifactProjection(runId);
+    await this.events.emit(roomId,'run.workspace.finalized',{runId,workspaceResult,...projection}).catch(()=>{});
+  }
+  private async publishCandidate(roomId:string,runId:string,candidateEntries:SnapshotEntry[],mode:'automatic'|'manual'){
+    return this.withPublication(roomId,async()=>{
+      const before=(await this.snapshots!.current(roomId))?.id,published=await this.snapshots!.publishRun(roomId,runId,{candidateEntries,mode});
+      if(published.published_snapshot_id){
+        await this.materializeSnapshot(roomId,published.published_snapshot_id).catch(()=>{});
+        if(before)await this.emitPublishedChanges(roomId,before,published.published_snapshot_id);
+      }
+      return published;
+    });
   }
   private withPublication<T>(roomId:string,operation:()=>Promise<T>){
     return this.withRoomMutation(roomId,async()=>{
