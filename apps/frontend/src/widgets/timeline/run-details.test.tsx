@@ -80,6 +80,15 @@ describe('Timeline run details', () => {
     expect(screen.queryByText('Snapshot saved')).toBeNull();
   });
 
+  it('does not describe an empty failed run as analyzing',()=>{
+    const failedRun:Run={...run,status:'failed',text:'',errorCode:'execution_failed',error:'Agent execution terminated due to error.'};
+    const state={...initialState,hydrated:true,messages:[{id:'message-1',text:'@coder inspect',createdAt:'2026-07-20T12:00:00.000Z',targets:['coder' as const],runIds:['run-1'],author:{profileId:'local-user',displayName:'User',handle:'user'},addressedToAll:false}],runs:{'run-1':failedRun},runOrder:['run-1']};
+    const {container}=render(<Timeline state={state} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()}/>);
+    expect(screen.queryByText('Analyzing…')).toBeNull();
+    expect(screen.getByText('Agent execution terminated due to error.')).toBeTruthy();
+    expect(container.querySelector(`.${styles.answer}`)).toBeNull();
+  });
+
   it('does not offer workspace actions for a cancelled run without project changes',()=>{
     const cancelledRun:Run={...run,status:'cancelled',artifactSummary:{total_count:0,project_count:0,hidden_count:0},staticPreviewStatus:'build_missing',workspaceResult:{base_snapshot_id:'base',result_snapshot_id:'result',capture_status:'complete',publish_status:'not_published',conflict_count:0,errors:[]}};
     const state={...initialState,hydrated:true,messages:[{id:'message-1',text:'@coder inspect',createdAt:'2026-07-20T12:00:00.000Z',targets:['coder' as const],runIds:['run-1'],author:{profileId:'local-user',displayName:'User',handle:'user'},addressedToAll:false}],runs:{'run-1':cancelledRun},runOrder:['run-1']};

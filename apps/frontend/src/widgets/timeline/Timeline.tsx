@@ -139,7 +139,7 @@ function RunCard({
 }) {
   const [retrying,setRetrying]=useState(false);const [retryError,setRetryError]=useState<string>();
   const [applyingWorkspace,setApplyingWorkspace]=useState(false),[workspaceApplyError,setWorkspaceApplyError]=useState<string>();
-  const answer = run.text || (run.status === "queued" ? "Waiting for an available slot…" : "Analyzing…");
+  const answer = run.text || (run.status === 'queued' ? 'Waiting for an available slot…' : run.status === 'streaming' ? 'Analyzing…' : '');
   const canCancel=['queued','streaming','waiting_approval','waiting_clarification'].includes(run.status);
   const retryLabel=run.status==='completed'?'Create another response':'Run again';
   const retryRun=async()=>{setRetrying(true);setRetryError(undefined);try{await retry()}catch(error){setRetryError(error instanceof Error?error.message:String(error))}finally{setRetrying(false)}};
@@ -189,10 +189,10 @@ function RunCard({
         {run.workspaceResult?.publish_status==='partially_published'&&<WorkspaceConflictPanel roomId={roomId} runId={run.id}/>}
         {run.interventions.map(intervention=><section key={intervention.id} className={`${styles.intervention} ${styles[`intervention-${intervention.status}`]}`} role="status" aria-live="polite"><header><CornerUpLeft aria-hidden="true"/><strong>Redirect</strong><span>{intervention.status==='pending'?'Redirecting…':intervention.status==='applied'?'Applied':'Failed'}</span></header><p>{intervention.text}</p>{intervention.supersededText!==undefined&&<details><summary>Earlier output before redirect</summary><pre>{intervention.supersededText||'No output was produced before the redirect.'}</pre></details>}{intervention.error&&<small>{intervention.error}</small>}</section>)}
         {run.reasoning&&<ReasoningBlock text={run.reasoning} harnessType={run.harnessType}/>}
-        <div className={`${styles.answer} ${collapsed?styles['answer-collapsed']:''}`}>
+        {answer&&<div className={`${styles.answer} ${collapsed?styles['answer-collapsed']:''}`}>
           <MarkdownAnswer text={answer} run={run} personas={personas} onMentionPersona={onMentionPersona} openWorkspace={attachment=>openWorkspace({entryId:attachment.entry_id,versionId:attachment.version_id})}/>
           {run.status === "streaming" && <i className={styles.cursor} />}
-        </div>
+        </div>}
         {isLongAnswer(run.text)&&run.status==='completed'&&<button className={`${styles['answer-toggle']} ${collapsed?styles.expand:styles.collapse}`} type="button" onClick={toggleCollapsed} aria-expanded={!collapsed}>{collapsed?<><span>Expand response</span><ChevronDown/></>:<><span>Collapse response</span><ChevronUp/></>}</button>}
         {run.status==='failed'&&<RunFailureNotice errorCode={run.errorCode} error={run.error}/>}
         {(run.requests??[]).some(request=>!request.resolved)&&<section className={styles['request-list']} aria-label="Pending agent requests"><strong>{(run.requests??[]).filter(request=>!request.resolved).length} pending {(run.requests??[]).filter(request=>!request.resolved).length===1?'request':'requests'}</strong>{(run.requests??[]).filter(request=>!request.resolved).map(request=><RunRequest key={request.id} request={request} resolve={value=>resolve(request.id,value)}/>)}</section>}

@@ -30,7 +30,7 @@ export const RunFiles = ({
   return <section className={styles['run-files']} aria-label="Files changed by agent">
     <span className={styles['run-files-label']}><Files aria-hidden="true" />Changed files</span>
     <span className={styles['run-files-content']}>
-    <span className={`${styles['run-files-list']} ${expanded?styles['run-files-list-expanded']:''}`}>
+    {files.length > 0 && <span className={`${styles['run-files-list']} ${expanded?styles['run-files-list-expanded']:''}`}>
       {visibleFiles.map(file => {
         const meta = changeMeta[file.change];
         const ChangeIcon = meta.icon;
@@ -52,7 +52,7 @@ export const RunFiles = ({
       })}
       {hiddenCount > 0 && <button type="button" className={styles['run-files-more']} onClick={() => setExpanded(true)} aria-expanded={false}>Show {hiddenCount} more</button>}
       {expanded && files.length > initiallyVisible && <button type="button" className={styles['run-files-more']} onClick={() => setExpanded(false)} aria-expanded={true}>Show less</button>}
-    </span>
+    </span>}
     <small className={styles['run-files-summary']}>{summary?.project_count??files.length} project {(summary?.project_count??files.length)===1?'file':'files'}{Boolean(summary?.hidden_count)&&<> · {summary!.hidden_count} non-project files hidden</>}</small>
     </span>
   </section>;
