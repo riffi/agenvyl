@@ -60,7 +60,7 @@ export const WorkspaceContent = ({
     : <SourceViewer attachment={attachment} encoding={encoding} onEncodingChange={onEncodingChange} />;
   if (renderer.id === 'html') return <IsolatedHtmlPreview className={styles.frame} title={attachment.name} previewUrl={attachment.preview_url} />;
   if (renderer.id === 'markdown') return <RenderedMarkdown attachment={attachment} encoding={encoding} />;
-  if (renderer.id === 'svg') return <ImageGallery attachment={attachment} />;
+  if (renderer.id === 'svg') return <ImageGallery attachment={attachment} vector />;
   if (renderer.id === 'image') return <ImageGallery attachment={attachment} gallery={gallery} onNavigate={onGalleryNavigate} />;
   if (renderer.id === 'pdf') return <iframe className={styles.frame} title={attachment.name} src={attachment.preview_url} sandbox="" />;
   return <div className={styles.unsupported}><File /><strong>Preview unavailable</strong><span>{attachment.mime_type}</span><a href={attachment.url} download><Download />Download file</a></div>;
@@ -81,10 +81,12 @@ const ImageGallery = ({
   attachment,
   gallery,
   onNavigate,
+  vector = false,
 }: {
   attachment: WorkspaceAttachment;
   gallery?: WorkspaceAttachment[];
   onNavigate?: (attachment: WorkspaceAttachment) => void;
+  vector?: boolean;
 }) => {
   const images = (gallery?.length ? gallery : [attachment]).filter(item => item.mime_type.startsWith('image/'));
   const index = Math.max(0, images.findIndex(item => item.version_id === attachment.version_id));
@@ -108,7 +110,7 @@ const ImageGallery = ({
   return <div className={styles.imageCanvas}>
     {index > 0 && <button className={`${styles.galleryArrow} ${styles.galleryPrevious}`} onClick={() => navigate(-1)} aria-label="Previous image"><ChevronLeft /></button>}
     <button ref={openerRef} className={styles.imageStage} type="button" onClick={openLightbox} aria-label={`Open image “${attachment.name}” in full-screen view`} title="Open full-screen viewer">
-      <img src={attachment.preview_url} alt={attachment.name} />
+      <img className={vector ? styles.vectorImage : undefined} src={attachment.preview_url} alt={attachment.name} />
       <span className={styles.imageInspect}><Expand />Inspect</span>
     </button>
     {index < images.length - 1 && <button className={`${styles.galleryArrow} ${styles.galleryNext}`} onClick={() => navigate(1)} aria-label="Next image"><ChevronRight /></button>}

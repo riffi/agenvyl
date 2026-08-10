@@ -8,13 +8,13 @@ import { WorkspaceContent } from './WorkspaceContent';
 
 afterEach(cleanup);
 
-const image = (name: string): WorkspaceAttachment => ({
+const image = (name: string, mimeType = 'image/png'): WorkspaceAttachment => ({
   version_id: `version-${name}`,
   entry_id: `entry-${name}`,
   path: `images/${name}`,
   name,
   size: 10,
-  mime_type: 'image/png',
+  mime_type: mimeType,
   url: `/versions/${name}`,
   preview_url: `/versions/${name}/preview`,
 });
@@ -43,5 +43,15 @@ describe('Workspace image viewer', () => {
 
     await waitFor(() => expect(document.activeElement).toBe(opener));
     expect(onNavigate).not.toHaveBeenCalled();
+  });
+
+  it('renders SVG through the same fitted image stage', () => {
+    const svg = image('logo.svg', 'image/svg+xml');
+    render(<WorkspaceContent attachment={svg} mode="rendered" />);
+
+    const rendered = screen.getByRole('img', { name: 'logo.svg' });
+    expect(rendered.getAttribute('src')).toBe(svg.preview_url);
+    expect(rendered.className).toContain('vectorImage');
+    expect(screen.getByRole('button', { name: /Open image “logo.svg”/ })).toBeTruthy();
   });
 });
