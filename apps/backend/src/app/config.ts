@@ -1,7 +1,5 @@
 import { resolveAgenvylPaths } from '@agenvyl/runtime-config';
 
-export type WorkspaceOptimizationMode='off'|'shadow'|'on';
-
 export type AppConfig = {
   databaseUrl: string;
   connectorUrl: string;
@@ -16,10 +14,6 @@ export type AppConfig = {
   workspaceMaxFileBytes: number;
   artifactRoot:string;
   artifactMaxBytes:number;
-  transparentGitWorkspace:boolean;
-  workspaceNoopMode: WorkspaceOptimizationMode;
-  workspaceWarmSlotsMode: WorkspaceOptimizationMode;
-  workspaceStatCacheMode: WorkspaceOptimizationMode;
   previewOrigin: string;
 };
 
@@ -32,10 +26,6 @@ export function resolveAppConfig(overrides: AppConfigOverrides = {}): AppConfig 
   if(process.env.AGENVYL_EXECUTION_BACKEND!==undefined)throw new Error('AGENVYL_EXECUTION_BACKEND is no longer supported; Core always uses Connector');
   if (Boolean(connectorUrl) !== Boolean(connectorToken)) throw new Error('AGENVYL_CONNECTOR_URL and AGENVYL_CONNECTOR_TOKEN must be configured together');
   if(!connectorUrl||!connectorToken)throw new Error('Core requires AGENVYL_CONNECTOR_URL and AGENVYL_CONNECTOR_TOKEN');
-  const workspaceNoopMode=optimizationMode(overrides.workspaceNoopMode??process.env.AGENVYL_WORKSPACE_NOOP_MODE,'AGENVYL_WORKSPACE_NOOP_MODE');
-  const workspaceWarmSlotsMode=optimizationMode(overrides.workspaceWarmSlotsMode??process.env.AGENVYL_WORKSPACE_WARM_SLOTS_MODE,'AGENVYL_WORKSPACE_WARM_SLOTS_MODE');
-  const workspaceStatCacheMode=optimizationMode(overrides.workspaceStatCacheMode??process.env.AGENVYL_WORKSPACE_STAT_CACHE_MODE,'AGENVYL_WORKSPACE_STAT_CACHE_MODE');
-  if(workspaceStatCacheMode!=='off'&&workspaceWarmSlotsMode!=='on')throw new Error('AGENVYL_WORKSPACE_STAT_CACHE_MODE requires AGENVYL_WORKSPACE_WARM_SLOTS_MODE=on');
   return {
     databaseUrl:
       overrides.databaseUrl ??
@@ -53,10 +43,6 @@ export function resolveAppConfig(overrides: AppConfigOverrides = {}): AppConfig 
     workspaceMaxFileBytes: positiveInteger(overrides.workspaceMaxFileBytes ?? process.env.AGENVYL_WORKSPACE_MAX_FILE_BYTES, 50*1024*1024),
     artifactRoot:overrides.artifactRoot??process.env.AGENVYL_ARTIFACT_ROOT??paths.artifacts,
     artifactMaxBytes:positiveInteger(overrides.artifactMaxBytes??process.env.AGENVYL_ARTIFACT_MAX_BYTES,250*1024*1024),
-    transparentGitWorkspace:booleanValue(overrides.transparentGitWorkspace??process.env.AGENVYL_TRANSPARENT_GIT_WORKSPACE,true),
-    workspaceNoopMode,
-    workspaceWarmSlotsMode,
-    workspaceStatCacheMode,
     previewOrigin: overrides.previewOrigin ?? process.env.AGENVYL_PREVIEW_ORIGIN ?? `http://127.0.0.1:${positiveInteger(process.env.AGENVYL_PREVIEW_PORT,8792)}`,
   };
 }
@@ -64,20 +50,4 @@ export function resolveAppConfig(overrides: AppConfigOverrides = {}): AppConfig 
 function positiveInteger(value: unknown, fallback: number) {
   const parsed=Number(value);
   return Number.isInteger(parsed)&&parsed>0?parsed:fallback;
-}
-
-function optimizationMode(value:unknown,name:string):WorkspaceOptimizationMode{
-  if(value===undefined)return'off';
-  const normalized=String(value).trim().toLowerCase();
-  if(normalized==='off'||normalized==='shadow'||normalized==='on')return normalized;
-  throw new Error(`${name} must be off, shadow, or on`);
-}
-
-function booleanValue(value:unknown,fallback:boolean){
-  if(value===undefined)return fallback;
-  if(typeof value==='boolean')return value;
-  const normalized=String(value).trim().toLowerCase();
-  if(normalized==='true'||normalized==='1'||normalized==='yes'||normalized==='on')return true;
-  if(normalized==='false'||normalized==='0'||normalized==='no'||normalized==='off')return false;
-  return fallback;
 }

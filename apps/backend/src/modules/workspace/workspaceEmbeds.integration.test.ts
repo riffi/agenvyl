@@ -14,7 +14,7 @@ const workProfile={workflowMode:'work' as const,requestedReasoningEffort:null,re
 
 describe('persisted workspace embeds',()=>{
   it('pins the resolved image version and keeps snapshot metadata out of natural-language history',async()=>{
-    const root=await mkdtemp(path.join(tmpdir(),'workspace-embeds-')),repositories=await createRepositories(testDatabaseUrl('run_embed_pin')),events=new RoomEventService(repositories.roomEvents,new RoomEventBus()),activeRuns=new ActiveRunRegistry(),workspace=new RoomWorkspaceService(repositories.rooms,repositories.workspace,events,activeRuns,root,root,10*1024*1024);
+    const root=await mkdtemp(path.join(tmpdir(),'workspace-embeds-')),repositories=await createRepositories(testDatabaseUrl('run_embed_pin')),events=new RoomEventService(repositories.roomEvents,new RoomEventBus()),activeRuns=new ActiveRunRegistry(),workspace=new RoomWorkspaceService(repositories.rooms,repositories.workspace,repositories.runWorkspaces,events,activeRuns,root,root,10*1024*1024);
     try{
       const first=await workspace.upload('demo-room','charts/result.png','image/png',png('first'));
       const persona=(await repositories.personas.find('persona-architect'))!,round=await repositories.messages.createRound('demo-room','show it',[persona],new Map([[persona.id,workProfile]]));

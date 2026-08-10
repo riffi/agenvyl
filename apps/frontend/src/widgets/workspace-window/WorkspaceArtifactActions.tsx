@@ -43,7 +43,7 @@ export const WorkspaceArtifactActions = ({ attachment, openWorkspace, className 
       <button type="button" role="menuitem" onClick={event => {
         event.stopPropagation();
         setOpen(false);
-        openWorkspace({ entryId: attachment.entry_id, versionId: attachment.version_id, snapshotId: attachment.snapshot_id, path: attachment.path });
+        openWorkspace({ entryId: attachment.entry_id, versionId: attachment.version_id, path: attachment.path });
       }}><FolderOpen />Open in Workspace</button>
       <a role="menuitem" href={attachment.url} download onClick={event => { event.stopPropagation(); setOpen(false); }}><Download />Download</a>
     </span>, document.body)}

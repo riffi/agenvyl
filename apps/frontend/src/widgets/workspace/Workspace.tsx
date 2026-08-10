@@ -190,7 +190,7 @@ export function WorkspaceApp({
     const candidates=gallery?.some(item=>item.version_id===attachment.version_id)?gallery:[attachment,...(gallery??[])];
     pushWorkspace({
       origin:'artifact',
-      target:{entryId:attachment.entry_id,versionId:attachment.version_id,snapshotId:attachment.snapshot_id,path:attachment.path},
+      target:{entryId:attachment.entry_id,versionId:attachment.version_id,path:attachment.path},
       treeVisible:false,
       gallery:candidates,
       opener,

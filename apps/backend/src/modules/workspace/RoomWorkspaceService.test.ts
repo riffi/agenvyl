@@ -17,10 +17,10 @@ function fixture(root:string,max=1024,activeValues:()=>any[]=()=>[]){
     saveDirectory:vi.fn(),markOversize:vi.fn(),
     softDelete:vi.fn(async(_room:string,id:string)=>{const entry=[...entries.values()].find(value=>value.id===id);if(!entry)return[];entry.deleted_at=new Date().toISOString();return[entry];}),
     move:vi.fn(async(_room:string,id:string,nextPath:string)=>{const entry=[...entries.values()].find(value=>value.id===id);if(!entry)return undefined;entries.delete(entry.path);entry.path=nextPath;entry.name=path.basename(nextPath);entries.set(nextPath,entry);return entry;}),
-    restoreEntry:vi.fn(),versions:vi.fn(),linkArtifacts:vi.fn(),
+    restoreEntry:vi.fn(),versions:vi.fn(),linkArtifacts:vi.fn(),previewBundles:vi.fn(async()=>[]),previewBundleIds:vi.fn(async()=>[]),roomHashes:vi.fn(async()=>[]),
   };
-  const rooms={exists:vi.fn().mockResolvedValue(true)},events={emit:vi.fn()};
-  const service=new RoomWorkspaceService(rooms as never,repository as never,events as never,{values:activeValues} as never,root,'/host/workspaces',max);
+  const rooms={exists:vi.fn().mockResolvedValue(true)},events={emit:vi.fn()},runWorkspaces={};
+  const service=new RoomWorkspaceService(rooms as never,repository as never,runWorkspaces as never,events as never,{values:activeValues} as never,root,'/host/workspaces',max);
   return{service,repository,rooms,events};
 }
 
@@ -33,7 +33,6 @@ describe('RoomWorkspaceService',()=>{
     expect((await service.list('room-1')).entries).toEqual(expect.arrayContaining([expect.objectContaining({path:'docs/заметки.md'})]));
     const source=await service.upload('room-1','src/main.ts','text/plain',Buffer.from('export const привет = true'));
     expect(source.entry.mime_type).toBe('text/typescript');
-    service.close();
   });
 
   it('rejects traversal and asks for an explicit collision strategy',async()=>{
@@ -42,13 +41,12 @@ describe('RoomWorkspaceService',()=>{
     await service.upload('room-1','notes.txt','text/plain',Buffer.from('x'));
     await expect(service.upload('room-1','notes.txt','text/plain',Buffer.from('x'))).rejects.toMatchObject({code:'file_exists'});
     await expect(service.upload('room-1','large.bin','application/octet-stream',Buffer.alloc(11))).rejects.toMatchObject({code:'file_too_large'});
-    service.close();
   });
 
-  it('attributes filesystem changes only to runs that have actually started',async()=>{
+  it('does not capture filesystem changes while merely listing the workspace',async()=>{
     const root=await mkdtemp(path.join(tmpdir(),'room-workspace-'));roots.push(root);const running={id:'running',roomId:'room-1',started:true,terminal:false},queued={id:'queued',roomId:'room-1',started:false,terminal:false},{service,repository}=fixture(root,1024,()=>[running,queued]);
     await service.ensure('room-1');await writeFile(path.join(root,'room-1','result.txt'),'ready');await service.list('room-1');
-    expect(repository.saveVersion).toHaveBeenCalledWith(expect.objectContaining({path:'result.txt',runIds:['running'],artifactChange:'created'}));service.close();
+    expect(repository.saveVersion).not.toHaveBeenCalledWith(expect.objectContaining({path:'result.txt'}));
   });
 
   it('treats plan.md as an ordinary movable and deletable Markdown file',async()=>{
@@ -57,6 +55,5 @@ describe('RoomWorkspaceService',()=>{
     await service.move('room-1',uploaded.entry.id,'notes/old-plan.md');
     const replacement=await service.upload('room-1','plan.md','text/markdown',Buffer.from('# Replacement'));
     await service.remove('room-1',replacement.entry.id);
-    service.close();
   });
 });

@@ -31,7 +31,7 @@ describe("PostgreSQL repositories", () => {
         await p.database
           .sql`SELECT version FROM schema_migrations ORDER BY version`
       ).map((row) => row.version),
-    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]);
+    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]);
     expect(
       await p.database.sql`SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='personas' AND column_name='role'`,
     ).toEqual([]);
@@ -106,7 +106,7 @@ describe("PostgreSQL repositories", () => {
     expect((await database.sql`SELECT title,title_source FROM rooms WHERE id='legacy-title-room'`)[0]).toEqual({title:'Existing title',title_source:'manual'});
     await database.close();
   });
-  it("backfills immutable snapshots when upgrading an initial-schema database", async () => {
+  it("upgrades an initial-schema database and removes the legacy workspace pipeline", async () => {
     const url = testDatabaseUrl("migration_v1"),
       parsed = new URL(url),
       schema = parsed.searchParams.get("schema")!;
@@ -137,7 +137,7 @@ describe("PostgreSQL repositories", () => {
         await repositories.database
           .sql`SELECT version FROM schema_migrations ORDER BY version`
       ).map((row) => row.version),
-    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]);
+    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]);
     expect(
       await repositories.database.sql`SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='personas' AND column_name='role'`,
     ).toEqual([]);
@@ -149,7 +149,7 @@ describe("PostgreSQL repositories", () => {
       persona: { id: "legacy-persona", handle: "legacy", name: "Legacy" },
       reasoning_effort_override: null,
     });
-    expect((await repositories.database.sql`SELECT current_workspace_snapshot_id FROM rooms WHERE id='legacy-room'`)[0]?.current_workspace_snapshot_id).toBe('initial-legacy-room');
+    expect(await repositories.database.sql`SELECT to_regclass('workspace_snapshots') snapshots,to_regclass('workspace_slots') slots,to_regclass('workspace_publish_conflicts') conflicts`).toEqual([{snapshots:null,slots:null,conflicts:null}]);
     expect(
       (
         await repositories.database

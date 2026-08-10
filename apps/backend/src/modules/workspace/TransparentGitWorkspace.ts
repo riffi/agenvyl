@@ -10,9 +10,19 @@ const initialIgnore=['.agenvyl/','node_modules/','dist/','build/','out/','.cache
 const runtimeExcludes=['.chrome-render-profile/','.edge-render-profile/'];
 
 export type GitCheckpoint={head:string;checkpointSha?:string};
+export type GitChangedPath={path:string;change:'created'|'updated'|'deleted'};
 
 export class TransparentGitWorkspace{
   async initialize(root:string){await this.ensureRepository(root)}
+  currentHead(root:string){return this.head(root)}
+  checkpoint(root:string,message:string){return this.commitDirty(root,message)}
+
+  async changedPaths(root:string,baseHead:string,resultHead:string):Promise<GitChangedPath[]>{
+    if(baseHead===resultHead)return[];
+    const output=await git(root,['diff','--no-renames','--name-status','-z',baseHead,resultHead]),parts=output.split('\0').filter(Boolean),result:GitChangedPath[]=[];
+    for(let index=0;index<parts.length;index+=2){const status=parts[index]!,filePath=parts[index+1];if(!filePath)continue;result.push({path:filePath.replace(/\\/g,'/'),change:status.startsWith('A')?'created':status.startsWith('D')?'deleted':'updated'});}
+    return result;
+  }
 
   async prepare(root:string,runId:string):Promise<GitCheckpoint>{
     const initialized=await this.ensureRepository(root);

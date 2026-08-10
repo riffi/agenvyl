@@ -1,5 +1,4 @@
 import ignore, {type Ignore} from 'ignore';
-import {diffSnapshots,entryMap,type SnapshotEntry} from './workspaceSnapshots.js';
 
 export type RunArtifactVisibility='project'|'hidden';
 
@@ -31,29 +30,6 @@ export class RunArtifactPolicy{
     return'project';
   }
 
-  projectCandidate(base:SnapshotEntry[],result:SnapshotEntry[]):SnapshotEntry[]{
-    const selected=entryMap(base),resultEntries=entryMap(result),projectFiles:string[]=[];
-    const changes=diffSnapshots(base,result);
-    for(const change of changes){
-      const descriptor=change.next??change.prior;
-      if(!descriptor||descriptor.kind!=='file'||this.visibility(change.path,descriptor.kind)!=='project')continue;
-      if(change.next)selected.set(change.path,change.next);
-      else selected.delete(change.path);
-      if(change.next)projectFiles.push(change.path);
-    }
-    for(const filePath of projectFiles){
-      const segments=filePath.split('/');
-      for(let length=1;length<segments.length;length++){
-        const parent=segments.slice(0,length).join('/'),descriptor=resultEntries.get(parent);
-        if(descriptor?.kind==='directory')selected.set(parent,descriptor);
-      }
-    }
-    for(const change of changes){
-      if(change.next||change.prior?.kind!=='directory'||this.visibility(change.path,'directory')!=='project')continue;
-      if(![...selected.keys()].some(candidate=>candidate.startsWith(`${change.path}/`)))selected.delete(change.path);
-    }
-    return[...selected].map(([path,value])=>({path,...value})).sort((left,right)=>left.path.localeCompare(right.path));
-  }
 }
 
 const normalizeArtifactPath=(value:string)=>value.replaceAll('\\','/').replace(/^\.\/+/, '').replace(/\/{2,}/g,'/').replace(/\/$/,'');

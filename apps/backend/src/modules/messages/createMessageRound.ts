@@ -169,6 +169,12 @@ export class CreateMessageRound {
         400,
         "A message can include no more than 10 attachments",
       );
+    const attachmentVersionIds = this.dependencies.roomWorkspace
+      ? await this.dependencies.roomWorkspace.captureAttachmentVersions(
+          command.roomId,
+          command.attachmentVersionIds ?? [],
+        )
+      : command.attachmentVersionIds ?? [];
     const addressedToAll =
       targets.length === available.length &&
       /(^|[^\p{L}\p{N}_])@all(?![\p{L}\p{N}_-])/iu.test(text);
@@ -180,7 +186,7 @@ export class CreateMessageRound {
         targets,
         profileFor,
         command.messageId,
-        command.attachmentVersionIds ?? [],
+        attachmentVersionIds,
         addressedToAll,
       );
     } catch (error) {
@@ -219,7 +225,7 @@ export class CreateMessageRound {
     const attachmentLines = await Promise.all(
       (round.message.attachments ?? []).map(
         async (item) =>
-          `- ${item.path} (${item.mime_type}, version ${item.version_id}): ${this.dependencies.roomWorkspace ? await this.dependencies.roomWorkspace.snapshotAgentPath(command.roomId, item.version_id) : item.version_id}`,
+          `- ${item.path} (${item.mime_type}, version ${item.version_id}): ${this.dependencies.roomWorkspace ? await this.dependencies.roomWorkspace.immutableVersionAgentPath(command.roomId, item.version_id) : item.version_id}`,
       ),
     );
     const attachmentPrompt = attachmentLines.length

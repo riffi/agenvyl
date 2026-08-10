@@ -18,8 +18,6 @@ export async function buildPreviewApp(options:PreviewAppOptions){
     relay(request,options.upstreamOrigin,req.raw.url??req.url,reply));
   app.get<{Params:{roomId:string;versionId:string;'*':string}}>('/api/v1/rooms/:roomId/workspace/versions/:versionId/preview/*',async(req,reply)=>
     relay(request,options.upstreamOrigin,req.raw.url??req.url,reply));
-  app.get<{Params:{roomId:string;snapshotId:string;'*':string}}>('/api/v1/rooms/:roomId/workspace/snapshots/:snapshotId/preview/*',async(req,reply)=>
-    relay(request,options.upstreamOrigin,req.raw.url??req.url,reply));
   app.get<{Params:{roomId:string;runId:string}}>('/api/v1/rooms/:roomId/runs/:runId/preview',async(req,reply)=>
     relay(request,options.upstreamOrigin,req.raw.url??req.url,reply));
   app.get<{Params:{roomId:string;runId:string}}>('/api/v1/rooms/:roomId/runs/:runId/preview/',async(req,reply)=>

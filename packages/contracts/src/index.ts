@@ -171,10 +171,10 @@ export type WorkspaceEntry={
 };
 export type WorkspaceVersion={
   id:string;entry_id?:string;path:string;size:number;mime_type:string;sha256:string;created_at:string;
-  source:WorkspaceSource;run_ids:string[];origin_snapshot_id?:string;url:string;preview_url:string;
+  source:WorkspaceSource;run_ids:string[];url:string;preview_url:string;
 };
 export type WorkspaceAttachment={
-  version_id:string;entry_id?:string;snapshot_id?:string;name:string;path:string;size:number;mime_type:string;url:string;preview_url:string;
+  version_id:string;entry_id?:string;name:string;path:string;size:number;mime_type:string;url:string;preview_url:string;
 };
 export type RoomStaticPreview=
   | {status:'ready';attachment:WorkspaceAttachment;runId:string}
@@ -182,11 +182,10 @@ export type RoomStaticPreview=
   | {status:'build_missing'};
 export type WorkspaceBuildPreview={
   runId:string;
-  snapshotId:string;
+  sourceHead?:string;
   agent:string;
   createdAt:string;
   runStatus:RunStatus;
-  publishStatus:RunWorkspaceResult['publish_status'];
   sameBuildAsPrevious:boolean;
   attachment:WorkspaceAttachment;
 };
@@ -196,20 +195,14 @@ export type RunEmbedError='invalid_path'|'not_found'|'unsupported_type'|'invalid
 export type RunEmbed={kind:'image';path:string;status:'resolved'|'error';attachment?:WorkspaceAttachment;error?:RunEmbedError};
 export type WorkspaceCaptureError={path:string;code:'oversize'|'symlink'|'reserved'|'unstable'|'read_failed'};
 export type RunWorkspaceResult={
-  base_snapshot_id:string;
-  result_snapshot_id?:string;
-  published_snapshot_id?:string;
-  capture_status:'preparing'|'ready'|'finalizing'|'complete'|'incomplete'|'failed';
-  publish_status:'pending'|'published'|'partially_published'|'not_published'|'noop'|'failed';
-  conflict_count:number;
+  base_head:string;
+  result_head?:string;
+  checkpoint_sha?:string;
+  capture_status:'ready'|'finalizing'|'complete'|'incomplete'|'failed';
   errors:WorkspaceCaptureError[];
+  updated_at:string;
 };
-export type WorkspaceConflictChoice='current'|'candidate'|'delete';
-export type WorkspaceConflictSide={kind:'file'|'directory';version_id?:string;attachment?:WorkspaceAttachment};
-export type WorkspacePublishConflict={path:string;base?:WorkspaceConflictSide;current?:WorkspaceConflictSide;candidate?:WorkspaceConflictSide};
-export type WorkspaceConflictSet={run_id:string;expected_current_snapshot_id:string;conflicts:WorkspacePublishConflict[]};
-export type ResolveWorkspaceConflictsRequest={expected_current_snapshot_id:string;resolutions:Array<{path:string;choice:WorkspaceConflictChoice}>};
-export type RoomWorkspace={path:string;current_snapshot_id:string;materialization_status:'pending'|'ready'|'failed';entries:WorkspaceEntry[];staticPreview?:RoomStaticPreview;previewHistory:WorkspaceBuildPreview[]};
+export type RoomWorkspace={path:string;head:string;entries:WorkspaceEntry[];staticPreview?:RoomStaticPreview;previewHistory:WorkspaceBuildPreview[]};
 
 export type Persona = {
   id: string;
@@ -319,8 +312,7 @@ export type ServerRoomEvent =
   | Envelope<'workspace.changed', { entry:WorkspaceEntry;change:'created'|'updated'|'deleted'|'restored'|'moved' }>
   | Envelope<'artifact.created', { runId:string;artifact:RunArtifact }>
   | Envelope<'run.embeds', { runId:string;embeds:RunEmbed[] }>
-  | Envelope<'run.workspace.finalized', {runId:string;workspaceResult:RunWorkspaceResult;artifacts?:RunArtifact[];artifactSummary?:RunArtifactSummary;staticPreview?:WorkspaceAttachment;staticPreviewStatus?:'ready'|'build_missing'|'capture_failed'}>
-  | Envelope<'run.workspace.publish.updated', {runId:string;workspaceResult:RunWorkspaceResult}>;
+  | Envelope<'run.workspace.finalized', {runId:string;workspaceResult:RunWorkspaceResult;artifacts?:RunArtifact[];artifactSummary?:RunArtifactSummary;staticPreview?:WorkspaceAttachment;staticPreviewStatus?:'ready'|'build_missing'|'capture_failed'}>;
 
 const eventTypes = new Set<ServerRoomEvent['type']>([
   'message.created',
@@ -343,7 +335,6 @@ const eventTypes = new Set<ServerRoomEvent['type']>([
   'artifact.created',
   'run.embeds',
   'run.workspace.finalized',
-  'run.workspace.publish.updated',
 ]);
 const runStatuses = new Set<RunStatus>(['queued', 'streaming', 'finalizing', 'stopping', 'waiting_approval', 'waiting_clarification', 'completed', 'failed', 'cancelled']);
 const toolStatuses = new Set<ToolActivity['status']>(['started', 'progress', 'completed', 'failed', 'cancelled']);
@@ -372,7 +363,6 @@ export function isServerRoomEvent(value: unknown): value is ServerRoomEvent {
     case 'artifact.created': return typeof payload.runId==='string' && isRecord(payload.artifact) && typeof payload.artifact.version_id==='string';
     case 'run.embeds': return typeof payload.runId==='string'&&Array.isArray(payload.embeds);
     case 'run.workspace.finalized': return typeof payload.runId==='string'&&isRunWorkspaceResult(payload.workspaceResult)&&(payload.artifacts===undefined||Array.isArray(payload.artifacts))&&(payload.artifactSummary===undefined||isRunArtifactSummary(payload.artifactSummary))&&(payload.staticPreview===undefined||isWorkspaceAttachment(payload.staticPreview))&&(payload.staticPreviewStatus===undefined||payload.staticPreviewStatus==='ready'||payload.staticPreviewStatus==='build_missing'||payload.staticPreviewStatus==='capture_failed');
-    case 'run.workspace.publish.updated': return typeof payload.runId==='string'&&isRunWorkspaceResult(payload.workspaceResult);
     default: return false;
   }
 }
@@ -382,7 +372,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 function isTokenUsage(value:unknown):value is TokenUsage{if(!isRecord(value)||!tokenCount(value.inputTokens)||!tokenCount(value.outputTokens))return false;return['totalTokens','reasoningTokens','cacheReadTokens','cacheWriteTokens'].every(key=>value[key]===undefined||tokenCount(value[key]));}
 function isRunIntervention(value:unknown):value is RunIntervention{return isRecord(value)&&strings(value,'id','text','status')&&['pending','applied','failed'].includes(String(value.status))&&(value.supersededText===undefined||typeof value.supersededText==='string')&&(value.error===undefined||typeof value.error==='string');}
-function isRunWorkspaceResult(value:unknown):value is RunWorkspaceResult{if(!isRecord(value)||typeof value.base_snapshot_id!=='string'||typeof value.capture_status!=='string'||typeof value.publish_status!=='string'||!Number.isSafeInteger(value.conflict_count)||!Array.isArray(value.errors))return false;return['preparing','ready','finalizing','complete','incomplete','failed'].includes(value.capture_status)&&['pending','published','partially_published','not_published','noop','failed'].includes(value.publish_status);}
+function isRunWorkspaceResult(value:unknown):value is RunWorkspaceResult{if(!isRecord(value)||typeof value.base_head!=='string'||typeof value.capture_status!=='string'||!Array.isArray(value.errors)||typeof value.updated_at!=='string')return false;return['ready','finalizing','complete','incomplete','failed'].includes(value.capture_status);}
 function isRunArtifactSummary(value:unknown):value is RunArtifactSummary{return isRecord(value)&&['total_count','project_count','hidden_count'].every(key=>Number.isSafeInteger(value[key])&&Number(value[key])>=0);}
 function isWorkspaceAttachment(value:unknown):value is WorkspaceAttachment{return isRecord(value)&&strings(value,'version_id','name','path','mime_type','url','preview_url')&&Number.isSafeInteger(value.size)&&Number(value.size)>=0;}
 function isRunProjectSnapshot(value:unknown):value is RunProjectSnapshot{return isRecord(value)&&strings(value,'id','name','path','availability')&&['available','unavailable','unknown'].includes(String(value.availability));}

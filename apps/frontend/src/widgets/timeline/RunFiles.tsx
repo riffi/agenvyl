@@ -42,7 +42,6 @@ export const RunFiles = ({
           onClick={() => openWorkspace({
             entryId: file.entry_id,
             versionId: file.version_id,
-            snapshotId: file.snapshot_id,
             path: file.path,
           })}
         >

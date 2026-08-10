@@ -44,7 +44,6 @@ export const WorkspaceBuildPicker = ({
               <span className={styles.buildBadges}>
                 {build.runId === currentRunId && <em>Current</em>}
                 <em>{runStatusLabel(build.runStatus)}</em>
-                <em>{publishStatusLabel(build.publishStatus)}</em>
                 {build.sameBuildAsPrevious && <em>Same build as previous</em>}
               </span>
             </button>;
@@ -58,7 +57,6 @@ export const WorkspaceBuildPicker = ({
 
 const formatDate = (value: string) => new Date(value).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
 const runStatusLabel = (status: WorkspaceBuildPreview['runStatus']) => status === 'completed' ? 'Completed' : status === 'failed' ? 'Failed' : status === 'cancelled' ? 'Cancelled' : 'Captured';
-const publishStatusLabel = (status: WorkspaceBuildPreview['publishStatus']) => status === 'published' ? 'Applied' : status === 'partially_published' ? 'Partially applied' : status === 'noop' ? 'No source changes' : 'Not applied';
 
 const closeOutside: FocusEventHandler<HTMLDetailsElement> = event => {
   if (!event.currentTarget.contains(event.relatedTarget as Node | null)) event.currentTarget.removeAttribute('open');

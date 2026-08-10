@@ -30,4 +30,5 @@ export const migrations = [
   { version: 29, name: 'room_title_source', file: '029_room_title_source.sql' },
   { version: 30, name: 'preview_bundles', file: '030_preview_bundles.sql' },
   { version: 31, name: 'transparent_git_workspace', file: '031_transparent_git_workspace.sql' },
+  { version: 32, name: 'remove_legacy_workspace_pipeline', file: '032_remove_legacy_workspace_pipeline.sql' },
 ] as const;

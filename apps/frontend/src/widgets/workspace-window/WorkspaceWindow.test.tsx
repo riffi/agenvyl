@@ -74,7 +74,7 @@ describe('WorkspaceWindow', () => {
   it('opens an exact artifact with a single compact header and contextual actions', async () => {
     const latest = version('version-2', '2026-07-23T10:00:00.000Z');
     const older = version('version-1', '2026-07-22T10:00:00.000Z');
-    vi.spyOn(roomsApi, 'workspace').mockResolvedValue({ path: '/room', current_snapshot_id: 'snapshot', materialization_status: 'ready', entries: [entry], previewHistory: [] });
+    vi.spyOn(roomsApi, 'workspace').mockResolvedValue({ path: '/room', head: 'snapshot', entries: [entry], previewHistory: [] });
     vi.spyOn(roomsApi, 'versions').mockResolvedValue([latest, older]);
     const onRequestChange = vi.fn();
     const onClose = vi.fn();
@@ -119,7 +119,7 @@ describe('WorkspaceWindow', () => {
   });
 
   it('opens the file tree by default for a workspace entry point', async () => {
-    vi.spyOn(roomsApi, 'workspace').mockResolvedValue({ path: '/room', current_snapshot_id: 'snapshot', materialization_status: 'ready', entries: [entry], previewHistory: [] });
+    vi.spyOn(roomsApi, 'workspace').mockResolvedValue({ path: '/room', head: 'snapshot', entries: [entry], previewHistory: [] });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={client}><WorkspaceWindow
       request={{ origin: 'workspace', treeVisible: true }}
@@ -134,7 +134,6 @@ describe('WorkspaceWindow', () => {
   it('opens the current app build by default when it matches the workspace', async () => {
     const preview: WorkspaceAttachment = {
       version_id: 'build-version',
-      snapshot_id: 'run-snapshot',
       path: 'dist/index.html',
       name: 'index.html',
       size: 42,
@@ -144,11 +143,10 @@ describe('WorkspaceWindow', () => {
     };
     vi.spyOn(roomsApi, 'workspace').mockResolvedValue({
       path: '/room',
-      current_snapshot_id: 'snapshot',
-      materialization_status: 'ready',
+      head: 'snapshot',
       entries: [entry],
       staticPreview: { status: 'ready', runId: 'run-1', attachment: preview },
-      previewHistory: [{ runId: 'run-1', snapshotId: 'run-snapshot', agent: 'builder', createdAt: '2026-07-23T10:00:00.000Z', runStatus: 'completed', publishStatus: 'published', sameBuildAsPrevious: false, attachment: preview }],
+      previewHistory: [{ runId: 'run-1', sourceHead: 'run-snapshot', agent: 'builder', createdAt: '2026-07-23T10:00:00.000Z', runStatus: 'completed', sameBuildAsPrevious: false, attachment: preview }],
     });
     const onRequestChange = vi.fn();
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -179,11 +177,10 @@ describe('WorkspaceWindow', () => {
   it('explains when the room preview no longer matches current sources', async () => {
     vi.spyOn(roomsApi, 'workspace').mockResolvedValue({
       path: '/room',
-      current_snapshot_id: 'snapshot',
-      materialization_status: 'ready',
+      head: 'snapshot',
       entries: [entry],
       staticPreview: { status: 'outdated', runId: 'run-1' },
-      previewHistory: [{ runId: 'run-1', snapshotId: 'run-snapshot', agent: 'builder', createdAt: '2026-07-23T10:00:00.000Z', runStatus: 'completed', publishStatus: 'published', sameBuildAsPrevious: false, attachment: { version_id: 'build-version', snapshot_id: 'run-snapshot', path: 'dist/index.html', name: 'index.html', size: 42, mime_type: 'text/html', url: '/versions/build-version', preview_url: '/api/v1/rooms/room/runs/run-1/preview/' } }],
+      previewHistory: [{ runId: 'run-1', sourceHead: 'run-snapshot', agent: 'builder', createdAt: '2026-07-23T10:00:00.000Z', runStatus: 'completed', sameBuildAsPrevious: false, attachment: { version_id: 'build-version', path: 'dist/index.html', name: 'index.html', size: 42, mime_type: 'text/html', url: '/versions/build-version', preview_url: '/api/v1/rooms/room/runs/run-1/preview/' } }],
     });
     const onRequestChange = vi.fn();
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -213,7 +210,7 @@ describe('WorkspaceWindow', () => {
 
   it('switches from the full-width mobile tree to the file viewer after selection', async () => {
     vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true })));
-    vi.spyOn(roomsApi, 'workspace').mockResolvedValue({ path: '/room', current_snapshot_id: 'snapshot', materialization_status: 'ready', entries: [entry], previewHistory: [] });
+    vi.spyOn(roomsApi, 'workspace').mockResolvedValue({ path: '/room', head: 'snapshot', entries: [entry], previewHistory: [] });
     const onRequestChange = vi.fn();
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={client}><WorkspaceWindow
@@ -234,7 +231,7 @@ describe('WorkspaceWindow', () => {
   it('shows a targeted file instead of the full-width tree on mobile', async () => {
     vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: true })));
     const latest = version('version-2', '2026-07-23T10:00:00.000Z');
-    vi.spyOn(roomsApi, 'workspace').mockResolvedValue({ path: '/room', current_snapshot_id: 'snapshot', materialization_status: 'ready', entries: [entry], previewHistory: [] });
+    vi.spyOn(roomsApi, 'workspace').mockResolvedValue({ path: '/room', head: 'snapshot', entries: [entry], previewHistory: [] });
     vi.spyOn(roomsApi, 'versions').mockResolvedValue([latest]);
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<QueryClientProvider client={client}><WorkspaceWindow
@@ -254,14 +251,14 @@ describe('WorkspaceWindow', () => {
   });
 
   it('labels historical and duplicate builds without changing the current file tree', async () => {
-    const buildAttachment = (runId: string): WorkspaceAttachment => ({ version_id: `version-${runId}`, snapshot_id: `snapshot-${runId}`, path: 'dist/index.html', name: 'index.html', size: 42, mime_type: 'text/html', url: `/versions/${runId}`, preview_url: `/api/v1/rooms/room/runs/${runId}/preview/` });
+    const buildAttachment = (runId: string): WorkspaceAttachment => ({ version_id: `version-${runId}`, path: 'dist/index.html', name: 'index.html', size: 42, mime_type: 'text/html', url: `/versions/${runId}`, preview_url: `/api/v1/rooms/room/runs/${runId}/preview/` });
     const currentBuild = buildAttachment('run-2'),olderBuild = buildAttachment('run-1');
     vi.spyOn(roomsApi, 'workspace').mockResolvedValue({
-      path: '/room', current_snapshot_id: 'snapshot', materialization_status: 'ready', entries: [entry],
+      path: '/room', head: 'snapshot', entries: [entry],
       staticPreview: { status: 'ready', runId: 'run-2', attachment: currentBuild },
       previewHistory: [
-        { runId: 'run-2', snapshotId: 'snapshot-run-2', agent: 'builder', createdAt: '2026-07-24T10:00:00.000Z', runStatus: 'failed', publishStatus: 'noop', sameBuildAsPrevious: true, attachment: currentBuild },
-        { runId: 'run-1', snapshotId: 'snapshot-run-1', agent: 'builder', createdAt: '2026-07-23T10:00:00.000Z', runStatus: 'completed', publishStatus: 'published', sameBuildAsPrevious: false, attachment: olderBuild },
+        { runId: 'run-2', sourceHead: 'snapshot-run-2', agent: 'builder', createdAt: '2026-07-24T10:00:00.000Z', runStatus: 'failed', sameBuildAsPrevious: true, attachment: currentBuild },
+        { runId: 'run-1', sourceHead: 'snapshot-run-1', agent: 'builder', createdAt: '2026-07-23T10:00:00.000Z', runStatus: 'completed', sameBuildAsPrevious: false, attachment: olderBuild },
       ],
     });
     const onRequestChange = vi.fn();
@@ -278,7 +275,6 @@ describe('WorkspaceWindow', () => {
     expect(screen.queryByText('Historical build')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Choose app build' }));
     expect(screen.getByText('Same build as previous')).toBeTruthy();
-    expect(screen.getByText('No source changes')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Back to current build' }));
     expect(onRequestChange).toHaveBeenLastCalledWith({ section: 'app', buildRunId: undefined });
   });
@@ -287,7 +283,7 @@ describe('WorkspaceWindow', () => {
     const appEntry: WorkspaceEntry = { ...entry, id: 'entry-index', path: 'index.html', name: 'index.html', current_version_id: 'version-index' };
     const packageEntry: WorkspaceEntry = { ...entry, id: 'entry-package', path: 'package.json', name: 'package.json', mime_type: 'application/json', current_version_id: 'version-package' };
     const appVersion: WorkspaceVersion = { ...version('version-index', '2026-07-23T10:00:00.000Z'), entry_id: appEntry.id, path: appEntry.path, mime_type: appEntry.mime_type };
-    vi.spyOn(roomsApi, 'workspace').mockResolvedValue({ path: '/room', current_snapshot_id: 'snapshot', materialization_status: 'ready', entries: [appEntry, packageEntry], previewHistory: [] });
+    vi.spyOn(roomsApi, 'workspace').mockResolvedValue({ path: '/room', head: 'snapshot', entries: [appEntry, packageEntry], previewHistory: [] });
     vi.spyOn(roomsApi, 'versions').mockResolvedValue([appVersion]);
     const onRequestChange = vi.fn();
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });

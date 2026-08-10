@@ -8,7 +8,6 @@ export type WorkspaceEncoding = 'utf-8' | 'utf-16le' | 'utf-16be' | 'windows-125
 export type WorkspaceTarget = {
   entryId?: string;
   versionId?: string;
-  snapshotId?: string;
   path?: string;
 };
 
@@ -132,11 +131,9 @@ export const workspaceAttachmentFromVersion = (version: {
   mime_type: string;
   url: string;
   preview_url: string;
-  origin_snapshot_id?: string;
 }): WorkspaceAttachment => ({
   version_id: version.id,
   ...(version.entry_id ? { entry_id: version.entry_id } : {}),
-  ...(version.origin_snapshot_id ? { snapshot_id: version.origin_snapshot_id } : {}),
   path: version.path,
   name: version.path.split('/').pop() ?? version.path,
   size: version.size,

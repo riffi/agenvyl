@@ -303,7 +303,7 @@ export const WorkspaceWindow = ({
                   gallery={request.gallery}
                   onEncodingChange={(encoding?: WorkspaceEncoding) => onRequestChange({ encoding })}
                   onGalleryNavigate={item => onRequestChange({
-                    target: { entryId: item.entry_id, versionId: item.version_id, snapshotId: item.snapshot_id, path: item.path },
+                    target: { entryId: item.entry_id, versionId: item.version_id, path: item.path },
                     mode: defaultWorkspaceMode(item),
                     followCurrent: false,
                   })}

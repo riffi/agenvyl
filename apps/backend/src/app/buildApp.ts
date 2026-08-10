@@ -6,7 +6,7 @@ import {registerPersonaGroupRoutes} from '../modules/persona-groups/personaGroup
 import { registerRoomEventsWebSocket } from '../infrastructure/realtime/roomEventsWebSocket.js';
 import { registerRoomRoutes } from '../modules/rooms/rooms.routes.js';
 import { registerRunRoutes } from '../modules/runs/runs.routes.js';
-import { resolveAppConfig,type WorkspaceOptimizationMode } from './config.js';
+import { resolveAppConfig } from './config.js';
 import { createAppContainer } from './container.js';
 import { registerErrorHandler } from './plugins/errorHandler.js';
 import { registerHealthRoutes } from './plugins/health.js';
@@ -19,7 +19,7 @@ import {registerFeatureRoutes} from '../modules/features/features.routes.js';
 import {registerProjectRoutes} from '../modules/projects/projects.routes.js';
 import path from 'node:path';
 
-export type AppOptions = { databaseUrl?: string; connectorUrl?:string; connectorToken?:string; fetch?: typeof fetch; distPath?: string; runConcurrency?: number; runTimeoutMs?:number; shutdownTimeoutMs?: number; websocketMaxBufferedBytes?: number; workspaceRoot?:string; workspaceAgentRoot?:string; workspaceMaxFileBytes?:number; artifactRoot?:string;artifactMaxBytes?:number;transparentGitWorkspace?:boolean;workspaceNoopMode?:WorkspaceOptimizationMode;workspaceWarmSlotsMode?:WorkspaceOptimizationMode;workspaceStatCacheMode?:WorkspaceOptimizationMode; previewOrigin?:string; logger?:boolean;legacySeed?:boolean };
+export type AppOptions = { databaseUrl?: string; connectorUrl?:string; connectorToken?:string; fetch?: typeof fetch; distPath?: string; runConcurrency?: number; runTimeoutMs?:number; shutdownTimeoutMs?: number; websocketMaxBufferedBytes?: number; workspaceRoot?:string; workspaceAgentRoot?:string; workspaceMaxFileBytes?:number; artifactRoot?:string;artifactMaxBytes?:number;previewOrigin?:string; logger?:boolean;legacySeed?:boolean };
 
 export async function buildApp(options: AppOptions = {}) {
   const config = resolveAppConfig({
@@ -36,10 +36,6 @@ export async function buildApp(options: AppOptions = {}) {
     workspaceMaxFileBytes:options.workspaceMaxFileBytes,
     artifactRoot:options.artifactRoot??(options.workspaceRoot?path.join(path.resolve(options.workspaceRoot),'.artifacts'):undefined),
     artifactMaxBytes:options.artifactMaxBytes,
-    transparentGitWorkspace:options.transparentGitWorkspace,
-    workspaceNoopMode:options.workspaceNoopMode,
-    workspaceWarmSlotsMode:options.workspaceWarmSlotsMode,
-    workspaceStatCacheMode:options.workspaceStatCacheMode,
     previewOrigin:options.previewOrigin,
   });
   const app = Fastify({ logger: options.logger === false ? false : { redact: ['req.headers.authorization', 'req.headers.x-api-key'] } });
@@ -49,7 +45,6 @@ export async function buildApp(options: AppOptions = {}) {
   await app.register(websocket);
   app.addHook('onClose', async () => {
     await runExecutor.shutdown(config.shutdownTimeoutMs);
-    roomWorkspace.close();
     await database.close();
   });
   await registerHealthRoutes(app, dependencyHealth,database);

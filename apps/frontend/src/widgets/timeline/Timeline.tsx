@@ -1,11 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Archive, Ban, Brain, Check, ChevronDown, ChevronUp, CircleCheck, CircleHelp, CircleX, Clock3, CornerUpLeft, Eye, FolderCheck, FolderInput, Info, LoaderCircle, Paperclip, RotateCcw, Square, TriangleAlert } from 'lucide-react';
-import type {UpstreamStatus,WorkspaceAttachment,WorkspaceConflictChoice,WorkspaceConflictSide} from '@agenvyl/contracts';
+import { Ban, Brain, Check, ChevronDown, ChevronUp, CircleCheck, CircleHelp, CircleX, Clock3, CornerUpLeft, Eye, FolderCheck, Info, LoaderCircle, Paperclip, RotateCcw, Square, TriangleAlert } from 'lucide-react';
+import type {UpstreamStatus,WorkspaceAttachment} from '@agenvyl/contracts';
 import {WorkspaceArtifactActions,type OpenWorkspaceArtifact,type WorkspaceTarget} from '../workspace-window';
 import {HarnessIcon,type HarnessCatalog} from '../../entities/harness';
 import type { Persona } from '../../entities/persona';
 import type { RoomState } from '../../entities/room';
-import {roomsApi} from '../../entities/room';
 import {RunFailureNotice,type Run} from '../../entities/run';
 import type { RoomGateway } from '../../features/room-session';
 import { Alert, Avatar, EmptyState, IconButton } from '../../shared/ui';
@@ -113,7 +112,6 @@ function RunCard({
   onMentionPersona,
   openWorkspace,
   openArtifact,
-  roomId,
 }: {
   run: Run;
   persona: Persona;
@@ -135,10 +133,8 @@ function RunCard({
   onMentionPersona:(handle:string)=>void;
   openWorkspace:(target:WorkspaceTarget)=>void;
   openArtifact:OpenWorkspaceArtifact;
-  roomId:string;
 }) {
   const [retrying,setRetrying]=useState(false);const [retryError,setRetryError]=useState<string>();
-  const [applyingWorkspace,setApplyingWorkspace]=useState(false),[workspaceApplyError,setWorkspaceApplyError]=useState<string>();
   const answer = run.text || (run.status === 'queued' ? 'Waiting for an available slot…' : run.status === 'streaming' ? 'Analyzing…' : '');
   const canCancel=['queued','streaming','waiting_approval','waiting_clarification'].includes(run.status);
   const retryLabel=run.status==='completed'?'Create another response':'Run again';
@@ -146,17 +142,10 @@ function RunCard({
   const publishedFileCount=run.artifactSummary?.project_count??run.artifacts?.filter(item=>item.attribution==='exact').length??0;
   const changedFiles=run.artifacts?.filter(item=>item.attribution==='exact'&&!run.embeds?.some(embed=>embed.status==='resolved'&&embed.attachment?.version_id===item.version_id))??[];
   const hasProjectChanges=publishedFileCount>0;
-  const workspaceActivity=hasProjectChanges&&(run.workspaceResult?.publish_status==='published'||run.workspaceResult?.publish_status==='not_published');
+  const workspaceActivity=hasProjectChanges&&Boolean(run.workspaceResult&&['complete','incomplete'].includes(run.workspaceResult.capture_status));
   const hasActivity=Boolean(workspaceActivity||run.tools.length);
-  const canApplyWorkspace=Boolean(roomId&&hasProjectChanges&&['failed','cancelled'].includes(run.status)&&run.workspaceResult?.capture_status==='complete'&&run.workspaceResult.publish_status==='not_published');
   const buildMissing=hasProjectChanges&&run.staticPreviewStatus==='build_missing';
   const previewCaptureFailed=run.staticPreviewStatus==='capture_failed';
-  const applyWorkspace=async()=>{
-    const projectCount=run.artifactSummary?.project_count??changedFiles.length,hiddenCount=run.artifactSummary?.hidden_count??0;
-    if(!confirm(`Apply ${projectCount} project ${projectCount===1?'file':'files'} to the room workspace?${hiddenCount?` ${hiddenCount} non-project files will remain only in the run snapshot.`:''}`))return;
-    setApplyingWorkspace(true);setWorkspaceApplyError(undefined);
-    try{await roomsApi.applyRunWorkspace(roomId,run.id)}catch(value){setWorkspaceApplyError(value instanceof Error?value.message:String(value))}finally{setApplyingWorkspace(false)}
-  };
   return (
     <article
       className={`${styles['run-card']} ${styles[run.status]}`}
@@ -187,7 +176,6 @@ function RunCard({
         </header>
         {run.upstreamStatus&&<UpstreamStatusNotice status={run.upstreamStatus}/>}
         {run.status==='finalizing'&&<div className={`${styles['workspace-state']} ${styles['workspace-state-progress']}`} role="status" aria-live="polite"><LoaderCircle aria-hidden="true"/><span>Finalizing files…</span></div>}
-        {run.workspaceResult?.publish_status==='partially_published'&&<WorkspaceConflictPanel roomId={roomId} runId={run.id}/>}
         {run.interventions.map(intervention=><section key={intervention.id} className={`${styles.intervention} ${styles[`intervention-${intervention.status}`]}`} role="status" aria-live="polite"><header><CornerUpLeft aria-hidden="true"/><strong>Redirect</strong><span>{intervention.status==='pending'?'Redirecting…':intervention.status==='applied'?'Applied':'Failed'}</span></header><p>{intervention.text}</p>{intervention.supersededText!==undefined&&<details><summary>Earlier output before redirect</summary><pre>{intervention.supersededText||'No output was produced before the redirect.'}</pre></details>}{intervention.error&&<small>{intervention.error}</small>}</section>)}
         {run.reasoning&&<ReasoningBlock text={run.reasoning} harnessType={run.harnessType}/>}
         {answer&&<div className={`${styles.answer} ${collapsed?styles['answer-collapsed']:''}`}>
@@ -198,17 +186,14 @@ function RunCard({
         {run.status==='failed'&&<RunFailureNotice errorCode={run.errorCode} error={run.error}/>}
         {(run.requests??[]).some(request=>!request.resolved)&&<section className={styles['request-list']} aria-label="Pending agent requests"><strong>{(run.requests??[]).filter(request=>!request.resolved).length} pending {(run.requests??[]).filter(request=>!request.resolved).length===1?'request':'requests'}</strong>{(run.requests??[]).filter(request=>!request.resolved).map(request=><RunRequest key={request.id} request={request} resolve={value=>resolve(request.id,value)}/>)}</section>}
         <RunFiles files={changedFiles} summary={run.artifactSummary} openWorkspace={openWorkspace}/>
-        {(canApplyWorkspace||run.staticPreview||buildMissing||previewCaptureFailed)&&<div className={styles['run-output-actions']}>
-          {canApplyWorkspace&&<button type="button" disabled={applyingWorkspace} onClick={()=>void applyWorkspace()}><FolderInput aria-hidden="true"/>{applyingWorkspace?'Applying…':'Apply changes'}</button>}
+        {(run.staticPreview||buildMissing||previewCaptureFailed)&&<div className={styles['run-output-actions']}>
           {run.staticPreview&&<button type="button" title="Open the app build captured for this response" aria-label="Open the app build captured for this response" onClick={event=>openArtifact(run.staticPreview!,[run.staticPreview!],event.currentTarget,{section:'app',buildRunId:run.id})}><Eye aria-hidden="true"/>Open this build</button>}
           {!run.staticPreview&&buildMissing&&<small>Preview unavailable · Build output not found</small>}
           {!run.staticPreview&&previewCaptureFailed&&<small>Preview unavailable · Build could not be saved</small>}
         </div>}
-        {workspaceApplyError&&<Alert tone="error">{workspaceApplyError}</Alert>}
         {hasActivity&&<div className={styles['run-meta-row']}>
           <RunActivity actionCount={run.tools.length} hasWorkspaceEvent={workspaceActivity}>
-            {run.workspaceResult?.publish_status==='published'&&publishedFileCount>0&&<div className={`${styles['workspace-state']} ${styles['workspace-state-success']}`} role="status" title="The agent’s captured files are now the current versions in this room."><FolderCheck aria-hidden="true"/><span>Changes applied to room workspace</span><small>· {publishedFileCount} {publishedFileCount===1?'file':'files'}</small></div>}
-            {run.workspaceResult?.publish_status==='not_published'&&<div className={styles['workspace-state']} role="status" title="The captured files remain available from this response, but the room workspace was not changed."><Archive aria-hidden="true"/><span>Snapshot saved</span><small>· Room workspace unchanged</small></div>}
+            {workspaceActivity&&publishedFileCount>0&&<div className={`${styles['workspace-state']} ${styles['workspace-state-success']}`} role="status" title="The agent’s files remain in the room workspace and were recorded in Git."><FolderCheck aria-hidden="true"/><span>Workspace updated</span><small>· {publishedFileCount} {publishedFileCount===1?'file':'files'}</small></div>}
             {run.tools.length>0&&<section className={styles['tool-section']} aria-label="Tool calls">
               <h4>Tool calls <span>{run.tools.length}</span></h4>
               <div className={styles['tool-activity']}>
@@ -237,7 +222,7 @@ export function Timeline({
   onMentionPersona,
   openWorkspace=()=>{},
   openArtifact=()=>{},
-  roomId='',
+  roomId:_roomId='',
   redirectRun,
 }: {
   state: RoomState;
@@ -364,7 +349,6 @@ export function Timeline({
                     onMentionPersona={onMentionPersona}
                     openWorkspace={openWorkspace}
                     openArtifact={openArtifact}
-                    roomId={roomId}
                   />
                   </div>
                 )},
@@ -375,32 +359,6 @@ export function Timeline({
     </main>;
 }
 function formatBytes(value:number){if(value<1024)return`${value} B`;if(value<1024*1024)return`${(value/1024).toFixed(1)} KB`;return`${(value/1024/1024).toFixed(1)} MB`;}
-
-function WorkspaceConflictPanel({roomId,runId}:{roomId:string;runId:string}){
-  const [open,setOpen]=useState(false),[data,setData]=useState<Awaited<ReturnType<typeof roomsApi.workspaceConflicts>>>(),[choices,setChoices]=useState<Record<string,WorkspaceConflictChoice>>({}),[error,setError]=useState<string>(),[saving,setSaving]=useState(false);
-  const load=async()=>{setError(undefined);try{const next=await roomsApi.workspaceConflicts(roomId,runId);setData(next);setChoices(Object.fromEntries(next.conflicts.map(item=>[item.path,'current'])))}catch(value){setError(value instanceof Error?value.message:String(value))}};
-  useEffect(()=>{if(open&&!data)void load()},[open]);
-  const apply=async()=>{if(!data)return;setSaving(true);setError(undefined);try{await roomsApi.resolveWorkspaceConflicts(roomId,runId,{expected_current_snapshot_id:data.expected_current_snapshot_id,resolutions:data.conflicts.map(item=>({path:item.path,choice:choices[item.path]??'current'}))});setOpen(false)}catch(value){const cause=value as Error&{code?:string},message=cause.code==='workspace_conflict_stale'?'The workspace changed. Conflicts were recalculated; review them again.':cause.message;await load();setError(message)}finally{setSaving(false)}};
-  return <div className={styles['conflict-panel']}>
-    <Alert tone="warning">Partially published — resolve file conflicts. <button type="button" onClick={()=>setOpen(value=>!value)}>{open?'Close':'Review conflicts'}</button></Alert>
-    {open&&<section>
-      {error&&<Alert tone="error">{error}</Alert>}
-      {!data&&!error&&<span>Loading conflicts…</span>}
-      {data?.conflicts.map(conflict=><article key={conflict.path}>
-        <header><strong>{conflict.path}</strong><select aria-label={`Resolution for ${conflict.path}`} value={choices[conflict.path]??'current'} onChange={event=>setChoices(current=>({...current,[conflict.path]:event.target.value as WorkspaceConflictChoice}))}><option value="current">Keep current</option><option value="candidate">Accept agent</option><option value="delete">Delete path</option></select></header>
-        <div><ConflictSide label="Current" side={conflict.current}/><ConflictSide label="Agent candidate" side={conflict.candidate}/></div>
-      </article>)}
-      {data&&<button type="button" disabled={saving||!data.conflicts.length} onClick={()=>void apply()}>{saving?'Applying…':'Apply all resolutions'}</button>}
-    </section>}
-  </div>;
-}
-
-function ConflictSide({label,side}:{label:string;side?:WorkspaceConflictSide}){
-  const [text,setText]=useState<string>();
-  const attachment=side?.attachment,isText=Boolean(attachment&&(/^(text\/|application\/(json|javascript|xml))/.test(attachment.mime_type)));
-  useEffect(()=>{if(!isText||!attachment)return;const controller=new AbortController();void fetch(attachment.url,{signal:controller.signal}).then(response=>response.ok?response.text():Promise.reject(new Error(`HTTP ${response.status}`))).then(setText).catch(()=>{});return()=>controller.abort()},[attachment?.url,isText]);
-  return <section><small>{label}</small>{!side?<em>Path does not exist</em>:side.kind==='directory'?<em>Directory</em>:attachment?.mime_type.startsWith('image/')?<img src={attachment.preview_url} alt=""/>:isText?<pre>{text??'Loading…'}</pre>:attachment?<a href={attachment.url}>Open {attachment.mime_type}</a>:<code>{side.version_id}</code>}</section>;
-}
 
 function MessageAttachment({attachment,gallery,openArtifact,openWorkspace}:{attachment:WorkspaceAttachment;gallery?:WorkspaceAttachment[];openArtifact:OpenWorkspaceArtifact;openWorkspace:(target:WorkspaceTarget)=>void}){
   return <span className={styles.attachmentCard}>

@@ -80,7 +80,7 @@ export class RoomRepository {
             toMessage(row, attachmentMap.get(text(row.id)) ?? []),
           );
         const runRows = messageIds.length
-          ? await tx`SELECT r.id,r.message_id,r.persona_handle,r.requested_model,r.harness_instance_id,r.harness_type,r.adapter_generation,r.model_id,r.execution_profile,r.project_id_snapshot,r.project_name_snapshot,r.project_path_snapshot,r.project_availability,r.status,r.upstream_status,r.usage,r.text,r.reasoning,r.error,r.error_code,r.retry_of_run_id,r.response_slot_id,r.connector_execution_id,r.connector_epoch,r.connector_cursor,(ROW_NUMBER() OVER(PARTITION BY r.response_slot_id ORDER BY r.created_at,r.id))::int attempt_number,r.created_at,w.base_snapshot_id,w.result_snapshot_id,w.published_snapshot_id,w.capture_status workspace_capture_status,w.publish_status workspace_publish_status,w.conflict_count workspace_conflict_count,w.errors workspace_errors FROM agent_runs r LEFT JOIN run_workspace_results w ON w.run_id=r.id WHERE r.message_id=ANY(${messageIds}) ORDER BY r.created_at,r.id`
+          ? await tx`SELECT r.id,r.message_id,r.persona_handle,r.requested_model,r.harness_instance_id,r.harness_type,r.adapter_generation,r.model_id,r.execution_profile,r.project_id_snapshot,r.project_name_snapshot,r.project_path_snapshot,r.project_availability,r.status,r.upstream_status,r.usage,r.text,r.reasoning,r.error,r.error_code,r.retry_of_run_id,r.response_slot_id,r.connector_execution_id,r.connector_epoch,r.connector_cursor,(ROW_NUMBER() OVER(PARTITION BY r.response_slot_id ORDER BY r.created_at,r.id))::int attempt_number,r.created_at,w.base_head,w.result_head,w.checkpoint_sha,w.capture_status workspace_capture_status,w.errors workspace_errors,w.updated_at workspace_updated_at FROM agent_runs r LEFT JOIN run_workspace_results w ON w.run_id=r.id WHERE r.message_id=ANY(${messageIds}) ORDER BY r.created_at,r.id`
           : [];
         const runIds = runRows.map((row) => text(row.id));
         const eventRows = runIds.length
@@ -250,8 +250,6 @@ export class RoomRepository {
       await tx`DELETE FROM response_slots WHERE message_id IN(SELECT id FROM room_messages WHERE room_id=${id})`;
       await tx`DELETE FROM room_messages WHERE room_id=${id}`;
       await tx`DELETE FROM room_participants WHERE room_id=${id}`;
-      await tx`UPDATE rooms SET current_workspace_snapshot_id=NULL WHERE id=${id}`;
-      await tx`DELETE FROM workspace_snapshots WHERE room_id=${id}`;
       await tx`DELETE FROM rooms WHERE id=${id}`;
       return "purged" as const;
     });

@@ -21,7 +21,7 @@ import {RunInterventionService} from '../modules/runs/RunInterventionService.js'
 import {PreviewBundleStore} from '../modules/workspace/PreviewBundleStore.js';
 
 export async function createAppContainer(config: AppConfig, fetchImplementation?: typeof fetch,logger?:FastifyBaseLogger,legacySeed?:boolean) {
-  const {database,personas,userProfile,personaGroups,projects,rooms,roomEvents,messages,runs,workspace,workspaceSnapshots,workspaceSlots}=await createRepositories(config.databaseUrl,{legacySeed:legacySeed??process.env.NODE_ENV==='test'});
+  const {database,personas,userProfile,personaGroups,projects,rooms,roomEvents,messages,runs,workspace,runWorkspaces}=await createRepositories(config.databaseUrl,{legacySeed:legacySeed??process.env.NODE_ENV==='test'});
   const[installation]=await database.sql`SELECT completed_at,workspace_root FROM installation_state WHERE id=true`;
   const persistedWorkspaceRoot=installation.completed_at&&String(installation.workspace_root??'').trim()?String(installation.workspace_root):undefined;
   const workspaceRoot=persistedWorkspaceRoot??config.workspaceRoot;
@@ -35,17 +35,10 @@ export async function createAppContainer(config: AppConfig, fetchImplementation?
   const connectorRuns=new ConnectorRunAdapter(connector);
   const activeRuns = new ActiveRunRegistry();
   const previewBundles=new PreviewBundleStore(config.artifactRoot,config.artifactMaxBytes);
-  const roomWorkspace=new RoomWorkspaceService(rooms,workspace,events,activeRuns,workspaceRoot,workspaceAgentRoot,config.workspaceMaxFileBytes,workspaceSnapshots,logger,{
-    noopMode:config.workspaceNoopMode,
-    warmSlotsMode:config.workspaceWarmSlotsMode,
-    statCacheMode:config.workspaceStatCacheMode,
-    transparentGit:config.transparentGitWorkspace,
-    slotLeaseMs:config.runTimeoutMs+5*60_000,
-  },workspaceSlots,previewBundles);
+  const roomWorkspace=new RoomWorkspaceService(rooms,workspace,runWorkspaces,events,activeRuns,workspaceRoot,workspaceAgentRoot,config.workspaceMaxFileBytes,logger,previewBundles);
 
   const runExecutor=new RunExecutor({ personas, runs, events, runGateway:connectorRuns, runEvents:connectorRuns, connectorExecution:connectorRuns,activeRuns,concurrency:config.runConcurrency,runTimeoutMs:config.runTimeoutMs,logger,roomWorkspace,messages,connector });
   const runInterventions=new RunInterventionService({runs,activeRuns,gateway:connectorRuns});
-  await roomWorkspace.recover();
   await runExecutor.reconcilePersistedRuns();
   await roomWorkspace.recoverRuns();
   return {

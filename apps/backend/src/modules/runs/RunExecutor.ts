@@ -113,7 +113,6 @@ export class RunExecutor {
     try{
       run.executionDeadlineAt??=await this.dependencies.runs.ensureExecutionDeadline(run.id,this.runTimeoutMs);
       if(!run.executionDeadlineAt)throw new Error('Could not restore execution deadline');
-      await this.dependencies.roomWorkspace?.renewRunWorkspaceLease(run.id,run.executionDeadlineAt);
       if(new Date(run.executionDeadlineAt).getTime()<=Date.now()){await this.timeout(run);return;}
       this.armDeadline(run);
       if(run.terminal)return;
@@ -150,7 +149,6 @@ export class RunExecutor {
       }
       try{await this.dependencies.roomWorkspace?.finalizeRun(persisted.room_id,persisted.id,'cancelled')}catch{/* cancellation remains durable even if capture fails */}
       await events.emit(persisted.room_id, 'run.status', { runId: persisted.id, status: 'cancelled' });
-      try{await this.dependencies.roomWorkspace?.cleanupFinalizedRun(persisted.room_id,persisted.id)}catch{/* durable cleanup recovery will retry */}
       return {
         status: 'cancelled',
         adapter: 'persisted_run_recovery',
@@ -271,14 +269,14 @@ export class RunExecutor {
       if (!run.personaHandle) run.personaHandle = persona.handle;
       const currentMessage=this.dependencies.messages&&run.messageId?await this.dependencies.messages.find(run.roomId,run.messageId):undefined;
       const input=currentMessage?`${formatHumanMessage(currentMessage)}${text.startsWith(currentMessage.text)?text.slice(currentMessage.text.length):''}`:text;
-      let snapshotInstructions='';
+      let immutableContextInstructions='';
       if(this.dependencies.messages&&run.messageId&&run.refreshContext!==false){
         const context=await this.dependencies.messages.conversationContextForRun(run.roomId,run.personaHandle,run.messageId);run.conversationHistory=context.history;await runs.setContext(run.id,context.history);
-        if(this.dependencies.roomWorkspace&&context.references.length){const snapshots=await Promise.all(context.references.map(async reference=>({...reference,snapshot:await this.dependencies.roomWorkspace!.snapshotAgentPath(run.roomId,reference.versionId)})));snapshotInstructions=`\n\n<workspace_snapshot_context>\nThis is an internal mapping between historical workspace files and their immutable versions. Use these paths only to read the exact historical context. Never quote, summarize, or reproduce this block or its internal paths in your response.\n${snapshots.map(item=>`- ${item.path} => ${item.snapshot}`).join('\n')}\n</workspace_snapshot_context>`;}
+        if(this.dependencies.roomWorkspace&&context.references.length){const versions=await Promise.all(context.references.map(async reference=>({...reference,immutablePath:await this.dependencies.roomWorkspace!.immutableVersionAgentPath(run.roomId,reference.versionId)})));immutableContextInstructions=`\n\n<historical_workspace_context>\nThis is an internal mapping between historical workspace files and their immutable versions. Use these paths only to read the exact historical context. Never quote, summarize, or reproduce this block or its internal paths in your response.\n${versions.map(item=>`- ${item.path} => ${item.immutablePath}`).join('\n')}\n</historical_workspace_context>`;}
       }
       const roomPersonas = await personas.list(run.roomId);
       run.recommendedProject??=await runs.recommendedProject(run.id);
-      snapshotInstructions=await this.projectInstructions(run)+snapshotInstructions;
+      immutableContextInstructions=await this.projectInstructions(run)+immutableContextInstructions;
       const sessionId = run.sessionId ?? stableSessionId(run.roomId, run.id);
       run.sessionId = sessionId;
       const preparedWorkspace=await this.dependencies.roomWorkspace?.prepareRun(run.roomId,run.id);
@@ -286,7 +284,7 @@ export class RunExecutor {
       const identityInstructions=`\n\nPlatform entity identity (mandatory invariant):\n- You are the current agent: ${persona.name} (@${run.personaHandle}).\n- The human user is ${human?`${human.displayName} (@${human.handle})`:'the local user'}; this is a separate human entity, not a persona or agent.\n- The remaining personas below are other agents, not the human user.\nThe current message has already been routed to you according to its explicit recipient field. A mention of @${run.personaHandle} addresses you, not a third party.`;
       const participantInstructions=`\n\nOther active agents in the room:\n${roomPersonas.filter(item=>item.handle!==run.personaHandle).map(item=>`- @${item.handle} — ${item.name}`).join('\n')||'- none'}\n\nWhen mentioning an agent, always use the exact @handle from this list. Do not use a bare handle as a mention and do not invent new handles. Never identify the human user as an agent merely because of a mention or the message topic.`;
       const workflowInstructions=await this.workflowInstructions(run);
-      const instructions = `${version.system_prompt}${identityInstructions}${participantInstructions}${snapshotInstructions}${workflowInstructions}\n\nRespond only as yourself. Do not impersonate other agents or add messages, sections, or signatures on their behalf.\n\nFormat the response as Markdown when it improves readability. Paragraphs, lists, headings, links, tables, and fenced code blocks are allowed. Do not wrap the entire response in one code block and do not use HTML.\n\nEvery image in the response must be stored in the room workspace. Never embed an external image with ![](http://...) or ![](https://...), even if the URL works in a browser. Download it directly to a temporary name inside the workspace; never use /tmp or another external directory. Verify a successful HTTP response, non-zero size, and the actual image format, then atomically rename the temporary file inside the workspace. Do not use sudo. To embed the stored image in the response, use ![Caption](workspace:path/to/file.png). The path is relative to the workspace root; encode spaces and special characters as URI components. PNG, JPEG, WebP, and GIF are allowed, with no more than 10 distinct images per response. Normal clickable links to external pages are allowed.`;
+      const instructions = `${version.system_prompt}${identityInstructions}${participantInstructions}${immutableContextInstructions}${workflowInstructions}\n\nRespond only as yourself. Do not impersonate other agents or add messages, sections, or signatures on their behalf.\n\nFormat the response as Markdown when it improves readability. Paragraphs, lists, headings, links, tables, and fenced code blocks are allowed. Do not wrap the entire response in one code block and do not use HTML.\n\nEvery image in the response must be stored in the room workspace. Never embed an external image with ![](http://...) or ![](https://...), even if the URL works in a browser. Download it directly to a temporary name inside the workspace; never use /tmp or another external directory. Verify a successful HTTP response, non-zero size, and the actual image format, then atomically rename the temporary file inside the workspace. Do not use sudo. To embed the stored image in the response, use ![Caption](workspace:path/to/file.png). The path is relative to the workspace root; encode spaces and special characters as URI components. PNG, JPEG, WebP, and GIF are allowed, with no more than 10 distinct images per response. Normal clickable links to external pages are allowed.`;
       const handle = await runGateway.createRun({
         executionId:run.id,
         harnessInstanceId:run.harnessInstanceId,
@@ -307,7 +305,7 @@ export class RunExecutor {
       if(handle.checkpoint)await runs.bindConnectorExecution(run.id,handle.checkpoint,{harnessType:run.harnessType,adapterGeneration:handle.adapterGeneration});
       else await runs.setUpstream(run.id, upstreamRunId);
 
-      if(handle.checkpoint){run.executionDeadlineAt=await runs.ensureExecutionDeadline(run.id,this.runTimeoutMs);if(!run.executionDeadlineAt)throw new Error('Could not persist execution deadline');await this.dependencies.roomWorkspace?.renewRunWorkspaceLease(run.id,run.executionDeadlineAt);this.armDeadline(run);if(run.terminal)return;}
+      if(handle.checkpoint){run.executionDeadlineAt=await runs.ensureExecutionDeadline(run.id,this.runTimeoutMs);if(!run.executionDeadlineAt)throw new Error('Could not persist execution deadline');this.armDeadline(run);if(run.terminal)return;}
 
       if (run.stopping){await this.stopUpstream(run);}
       else{await events.emit(run.roomId, 'run.status', { runId, status: 'streaming' });run.status='streaming';}
@@ -344,7 +342,7 @@ export class RunExecutor {
       for(const event of accepted.events)this.dependencies.events.publishPersisted(accepted.roomId!,event);
       if(!mapping.terminal){
         const deadline=await this.dependencies.runs.refreshExecutionDeadline(run.id,this.runTimeoutMs);
-        if(deadline){run.executionDeadlineAt=deadline;await this.dependencies.roomWorkspace?.renewRunWorkspaceLease(run.id,deadline);this.armDeadline(run);}
+        if(deadline){run.executionDeadlineAt=deadline;this.armDeadline(run);}
       }
     }else for(const event of mappedEvents)await this.dependencies.events.emit(run.roomId,event.type,event.payload);
     if(mapping.status)run.status=mapping.status;
@@ -398,7 +396,6 @@ export class RunExecutor {
     if(this.dependencies.roomWorkspace){try{const embeds=await this.dependencies.roomWorkspace.resolveRunEmbeds(run.roomId,run.id,responseText);await events.emit(run.roomId,'run.embeds',{runId:run.id,embeds})}catch{/* an embed rendering failure must not strand a durably finalized run */}}
     if(run.connectorExecutionId){const finished=await runs.finishNonTerminal(run.id,status,error,errorCode);if(!finished){activeRuns.remove(run.id);this.stopTasks.delete(run.id);return;}events.publishPersisted(finished.roomId,finished.event);}
     else await events.emit(run.roomId,'run.status',{runId:run.id,status,...(error?{error}:{}),...(errorCode?{errorCode}:{})});
-    if(this.dependencies.roomWorkspace){try{await this.dependencies.roomWorkspace.cleanupFinalizedRun(run.roomId,run.id)}catch{/* durable cleanup recovery will retry */}}
     if (status === 'completed') {
       const slotId = await runs.selectCompletedAttempt(run.id);
       if (slotId) {

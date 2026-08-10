@@ -1,5 +1,5 @@
 import type { Room,TimelinePage } from '../model';
-import type {ResolveWorkspaceConflictsRequest,RoomPersona,RoomWorkflowState,RoomWorkspace,RunWorkspaceResult,UpdateRoomPersonaRequest,WorkflowMode,WorkspaceConflictSet,WorkspaceEntry,WorkspaceVersion} from '@agenvyl/contracts';
+import type {RoomPersona,RoomWorkflowState,RoomWorkspace,UpdateRoomPersonaRequest,WorkflowMode,WorkspaceEntry,WorkspaceVersion} from '@agenvyl/contracts';
 import { apiRequest } from '../../../shared/api';
 
 export const roomKeys = { all: ['rooms'] as const };
@@ -41,7 +41,4 @@ export const roomsApi = {
   versions:(roomId:string,id:string)=>apiRequest<WorkspaceVersion[]>(`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace/entries/${encodeURIComponent(id)}/versions`),
   version:(roomId:string,id:string,signal?:AbortSignal)=>apiRequest<WorkspaceVersion>(`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace/versions/${encodeURIComponent(id)}/metadata`,{signal}),
   restoreVersion:(roomId:string,id:string)=>apiRequest(`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace/versions/${encodeURIComponent(id)}/restore`,{method:'POST'}),
-  workspaceConflicts:(roomId:string,runId:string,signal?:AbortSignal)=>apiRequest<WorkspaceConflictSet>(`/api/v1/rooms/${encodeURIComponent(roomId)}/runs/${encodeURIComponent(runId)}/workspace/conflicts`,{signal}),
-  resolveWorkspaceConflicts:(roomId:string,runId:string,input:ResolveWorkspaceConflictsRequest)=>apiRequest<RunWorkspaceResult>(`/api/v1/rooms/${encodeURIComponent(roomId)}/runs/${encodeURIComponent(runId)}/workspace/conflicts/resolve`,{method:'POST',body:input}),
-  applyRunWorkspace:(roomId:string,runId:string)=>apiRequest<RunWorkspaceResult>(`/api/v1/rooms/${encodeURIComponent(roomId)}/runs/${encodeURIComponent(runId)}/workspace/apply`,{method:'POST'}),
 };
