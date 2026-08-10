@@ -5,6 +5,7 @@ import type {CompleteSetupRequest,SetupHarnessCandidate,SetupHarnessInstance,Set
 import {HarnessIcon} from '../../entities/harness';
 import {apiRequest} from '../../shared/api';
 import {handleAfterNameChange} from '../../shared/lib';
+import {BrandLogo} from '../../shared/ui';
 import styles from './SetupPage.module.css';
 
 type Catalog={instances:Array<{id:string;type:string;status:string;models:Array<{id:string;label?:string}>;controls:{permissionProfiles:Array<{id:string}>;agentVariants:Array<{id:string}>}}>};
@@ -55,7 +56,7 @@ export function SetupPage(){
   if(configure)return null;
   if(!state&&!error)return <main className={styles.shell}><p>Checking installation…</p></main>;
   return <main className={styles.shell}><form className={styles.card} onSubmit={submit}>
-    <header><p className={styles.eyebrow}>Agenvyl</p><h1>{preview?'Workspace setup preview':configure?'Connector settings':'Workspace setup'}</h1><p>Choose local agent runtimes and review how Agenvyl may use them.</p></header>
+    <header><div className={styles.brand}><BrandLogo/><span>Agenvyl</span></div><h1>{preview?'Workspace setup preview':configure?'Connector settings':'Workspace setup'}</h1><p>Choose local agent runtimes and review how Agenvyl may use them.</p></header>
     {preview&&<p className={styles.previewBanner} role="status"><strong>Development preview</strong><span>You can explore the completed setup flow, but this page will not write configuration or installation data.</span></p>}
     <section>
       <div className={styles.sectionTitle}><h2><FieldTitle label="Connectors" help="Connectors are local integrations that let Agenvyl discover and run coding agents installed on this computer. Select the tools you want Agenvyl to use; you can change them later."/></h2><button type="button" className={styles.link} onClick={()=>setSelected(safe)}>Select safe</button></div>

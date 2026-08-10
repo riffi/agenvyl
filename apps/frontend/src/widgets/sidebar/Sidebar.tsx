@@ -4,7 +4,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { Cable, Folder, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Plus, RotateCcw, Search, Settings, Trash2, Users, X } from 'lucide-react';
 import type { Room } from '../../entities/room';
 import type { LocalUserProfile, UpdateLocalUserProfileRequest } from '../../entities/user-profile';
-import { Alert, Button, Dialog, IconButton, Input } from '../../shared/ui';
+import { Alert, BrandLogo, Button, Dialog, IconButton, Input } from '../../shared/ui';
 import { filterRooms, groupRooms } from './sidebarModel';
 import styles from './Sidebar.module.css';
 
@@ -118,10 +118,10 @@ export function Sidebar({ open, close, collapsed = false, toggleCollapsed, view,
   return (
     <aside className={`${styles.sidebar} ${open ? styles.open : ''} ${collapsed ? styles.collapsed : ''}`}>
       <div className={styles.brand}>
-        <span className={styles.logo} aria-hidden>A</span>
+        <BrandLogo className={styles.logo} variant="on-dark" />
         <strong>agenvyl</strong>
         <IconButton className={styles.searchButton} aria-label="Search rooms" title="Search rooms (Ctrl/Cmd+K)" onClick={openSearch}><Search aria-hidden /></IconButton>
-        {toggleCollapsed && <IconButton className={collapsed ? styles.compactBrandButton : styles.collapseButton} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} onClick={toggleCollapsed}>{collapsed ? <><span className={styles.logo} aria-hidden>A</span><PanelLeftOpen aria-hidden /></> : <PanelLeftClose aria-hidden />}</IconButton>}
+        {toggleCollapsed && <IconButton className={collapsed ? styles.compactBrandButton : styles.collapseButton} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} onClick={toggleCollapsed}>{collapsed ? <><BrandLogo className={styles.logo} variant="on-dark" /><PanelLeftOpen aria-hidden /></> : <PanelLeftClose aria-hidden />}</IconButton>}
       </div>
 
       <nav className={styles.mainNav} aria-label="Main navigation">

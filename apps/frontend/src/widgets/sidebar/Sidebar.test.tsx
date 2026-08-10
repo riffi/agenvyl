@@ -21,6 +21,7 @@ describe('collapsible sidebar',()=>{
     const html=renderToStaticMarkup(<Sidebar {...sidebarProps} toggleCollapsed={vi.fn()}/>);
     expect(html).toContain('aria-label="Collapse sidebar"');
     expect(html).toContain('aria-label="Room history"');
+    expect(html).toContain('src="/agenvyl-logo-on-dark.svg"');
   });
 });
 

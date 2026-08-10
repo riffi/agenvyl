@@ -1,5 +1,6 @@
 export { Alert } from './Alert';
 export { Avatar } from './Avatar';
+export { BrandLogo, type BrandLogoProps } from './BrandLogo';
 export { Button, type ButtonProps } from './Button';
 export { Dialog } from './Dialog';
 export { Drawer } from './Drawer';

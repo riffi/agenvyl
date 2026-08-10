@@ -3,7 +3,8 @@
 .card h1{font-size:clamp(28px,5vw,42px);line-height:1.05;margin:5px 0 12px}
 .card h2{font-size:18px}
 .card p{color:var(--muted);line-height:1.5}
-.eyebrow{color:var(--primary)!important;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+.brand{display:flex;align-items:center;gap:10px;color:#1e293b;font-size:13px;font-weight:750;letter-spacing:.1em;text-transform:uppercase}
+.brand img{width:38px;height:38px}
 .previewBanner{margin:0;padding:12px 14px;border:1px dashed #60a5fa;border-radius:10px;background:#eff6ff;color:#1e3a8a!important;display:grid;grid-template-columns:auto 1fr;gap:10px 14px;align-items:baseline;font-size:13px}
 .previewBanner strong{font-size:11px;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
 .previewBanner span{line-height:1.45}
