@@ -1,3 +1,6 @@
+export { DEFAULT_ROOM_TITLE, deriveRoomTitle } from './roomTitle.js';
+export type { DeriveRoomTitleInput } from './roomTitle.js';
+
 export type AgentHandle = string;
 
 export type WorkflowMode = 'plan' | 'work';
@@ -102,7 +105,7 @@ export type HarnessSettingsPersona={id:string;name:string;handle:string;archived
 export type HarnessSettingsInstance=SetupHarnessInstance&{status:'healthy'|'degraded'|'unavailable'|'disabled';capabilities:string[];activeExecutions?:number;error?:{code:string;message:string};personas:HarnessSettingsPersona[]};
 export type HarnessSettingsState={connectorEpoch:string;instances:HarnessSettingsInstance[];candidates:SetupHarnessCandidate[];discoveryCache:HarnessCacheMetadata};
 export type RestartHarnessResult={instanceId:string;status:'healthy'|'degraded'|'unavailable';models:Array<{id:string;label?:string}>};
-export type CompleteSetupRequest={locale:'en'|'ru';workspace_root:string;profile:{display_name:string;handle:string};room_title:string;route:{harness_instance_id:string;harness_type:string;model_id:string;permission_profile_id:string|null;agent_variant_id:string|null}|null};
+export type CompleteSetupRequest={locale:'en'|'ru';workspace_root:string;profile:{display_name:string;handle:string};room_title?:string;route:{harness_instance_id:string;harness_type:string;model_id:string;permission_profile_id:string|null;agent_variant_id:string|null}|null};
 export type CompleteSetupResult={roomId:string};
 
 export type Run = {
@@ -311,6 +314,7 @@ export type ServerRoomEvent =
   | Envelope<'run.intervention.updated', { runId:string; intervention:RunIntervention }>
   | Envelope<'run.selected', { responseSlotId: string; runId: string }>
   | Envelope<'room.participant.updated', RoomPersona>
+  | Envelope<'room.title.updated', { title: string }>
   | Envelope<'room.workflow_mode.updated', { workflowMode: WorkflowMode }>
   | Envelope<'workspace.changed', { entry:WorkspaceEntry;change:'created'|'updated'|'deleted'|'restored'|'moved' }>
   | Envelope<'artifact.created', { runId:string;artifact:RunArtifact }>
@@ -333,6 +337,7 @@ const eventTypes = new Set<ServerRoomEvent['type']>([
   'run.intervention.updated',
   'run.selected',
   'room.participant.updated',
+  'room.title.updated',
   'room.workflow_mode.updated',
   'workspace.changed',
   'artifact.created',
@@ -361,6 +366,7 @@ export function isServerRoomEvent(value: unknown): value is ServerRoomEvent {
     case 'run.intervention.updated': return typeof payload.runId === 'string' && isRunIntervention(payload.intervention);
     case 'run.selected': return strings(payload, 'responseSlotId', 'runId');
     case 'room.participant.updated': return isRoomPersona(payload);
+    case 'room.title.updated': return typeof payload.title === 'string';
     case 'room.workflow_mode.updated': return payload.workflowMode==='plan'||payload.workflowMode==='work';
     case 'workspace.changed': return isRecord(payload.entry) && typeof payload.entry.id==='string' && typeof payload.change==='string';
     case 'artifact.created': return typeof payload.runId==='string' && isRecord(payload.artifact) && typeof payload.artifact.version_id==='string';

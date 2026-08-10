@@ -1,9 +1,9 @@
 import type { Message } from '../../message';
 import type { Run } from '../../run';
-import { upsertToolActivity, type RoomPersona, type ServerRoomEvent, type TimelinePage, type UpstreamStatus, type WorkflowMode } from '@agenvyl/contracts';
+import { upsertToolActivity, type Room, type RoomPersona, type ServerRoomEvent, type TimelinePage, type UpstreamStatus, type WorkflowMode } from '@agenvyl/contracts';
 export type Connection = 'connecting' | 'connected' | 'reconnecting' | 'replaying';
 export type { TimelinePage } from '@agenvyl/contracts';
-export type RoomState = { messages: Message[]; runs: Record<string, Run>; runOrder: string[]; selectedRuns:Record<string,string>; participantUpdates:Record<string,RoomPersona>; workflowMode:WorkflowMode; connection: Connection; lastSequence: number; selectedRunId?: string; appliedPatch: boolean; hydrated:boolean; hasMore:boolean; nextCursor?:string };
+export type RoomState = { messages: Message[]; runs: Record<string, Run>; runOrder: string[]; selectedRuns:Record<string,string>; participantUpdates:Record<string,RoomPersona>; latestTitle?:string; workflowMode:WorkflowMode; connection: Connection; lastSequence: number; selectedRunId?: string; appliedPatch: boolean; hydrated:boolean; hasMore:boolean; nextCursor?:string };
 
 export type RoomEvent = ServerRoomEvent | { id: string; sequence: number; type: 'connection.changed'; payload: { status: Connection } };
 
@@ -11,6 +11,7 @@ export const initialState: RoomState = { messages: [], runs: {}, runOrder: [], s
 
 export function stateFromTimeline(page:TimelinePage):RoomState{return{...initialState,messages:page.messages,runs:Object.fromEntries(page.runs.map(run=>[run.id,run])),runOrder:page.runs.map(run=>run.id),selectedRuns:page.selectedRuns,workflowMode:page.workflowMode,lastSequence:page.lastSequence,hydrated:true,hasMore:page.hasMore,nextCursor:page.nextCursor};}
 export function prependTimeline(state:RoomState,page:TimelinePage):RoomState{const known=new Set(state.messages.map(message=>message.id));const runs={...state.runs};for(const run of page.runs)runs[run.id]??=run;return{...state,messages:[...page.messages.filter(message=>!known.has(message.id)),...state.messages],runs,runOrder:[...page.runs.map(run=>run.id).filter(id=>!state.runs[id]),...state.runOrder],selectedRuns:{...page.selectedRuns,...state.selectedRuns},hasMore:page.hasMore,nextCursor:page.nextCursor};}
+export const applyRoomTitle=(rooms:Room[]|undefined,roomId:string,title:string)=>rooms?.map(room=>room.id===roomId?{...room,title}:room);
 
 export function roomReducer(state: RoomState, event: RoomEvent): RoomState {
   if (event.type === 'connection.changed') return { ...state, connection: event.payload.status };
@@ -35,6 +36,7 @@ export function roomReducer(state: RoomState, event: RoomEvent): RoomState {
     case 'run.workspace.finalized':{const run=state.runs[event.payload.runId];return run?{...base,runs:{...state.runs,[run.id]:{...run,workspaceResult:event.payload.workspaceResult,...(event.payload.artifacts?{artifacts:event.payload.artifacts}:{}),...(event.payload.artifactSummary?{artifactSummary:event.payload.artifactSummary}:{}),...(event.payload.staticPreview?{staticPreview:event.payload.staticPreview}:{}),...(event.payload.staticPreviewStatus?{staticPreviewStatus:event.payload.staticPreviewStatus}:{})}}}:base;}
     case 'run.workspace.publish.updated':{const run=state.runs[event.payload.runId];return run?{...base,runs:{...state.runs,[run.id]:{...run,workspaceResult:event.payload.workspaceResult}}}:base;}
     case 'room.participant.updated':return{...base,participantUpdates:{...state.participantUpdates,[event.payload.persona.id]:event.payload}};
+    case 'room.title.updated':return{...base,latestTitle:event.payload.title};
     case 'room.workflow_mode.updated':return{...base,workflowMode:event.payload.workflowMode};
   }
   return base;

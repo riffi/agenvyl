@@ -53,6 +53,14 @@ describe('entity APIs', () => {
     expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/harnesses?refresh=true',expect.any(Object));
   });
 
+  it('creates rooms without sending a title',async()=>{
+    const room={id:'room-1',title:'New room',created_at:'2026-08-10',participant_count:1,last_message_at:null,last_message_text:null,workflow_mode:'work'};
+    const fetchMock=vi.fn<typeof fetch>().mockResolvedValue(Response.json(room));
+    vi.stubGlobal('fetch',fetchMock);
+    await expect(roomsApi.create(['persona-1'],'project-1')).resolves.toEqual(room);
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/rooms',expect.objectContaining({method:'POST',body:JSON.stringify({persona_ids:['persona-1'],project_id:'project-1'})}));
+  });
+
   it('polls Core only while a catalog refresh is in progress',()=>{
     const catalog=(state:'fresh'|'refreshing'|'stale')=>({
       connectorEpoch:'epoch',

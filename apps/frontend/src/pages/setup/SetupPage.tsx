@@ -17,7 +17,7 @@ export function SetupPage(){
   const [openCodeManaged,setOpenCodeManaged]=useState(true);
   const [claudeOAuthConfirmation,setClaudeOAuthConfirmation]=useState('');
   const [cursorConfirmation,setCursorConfirmation]=useState('');
-  const [name,setName]=useState('User'),[handle,setHandle]=useState('user'),[workspaceRoot,setWorkspaceRoot]=useState(''),[choosingRoot,setChoosingRoot]=useState(false),[roomTitle,setRoomTitle]=useState('First room'),[busy,setBusy]=useState(false),[error,setError]=useState('');
+  const [name,setName]=useState('User'),[handle,setHandle]=useState('user'),[workspaceRoot,setWorkspaceRoot]=useState(''),[choosingRoot,setChoosingRoot]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
   useEffect(()=>{if(configure){navigate('/settings/harnesses',{replace:true});return;}void apiRequest<SetupState>('/api/v1/setup').then(value=>{
     const initial=initialConnectorSelection(value);
     setState(value);setSelected(initial.selected);setAgy(initial.agy);setOpenCodeManaged(initial.openCodeManaged);setWorkspaceRoot(value.workspaceRoot);
@@ -50,7 +50,7 @@ export function SetupPage(){
     const catalog=instances.length?await apiRequest<Catalog>('/api/v1/harnesses?refresh=true'):undefined;
     const first=catalog?.instances.find(instance=>instance.status!=='unavailable'&&instance.models.length);
     const route:CompleteSetupRequest['route']=first?{harness_instance_id:first.id,harness_type:first.type,model_id:first.models[0].id,permission_profile_id:first.controls.permissionProfiles[0]?.id??null,agent_variant_id:first.controls.agentVariants[0]?.id??null}:null;
-    const result=await apiRequest<{roomId:string}>('/api/v1/setup/complete',{method:'POST',body:{locale:'en',workspace_root:workspaceRoot.trim(),profile:{display_name:name,handle},room_title:roomTitle,route} satisfies CompleteSetupRequest});navigate(`/rooms/${result.roomId}`,{replace:true});
+    const result=await apiRequest<{roomId:string}>('/api/v1/setup/complete',{method:'POST',body:setupCompletionRequest({workspaceRoot,name,handle,route})});navigate(`/rooms/${result.roomId}`,{replace:true});
   }catch(issue){setError(message(issue));}finally{setBusy(false);}};
   if(configure)return null;
   if(!state&&!error)return <main className={styles.shell}><p>Checking installation…</p></main>;
@@ -80,7 +80,6 @@ export function SetupPage(){
       <label><FieldTitle label="Display name" help="The name other participants will see for you in rooms and messages."/><input value={name} onChange={event=>{const nextName=event.target.value;setHandle(current=>handleAfterNameChange(name,nextName,current));setName(nextName);}} required/></label>
       <label className={styles.handleField}><FieldTitle label="Handle" help="Your unique @name for mentions. It follows your display name until you edit it manually."/><span className={`${styles.handleWrap} ${handleIssue?styles.invalid:''}`}><b aria-hidden="true">@</b><input aria-label="User handle" placeholder="for example, alex_smith" value={handle} onChange={event=>setHandle(event.target.value.toLowerCase().replace(/^@/,''))} pattern="[a-z0-9][a-z0-9_-]*" required/></span><small className={`${styles.handleMessage} ${handleIssue?styles.handleError:normalizedHandle?styles.available:''}`}>{handleIssue??(normalizedHandle?`@${normalizedHandle} — available`:'Used in mentions.')}</small></label>
       <label className={styles.wide}><FieldTitle label="Workspace root" help="The local folder where Agenvyl stores room files and agent workspaces."/><span className={styles.pathField}><input value={workspaceRoot} onChange={event=>setWorkspaceRoot(event.target.value)} required spellCheck={false}/><button type="button" className={styles.browse} onClick={chooseWorkspaceRoot} disabled={choosingRoot} aria-label="Choose workspace root folder"><FolderOpen/>{choosingRoot?'Choosing…':'Choose…'}</button></span></label>
-      <label className={styles.wide}><FieldTitle label="First room" help="The name of the first collaboration room Agenvyl creates after setup."/><input value={roomTitle} onChange={event=>setRoomTitle(event.target.value)} required/></label>
     </section>}
     {state&&state.discoveryCache.state!=='fresh'&&<p className={styles.cacheWarning} role="status">Harness discovery is {state.discoveryCache.state}. Showing the last known candidates{cacheTime(state.discoveryCache.refreshedAt)}.</p>}
     {error&&<p className={styles.error} role="alert">{error}</p>}<button className={styles.primary} disabled={busy||preview}>{busy?'Setting up…':preview?'Preview only':configure?'Save connectors':'Create workspace'}</button><p className={styles.note}>{preview?'Open /setup normally to use the real installation flow.':'You can continue without connectors and add them later.'}</p>
@@ -88,6 +87,8 @@ export function SetupPage(){
 }
 
 export function FieldTitle({label,help}:{label:string;help:string}){return <span className={styles.fieldTitle}>{label}<span className={styles.fieldHelp} tabIndex={0} aria-label={help}><CircleHelp aria-hidden="true"/><span className={styles.fieldTooltip} role="tooltip">{help}</span></span></span>}
+
+export function setupCompletionRequest({workspaceRoot,name,handle,route}:{workspaceRoot:string;name:string;handle:string;route:CompleteSetupRequest['route']}):CompleteSetupRequest{return{locale:'en',workspace_root:workspaceRoot.trim(),profile:{display_name:name,handle},route};}
 
 export function Candidate({candidate,checked,onChange}:{candidate:SetupHarnessCandidate;checked:boolean;onChange:()=>void}){const available=candidate.safeToSelect;return <label className={`${styles.option} ${available?'':styles.unavailable}`}><input type="checkbox" checked={checked} disabled={!available&&!checked} onChange={onChange}/><HarnessIcon type={candidate.type} size="md"/><span><strong>{candidate.label}</strong><small>{candidate.endpoint?.reachable?'Endpoint ready':candidate.cli.found?`${candidate.cli.version??'CLI'} detected`:'Not detected'}</small></span></label>}
 export function ConnectorOptions({selected,agy,agyConfirmation,setAgyConfirmation,openCodeManaged,setOpenCodeManaged,claudeNeedsConfirmation,claudeOAuthConfirmation,setClaudeOAuthConfirmation,cursorNeedsConfirmation=false,cursorConfirmation='',setCursorConfirmation=()=>undefined}:{

@@ -20,10 +20,11 @@ import type {
   WorkspaceVersionRow,
 } from "../workspace/workspace.repository.js";
 import type { UserProfileRepository } from "../user-profile/userProfile.repository.js";
-import type {
-  Message,
-  RunExecutionProfileSnapshot,
-  WorkflowMode,
+import {
+  deriveRoomTitle,
+  type Message,
+  type RunExecutionProfileSnapshot,
+  type WorkflowMode,
 } from "@agenvyl/contracts";
 
 export class MessageRepository {
@@ -63,7 +64,7 @@ export class MessageRepository {
       now = new Date().toISOString();
     return this.database.transaction(async (tx) => {
       const room = (
-        await tx`SELECT r.id,r.workflow_mode,p.id project_id,p.name project_name,p.path project_path FROM rooms r LEFT JOIN local_projects p ON p.id=r.project_id WHERE r.id=${roomId} AND r.deleted_at IS NULL FOR UPDATE OF r`
+        await tx`SELECT r.id,r.workflow_mode,r.title_source,p.id project_id,p.name project_name,p.path project_path FROM rooms r LEFT JOIN local_projects p ON p.id=r.project_id WHERE r.id=${roomId} AND r.deleted_at IS NULL FOR UPDATE OF r`
       )[0];
       const existing = (
         await tx`SELECT id,text,created_at,targets,run_ids,author_profile_id,author_display_name,author_handle,addressed_to_all FROM room_messages WHERE room_id=${roomId} AND id=${messageId}`
@@ -166,13 +167,21 @@ export class MessageRepository {
         author,
         addressedToAll,
       };
+      const generatedTitle=room.title_source==='pending'
+        ? deriveRoomTitle({text,attachmentNames:attachments.map(item=>item.name)})
+        : undefined;
+      const persisted:RoomEvent[]=[];
+      if(generatedTitle){
+        await tx`UPDATE rooms SET title=${generatedTitle},title_source='generated' WHERE id=${roomId} AND title_source='pending'`;
+        persisted.push(await this.events.appendInTransaction(tx,roomId,'room.title.updated',{title:generatedTitle},now));
+      }
       await tx`INSERT INTO room_messages(id,room_id,text,targets,run_ids,created_at,author_profile_id,author_display_name,author_handle,addressed_to_all) VALUES(${messageId},${roomId},${text},${this.database.sql.json(message.targets)},${this.database.sql.json(message.runIds)},${now},${author.profileId},${author.displayName},${author.handle},${addressedToAll})`;
       await this.workspace.attachMessage(messageId, attachmentVersionIds, tx);
       for (const x of snapshots) {
         await tx`INSERT INTO response_slots(id,message_id,persona_id,created_at) VALUES(${x.id},${messageId},${x.persona.id},${now})`;
         await tx`INSERT INTO agent_runs(id,message_id,room_id,persona_id,persona_version_id,persona_handle,requested_model,harness_instance_id,harness_type,model_id,execution_profile,project_id_snapshot,project_name_snapshot,project_path_snapshot,project_availability,status,response_slot_id,context,created_at,updated_at) VALUES(${x.id},${messageId},${roomId},${x.persona.id},${x.version.id},${x.persona.handle},${x.version.requested_model},${x.version.harness_instance_id},${x.version.harness_type},${x.version.model_id},${this.database.sql.json(x.executionProfile)},${x.recommendedProject?.id??null},${x.recommendedProject?.name??null},${x.recommendedProject?.path??null},${x.recommendedProject?.availability??null},'queued',${x.id},${this.database.sql.json(x.history)},${now},${now})`;
       }
-      const persisted = [
+      persisted.push(
         await this.events.appendInTransaction(
           tx,
           roomId,
@@ -180,7 +189,7 @@ export class MessageRepository {
           message,
           now,
         ),
-      ];
+      );
       for (const x of snapshots)
         persisted.push(
           await this.events.appendInTransaction(

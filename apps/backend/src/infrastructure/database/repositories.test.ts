@@ -31,7 +31,7 @@ describe("PostgreSQL repositories", () => {
         await p.database
           .sql`SELECT version FROM schema_migrations ORDER BY version`
       ).map((row) => row.version),
-    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28]);
+    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29]);
     expect(
       await p.database.sql`SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='personas' AND column_name='role'`,
     ).toEqual([]);
@@ -96,6 +96,16 @@ describe("PostgreSQL repositories", () => {
     expect(await database.sql`SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND ((table_name='rooms' AND column_name='approved_plan_version_id') OR (table_name='agent_runs' AND column_name='implementation_plan_version_id'))`).toEqual([]);
     await database.close();
   });
+  it('marks existing room titles as manual when adding title sources',async()=>{
+    const url=testDatabaseUrl('migration_v29_room_titles');
+    await seedDatabaseThroughMigration(url,28);
+    const sql=connectTestDatabase(url),now=new Date().toISOString();
+    await sql`INSERT INTO rooms(id,title,created_at)VALUES('legacy-title-room','Existing title',${now})`;
+    await sql.end();
+    const database=await Database.connect(url);
+    expect((await database.sql`SELECT title,title_source FROM rooms WHERE id='legacy-title-room'`)[0]).toEqual({title:'Existing title',title_source:'manual'});
+    await database.close();
+  });
   it("backfills immutable snapshots when upgrading an initial-schema database", async () => {
     const url = testDatabaseUrl("migration_v1"),
       parsed = new URL(url),
@@ -127,7 +137,7 @@ describe("PostgreSQL repositories", () => {
         await repositories.database
           .sql`SELECT version FROM schema_migrations ORDER BY version`
       ).map((row) => row.version),
-    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28]);
+    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29]);
     expect(
       await repositories.database.sql`SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='personas' AND column_name='role'`,
     ).toEqual([]);

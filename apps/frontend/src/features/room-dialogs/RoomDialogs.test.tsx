@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import {cleanup,fireEvent,render,screen} from '@testing-library/react';
+import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import type {Persona} from '../../entities/persona';
 import type {HarnessCatalog} from '../../entities/harness';
@@ -38,6 +38,16 @@ describe('room agent pickers',()=>{
     fireEvent.click(screen.getByRole('button',{name:'Add project'}));
     expect(screen.getByRole('combobox',{name:'Project'})).toBeTruthy();
     expect(screen.queryByText('Recommended project')).toBeNull();
+  });
+
+  it('creates a room without asking for a name',async()=>{
+    const onCreated=vi.fn().mockResolvedValue(undefined);
+    render(<CreateRoomDialog personas={[]} groups={[]} onClose={vi.fn()} onCreated={onCreated}/>);
+    expect(screen.queryByRole('textbox',{name:/name/i})).toBeNull();
+    expect(screen.getByText('Choose agents and optionally a project. The room will be named from your first message.')).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByRole('button',{name:'Add project'}));
+    fireEvent.click(screen.getByRole('button',{name:'Create room'}));
+    await waitFor(()=>expect(onCreated).toHaveBeenCalledWith([],null));
   });
 
   it('updates a room override immediately from the reusable effort chip',async()=>{

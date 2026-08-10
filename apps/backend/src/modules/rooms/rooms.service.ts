@@ -1,7 +1,7 @@
 import { AppError } from "../../shared/errors/AppError.js";
 import type { RoomRepository } from "./rooms.repository.js";
 import type { RoomEventService } from "../room-events/RoomEventService.js";
-import type {WorkflowMode} from '@agenvyl/contracts';
+import {DEFAULT_ROOM_TITLE,type WorkflowMode} from '@agenvyl/contracts';
 
 export class RoomsService {
   constructor(
@@ -31,11 +31,10 @@ export class RoomsService {
     return page;
   }
   async create(input: { title?: string; personaIds?: string[];projectId?:string|null }) {
-    const title = input.title?.trim();
-    if (!title)
-      throw new AppError("title_required", 400, "Room title is required");
+    const explicitTitle = input.title?.trim();
+    const title = explicitTitle || DEFAULT_ROOM_TITLE;
     try {
-      return await this.rooms.create(title, input.personaIds ?? [],input.projectId);
+      return await this.rooms.create(title, input.personaIds ?? [],input.projectId,explicitTitle?'manual':'pending');
     } catch (error) {
       throw new AppError(
         error instanceof Error ? error.message : "room_conflict",
@@ -54,9 +53,10 @@ export class RoomsService {
     const title = titleInput?.trim();
     if (!title)
       throw new AppError("title_required", 400, "Room title is required");
-    const room = await this.rooms.rename(roomId, title);
-    if (!room) throw new AppError("room_not_found", 404, "Room not found");
-    return room;
+    const result = await this.rooms.rename(roomId, title);
+    if (!result) throw new AppError("room_not_found", 404, "Room not found");
+    this.events?.publishPersisted(roomId,result.event);
+    return result.room;
   }
   async delete(roomId: string) {
     const result = await this.rooms.delete(roomId);

@@ -180,12 +180,12 @@ export class RoomRepository {
       },
     );
   }
-  async create(title: string, personaIds: string[],projectId?:string|null) {
+  async create(title: string, personaIds: string[],projectId?:string|null,titleSource:'pending'|'manual'='manual') {
     const id = crypto.randomUUID(),
       now = new Date().toISOString();
     await this.database.transaction(async (tx) => {
       if(projectId&&!(await tx`SELECT 1 FROM local_projects WHERE id=${projectId}`).length)throw new Error('project_unavailable');
-      await tx`INSERT INTO rooms(id,title,created_at,project_id) VALUES(${id},${title},${now},${projectId??null})`;
+      await tx`INSERT INTO rooms(id,title,title_source,created_at,project_id) VALUES(${id},${title},${titleSource},${now},${projectId??null})`;
       for (const pid of new Set(personaIds)) {
         const p = await this.personas.find(pid, tx);
         if (!p || p.archived_at) throw new Error("persona_unavailable");
@@ -195,11 +195,13 @@ export class RoomRepository {
     return (await this.list()).find((r) => r.id === id)!;
   }
   async rename(id: string, title: string) {
-    const rows = await this.database
-      .sql`UPDATE rooms SET title=${title} WHERE id=${id} RETURNING id`;
-    return rows.length
-      ? (await this.list()).find((r) => r.id === id)
-      : undefined;
+    const event=await this.database.transaction(async tx=>{
+      const rows=await tx`UPDATE rooms SET title=${title},title_source='manual' WHERE id=${id} AND deleted_at IS NULL RETURNING id`;
+      if(!rows.length)return undefined;
+      return this.events.appendInTransaction(tx,id,'room.title.updated',{title},new Date().toISOString());
+    });
+    if(!event)return undefined;
+    return{room:(await this.list()).find(room=>room.id===id)!,event};
   }
   async assignProject(id:string,projectId:string|null){
     return this.database.transaction(async tx=>{

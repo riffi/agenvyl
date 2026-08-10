@@ -1,4 +1,4 @@
-import type {CompleteSetupRequest,ConfigureSetupHarnessesRequest,HarnessSettingsState,RestartHarnessResult,SetupState,TestHarnessInstanceRequest,TestHarnessInstanceResult} from '@agenvyl/contracts';
+import {DEFAULT_ROOM_TITLE,type CompleteSetupRequest,type ConfigureSetupHarnessesRequest,type HarnessSettingsState,type RestartHarnessResult,type SetupState,type TestHarnessInstanceRequest,type TestHarnessInstanceResult} from '@agenvyl/contracts';
 import {isConfigureConnectorInstancesRequest,isTestConnectorInstanceRequest} from '@agenvyl/connector-contract';
 import type {FastifyBaseLogger} from 'fastify';
 import {mkdir} from 'node:fs/promises';
@@ -124,12 +124,12 @@ export class SetupService{
       this.workspaceRoot=workspaceRoot;
     }
     const starterRoutes=input.route?await this.starterRoutes(input.route):[];
-    const now=new Date().toISOString(),roomId=crypto.randomUUID();
+    const now=new Date().toISOString(),roomId=crypto.randomUUID(),explicitRoomTitle=input.room_title?.trim();
     return this.database.transaction(async tx=>{
       const[state]=await tx`SELECT completed_at,first_room_id FROM installation_state WHERE id=true FOR UPDATE`;
       if(state.completed_at)return{roomId:String(state.first_room_id)};
       await tx`UPDATE local_user_profiles SET display_name=${input.profile.display_name.trim()},handle=${input.profile.handle.trim().toLowerCase()},updated_at=${now} WHERE id='local-user'`;
-      await tx`INSERT INTO rooms(id,title,created_at) VALUES(${roomId},${input.room_title.trim()},${now})`;
+      await tx`INSERT INTO rooms(id,title,title_source,created_at) VALUES(${roomId},${explicitRoomTitle||DEFAULT_ROOM_TITLE},${explicitRoomTitle?'manual':'pending'},${now})`;
       const existing=await tx`SELECT id FROM personas WHERE archived_at IS NULL ORDER BY created_at`;
       if(starterRoutes.length&&!existing.length)for(const[templateIndex,template]of templates.entries()){const id=crypto.randomUUID(),versionId=crypto.randomUUID(),route=starterRoutes[templateIndex]!;
         await tx`INSERT INTO personas(id,handle,name,color,requested_model,effective_model,harness_instance_id,harness_type,model_id,permission_profile_id,agent_variant_id,current_version_id,created_at,updated_at) VALUES(${id},${template.handle},${template.name},${template.color},${route.model_id},NULL,${route.harness_instance_id},${route.harness_type},${route.model_id},${route.permission_profile_id},${route.agent_variant_id},${versionId},${now},${now})`;
@@ -169,5 +169,5 @@ export class SetupService{
 }
 
 function validate(input:CompleteSetupRequest){
-  if(!input||!['en','ru'].includes(input.locale)||!input.workspace_root||!input.profile?.display_name?.trim()||!/^[a-z0-9][a-z0-9_-]*$/.test(input.profile?.handle?.trim().toLowerCase()??'')||!input.room_title?.trim()||(input.route&&(!input.route.harness_instance_id||!input.route.harness_type||!input.route.model_id)))throw new AppError('invalid_setup',400,'Setup details are invalid');
+  if(!input||!['en','ru'].includes(input.locale)||!input.workspace_root||!input.profile?.display_name?.trim()||!/^[a-z0-9][a-z0-9_-]*$/.test(input.profile?.handle?.trim().toLowerCase()??'')||(input.route&&(!input.route.harness_instance_id||!input.route.harness_type||!input.route.model_id)))throw new AppError('invalid_setup',400,'Setup details are invalid');
 }

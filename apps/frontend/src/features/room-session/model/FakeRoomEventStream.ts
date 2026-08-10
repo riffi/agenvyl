@@ -2,6 +2,7 @@ import type { Message } from '../../../entities/message';
 import type { RoomEvent } from '../../../entities/room';
 import type { AgentHandle, Run, RunStatus } from '../../../entities/run';
 import type { RoomEventStream } from '../../../shared/api/realtime';
+import {deriveRoomTitle} from '@agenvyl/contracts';
 
 export type FakeEventScenario = 'parallel' | 'failure' | 'approval' | 'clarification' | 'reconnect';
 const fakeAuthor={profileId:'local-user',displayName:'User',handle:'user'};
@@ -12,6 +13,7 @@ export class FakeRoomEventStream implements RoomEventStream<RoomEvent> {
   private active = new Set<string>();
   private sequence = 0;
   private counter = 0;
+  constructor(private titlePending=false){}
 
   subscribe(listener: (event: RoomEvent) => void) {
     this.listeners.add(listener);
@@ -24,6 +26,8 @@ export class FakeRoomEventStream implements RoomEventStream<RoomEvent> {
   private status(runId: string, status: RunStatus, error?: string) { if (!this.active.has(runId) && status !== 'cancelled') return; if (['completed','failed','cancelled'].includes(status)) this.active.delete(runId); this.emit({ type: 'run.status', payload: { runId, status, error } }); }
 
   async send(text: string, targets: AgentHandle[]) {
+    const title=this.titlePending?deriveRoomTitle({text}):undefined;
+    if(title){this.titlePending=false;this.emit({type:'room.title.updated',payload:{title}});}
     const id = `msg-${++this.counter}`; const runIds = targets.map((agent) => this.run(id, agent));
     const message: Message = { id, text, targets, runIds, createdAt: new Date().toISOString(),author:fakeAuthor,addressedToAll:false };
     this.emit({ type: 'message.created', payload: message });

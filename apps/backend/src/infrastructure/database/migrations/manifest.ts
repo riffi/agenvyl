@@ -27,4 +27,5 @@ export const migrations = [
   { version: 26, name: 'local_projects', file: '026_local_projects.sql' },
   { version: 27, name: 'room_workflow_mode', file: '027_room_workflow_mode.sql' },
   { version: 28, name: 'run_artifact_visibility', file: '028_run_artifact_visibility.sql' },
+  { version: 29, name: 'room_title_source', file: '029_room_title_source.sql' },
 ] as const;

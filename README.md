@@ -117,6 +117,10 @@ the [User Guide](docs/user-guide/installation.md).
 
 ## Your first room
 
+New rooms start as **New room** and are named automatically from the first
+substantive message. You can still rename a room manually from its sidebar
+menu.
+
 Ask every agent in the room for an independent proposal:
 
 ```text

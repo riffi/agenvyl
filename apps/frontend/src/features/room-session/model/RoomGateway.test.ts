@@ -3,7 +3,10 @@ import {initialState,roomReducer,type RoomEvent,type RoomState} from '../../../e
 import {ApiError} from '../../../shared/api';
 import {FakeRoomGateway,HttpRoomGateway} from './RoomGateway';
 
-describe('FakeRoomGateway',()=>{it('emits parallel runs that complete',()=>{vi.useFakeTimers();const gateway=new FakeRoomGateway();let state:RoomState=initialState;gateway.subscribe(event=>{state=roomReducer(state,event)});gateway.demo('parallel');expect(state.runOrder).toHaveLength(2);vi.runAllTimers();expect(state.runOrder.map(id=>state.runs[id].status)).toEqual(['completed','completed']);gateway.dispose();vi.useRealTimers()})});
+describe('FakeRoomGateway',()=>{
+  it('emits parallel runs that complete',()=>{vi.useFakeTimers();const gateway=new FakeRoomGateway();let state:RoomState=initialState;gateway.subscribe(event=>{state=roomReducer(state,event)});gateway.demo('parallel');expect(state.runOrder).toHaveLength(2);vi.runAllTimers();expect(state.runOrder.map(id=>state.runs[id].status)).toEqual(['completed','completed']);gateway.dispose();vi.useRealTimers()});
+  it('mirrors automatic naming for a newly created demo room',async()=>{const gateway=new FakeRoomGateway(true);let state:RoomState=initialState;gateway.subscribe(event=>{state=roomReducer(state,event)});await gateway.send('Hello. Fix the OAuth redirect.',['architect']);expect(state.latestTitle).toBe('Fix the OAuth redirect.');gateway.dispose();});
+});
 
 describe('HttpRoomGateway',()=>{
   class Socket{static last:Socket;onopen?:()=>void;onmessage?:(event:{data:string})=>void;onclose?:()=>void;readyState=1;constructor(){Socket.last=this}close(){this.onclose?.()}}

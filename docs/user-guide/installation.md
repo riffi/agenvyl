@@ -108,8 +108,10 @@ In the setup screen:
 3. enter your display name and mention handle;
 4. choose the absolute workspace root where Agenvyl stores room files and
    isolated agent workspaces;
-5. name the first room; and
-6. finish setup.
+5. finish setup.
+
+Agenvyl creates the first room as **New room** and names it automatically from
+the first substantive message. You can rename it manually at any time.
 
 You can type the workspace root or select **Choose…**. Agenvyl creates the
 directory when needed, persists it for Core and Connector, and uses it for all

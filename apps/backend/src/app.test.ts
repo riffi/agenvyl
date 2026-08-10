@@ -649,6 +649,60 @@ describe("room management", () => {
     await app.close();
   });
 
+  it('names a pending room from its first substantive message only once',async()=>{
+    const file=db(),app=await buildApp({databaseUrl:file,fetch:vi.fn<typeof fetch>(),distPath:'missing-dist'});
+    const created=await app.inject({method:'POST',url:'/api/v1/rooms',payload:{persona_ids:[]}});
+    expect(created.statusCode).toBe(201);
+    expect(created.json().title).toBe('New room');
+    const roomId=created.json().id as string;
+    const mentionOnly=await app.inject({method:'POST',url:`/api/v1/rooms/${roomId}/messages`,payload:{text:'@all'}});
+    expect(mentionOnly.statusCode).toBe(202);
+    const named=await app.inject({method:'POST',url:`/api/v1/rooms/${roomId}/messages`,payload:{text:'Привет! Исправь создание комнаты. Затем добавь тесты.'}});
+    expect(named.statusCode).toBe(202);
+    await app.inject({method:'POST',url:`/api/v1/rooms/${roomId}/messages`,payload:{text:'This later message must not rename the room.'}});
+    const sql=connectTestDatabase(file);
+    expect((await sql`SELECT title,title_source FROM rooms WHERE id=${roomId}`)[0]).toEqual({title:'Исправь создание комнаты.',title_source:'generated'});
+    const events=await sql`SELECT sequence,type,payload FROM room_events WHERE room_id=${roomId} ORDER BY sequence`;
+    expect(events.filter(event=>event.type==='room.title.updated')).toEqual([expect.objectContaining({payload:{title:'Исправь создание комнаты.'}})]);
+    const titleIndex=events.findIndex(event=>event.type==='room.title.updated');
+    expect(events[titleIndex+1]?.type).toBe('message.created');
+    await sql.end();await app.close();
+  });
+
+  it('keeps explicit and manually renamed titles out of automatic naming',async()=>{
+    const file=db(),app=await buildApp({databaseUrl:file,fetch:vi.fn<typeof fetch>(),distPath:'missing-dist'});
+    const explicit=(await app.inject({method:'POST',url:'/api/v1/rooms',payload:{title:'Release room',persona_ids:[]}})).json();
+    await app.inject({method:'POST',url:`/api/v1/rooms/${explicit.id}/messages`,payload:{text:'Replace this title automatically.'}});
+    const pending=(await app.inject({method:'POST',url:'/api/v1/rooms',payload:{persona_ids:[]}})).json();
+    await app.inject({method:'PATCH',url:`/api/v1/rooms/${pending.id}`,payload:{title:'Chosen by user'}});
+    await app.inject({method:'POST',url:`/api/v1/rooms/${pending.id}/messages`,payload:{text:'Replace this title too.'}});
+    const sql=connectTestDatabase(file);
+    expect(await sql`SELECT id,title,title_source FROM rooms WHERE id=ANY(${[explicit.id,pending.id]}) ORDER BY title`).toEqual([
+      {id:pending.id,title:'Chosen by user',title_source:'manual'},
+      {id:explicit.id,title:'Release room',title_source:'manual'},
+    ]);
+    expect(await sql`SELECT type,payload FROM room_events WHERE room_id=${pending.id} AND type='room.title.updated'`).toEqual([{type:'room.title.updated',payload:{title:'Chosen by user'}}]);
+    await sql.end();await app.close();
+  });
+
+  it('generates one title under duplicate and concurrent first-message requests',async()=>{
+    const file=db(),app=await buildApp({databaseUrl:file,fetch:vi.fn<typeof fetch>(),distPath:'missing-dist'});
+    const duplicateRoom=(await app.inject({method:'POST',url:'/api/v1/rooms',payload:{persona_ids:[]}})).json(),messageId=crypto.randomUUID();
+    const request={method:'POST' as const,url:`/api/v1/rooms/${duplicateRoom.id}/messages`,payload:{text:'Fix duplicate delivery.',message_id:messageId}};
+    expect((await app.inject(request)).statusCode).toBe(202);
+    expect((await app.inject(request)).statusCode).toBe(200);
+    const concurrentRoom=(await app.inject({method:'POST',url:'/api/v1/rooms',payload:{persona_ids:[]}})).json();
+    await Promise.all([
+      app.inject({method:'POST',url:`/api/v1/rooms/${concurrentRoom.id}/messages`,payload:{text:'First candidate title.'}}),
+      app.inject({method:'POST',url:`/api/v1/rooms/${concurrentRoom.id}/messages`,payload:{text:'Second candidate title.'}}),
+    ]);
+    const sql=connectTestDatabase(file);
+    expect((await sql`SELECT COUNT(*)::int count FROM room_events WHERE room_id=${duplicateRoom.id} AND type='room.title.updated'`)[0]).toEqual({count:1});
+    expect((await sql`SELECT title,title_source FROM rooms WHERE id=${concurrentRoom.id}`)[0]).toEqual(expect.objectContaining({title:expect.stringMatching(/^(First|Second) candidate title\.$/),title_source:'generated'}));
+    expect((await sql`SELECT COUNT(*)::int count FROM room_events WHERE room_id=${concurrentRoom.id} AND type='room.title.updated'`)[0]).toEqual({count:1});
+    await sql.end();await app.close();
+  });
+
   it("moves a room and its conversation to the recoverable trash", async () => {
     const file = db();
     const app = await buildApp({

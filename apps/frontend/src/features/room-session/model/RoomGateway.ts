@@ -10,7 +10,8 @@ export type DemoKind = FakeEventScenario;
 
 export class FakeRoomGateway implements RoomGateway {
   readonly mode='fake' as const;
-  private readonly stream=new FakeRoomEventStream();
+  private readonly stream:FakeRoomEventStream;
+  constructor(titlePending=false){this.stream=new FakeRoomEventStream(titlePending);}
   subscribe(listener: (event: RoomEvent) => void) { return this.stream.subscribe(listener); }
   send(text: string, targets: AgentHandle[]) { return this.stream.send(text,targets); }
   demo(kind: DemoKind) { this.stream.demo(kind); }

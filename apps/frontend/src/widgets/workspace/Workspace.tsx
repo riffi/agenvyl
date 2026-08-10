@@ -5,7 +5,7 @@ import { Menu, MessageCircle, Paperclip, Plus } from "lucide-react";
 import { harnessCatalogRefreshInterval, harnessKeys, harnessesApi, type HarnessCatalog } from '../../entities/harness';
 import { fakePersonas, personaKeys, personasApi, type Persona } from "../../entities/persona";
 import {personaGroupKeys,personaGroupsApi,type PersonaGroup} from '../../entities/persona-group';
-import { roomKeys, roomsApi, useRoomStream, type Room } from "../../entities/room";
+import { applyRoomTitle, roomKeys, roomsApi, useRoomStream, type Room } from "../../entities/room";
 import {userProfileApi,userProfileKey,type LocalUserProfile} from '../../entities/user-profile';
 import {projectKeys,projectsApi} from '../../entities/project';
 import { CreateRoomDialog, RoomAgentManager,RoomProjectDialog } from "../../features/room-dialogs";
@@ -19,7 +19,7 @@ import { RoomHeader } from "../room-header";
 import { RunDrawer } from "../run-drawer";
 import { Sidebar, useSidebarCollapse } from "../sidebar";
 import { Timeline } from "../timeline";
-import type {RoomPersona} from '@agenvyl/contracts';
+import {DEFAULT_ROOM_TITLE,type RoomPersona} from '@agenvyl/contracts';
 import styles from "./Workspace.module.css";
 const unknownPersona = (handle: string): Persona => ({
   id: "",
@@ -68,13 +68,14 @@ export function WorkspaceApp({
   const fake=useMemo(()=>{const query=new URLSearchParams(location.search).get('gateway');return query==='fake'||(query!=='real'&&import.meta.env.VITE_GATEWAY_MODE==='fake')},[]);
   const queryClient=useQueryClient();
   const [demoRooms,setDemoRooms]=useState<Room[]>(fakeRooms);
+  const pendingDemoTitles=useRef(new Set<string>());
   const [demoUserProfile,setDemoUserProfile]=useState<LocalUserProfile>(fakeUserProfile);
   const personaNavigationGuardRef=useRef<((label:string,action:()=>void)=>void)|undefined>(undefined);
   const guardedNavigation=(label:string,action:()=>void)=>view==='personas'&&personaNavigationGuardRef.current?personaNavigationGuardRef.current(label,action):action();
   const [demoPersonas,setDemoPersonas]=useState<Persona[]>([...fakePersonas]);
   const timelineQuery=useQuery({queryKey:['rooms',roomId,'timeline'],queryFn:({signal})=>roomsApi.timeline(roomId,{limit:30,signal}),enabled:!fake&&Boolean(roomId),refetchOnMount:'always'});
   const snapshot=timelineQuery.data;
-  const gateway=useMemo<RoomGateway>(()=>fake?new FakeRoomGateway():new HttpRoomGateway(roomId,snapshot?.lastSequence,snapshot?.runs),[fake,roomId,snapshot]);
+  const gateway=useMemo<RoomGateway>(()=>fake?new FakeRoomGateway(pendingDemoTitles.current.has(roomId)):new HttpRoomGateway(roomId,snapshot?.lastSequence,snapshot?.runs),[fake,roomId,snapshot]);
   const {state,prepend} = useRoomStream(gateway,snapshot,fake);
   const [loadingOlder,setLoadingOlder]=useState(false);
   const loadOlder=async()=>{if(fake||loadingOlder||!state.hasMore||!state.nextCursor)return;setLoadingOlder(true);try{prepend(await roomsApi.timeline(roomId,{before:state.nextCursor,limit:30}));}finally{setLoadingOlder(false)}};
@@ -145,15 +146,15 @@ export function WorkspaceApp({
   useEffect(()=>{if(!fake&&view==='chat'&&roomsQuery.data?.length&&!roomsQuery.data.some(room=>room.id===roomId))navigateToRoom(roomsQuery.data[0].id,{replace:true})},[fake,view,roomId,roomsQuery.data,navigateToRoom]);
   useEffect(()=>{setAttachmentPicker(false);setDraggingFiles(false);setRedirectRunId(undefined);dragDepth.current=0},[roomId]);
   useEffect(() => () => gateway.dispose(), [gateway]);
-  const createRoomMutation=useMutation({mutationFn:({title,personaIds,projectId}:{title:string;personaIds:string[];projectId:string|null})=>roomsApi.create(title,personaIds,projectId),onSuccess:()=>invalidateRooms()});
+  const createRoomMutation=useMutation({mutationFn:({personaIds,projectId}:{personaIds:string[];projectId:string|null})=>roomsApi.create(personaIds,projectId),onSuccess:()=>invalidateRooms()});
   const assignProjectMutation=useMutation({mutationFn:({id,projectId}:{id:string;projectId:string|null})=>roomsApi.assignProject(id,projectId),onSuccess:()=>invalidateRooms()});
   const renameRoomMutation=useMutation({mutationFn:({id,title}:{id:string;title:string})=>roomsApi.rename(id,title),onSuccess:()=>invalidateRooms()});
   const deleteRoomMutation=useMutation({mutationFn:(id:string)=>roomsApi.remove(id),onSuccess:()=>invalidateRooms()});
   const restoreRoomMutation=useMutation({mutationFn:(id:string)=>roomsApi.restore(id),onSuccess:()=>invalidateRooms()});
   const purgeRoomMutation=useMutation({mutationFn:(id:string)=>roomsApi.purge(id),onSuccess:()=>invalidateRooms()});
   const userProfileMutation=useMutation({mutationFn:userProfileApi.update,onSuccess:profile=>queryClient.setQueryData(userProfileKey,profile)});
-  const createRoom=async(title:string,personaIds:string[],projectId:string|null)=>{if(fake){const id=crypto.randomUUID();setDemoRooms(current=>[{id,title,created_at:new Date().toISOString(),participant_count:personaIds.length,last_message_at:null,last_message_text:null,project:null,workflow_mode:'work'},...current]);setDemoPersonas([...fakePersonas].filter(persona=>personaIds.includes(persona.id)));navigateToRoom(id);return}const room=await createRoomMutation.mutateAsync({title,personaIds,projectId});navigateToRoom(room.id);};
-  const renameRoom=async(room:Room,title:string)=>{if(fake){setDemoRooms(current=>current.map(item=>item.id===room.id?{...item,title}:item));return}await renameRoomMutation.mutateAsync({id:room.id,title});};
+  const createRoom=async(personaIds:string[],projectId:string|null)=>{if(fake){const id=crypto.randomUUID();pendingDemoTitles.current.add(id);setDemoRooms(current=>[{id,title:DEFAULT_ROOM_TITLE,created_at:new Date().toISOString(),participant_count:personaIds.length,last_message_at:null,last_message_text:null,project:null,workflow_mode:'work'},...current]);setDemoPersonas([...fakePersonas].filter(persona=>personaIds.includes(persona.id)));navigateToRoom(id);return}const room=await createRoomMutation.mutateAsync({personaIds,projectId});navigateToRoom(room.id);};
+  const renameRoom=async(room:Room,title:string)=>{if(fake){pendingDemoTitles.current.delete(room.id);setDemoRooms(current=>current.map(item=>item.id===room.id?{...item,title}:item));return}await renameRoomMutation.mutateAsync({id:room.id,title});};
   const saveRoomAgents=async(next:Set<string>)=>{if(fake){setDemoPersonas([...fakePersonas].filter(persona=>next.has(persona.id)));setDemoRooms(current=>current.map(room=>room.id===roomId?{...room,participant_count:next.size}:room));return}const current=new Set(personas.map(persona=>persona.id));await Promise.all([...next].filter(id=>!current.has(id)).map(id=>roomsApi.addParticipant(roomId,id)).concat([...current].filter(id=>!next.has(id)).map(id=>roomsApi.removeParticipant(roomId,id))));await Promise.all([invalidatePersonas(),invalidateRooms()]);};
   const updateParticipantReasoning=async(personaId:string,value:string|null)=>{if(fake)return;const updated=await roomsApi.updateParticipant(roomId,personaId,{reasoning_effort_override:value});queryClient.setQueryData<RoomPersona[]>(personaKeys.byRoom(roomId),current=>current?.map(item=>item.persona.id===personaId?updated:item)??[updated]);};
   const updateWorkflowMode=async(workflowMode:import('@agenvyl/contracts').WorkflowMode)=>{if(fake)return;await roomsApi.updateWorkflowMode(roomId,workflowMode);queryClient.setQueryData<Room[]>(roomKeys.all,current=>current?.map(room=>room.id===roomId?{...room,workflow_mode:workflowMode}:room));};
@@ -205,6 +206,7 @@ export function WorkspaceApp({
   },[searchParams,setSearchParams,workspaceRequest]);
   const closeWorkspace=useCallback(()=>setSearchParams(workspaceSearchWithRequest(searchParams),{replace:true}),[searchParams,setSearchParams]);
   useEffect(()=>{if(!urlWorkspaceRequest)setWorkspaceTransient(undefined)},[urlWorkspaceRequest]);
+  useEffect(()=>{if(!state.latestTitle)return;if(fake){pendingDemoTitles.current.delete(roomId);setDemoRooms(current=>applyRoomTitle(current,roomId,state.latestTitle!)??current);return}queryClient.setQueryData<Room[]>(roomKeys.all,current=>applyRoomTitle(current,roomId,state.latestTitle!));},[fake,queryClient,roomId,state.latestTitle]);
   useEffect(()=>{if(!selected)return;const closeDrawer=(event:KeyboardEvent)=>{if(event.key==='Escape')setSelected(undefined)};addEventListener('keydown',closeDrawer);return()=>removeEventListener('keydown',closeDrawer)},[selected]);
   useEffect(()=>{if(workspaceRequest&&!fake)void queryClient.invalidateQueries({queryKey:['rooms',roomId,'workspace']})},[workspaceRequest,state.lastSequence,roomId,fake,queryClient]);
   return (
