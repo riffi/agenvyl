@@ -8,8 +8,8 @@
       <stop offset="1" stop-color="#7D70FF"/>
     </linearGradient>
     <linearGradient id="rightBand" x1="252" y1="72" x2="424" y2="440" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#96A8C2"/>
-      <stop offset="1" stop-color="#5E718F"/>
+      <stop offset="0" stop-color="#109F94"/>
+      <stop offset="1" stop-color="#48D3BB"/>
     </linearGradient>
     <linearGradient id="bridgeBand" x1="120" y1="350" x2="388" y2="314" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#109F94"/>
@@ -21,7 +21,7 @@
   <path d="M467 440 306 101c-10-21 -27-33 -50-33l-37 78 158 294H467Z" fill="url(#rightBand)"/>
   <path d="M145 286 367 286 416 390 96 390 145 286Z" fill="url(#bridgeBand)"/>
   <path d="M145 286 195 390 96 390Z" fill="#087F79"/>
-  <path d="M367 286 416 390 317 390Z" fill="#72E1CA"/>
+  <path d="M367 286 416 390 317 390Z" fill="#4f9b8c"/>
   <path d="M45 440 118 286 218 286 135 440Z" fill="url(#leftBand)"/>
   <path d="M294 286 377 440 467 440 394 286Z" fill="url(#rightBand)"/>
   <path d="M118 286 206 101c10-21 27-33 50-33l-25 56-78 162h-35Z" fill="#FFFFFF" opacity="0.11"/>
