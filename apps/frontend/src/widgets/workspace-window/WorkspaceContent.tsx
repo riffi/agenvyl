@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type WheelEvent } from 'react';
 import { ChevronLeft, ChevronRight, Download, Expand, File, Play } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -10,6 +10,10 @@ import { decodeWorkspaceBytes, SOURCE_PREVIEW_LIMIT } from './workspaceText';
 import { isTextWorkspaceItem, workspaceModesFor } from './workspaceModel';
 import { SourceViewer, useWorkspaceBytes } from './SourceViewer';
 import styles from './WorkspaceContent.module.css';
+
+const SVG_ZOOM_MIN = 0.5;
+const SVG_ZOOM_MAX = 5;
+const SVG_ZOOM_STEP = 0.1;
 
 export type WorkspaceRendererDefinition = {
   id: 'html' | 'markdown' | 'svg' | 'image' | 'pdf' | 'source' | 'unsupported';
@@ -88,6 +92,7 @@ const ImageGallery = ({
   onNavigate?: (attachment: WorkspaceAttachment) => void;
   vector?: boolean;
 }) => {
+  const [zoom, setZoom] = useState(1);
   const images = (gallery?.length ? gallery : [attachment]).filter(item => item.mime_type.startsWith('image/'));
   const index = Math.max(0, images.findIndex(item => item.version_id === attachment.version_id));
   const [openIndex, setOpenIndex] = useState<number | null>(null);
@@ -101,6 +106,12 @@ const ImageGallery = ({
   const closeLightbox = () => {
     setOpenIndex(null);
   };
+  const handleWheel = (event: WheelEvent<HTMLButtonElement>) => {
+    if (event.deltaY === 0) return;
+    event.preventDefault();
+    setZoom(current => Math.min(SVG_ZOOM_MAX, Math.max(SVG_ZOOM_MIN, Math.round((current + (event.deltaY < 0 ? SVG_ZOOM_STEP : -SVG_ZOOM_STEP)) * 10) / 10)));
+  };
+  useEffect(() => setZoom(1), [attachment.version_id]);
   useEffect(() => {
     if (openIndex !== null || !restoreFocusRef.current) return;
     restoreFocusRef.current = false;
@@ -109,9 +120,10 @@ const ImageGallery = ({
   }, [openIndex]);
   return <div className={styles.imageCanvas}>
     {index > 0 && <button className={`${styles.galleryArrow} ${styles.galleryPrevious}`} onClick={() => navigate(-1)} aria-label="Previous image"><ChevronLeft /></button>}
-    <button ref={openerRef} className={styles.imageStage} type="button" onClick={openLightbox} aria-label={`Open image “${attachment.name}” in full-screen view`} title="Open full-screen viewer">
-      <img className={vector ? styles.vectorImage : undefined} src={attachment.preview_url} alt={attachment.name} />
+    <button ref={openerRef} className={styles.imageStage} type="button" onClick={openLightbox} onWheel={vector ? handleWheel : undefined} aria-label={`Open image “${attachment.name}” in full-screen view`} title={vector ? 'Use the mouse wheel to zoom; click for full-screen viewer' : 'Open full-screen viewer'}>
+      <img className={vector ? styles.vectorImage : undefined} src={attachment.preview_url} alt={attachment.name} style={vector ? { transform: `scale(${zoom})` } : undefined} />
       <span className={styles.imageInspect}><Expand />Inspect</span>
+      {vector && zoom !== 1 && <span className={styles.imageZoom}>{Math.round(zoom * 100)}%</span>}
     </button>
     {index < images.length - 1 && <button className={`${styles.galleryArrow} ${styles.galleryNext}`} onClick={() => navigate(1)} aria-label="Next image"><ChevronRight /></button>}
     {images.length > 1 && <span className={styles.galleryCounter}>Image {index + 1} of {images.length}</span>}

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { WorkspaceAttachment } from '@agenvyl/contracts';
@@ -53,5 +53,21 @@ describe('Workspace image viewer', () => {
     expect(rendered.getAttribute('src')).toBe(svg.preview_url);
     expect(rendered.className).toContain('vectorImage');
     expect(screen.getByRole('button', { name: /Open image “logo.svg”/ })).toBeTruthy();
+  });
+
+  it('zooms an SVG with the mouse wheel in the workspace viewer', () => {
+    const svg = image('diagram.svg', 'image/svg+xml');
+    render(<WorkspaceContent attachment={svg} mode="rendered" />);
+
+    const stage = screen.getByRole('button', { name: /Open image “diagram.svg”/ });
+    const rendered = screen.getByRole('img', { name: 'diagram.svg' });
+    fireEvent.wheel(stage, { deltaY: -100 });
+
+    expect(rendered.style.transform).toBe('scale(1.1)');
+    expect(screen.getByText('110%')).toBeTruthy();
+
+    fireEvent.wheel(stage, { deltaY: 100 });
+    expect(rendered.style.transform).toBe('scale(1)');
+    expect(screen.queryByText('100%')).toBeNull();
   });
 });
