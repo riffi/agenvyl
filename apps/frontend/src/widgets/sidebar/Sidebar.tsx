@@ -118,8 +118,10 @@ export function Sidebar({ open, close, collapsed = false, toggleCollapsed, view,
   return (
     <aside className={`${styles.sidebar} ${open ? styles.open : ''} ${collapsed ? styles.collapsed : ''}`}>
       <div className={styles.brand}>
-        <BrandLogo className={styles.logo} variant="on-dark" />
-        <strong>agenvyl</strong>
+        <div className={styles.brandIdentity}>
+          <BrandLogo className={styles.logo} variant="on-dark" />
+          <strong className={styles.brandName}><span className={styles.visuallyHidden}>A</span>genvyl</strong>
+        </div>
         <IconButton className={styles.searchButton} aria-label="Search rooms" title="Search rooms (Ctrl/Cmd+K)" onClick={openSearch}><Search aria-hidden /></IconButton>
         {toggleCollapsed && <IconButton className={collapsed ? styles.compactBrandButton : styles.collapseButton} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} onClick={toggleCollapsed}>{collapsed ? <><BrandLogo className={styles.logo} variant="on-dark" /><PanelLeftOpen aria-hidden /></> : <PanelLeftClose aria-hidden />}</IconButton>}
       </div>

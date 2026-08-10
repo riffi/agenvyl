@@ -21,6 +21,13 @@
   padding: 10px 12px 8px;
 }
 
+.brandIdentity {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+}
+
 .logo {
   display: block;
   width: 32px;
@@ -28,12 +35,24 @@
   flex: 0 0 auto;
 }
 
-.brand > strong {
+.brandName {
   min-width: 0;
-  flex: 1;
-  color: #f8fafc;
+  color: #a2adbf;
   font-size: 15px;
+  font-style: italic;
+  font-weight: 500;
+  line-height: 1;
   letter-spacing: -.01em;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .searchButton {
@@ -626,8 +645,7 @@
     padding: 8px;
   }
 
-  .collapsed .brand > .logo,
-  .collapsed .brand > strong,
+  .collapsed .brandIdentity,
   .collapsed .searchButton {
     display: none;
   }

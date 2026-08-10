@@ -22,6 +22,8 @@ describe('collapsible sidebar',()=>{
     expect(html).toContain('aria-label="Collapse sidebar"');
     expect(html).toContain('aria-label="Room history"');
     expect(html).toContain('src="/agenvyl-logo-on-dark.svg"');
+    expect(html).toContain('>genvyl</strong>');
+    expect(html).not.toContain('>agenvyl</strong>');
   });
 });
 
