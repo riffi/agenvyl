@@ -1,6 +1,8 @@
 import type {IframeHTMLAttributes} from 'react';
 import {useRuntimeFeatures} from './RuntimeFeatures';
 
+export const ISOLATED_PREVIEW_SANDBOX='allow-scripts allow-same-origin allow-pointer-lock';
+
 export const isolatedPreviewUrl=(previewUrl:string,previewOrigin:string)=>{
   if(!previewOrigin)return undefined;
   try{
@@ -14,5 +16,5 @@ export const IsolatedHtmlPreview=({previewUrl,...props}:{previewUrl:string}&Omit
   const{preview_origin:previewOrigin}=useRuntimeFeatures();
   const src=isolatedPreviewUrl(previewUrl,previewOrigin);
   if(!src)return <div role="status">Loading isolated preview…</div>;
-  return <iframe {...props} src={src} sandbox="allow-scripts allow-same-origin"/>;
+  return <iframe {...props} src={src} sandbox={ISOLATED_PREVIEW_SANDBOX}/>;
 };

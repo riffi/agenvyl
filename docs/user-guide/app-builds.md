@@ -124,3 +124,6 @@ Build HTML runs in a sandboxed iframe on the separate preview origin. Treat
 generated code as code you are choosing to run, especially if it came from an
 untrusted prompt, dependency, or project. See
 [Trust and security](trust-and-security.md#file-preview-boundary).
+
+Interactive builds can request pointer lock after a click, which enables
+first-person mouse controls in 3D scenes. Press **Escape** to release the pointer.

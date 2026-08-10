@@ -143,9 +143,11 @@ sequenceDiagram
 ```
 
 The main Web UI receives `preview_origin` from Core and loads app HTML in an
-iframe with `sandbox="allow-scripts allow-same-origin"` on a separate origin,
-normally `127.0.0.1:8792`. The preview Fastify app relays only version,
-snapshot, and run-preview routes to Core. A root-relative asset request is
+iframe with `sandbox="allow-scripts allow-same-origin allow-pointer-lock"` on a
+separate origin, normally `127.0.0.1:8792`. Pointer lock supports interactive
+3D previews while the remaining iframe sandbox restrictions stay enabled. The
+preview Fastify app relays only version, snapshot, and run-preview routes to
+Core. A root-relative asset request is
 redirected into a run scope only when its same-host `Referer` identifies that
 scope and all decoded path segments are safe.
 
