@@ -150,6 +150,7 @@ function RunCard({
   const hasActivity=Boolean(workspaceActivity||run.tools.length);
   const canApplyWorkspace=Boolean(roomId&&hasProjectChanges&&['failed','cancelled'].includes(run.status)&&run.workspaceResult?.capture_status==='complete'&&run.workspaceResult.publish_status==='not_published');
   const buildMissing=hasProjectChanges&&run.staticPreviewStatus==='build_missing';
+  const previewCaptureFailed=run.staticPreviewStatus==='capture_failed';
   const applyWorkspace=async()=>{
     const projectCount=run.artifactSummary?.project_count??changedFiles.length,hiddenCount=run.artifactSummary?.hidden_count??0;
     if(!confirm(`Apply ${projectCount} project ${projectCount===1?'file':'files'} to the room workspace?${hiddenCount?` ${hiddenCount} non-project files will remain only in the run snapshot.`:''}`))return;
@@ -197,10 +198,11 @@ function RunCard({
         {run.status==='failed'&&<RunFailureNotice errorCode={run.errorCode} error={run.error}/>}
         {(run.requests??[]).some(request=>!request.resolved)&&<section className={styles['request-list']} aria-label="Pending agent requests"><strong>{(run.requests??[]).filter(request=>!request.resolved).length} pending {(run.requests??[]).filter(request=>!request.resolved).length===1?'request':'requests'}</strong>{(run.requests??[]).filter(request=>!request.resolved).map(request=><RunRequest key={request.id} request={request} resolve={value=>resolve(request.id,value)}/>)}</section>}
         <RunFiles files={changedFiles} summary={run.artifactSummary} openWorkspace={openWorkspace}/>
-        {(canApplyWorkspace||run.staticPreview||buildMissing)&&<div className={styles['run-output-actions']}>
+        {(canApplyWorkspace||run.staticPreview||buildMissing||previewCaptureFailed)&&<div className={styles['run-output-actions']}>
           {canApplyWorkspace&&<button type="button" disabled={applyingWorkspace} onClick={()=>void applyWorkspace()}><FolderInput aria-hidden="true"/>{applyingWorkspace?'Applying…':'Apply changes'}</button>}
           {run.staticPreview&&<button type="button" title="Open the app build captured for this response" aria-label="Open the app build captured for this response" onClick={event=>openArtifact(run.staticPreview!,[run.staticPreview!],event.currentTarget,{section:'app',buildRunId:run.id})}><Eye aria-hidden="true"/>Open this build</button>}
           {!run.staticPreview&&buildMissing&&<small>Preview unavailable · Build output not found</small>}
+          {!run.staticPreview&&previewCaptureFailed&&<small>Preview unavailable · Build could not be saved</small>}
         </div>}
         {workspaceApplyError&&<Alert tone="error">{workspaceApplyError}</Alert>}
         {hasActivity&&<div className={styles['run-meta-row']}>

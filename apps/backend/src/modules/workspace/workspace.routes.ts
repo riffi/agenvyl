@@ -44,7 +44,7 @@ const documentCsp="default-src 'none'; style-src 'unsafe-inline'; img-src 'self'
 const sendImmutablePreview=async(reply:FastifyReply,file:Awaited<ReturnType<RoomWorkspaceService['resolveRunPreview']>>,base:string,ifNoneMatch?:string)=>{
   const etag=`"${file.version.sha256}"`,response=reply.type(file.contentType).header('x-content-type-options','nosniff').header('content-security-policy',file.contentType==='text/html'?htmlCsp:documentCsp).header('content-disposition','inline').header('cache-control','public, max-age=31536000, immutable').header('etag',etag);
   if(ifNoneMatch===etag)return response.code(304).send();
-  if(file.contentType!=='text/html')return response.send(createReadStream(file.path));
-  const source=await readFile(file.path,'utf8'),tag=`<base href="${base}">`;
+  if(file.contentType!=='text/html')return response.send(file.data!==undefined?file.data:createReadStream(file.path));
+  const source=file.data!==undefined?file.data.toString('utf8'):await readFile(file.path,'utf8'),tag=`<base href="${base}">`;
   return response.send(/<head[\s>]/i.test(source)?source.replace(/<head([^>]*)>/i,`<head$1>${tag}`):`${tag}${source}`);
 };

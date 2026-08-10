@@ -108,6 +108,7 @@ export async function runSupervisorDaemon(config: SupervisorConfig, env = proces
       AGENVYL_HOST: '127.0.0.1',
       AGENVYL_PORT: String(config.corePort),
       AGENVYL_WORKSPACE_ROOT: config.paths.workspaces,
+      AGENVYL_ARTIFACT_ROOT:config.paths.artifacts,
     });
     await waitForHttp(`http://127.0.0.1:${config.corePort}/api/v1/health`, config.readinessTimeoutMs);
     state.phase = 'running';
@@ -266,7 +267,7 @@ export async function restoreDatabase(config: SupervisorConfig, archive: string)
 }
 
 async function prepareDirectories(config: SupervisorConfig) {
-  for (const directory of [config.paths.config, config.paths.data, config.paths.backups, config.paths.logs, config.paths.postgres, config.paths.state, config.paths.workspaces]) {
+  for (const directory of [config.paths.config, config.paths.data, config.paths.backups, config.paths.logs, config.paths.postgres, config.paths.state, config.paths.workspaces,config.paths.artifacts]) {
     await mkdir(directory, { recursive: true, mode: 0o700 });
     await chmod(directory, 0o700).catch(() => undefined);
   }

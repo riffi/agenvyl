@@ -252,9 +252,9 @@ export class RunExecutor {
   private canStart(item:QueuedRun,pendingIndex:number){
     const run=this.dependencies.activeRuns.get(item.runId);if(!run)return false;
     const runningInRoom=[...this.tasks.keys()].map(id=>this.dependencies.activeRuns.get(id)).filter((candidate):candidate is RunContext=>candidate!==undefined&&candidate.roomId===run.roomId);
-    if(runningInRoom.length)return runningInRoom.every(candidate=>candidate.messageId===run.messageId);
+    if(runningInRoom.length)return false;
     const earlier=this.pending.slice(0,pendingIndex).map(candidate=>this.dependencies.activeRuns.get(candidate.runId)).find(candidate=>candidate?.roomId===run.roomId);
-    return !earlier||earlier.messageId===run.messageId;
+    return !earlier;
   }
 
   private async execute(runId: string, text: string) {

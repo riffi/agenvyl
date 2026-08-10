@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-export type RunWorkspaceDriverKind='legacy'|'warm';
+export type RunWorkspaceDriverKind='legacy'|'warm'|'direct';
 
 export type RunWorkspaceDriverPath={
   root:string;

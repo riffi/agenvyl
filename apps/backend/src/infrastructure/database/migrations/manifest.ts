@@ -28,4 +28,6 @@ export const migrations = [
   { version: 27, name: 'room_workflow_mode', file: '027_room_workflow_mode.sql' },
   { version: 28, name: 'run_artifact_visibility', file: '028_run_artifact_visibility.sql' },
   { version: 29, name: 'room_title_source', file: '029_room_title_source.sql' },
+  { version: 30, name: 'preview_bundles', file: '030_preview_bundles.sql' },
+  { version: 31, name: 'transparent_git_workspace', file: '031_transparent_git_workspace.sql' },
 ] as const;

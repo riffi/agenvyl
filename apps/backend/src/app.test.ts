@@ -11,7 +11,7 @@ const connectorOptions = {
   connectorToken: "x".repeat(32),
 } as const;
 const buildApp = (options: AppOptions = {}) =>
-  buildAppBase({ ...connectorOptions, ...options });
+  buildAppBase({ ...connectorOptions, transparentGitWorkspace:false, ...options });
 function db() {
   return testDatabaseUrl("app");
 }

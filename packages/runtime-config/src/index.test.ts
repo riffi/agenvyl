@@ -12,6 +12,7 @@ describe('resolveAgenvylPaths', () => {
       postgres: '/home/alice/.local/share/agenvyl/postgres',
       state: '/home/alice/.local/share/agenvyl/state',
       workspaces: '/home/alice/.local/share/agenvyl/workspaces',
+      artifacts: '/home/alice/.local/share/agenvyl/artifacts',
     });
   });
 
@@ -33,6 +34,7 @@ describe('resolveAgenvylPaths', () => {
       config: 'D:\\Profiles\\Alice\\Local\\Agenvyl',
       data: 'D:\\Profiles\\Alice\\Local\\Agenvyl',
       workspaces: 'D:\\Profiles\\Alice\\Local\\Agenvyl\\workspaces',
+      artifacts: 'D:\\Profiles\\Alice\\Local\\Agenvyl\\artifacts',
     });
     expect(() => resolveAgenvylPaths({ LOCALAPPDATA: 'relative' }, 'C:\\Users\\Alice', 'win32')).toThrow('LOCALAPPDATA must be an absolute path');
   });

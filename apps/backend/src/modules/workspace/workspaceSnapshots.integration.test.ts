@@ -9,6 +9,7 @@ import {RoomEventService} from '../room-events/RoomEventService.js';
 import {ActiveRunRegistry} from '../runs/ActiveRunRegistry.js';
 import {testDatabaseUrl} from '../../testDatabase.js';
 import {RoomWorkspaceService} from './RoomWorkspaceService.js';
+import {PreviewBundleStore} from './PreviewBundleStore.js';
 
 const roots:string[]=[];
 afterEach(async()=>{await Promise.all(roots.splice(0).map(root=>rm(root,{recursive:true,force:true})))});
@@ -58,8 +59,9 @@ describe('isolated run workspace snapshots',()=>{
 
   it('keeps a complete failed snapshot, projects project files, previews its build, and applies it idempotently',async()=>{
     const root=await mkdtemp(path.join(tmpdir(),'failed-snapshot-'));roots.push(root);
+    const artifactRoot=await mkdtemp(path.join(tmpdir(),'preview-bundles-'));roots.push(artifactRoot);
     const repositories=await createRepositories(testDatabaseUrl('failed_run_snapshot'));
-    const events=new RoomEventService(repositories.roomEvents,new RoomEventBus()),service=new RoomWorkspaceService(repositories.rooms,repositories.workspace,events,new ActiveRunRegistry(),root,root,1024*1024,repositories.workspaceSnapshots);
+    const events=new RoomEventService(repositories.roomEvents,new RoomEventBus()),service=new RoomWorkspaceService(repositories.rooms,repositories.workspace,events,new ActiveRunRegistry(),root,root,1024*1024,repositories.workspaceSnapshots,undefined,{},undefined,new PreviewBundleStore(artifactRoot,10*1024*1024));
     try{
       const [persona]=(await repositories.personas.list('demo-room')),round=await repositories.messages.createRound('demo-room','failed edit',[persona],new Map([[persona.id,profile]])),run=round.runs[0];
       await service.prepareRun('demo-room',run.id);
@@ -89,10 +91,10 @@ describe('isolated run workspace snapshots',()=>{
       const timeline=(await repositories.rooms.timeline('demo-room',undefined,20))!,projected=timeline.runs.find(item=>item.id===run.id)!;
       expect(projected.artifactSummary).toEqual({total_count:8,project_count:4,hidden_count:4});
       expect(projected.artifacts.map(item=>item.path)).toEqual(['.gitignore','index.html','package.json','src/main.tsx']);
-      expect(projected.staticPreview).toMatchObject({path:'dist/index.html',preview_url:`/api/v1/rooms/demo-room/runs/${run.id}/preview/`});
+      expect(projected.staticPreview).toMatchObject({path:'index.html',preview_url:`/api/v1/rooms/demo-room/runs/${run.id}/preview/`});
       expect(projected.staticPreviewStatus).toBe('ready');
-      expect(await readFile((await service.resolveRunPreview('demo-room',run.id)).path,'utf8')).toContain('/assets/app.js');
-      expect(await readFile((await service.resolveRunPreview('demo-room',run.id,'assets/app.js')).path,'utf8')).toContain('dataset.ready');
+      expect((await service.resolveRunPreview('demo-room',run.id)).data?.toString('utf8')).toContain('/assets/app.js');
+      expect((await service.resolveRunPreview('demo-room',run.id,'assets/app.js')).data?.toString('utf8')).toContain('dataset.ready');
       await expect(service.resolveRunPreview('demo-room',run.id,'..%2Fpackage.json')).rejects.toMatchObject({statusCode:404});
       await expect(service.resolveRunPreview('other-room',run.id)).rejects.toMatchObject({statusCode:404});
       const runEvents=await events.replay('demo-room',0);
@@ -100,7 +102,7 @@ describe('isolated run workspace snapshots',()=>{
       expect(runEvents.find(event=>event.type==='run.workspace.finalized'&&(event.payload as {runId?:string}).runId===run.id)?.payload).toMatchObject({
         runId:run.id,
         artifactSummary:{total_count:8,project_count:4,hidden_count:4},
-        staticPreview:{path:'dist/index.html'},
+        staticPreview:{path:'index.html'},
       });
       expect((await service.list('demo-room')).previewHistory).toEqual([expect.objectContaining({
         runId:run.id,
@@ -108,7 +110,7 @@ describe('isolated run workspace snapshots',()=>{
         runStatus:'failed',
         publishStatus:'not_published',
         sameBuildAsPrevious:false,
-        attachment:expect.objectContaining({path:'dist/index.html',preview_url:`/api/v1/rooms/demo-room/runs/${run.id}/preview/`}),
+        attachment:expect.objectContaining({path:'index.html',preview_url:`/api/v1/rooms/demo-room/runs/${run.id}/preview/`}),
       })]);
 
       const messageCount=Number((await repositories.database.sql`SELECT COUNT(*) count FROM room_messages WHERE room_id='demo-room'`)[0]?.count);
@@ -124,7 +126,7 @@ describe('isolated run workspace snapshots',()=>{
       expect((await service.list('demo-room')).staticPreview).toMatchObject({
         status:'ready',
         runId:run.id,
-        attachment:{path:'dist/index.html',preview_url:`/api/v1/rooms/demo-room/runs/${run.id}/preview/`},
+        attachment:{path:'index.html',preview_url:`/api/v1/rooms/demo-room/runs/${run.id}/preview/`},
       });
       const duplicate=(await repositories.messages.createRound('demo-room','same failed build',[persona],new Map([[persona.id,profile]]))).runs[0];
       await service.prepareRun('demo-room',duplicate.id);
@@ -146,7 +148,7 @@ describe('isolated run workspace snapshots',()=>{
       await service.upload('demo-room','src/main.tsx','text/typescript',Buffer.from('export const ready = false'),'replace');
       expect((await service.list('demo-room')).staticPreview).toMatchObject({status:'outdated',runId:duplicate.id});
       await service.upload('demo-room','dist/assets/app.js','text/javascript',Buffer.from('document.body.dataset.ready="changed"'));
-      expect(await readFile((await service.resolveRunPreview('demo-room',run.id,'assets/app.js')).path,'utf8')).toContain('dataset.ready="yes"');
+      expect((await service.resolveRunPreview('demo-room',run.id,'assets/app.js')).data?.toString('utf8')).toContain('dataset.ready="yes"');
     }finally{service.close();await repositories.database.close()}
   });
 
@@ -346,6 +348,62 @@ describe('isolated run workspace snapshots',()=>{
       const result=await finalizeRun(repositories,service,second.id,'completed');
       expect(result?.publish_status).toBe('published');
       expect(await readFile(path.join(root,'demo-room','value.txt'),'utf8')).toBe('omega');
+    }finally{service.close();await repositories.database.close()}
+  });
+});
+
+describe('transparent Git workspace',()=>{
+  it('runs directly in the room folder, keeps failed changes, and captures an immutable preview',async()=>{
+    const root=await mkdtemp(path.join(tmpdir(),'direct-git-workspace-')),artifacts=await mkdtemp(path.join(tmpdir(),'direct-git-artifacts-'));roots.push(root,artifacts);
+    const repositories=await createRepositories(testDatabaseUrl('direct_git_workspace'));
+    const events=new RoomEventService(repositories.roomEvents,new RoomEventBus()),service=new RoomWorkspaceService(repositories.rooms,repositories.workspace,events,new ActiveRunRegistry(),root,root,1024*1024,repositories.workspaceSnapshots,undefined,{transparentGit:true},repositories.workspaceSlots,new PreviewBundleStore(artifacts,1024*1024));
+    try{
+      await service.upload('demo-room','src/main.ts','text/typescript',Buffer.from('export const color="black"'));
+      const [persona]=await repositories.personas.list('demo-room'),run=(await repositories.messages.createRound('demo-room','change app',[persona],new Map([[persona.id,profile]]))).runs[0];
+      const prepared=await service.prepareRun('demo-room',run.id),roomRoot=path.join(root,'demo-room');
+      expect(prepared).toEqual({relativePath:'.',absolutePath:roomRoot});
+      expect(await stat(path.join(roomRoot,'.git')).then(item=>item.isDirectory())).toBe(true);
+      expect(await stat(path.join(roomRoot,'.agenvyl','runs')).then(()=>true).catch(()=>false)).toBe(false);
+      const stableEntry=(await service.list('demo-room')).entries.find(entry=>entry.path==='src/main.ts')!;
+      const beforeRead=(await repositories.database.sql`SELECT
+        (SELECT COUNT(*)::int FROM workspace_versions WHERE room_id='demo-room' AND path='src/main.ts') version_count,
+        (SELECT COUNT(*)::int FROM workspace_snapshots WHERE room_id='demo-room') snapshot_count`)[0];
+      await mkdir(path.join(roomRoot,'dist','assets'),{recursive:true});
+      await mkdir(path.join(roomRoot,'.edge-render-profile'),{recursive:true});
+      await mkdir(path.join(roomRoot,'node_modules','transient-package'),{recursive:true});
+      await Promise.all([
+        writeFile(path.join(roomRoot,'src','main.ts'),'export const color="red"'),
+        writeFile(path.join(roomRoot,'dist','index.html'),'<script src="assets/app.js"></script>'),
+        writeFile(path.join(roomRoot,'dist','assets','app.js'),'document.body.dataset.color="red"'),
+        writeFile(path.join(roomRoot,'.edge-render-profile','Cache'),'temporary browser state'),
+        writeFile(path.join(roomRoot,'node_modules','transient-package','index.js'),'temporary dependency'),
+      ]);
+      await writeFile(path.join(roomRoot,'src','main.ts'),'export const color="orange"');
+      await writeFile(path.join(roomRoot,'src','main.ts'),'export const color="red"');
+      const duringRun=await service.list('demo-room'),afterRead=(await repositories.database.sql`SELECT
+        (SELECT COUNT(*)::int FROM workspace_versions WHERE room_id='demo-room' AND path='src/main.ts') version_count,
+        (SELECT COUNT(*)::int FROM workspace_snapshots WHERE room_id='demo-room') snapshot_count`)[0];
+      expect(duringRun.entries.find(entry=>entry.path==='src/main.ts')?.current_version_id).toBe(stableEntry.current_version_id);
+      expect(afterRead).toEqual(beforeRead);
+      const result=await finalizeRun(repositories,service,run.id,'failed');
+      expect(result).toMatchObject({capture_status:'complete',publish_status:'published',conflict_count:0});
+      expect(await readFile(path.join(roomRoot,'src','main.ts'),'utf8')).toContain('red');
+      expect(await stat(path.join(roomRoot,'.agenvyl','runs')).then(()=>true).catch(()=>false)).toBe(false);
+      const metadata=(await repositories.database.sql`SELECT workspace_driver,base_head,result_head,checkpoint_sha FROM run_workspace_results WHERE run_id=${run.id}`)[0];
+      expect(metadata).toMatchObject({workspace_driver:'direct'});
+      expect(metadata.base_head).toMatch(/^[0-9a-f]{40}$/);expect(metadata.result_head).toMatch(/^[0-9a-f]{40}$/);expect(metadata.checkpoint_sha).toBe(metadata.result_head);
+      const versions=await repositories.database.sql`SELECT source,run_ids,sha256 FROM workspace_versions WHERE room_id='demo-room' AND path='src/main.ts' ORDER BY created_at`;
+      expect(versions).toHaveLength(2);
+      expect(versions[1]).toMatchObject({source:'agent',run_ids:[run.id]});
+      const finalizedWorkspace=await service.list('demo-room');
+      expect(finalizedWorkspace.entries.some(entry=>entry.path.startsWith('.edge-render-profile')||entry.path.startsWith('node_modules'))).toBe(false);
+      expect(finalizedWorkspace.entries.some(entry=>entry.path==='dist/index.html')).toBe(true);
+      expect(finalizedWorkspace.staticPreview).toMatchObject({status:'ready',runId:run.id});
+      const preview=await service.resolveRunPreview('demo-room',run.id,'assets/app.js');
+      expect('data' in preview&&preview.data.toString()).toContain('red');
+      await writeFile(path.join(roomRoot,'dist','assets','app.js'),'document.body.dataset.color="blue"');
+      const oldPreview=await service.resolveRunPreview('demo-room',run.id,'assets/app.js');
+      expect('data' in oldPreview&&oldPreview.data.toString()).toContain('red');
     }finally{service.close();await repositories.database.close()}
   });
 });

@@ -4,9 +4,12 @@ import {diffSnapshots,entryMap,type SnapshotEntry} from './workspaceSnapshots.js
 export type RunArtifactVisibility='project'|'hidden';
 
 const hiddenDirectories=new Set([
-  '.cache','.git','.mypy_cache','.next','.npm','.nuxt','.parcel-cache','.playwright','.pnpm-store','.pytest_cache','.ruff_cache','.svelte-kit','.turbo','.venv',
+  '.agenvyl','.cache','.chrome-render-profile','.edge-render-profile','.git','.mypy_cache','.next','.npm','.nuxt','.parcel-cache','.playwright','.pnpm-store','.pytest_cache','.ruff_cache','.svelte-kit','.turbo','.venv',
   '__pycache__','build','coverage','dist','ms-playwright','node_modules','out','playwright-report','test-results','venv',
 ]);
+const previewOutputDirectories=new Set(['build','dist','out']);
+
+export const directCaptureIgnoredDirectories=new Set([...hiddenDirectories].filter(directory=>!previewOutputDirectories.has(directory)));
 
 export class RunArtifactPolicy{
   private readonly matcher:Ignore;

@@ -14,6 +14,7 @@ export type AgenvylPaths = {
   postgres: string;
   state: string;
   workspaces: string;
+  artifacts: string;
 };
 
 export function resolveAgenvylPaths(
@@ -34,6 +35,7 @@ export function resolveAgenvylPaths(
     postgres: path.join(data, 'postgres'),
     state: path.join(data, 'state'),
     workspaces: path.join(data, 'workspaces'),
+    artifacts: path.join(data, 'artifacts'),
   };
 }
 

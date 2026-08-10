@@ -18,6 +18,7 @@ import {UserProfileService} from '../modules/user-profile/userProfile.service.js
 import {SetupService} from '../modules/setup/SetupService.js';
 import {ProjectsService} from '../modules/projects/projects.service.js';
 import {RunInterventionService} from '../modules/runs/RunInterventionService.js';
+import {PreviewBundleStore} from '../modules/workspace/PreviewBundleStore.js';
 
 export async function createAppContainer(config: AppConfig, fetchImplementation?: typeof fetch,logger?:FastifyBaseLogger,legacySeed?:boolean) {
   const {database,personas,userProfile,personaGroups,projects,rooms,roomEvents,messages,runs,workspace,workspaceSnapshots,workspaceSlots}=await createRepositories(config.databaseUrl,{legacySeed:legacySeed??process.env.NODE_ENV==='test'});
@@ -33,12 +34,14 @@ export async function createAppContainer(config: AppConfig, fetchImplementation?
   const harnessCatalogService=new HarnessCatalogService(connector,{logger});
   const connectorRuns=new ConnectorRunAdapter(connector);
   const activeRuns = new ActiveRunRegistry();
+  const previewBundles=new PreviewBundleStore(config.artifactRoot,config.artifactMaxBytes);
   const roomWorkspace=new RoomWorkspaceService(rooms,workspace,events,activeRuns,workspaceRoot,workspaceAgentRoot,config.workspaceMaxFileBytes,workspaceSnapshots,logger,{
     noopMode:config.workspaceNoopMode,
     warmSlotsMode:config.workspaceWarmSlotsMode,
     statCacheMode:config.workspaceStatCacheMode,
+    transparentGit:config.transparentGitWorkspace,
     slotLeaseMs:config.runTimeoutMs+5*60_000,
-  },workspaceSlots);
+  },workspaceSlots,previewBundles);
 
   const runExecutor=new RunExecutor({ personas, runs, events, runGateway:connectorRuns, runEvents:connectorRuns, connectorExecution:connectorRuns,activeRuns,concurrency:config.runConcurrency,runTimeoutMs:config.runTimeoutMs,logger,roomWorkspace,messages,connector });
   const runInterventions=new RunInterventionService({runs,activeRuns,gateway:connectorRuns});

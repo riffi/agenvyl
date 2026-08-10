@@ -4,7 +4,9 @@ import type {RunArtifact,RunArtifactSummary,RunEmbed,WorkspaceAttachment,Workspa
 import {hasUnbuiltWebProject,selectStaticPreviewPath} from './runStaticPreview.js';
 
 type VersionRow={id:string;entry_id?:string;room_id:string;path:string;size:number;mime_type:string;sha256:string;source:WorkspaceSource;run_ids:string[];created_at:string;origin_snapshot_id?:string};
-export type RunArtifactProjection={artifacts:RunArtifact[];artifactSummary:RunArtifactSummary;staticPreview?:WorkspaceAttachment;staticPreviewStatus?:'ready'|'build_missing'};
+export type RunArtifactProjection={artifacts:RunArtifact[];artifactSummary:RunArtifactSummary;staticPreview?:WorkspaceAttachment;staticPreviewStatus?:'ready'|'build_missing'|'capture_failed'};
+export type PreviewBundleRow={id:string;runId:string;roomId:string;sourceSnapshotId?:string;entrypoint:string;sourceManifestSha256:string;bundleSha256?:string;bundleSize?:number;uncompressedSize:number;fileCount:number;status:'capturing'|'ready'|'failed';error?:string;createdAt:string;updatedAt:string};
+export type PreviewBundleHistoryRow=PreviewBundleRow&{agent:string;runStatus:string;publishStatus:string;conflictCount:number;runCreatedAt:string;resultUpdatedAt:string};
 
 export class WorkspaceRepository{
   constructor(private readonly database:Database){}
@@ -74,6 +76,20 @@ export class WorkspaceRepository{
   async attachMessage(messageId:string,versionIds:string[],db:QueryContext){for(let position=0;position<versionIds.length;position++){const version=(await db`SELECT origin_snapshot_id FROM workspace_versions WHERE id=${versionIds[position]}`)[0],snapshotId=version?.origin_snapshot_id?text(version.origin_snapshot_id):null;await db`INSERT INTO message_attachments(message_id,version_id,position,snapshot_id) VALUES(${messageId},${versionIds[position]},${position},${snapshotId})`;}}
 
   async linkArtifacts(runIds:string[],version:VersionRow,change:RunArtifact['change'],attribution:RunArtifact['attribution']){const now=new Date().toISOString();for(const runId of runIds)await this.database.sql`INSERT INTO run_artifacts(run_id,version_id,change,attribution,visibility,created_at) VALUES(${runId},${version.id},${change},${attribution},'project',${now}) ON CONFLICT DO NOTHING`;}
+  async beginPreviewBundle(input:{roomId:string;runId:string;sourceSnapshotId:string;entrypoint:string;sourceManifestSha256:string;uncompressedSize:number;fileCount:number}){
+    const existing=(await this.database.sql`SELECT * FROM preview_bundles WHERE run_id=${input.runId}`)[0];
+    if(existing&&text(existing.status)==='ready')return toPreviewBundleRow(existing);
+    const id=existing?text(existing.id):crypto.randomUUID(),now=new Date().toISOString();
+    const row=(await this.database.sql`INSERT INTO preview_bundles(id,run_id,room_id,source_snapshot_id,entrypoint,source_manifest_sha256,uncompressed_size,file_count,status,created_at,updated_at)
+      VALUES(${id},${input.runId},${input.roomId},${input.sourceSnapshotId},${input.entrypoint},${input.sourceManifestSha256},${input.uncompressedSize},${input.fileCount},'capturing',${now},${now})
+      ON CONFLICT(run_id) DO UPDATE SET source_snapshot_id=EXCLUDED.source_snapshot_id,entrypoint=EXCLUDED.entrypoint,source_manifest_sha256=EXCLUDED.source_manifest_sha256,uncompressed_size=EXCLUDED.uncompressed_size,file_count=EXCLUDED.file_count,status='capturing',bundle_sha256=NULL,bundle_size=NULL,error=NULL,updated_at=EXCLUDED.updated_at RETURNING *`)[0];
+    return toPreviewBundleRow(row);
+  }
+  async completePreviewBundle(id:string,bundleSha256:string,bundleSize:number){const row=(await this.database.sql`UPDATE preview_bundles SET bundle_sha256=${bundleSha256},bundle_size=${bundleSize},status='ready',error=NULL,updated_at=now() WHERE id=${id} RETURNING *`)[0];return row?toPreviewBundleRow(row):undefined;}
+  async failPreviewBundle(id:string,error:string){await this.database.sql`UPDATE preview_bundles SET status='failed',error=${error.slice(0,2000)},updated_at=now() WHERE id=${id}`;}
+  async previewBundleForRun(roomId:string,runId:string){const row=(await this.database.sql`SELECT * FROM preview_bundles WHERE room_id=${roomId} AND run_id=${runId}`)[0];return row?toPreviewBundleRow(row):undefined;}
+  async previewBundles(roomId:string):Promise<PreviewBundleHistoryRow[]>{return(await this.database.sql`SELECT pb.*,r.persona_handle,r.status run_status,r.created_at run_created_at,rwr.publish_status,rwr.conflict_count,rwr.updated_at result_updated_at FROM preview_bundles pb JOIN agent_runs r ON r.id=pb.run_id LEFT JOIN run_workspace_results rwr ON rwr.run_id=pb.run_id WHERE pb.room_id=${roomId} AND pb.status='ready' ORDER BY r.updated_at DESC,pb.created_at DESC,pb.id DESC`).map(toPreviewBundleHistoryRow);}
+  async previewBundleIds(roomId:string){return(await this.database.sql`SELECT id FROM preview_bundles WHERE room_id=${roomId}`).map(row=>text(row.id));}
   async artifactProjections(runIds:string[],db:QueryContext=this.database.sql){
     const result=new Map<string,RunArtifactProjection>();
     if(!runIds.length)return result;
@@ -85,11 +101,20 @@ export class WorkspaceRepository{
     for(const row of await db`SELECT run_id,COUNT(*)::int total_count,COUNT(*) FILTER(WHERE visibility='project')::int project_count,COUNT(*) FILTER(WHERE visibility='hidden')::int hidden_count FROM run_artifacts WHERE run_id=ANY(${runIds}) GROUP BY run_id`){
       ensure(text(row.run_id)).artifactSummary={total_count:number(row.total_count),project_count:number(row.project_count),hidden_count:number(row.hidden_count)};
     }
+    for(const row of await db`SELECT * FROM preview_bundles WHERE run_id=ANY(${runIds})`){
+      const runId=text(row.run_id),projection=ensure(runId),preview=toPreviewBundleRow(row);
+      if(preview.status==='failed'){projection.staticPreviewStatus='capture_failed';continue}
+      if(preview.status!=='ready')continue;
+      projection.staticPreview=previewAttachment(preview);
+      projection.staticPreviewStatus='ready';
+    }
     const previewRows=await db`SELECT rwr.run_id,rwr.result_snapshot_id,se.path preview_path,v.* FROM run_workspace_results rwr JOIN workspace_snapshot_entries se ON se.snapshot_id=rwr.result_snapshot_id LEFT JOIN workspace_versions v ON v.id=se.version_id WHERE rwr.run_id=ANY(${runIds}) AND se.kind='file' AND (se.path='package.json' OR se.path='index.html' OR lower(se.path)=ANY(ARRAY['dist/index.html','build/index.html','out/index.html']) OR lower(se.path) LIKE '%/dist/index.html' OR lower(se.path) LIKE '%/build/index.html' OR lower(se.path) LIKE '%/out/index.html') ORDER BY rwr.run_id,se.path`;
     const candidates=new Map<string,Array<Record<string,unknown>>>();
     for(const row of previewRows){const runId=text(row.run_id),items=candidates.get(runId)??[];items.push(row);candidates.set(runId,items);}
     for(const runId of runIds){
-      const rows=candidates.get(runId)??[],paths=rows.map(row=>text(row.preview_path)),previewPath=selectStaticPreviewPath(paths),projection=ensure(runId);
+      const projection=ensure(runId);
+      if(projection.staticPreview||projection.staticPreviewStatus==='capture_failed')continue;
+      const rows=candidates.get(runId)??[],paths=rows.map(row=>text(row.preview_path)),previewPath=selectStaticPreviewPath(paths);
       if(!previewPath){if(hasUnbuiltWebProject(paths))projection.staticPreviewStatus='build_missing';continue;}
       const row=rows.find(item=>text(item.preview_path)===previewPath);
       if(!row?.id)continue;
@@ -109,7 +134,10 @@ function toEntry(row:Record<string,unknown>):WorkspaceEntry{const path=text(row.
 function toVersionRow(row:Record<string,unknown>):VersionRow{return{id:text(row.id),...(row.entry_id?{entry_id:text(row.entry_id)}:{}),room_id:text(row.room_id),path:text(row.path),size:number(row.size),mime_type:text(row.mime_type),sha256:text(row.sha256),source:text(row.source) as WorkspaceSource,run_ids:stringArray(row.run_ids),created_at:timestamp(row.created_at),...(row.origin_snapshot_id?{origin_snapshot_id:text(row.origin_snapshot_id)}:{})};}
 export function toWorkspaceVersion(value:VersionRow):WorkspaceVersion{const snapshotId=value.origin_snapshot_id;return{...value,url:versionUrl(value.room_id,value.id),preview_url:snapshotId?snapshotPreviewUrl(value.room_id,snapshotId,value.path):`${versionUrl(value.room_id,value.id)}/preview`};}
 export function toAttachment(value:VersionRow,snapshotId?:string):WorkspaceAttachment{return{version_id:value.id,...(value.entry_id?{entry_id:value.entry_id}:{}),...(snapshotId?{snapshot_id:snapshotId}:{}),path:value.path,name:value.path.split('/').pop()??value.path,size:value.size,mime_type:value.mime_type,url:versionUrl(value.room_id,value.id),preview_url:snapshotId?snapshotPreviewUrl(value.room_id,snapshotId,value.path):`${versionUrl(value.room_id,value.id)}/preview`};}
+export function previewAttachment(value:PreviewBundleRow):WorkspaceAttachment{return{version_id:value.id,...(value.sourceSnapshotId?{snapshot_id:value.sourceSnapshotId}:{}),path:value.entrypoint,name:value.entrypoint.split('/').pop()??value.entrypoint,size:value.bundleSize??value.uncompressedSize,mime_type:'text/html',url:runPreviewUrl(value.roomId,value.runId),preview_url:runPreviewUrl(value.roomId,value.runId)};}
 function versionUrl(roomId:string,id:string){return`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace/versions/${encodeURIComponent(id)}`;}
 export function snapshotPreviewUrl(roomId:string,snapshotId:string,filePath:string){return`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace/snapshots/${encodeURIComponent(snapshotId)}/preview/${filePath.split('/').map(encodeURIComponent).join('/')}`;}
 export function runPreviewUrl(roomId:string,runId:string){return`/api/v1/rooms/${encodeURIComponent(roomId)}/runs/${encodeURIComponent(runId)}/preview/`;}
 export type WorkspaceVersionRow=VersionRow;
+const toPreviewBundleRow=(row:Record<string,unknown>):PreviewBundleRow=>({id:text(row.id),runId:text(row.run_id),roomId:text(row.room_id),...(row.source_snapshot_id?{sourceSnapshotId:text(row.source_snapshot_id)}:{}),entrypoint:text(row.entrypoint),sourceManifestSha256:text(row.source_manifest_sha256),...(row.bundle_sha256?{bundleSha256:text(row.bundle_sha256)}:{}),...(row.bundle_size!=null?{bundleSize:number(row.bundle_size)}:{}),uncompressedSize:number(row.uncompressed_size),fileCount:number(row.file_count),status:text(row.status) as PreviewBundleRow['status'],...(row.error?{error:text(row.error)}:{}),createdAt:timestamp(row.created_at),updatedAt:timestamp(row.updated_at)});
+const toPreviewBundleHistoryRow=(row:Record<string,unknown>):PreviewBundleHistoryRow=>({...toPreviewBundleRow(row),agent:text(row.persona_handle),runStatus:text(row.run_status),publishStatus:row.publish_status?text(row.publish_status):'not_published',conflictCount:row.conflict_count==null?0:number(row.conflict_count),runCreatedAt:timestamp(row.run_created_at),resultUpdatedAt:row.result_updated_at?timestamp(row.result_updated_at):timestamp(row.updated_at)});

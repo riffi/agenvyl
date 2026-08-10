@@ -135,7 +135,7 @@ export type Run = {
   artifacts?: RunArtifact[];
   artifactSummary?:RunArtifactSummary;
   staticPreview?:WorkspaceAttachment;
-  staticPreviewStatus?:'ready'|'build_missing';
+  staticPreviewStatus?:'ready'|'build_missing'|'capture_failed';
   embeds?: RunEmbed[];
   workspaceResult?:RunWorkspaceResult;
   recommendedProject?: RunProjectSnapshot;
@@ -319,7 +319,7 @@ export type ServerRoomEvent =
   | Envelope<'workspace.changed', { entry:WorkspaceEntry;change:'created'|'updated'|'deleted'|'restored'|'moved' }>
   | Envelope<'artifact.created', { runId:string;artifact:RunArtifact }>
   | Envelope<'run.embeds', { runId:string;embeds:RunEmbed[] }>
-  | Envelope<'run.workspace.finalized', {runId:string;workspaceResult:RunWorkspaceResult;artifacts?:RunArtifact[];artifactSummary?:RunArtifactSummary;staticPreview?:WorkspaceAttachment;staticPreviewStatus?:'ready'|'build_missing'}>
+  | Envelope<'run.workspace.finalized', {runId:string;workspaceResult:RunWorkspaceResult;artifacts?:RunArtifact[];artifactSummary?:RunArtifactSummary;staticPreview?:WorkspaceAttachment;staticPreviewStatus?:'ready'|'build_missing'|'capture_failed'}>
   | Envelope<'run.workspace.publish.updated', {runId:string;workspaceResult:RunWorkspaceResult}>;
 
 const eventTypes = new Set<ServerRoomEvent['type']>([
@@ -371,7 +371,7 @@ export function isServerRoomEvent(value: unknown): value is ServerRoomEvent {
     case 'workspace.changed': return isRecord(payload.entry) && typeof payload.entry.id==='string' && typeof payload.change==='string';
     case 'artifact.created': return typeof payload.runId==='string' && isRecord(payload.artifact) && typeof payload.artifact.version_id==='string';
     case 'run.embeds': return typeof payload.runId==='string'&&Array.isArray(payload.embeds);
-    case 'run.workspace.finalized': return typeof payload.runId==='string'&&isRunWorkspaceResult(payload.workspaceResult)&&(payload.artifacts===undefined||Array.isArray(payload.artifacts))&&(payload.artifactSummary===undefined||isRunArtifactSummary(payload.artifactSummary))&&(payload.staticPreview===undefined||isWorkspaceAttachment(payload.staticPreview))&&(payload.staticPreviewStatus===undefined||payload.staticPreviewStatus==='ready'||payload.staticPreviewStatus==='build_missing');
+    case 'run.workspace.finalized': return typeof payload.runId==='string'&&isRunWorkspaceResult(payload.workspaceResult)&&(payload.artifacts===undefined||Array.isArray(payload.artifacts))&&(payload.artifactSummary===undefined||isRunArtifactSummary(payload.artifactSummary))&&(payload.staticPreview===undefined||isWorkspaceAttachment(payload.staticPreview))&&(payload.staticPreviewStatus===undefined||payload.staticPreviewStatus==='ready'||payload.staticPreviewStatus==='build_missing'||payload.staticPreviewStatus==='capture_failed');
     case 'run.workspace.publish.updated': return typeof payload.runId==='string'&&isRunWorkspaceResult(payload.workspaceResult);
     default: return false;
   }

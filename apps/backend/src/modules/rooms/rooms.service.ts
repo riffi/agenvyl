@@ -7,8 +7,9 @@ export class RoomsService {
   constructor(
     private readonly rooms: RoomRepository,
     private readonly workspace?: {
-      purgeCandidates: (roomId: string) => Promise<string[]>;
-      purgeFiles: (roomId: string, hashes: string[]) => Promise<void>;
+      ensure?: (roomId:string)=>Promise<string>;
+      purgeCandidates: (roomId: string) => Promise<{hashes:string[];previewIds:string[]}>;
+      purgeFiles: (roomId: string, candidates:{hashes:string[];previewIds:string[]}) => Promise<void>;
     },
     private readonly events?: RoomEventService,
     private readonly harnesses?: {
@@ -33,8 +34,9 @@ export class RoomsService {
   async create(input: { title?: string; personaIds?: string[];projectId?:string|null }) {
     const explicitTitle = input.title?.trim();
     const title = explicitTitle || DEFAULT_ROOM_TITLE;
+    let room:Awaited<ReturnType<RoomRepository['create']>>;
     try {
-      return await this.rooms.create(title, input.personaIds ?? [],input.projectId,explicitTitle?'manual':'pending');
+      room=await this.rooms.create(title, input.personaIds ?? [],input.projectId,explicitTitle?'manual':'pending');
     } catch (error) {
       throw new AppError(
         error instanceof Error ? error.message : "room_conflict",
@@ -42,6 +44,8 @@ export class RoomsService {
         "Room could not be created",
       );
     }
+    await this.workspace?.ensure?.(room.id);
+    return room;
   }
   async assignProject(roomId:string,projectId:string|null){
     const result=await this.rooms.assignProject(roomId,projectId);
@@ -75,11 +79,11 @@ export class RoomsService {
     return (await this.rooms.list()).find((room) => room.id === roomId);
   }
   async purge(roomId: string) {
-    const hashes = (await this.workspace?.purgeCandidates(roomId)) ?? [],
+    const candidates = (await this.workspace?.purgeCandidates(roomId)) ?? {hashes:[],previewIds:[]},
       result = await this.rooms.purge(roomId);
     if (result === "not_found")
       throw new AppError("room_not_found", 404, "Room not found in trash");
-    await this.workspace?.purgeFiles(roomId, hashes);
+    await this.workspace?.purgeFiles(roomId,candidates);
   }
   async setParticipant(roomId: string, personaId: string, present: boolean) {
     const result = await this.rooms.setParticipant(roomId, personaId, present);

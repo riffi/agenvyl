@@ -20,7 +20,7 @@ describe('resolveAppConfig Connector routing',()=>{
 
   it('parses workspace optimization modes and validates their dependencies',()=>{
     const base={connectorUrl:'http://connector.test',connectorToken:'x'.repeat(32)} as const;
-    expect(resolveAppConfig(base)).toMatchObject({workspaceNoopMode:'off',workspaceWarmSlotsMode:'off',workspaceStatCacheMode:'off'});
+    expect(resolveAppConfig(base)).toMatchObject({transparentGitWorkspace:true,workspaceNoopMode:'off',workspaceWarmSlotsMode:'off',workspaceStatCacheMode:'off'});
     vi.stubEnv('AGENVYL_WORKSPACE_NOOP_MODE','SHADOW');
     vi.stubEnv('AGENVYL_WORKSPACE_WARM_SLOTS_MODE','on');
     vi.stubEnv('AGENVYL_WORKSPACE_STAT_CACHE_MODE','shadow');

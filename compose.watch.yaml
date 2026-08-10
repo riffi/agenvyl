@@ -17,9 +17,10 @@ services:
     image: node:22-alpine
     user: "0:0"
     restart: "no"
-    command: ["chown", "-R", "1000:1000", "/app/data/room-workspaces"]
+    command: ["sh", "-c", "chown -R 1000:1000 /app/data/room-workspaces /app/data/artifacts"]
     volumes:
       - ${AGENVYL_WORKSPACE_PATH:-./data/room-workspaces}:/app/data/room-workspaces
+      - ${AGENVYL_ARTIFACT_PATH:-./data/artifacts}:/app/data/artifacts
 
   app:
     build:
@@ -66,6 +67,8 @@ services:
       AGENVYL_WORKSPACE_ROOT: /app/data/room-workspaces
       AGENVYL_WORKSPACE_AGENT_ROOT: ${AGENVYL_WORKSPACE_AGENT_ROOT:-/app/data/room-workspaces}
       AGENVYL_WORKSPACE_MAX_FILE_BYTES: ${AGENVYL_WORKSPACE_MAX_FILE_BYTES:-52428800}
+      AGENVYL_ARTIFACT_ROOT: /app/data/artifacts
+      AGENVYL_ARTIFACT_MAX_BYTES: ${AGENVYL_ARTIFACT_MAX_BYTES:-262144000}
       AGENVYL_RUN_CONCURRENCY: ${AGENVYL_RUN_CONCURRENCY:-4}
     extra_hosts:
       - host.docker.internal:host-gateway
@@ -73,6 +76,7 @@ services:
       - .:/app
       - node-modules:/app/node_modules
       - ${AGENVYL_WORKSPACE_PATH:-./data/room-workspaces}:/app/data/room-workspaces
+      - ${AGENVYL_ARTIFACT_PATH:-./data/artifacts}:/app/data/artifacts
     depends_on:
       deps-init:
         condition: service_completed_successfully

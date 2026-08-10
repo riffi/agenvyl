@@ -32,19 +32,20 @@ export type WorkspaceContentManifest={
   bytes:number;
 };
 
-export const scanWorkspaceTree=async(root:string,maxBytes:number,prefix=''):Promise<WorkspaceScan>=>{
+export const scanWorkspaceTree=async(root:string,maxBytes:number,prefix='',ignoredDirectories:ReadonlySet<string>=new Set()):Promise<WorkspaceScan>=>{
   const entries:ScannedWorkspaceEntry[]=[],errors:WorkspaceCaptureError[]=[];
   let scannedFiles=0;
   const directoryEntries=await readdir(path.join(root,prefix),{withFileTypes:true}).catch(()=>undefined);
   if(!directoryEntries)return{entries,errors:[{path:prefix,code:'read_failed'}],scannedFiles};
   for(const dirent of directoryEntries){
+    if(dirent.isDirectory()&&(dirent.name==='.git'||ignoredDirectories.has(dirent.name.toLowerCase())))continue;
     const relative=prefix?`${prefix}/${dirent.name}`:dirent.name,target=path.join(root,...relative.split('/')),details=await lstat(target,{bigint:true}).catch(()=>undefined);
     if(!details){errors.push({path:relative,code:'read_failed'});continue}
     if(!prefix&&dirent.name==='.agenvyl'){errors.push({path:relative,code:'reserved'});continue}
     if(details.isSymbolicLink()){errors.push({path:relative,code:'symlink'});continue}
     if(details.isDirectory()){
       entries.push({path:relative,kind:'directory'});
-      const nested=await scanWorkspaceTree(root,maxBytes,relative);
+      const nested=await scanWorkspaceTree(root,maxBytes,relative,ignoredDirectories);
       entries.push(...nested.entries);errors.push(...nested.errors);scannedFiles+=nested.scannedFiles;
       continue;
     }

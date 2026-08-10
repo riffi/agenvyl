@@ -179,13 +179,15 @@ describe('RunExecutor', () => {
     await vi.waitFor(()=>expect(created).toEqual(['upstream-1','upstream-2']));await vi.waitFor(()=>expect(registry.get('fifo-2')).toBeUndefined());await executor.shutdown();await database.close();
   });
 
-  it('runs one room turn at a time while keeping agents in the same turn parallel',async()=>{
+  it('runs every writer in one room sequentially, including agents from the same turn',async()=>{
     const streams=new Map<string,ReadableStreamDefaultController<Uint8Array>>(),created:string[]=[],encoder=new TextEncoder();
     const {executor,registry,database}=await fixture(async(input,init)=>{const url=String(input);if(url.endsWith('/v1/runs')){const body=JSON.parse(String(init?.body)) as {input:string};created.push(body.input);return new Response(JSON.stringify({run_id:`upstream-${body.input}`}),{status:202});}const id=url.match(/upstream-([^/]+)\/events/)?.[1]??'';if(id==='next')return new Response(`data: ${JSON.stringify({event:'run.completed'})}\n\n`,{status:200});return new Response(new ReadableStream({start(controller){streams.set(id,controller);}}),{status:200});},3);
     registry.add(run('turn-one-a','message-one'));registry.add(run('turn-one-b','message-one'));registry.add(run('turn-two','message-two'));
     executor.start('turn-one-a','first');executor.start('turn-one-b','peer');executor.start('turn-two','next');
-    await vi.waitFor(()=>{expect(created).toEqual(['first','peer']);expect([...streams.keys()].sort()).toEqual(['first','peer']);});
-    for(const id of ['first','peer']){streams.get(id)!.enqueue(encoder.encode(`data: ${JSON.stringify({event:'run.completed'})}\n\n`));streams.get(id)!.close();}
+    await vi.waitFor(()=>{expect(created).toEqual(['first']);expect([...streams.keys()]).toEqual(['first']);});
+    streams.get('first')!.enqueue(encoder.encode(`data: ${JSON.stringify({event:'run.completed'})}\n\n`));streams.get('first')!.close();
+    await vi.waitFor(()=>expect(created).toEqual(['first','peer']));
+    streams.get('peer')!.enqueue(encoder.encode(`data: ${JSON.stringify({event:'run.completed'})}\n\n`));streams.get('peer')!.close();
     await vi.waitFor(()=>expect(created).toEqual(['first','peer','next']));await vi.waitFor(()=>expect(registry.get('turn-two')).toBeUndefined());await executor.shutdown();await database.close();
   });
 

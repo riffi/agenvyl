@@ -45,6 +45,20 @@ export class WorkspaceSnapshotRepository{
     });
   }
 
+  async prepareDirectRun(roomId:string,runId:string,baseHead:string){
+    return this.database.transaction(async tx=>{
+      const room=(await tx`SELECT current_workspace_snapshot_id FROM rooms WHERE id=${roomId} FOR UPDATE`)[0];
+      if(!room)throw new AppError('room_not_found',404,'Room not found');
+      const baseSnapshotId=room.current_workspace_snapshot_id?text(room.current_workspace_snapshot_id):await this.createPublishedFromCurrent(roomId,tx);
+      if(!room.current_workspace_snapshot_id)await tx`UPDATE rooms SET current_workspace_snapshot_id=${baseSnapshotId},workspace_materialization_status='ready' WHERE id=${roomId}`;
+      const now=new Date().toISOString();
+      await tx`INSERT INTO run_workspace_results(run_id,base_snapshot_id,base_head,capture_status,publish_status,cleanup_status,cleanup_expires_at,workspace_driver,created_at,updated_at)
+        VALUES(${runId},${baseSnapshotId},${baseHead},'ready','pending','complete',${now},'direct',${now},${now})
+        ON CONFLICT(run_id) DO NOTHING`;
+      return toRunWorkspaceResult((await tx`SELECT * FROM run_workspace_results WHERE run_id=${runId}`)[0]);
+    });
+  }
+
   async markReady(runId:string){await this.database.sql`UPDATE run_workspace_results SET capture_status='ready',updated_at=now() WHERE run_id=${runId} AND capture_status='preparing'`;}
   async markFinalizing(runId:string){await this.database.sql`UPDATE run_workspace_results SET capture_status='finalizing',updated_at=now() WHERE run_id=${runId} AND capture_status=ANY(ARRAY['preparing','ready','finalizing'])`;}
   async markFailed(runId:string,error:WorkspaceCaptureError){await this.database.sql`UPDATE run_workspace_results SET capture_status='failed',publish_status='failed',errors=${this.database.sql.json([error])},updated_at=now() WHERE run_id=${runId} AND result_snapshot_id IS NULL`;}
@@ -91,6 +105,22 @@ export class WorkspaceSnapshotRepository{
       if(versionIds.length)await tx`UPDATE workspace_versions SET origin_snapshot_id=COALESCE(origin_snapshot_id,${id}) WHERE id=ANY(${versionIds})`;
       await tx`UPDATE run_workspace_results SET result_snapshot_id=${id},capture_status=${input.completeness},publish_status=${input.completeness==='complete'?'pending':'not_published'},errors=${tx.json(input.errors)},updated_at=${now} WHERE run_id=${input.runId}`;
       return id;
+    });
+  }
+
+  async completeDirectRun(roomId:string,runId:string,resultSnapshotId:string,resultHead?:string,checkpointSha?:string){
+    return this.database.transaction(async tx=>{
+      const room=(await tx`SELECT id FROM rooms WHERE id=${roomId} FOR UPDATE`)[0];
+      if(!room)throw new AppError('room_not_found',404,'Room not found');
+      const result=(await tx`SELECT * FROM run_workspace_results WHERE run_id=${runId} FOR UPDATE`)[0];
+      if(!result)throw new AppError('workspace_result_not_found',404,'Run workspace result not found');
+      const entries=await this.entries(resultSnapshotId,tx),now=new Date().toISOString();
+      await applyPublishedEntries(tx,roomId,entries,now);
+      await tx`UPDATE rooms SET current_workspace_snapshot_id=${resultSnapshotId},workspace_materialization_status='ready' WHERE id=${roomId}`;
+      const publishStatus=text(result.base_snapshot_id)===resultSnapshotId?'noop':'published';
+      await tx`UPDATE run_workspace_results SET published_snapshot_id=${resultSnapshotId},publish_status=${publishStatus},conflict_count=0,
+        cleanup_status='complete',result_head=${resultHead??null},checkpoint_sha=${checkpointSha??null},updated_at=${now} WHERE run_id=${runId}`;
+      return toRunWorkspaceResult((await tx`SELECT * FROM run_workspace_results WHERE run_id=${runId}`)[0]);
     });
   }
 

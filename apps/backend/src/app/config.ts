@@ -14,6 +14,9 @@ export type AppConfig = {
   workspaceRoot: string;
   workspaceAgentRoot: string;
   workspaceMaxFileBytes: number;
+  artifactRoot:string;
+  artifactMaxBytes:number;
+  transparentGitWorkspace:boolean;
   workspaceNoopMode: WorkspaceOptimizationMode;
   workspaceWarmSlotsMode: WorkspaceOptimizationMode;
   workspaceStatCacheMode: WorkspaceOptimizationMode;
@@ -48,6 +51,9 @@ export function resolveAppConfig(overrides: AppConfigOverrides = {}): AppConfig 
     workspaceRoot: overrides.workspaceRoot ?? process.env.AGENVYL_WORKSPACE_ROOT ?? paths.workspaces,
     workspaceAgentRoot: overrides.workspaceAgentRoot ?? process.env.AGENVYL_WORKSPACE_AGENT_ROOT ?? overrides.workspaceRoot ?? process.env.AGENVYL_WORKSPACE_ROOT ?? paths.workspaces,
     workspaceMaxFileBytes: positiveInteger(overrides.workspaceMaxFileBytes ?? process.env.AGENVYL_WORKSPACE_MAX_FILE_BYTES, 50*1024*1024),
+    artifactRoot:overrides.artifactRoot??process.env.AGENVYL_ARTIFACT_ROOT??paths.artifacts,
+    artifactMaxBytes:positiveInteger(overrides.artifactMaxBytes??process.env.AGENVYL_ARTIFACT_MAX_BYTES,250*1024*1024),
+    transparentGitWorkspace:booleanValue(overrides.transparentGitWorkspace??process.env.AGENVYL_TRANSPARENT_GIT_WORKSPACE,true),
     workspaceNoopMode,
     workspaceWarmSlotsMode,
     workspaceStatCacheMode,
@@ -65,4 +71,13 @@ function optimizationMode(value:unknown,name:string):WorkspaceOptimizationMode{
   const normalized=String(value).trim().toLowerCase();
   if(normalized==='off'||normalized==='shadow'||normalized==='on')return normalized;
   throw new Error(`${name} must be off, shadow, or on`);
+}
+
+function booleanValue(value:unknown,fallback:boolean){
+  if(value===undefined)return fallback;
+  if(typeof value==='boolean')return value;
+  const normalized=String(value).trim().toLowerCase();
+  if(normalized==='true'||normalized==='1'||normalized==='yes'||normalized==='on')return true;
+  if(normalized==='false'||normalized==='0'||normalized==='no'||normalized==='off')return false;
+  return fallback;
 }
