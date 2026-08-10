@@ -54,12 +54,15 @@ export const WorkspaceWindow = ({
   const entries = (workspaceQuery.data?.entries ?? []) as WorkspaceEntry[];
   const visibleEntries = useMemo(() => entries.filter(entry => trash ? Boolean(entry.deleted_at) : !entry.deleted_at), [entries, trash]);
   const target = request?.target;
-  const selected = visibleEntries.find(entry => entry.id === target?.entryId && entry.kind === 'file');
+  const selected = visibleEntries.find(entry => entry.kind === 'file' && (
+    entry.id === target?.entryId || Boolean(target?.path && entry.path === target.path)
+  ));
+  const versionEntryId = selected?.id ?? target?.entryId;
 
   const versionsQuery = useQuery({
-    queryKey: [...workspaceKey, 'versions', target?.entryId],
-    queryFn: () => roomsApi.versions(roomId, target!.entryId!),
-    enabled: open && !fake && Boolean(target?.entryId),
+    queryKey: [...workspaceKey, 'versions', versionEntryId],
+    queryFn: () => roomsApi.versions(roomId, versionEntryId!),
+    enabled: open && !fake && Boolean(versionEntryId),
   });
   const versions = versionsQuery.data ?? [];
   const current = versions.find(version => version.id === selected?.current_version_id) ?? versions[0];

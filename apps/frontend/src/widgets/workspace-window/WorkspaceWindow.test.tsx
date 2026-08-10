@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { WorkspaceAttachment, WorkspaceEntry, WorkspaceVersion } from '@agenvyl/contracts';
 import { roomsApi } from '../../entities/room';
@@ -116,6 +116,38 @@ describe('WorkspaceWindow', () => {
     expect(onClose).toHaveBeenCalledOnce();
     fireEvent.click(sourceAction);
     expect(onRequestChange).toHaveBeenCalledWith({ mode: 'source' });
+  });
+
+  it('keeps the active file tree for an attachment with a historical entry id', async () => {
+    const liveEntry: WorkspaceEntry = {
+      ...entry,
+      id: 'path.c2l0ZS9wYWdlLmh0bWw',
+      current_version_id: 'live.c2l0ZS9wYWdlLmh0bWw',
+    };
+    const liveVersion: WorkspaceVersion = {
+      ...version('live.c2l0ZS9wYWdlLmh0bWw', '2026-07-24T10:00:00.000Z'),
+      entry_id: liveEntry.id,
+    };
+    const historical = version('version-1', '2026-07-22T10:00:00.000Z');
+    vi.spyOn(roomsApi, 'workspace').mockResolvedValue({ path: '/room', head: 'snapshot', entries: [liveEntry], previewHistory: [] });
+    const versions = vi.spyOn(roomsApi, 'versions').mockImplementation(async (_roomId, entryId) => entryId === liveEntry.id ? [liveVersion, historical] : [historical]);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><WorkspaceWindow
+      request={{
+        origin: 'artifact',
+        target: { entryId: entry.id, versionId: historical.id, path: historical.path },
+        treeVisible: true,
+        gallery: [attachment(historical)],
+      }}
+      roomId="room"
+      onClose={vi.fn()}
+      onRequestChange={vi.fn()}
+    /></QueryClientProvider>);
+
+    const tree = await screen.findByRole('navigation', { name: 'Workspace files' });
+    expect(await within(tree).findByText('page.html')).toBeTruthy();
+    expect(screen.queryByRole('navigation', { name: 'Workspace trash' })).toBeNull();
+    await waitFor(() => expect(versions).toHaveBeenLastCalledWith('room', liveEntry.id));
   });
 
   it('opens the file tree by default for a workspace entry point', async () => {

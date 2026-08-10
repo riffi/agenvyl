@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronRight, File, Folder, FolderOpen, FolderPlus, Search, Trash2, Upload } from 'lucide-react';
 import type { WorkspaceEntry } from '@agenvyl/contracts';
 import { IconButton } from '../../shared/ui';
@@ -34,6 +34,24 @@ export const WorkspaceExplorer = ({
   const tree = useMemo(() => buildWorkspaceTree(entries), [entries]);
   const filtered = useMemo(() => filterWorkspaceTree(tree, search), [search, tree]);
   const effectiveExpanded = search ? new Set([...expanded, ...treeDirectoryPaths(filtered)]) : expanded;
+
+  useEffect(() => {
+    const selectedPath = entries.find(entry => entry.id === selectedId)?.path;
+    if (!selectedPath?.includes('/')) return;
+    const segments = selectedPath.split('/').slice(0, -1);
+    setExpanded(current => {
+      const next = new Set(current);
+      let path = '';
+      let changed = false;
+      for (const segment of segments) {
+        path = path ? `${path}/${segment}` : segment;
+        if (next.has(path)) continue;
+        next.add(path);
+        changed = true;
+      }
+      return changed ? next : current;
+    });
+  }, [entries, selectedId]);
 
   const toggleFolder = (path: string) => {
     onDirectory(path);
