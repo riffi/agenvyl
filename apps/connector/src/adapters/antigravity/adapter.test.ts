@@ -17,10 +17,10 @@ describe('AntigravityConnectorAdapter', () => {
 
   it('discovers exact models and exposes per-agent permission profiles', async () => {
     const fixture = await fakeAgy();
-    const adapter = fixture.adapter({ env: { FAKE_AGY_VERSION: '1.1.3', FAKE_AGY_MODELS: 'Gemini 3.5 Flash (High)\nClaude Sonnet 4.6 (Thinking)\nGemini 3.5 Flash (High)\n' } });
+    const adapter = fixture.adapter({ env: { FAKE_AGY_VERSION: '1.1.3', FAKE_AGY_MODELS: 'gemini-3.6-flash-high\tGemini 3.6 Flash (High)\nClaude Sonnet 4.6 (Thinking)\ngemini-3.6-flash-high\tGemini 3.6 Flash (High)\n' } });
     await expect(adapter.catalog()).resolves.toEqual({
       models: [
-        { id: 'Gemini 3.5 Flash (High)', label: 'Gemini 3.5 Flash (High)' },
+        { id: 'gemini-3.6-flash-high', label: 'Gemini 3.6 Flash (High)' },
         { id: 'Claude Sonnet 4.6 (Thinking)', label: 'Claude Sonnet 4.6 (Thinking)' },
       ],
       controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[{id:'plan',label:'Plan only'},{id:'accept-edits',label:'Accept edits'}],agentVariants:[]},

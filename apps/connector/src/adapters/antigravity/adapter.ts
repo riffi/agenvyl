@@ -38,6 +38,12 @@ type ActiveExecution = {
 
 type AntigravityCatalog = { models: Array<{ id: string; label: string }>; controls:{nativeWorkflowModes:Array<'plan'|'work'>;permissionProfiles:Array<{id:string;label:string}>;agentVariants:[]} };
 
+const parseAntigravityModel = (value:string) => {
+  const [id,label] = value.trim().split(/\t+/,2);
+  if(!id)return null;
+  return {id,label:label?.trim()||id};
+};
+
 export class AntigravityConnectorAdapter implements ConnectorAdapter {
   readonly type = 'antigravity';
   readonly capabilities: ConnectorAdapter['capabilities'] = ['model_catalog', 'execution_profiles'];
@@ -79,7 +85,11 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
     await this.ensureSupportedVersion();
     const result = await this.runProbe(['models']);
     const seen = new Set<string>();
-    const models = result.stdout.split(/\r?\n/).map(value => value.trim()).filter(value => value && !seen.has(value) && seen.add(value)).map(id => ({ id, label: id }));
+    const models = result.stdout.split(/\r?\n/).map(parseAntigravityModel).filter((model):model is {id:string;label:string}=>{
+      if(!model||seen.has(model.id))return false;
+      seen.add(model.id);
+      return true;
+    });
     if (!models.length) throw new Error('Antigravity model catalog returned no models');
     return { models, controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[{id:'plan',label:'Plan only'},{id:'accept-edits',label:'Accept edits'}],agentVariants:[]} };
   }
