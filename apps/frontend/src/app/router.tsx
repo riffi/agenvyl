@@ -10,12 +10,27 @@ import {HarnessSettingsPage} from '../pages/harness-settings';
 import {ProjectsPage} from '../pages/projects';
 import {apiRequest} from '../shared/api';
 import {AppShell} from '../widgets/app-shell';
+import {roomsApi} from '../entities/room';
+import {defaultAppPath} from './defaultAppPath';
 
 const RootRedirect=()=>{
-  const location=useLocation(),[setup,setSetup]=useState<SetupState>();
-  useEffect(()=>{void apiRequest<SetupState>('/api/v1/setup').then(setSetup);},[]);
-  if(!setup)return null;
-  return <Navigate to={setup.completed&&setup.firstRoomId?withGatewayMode(`/rooms/${setup.firstRoomId}`,location.search):'/setup'} replace/>;
+  const location=useLocation(),[destination,setDestination]=useState<string>();
+  useEffect(()=>{
+    const controller=new AbortController();
+    const loadDestination=async()=>{
+      try{
+        const setup=await apiRequest<SetupState>('/api/v1/setup',{signal:controller.signal});
+        const rooms=setup.completed?await roomsApi.list(controller.signal):[];
+        if(!controller.signal.aborted)setDestination(defaultAppPath(setup,rooms));
+      }catch(issue){
+        if(!controller.signal.aborted)console.error('Failed to resolve the default room',issue);
+      }
+    };
+    void loadDestination();
+    return()=>controller.abort();
+  },[]);
+  if(!destination)return null;
+  return <Navigate to={withGatewayMode(destination,location.search)} replace/>;
 };
 
 const harnessSettings=<AppShell><HarnessSettingsPage/></AppShell>;
