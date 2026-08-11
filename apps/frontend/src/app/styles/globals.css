@@ -1,4 +1,4 @@
-code {
+:not(pre) > code {
   color: var(--primary);
   background: #eef2ff;
   padding: 2px 4px;
