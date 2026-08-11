@@ -72,5 +72,4 @@ Contribution policy remains in the repository
 Maintainers should follow the
 [Prerelease and stable release runbook](releases/README.md). Version-specific notes
 are archived beside it, beginning with [v0.1.0](releases/v0.1.0.md). The latest
-published notes are for [v0.7.0](releases/v0.7.0.md); the current change set is
-documented in the draft [v0.8.0 notes](releases/v0.8.0.md).
+published notes are for [v0.8.0](releases/v0.8.0.md).
