@@ -1,85 +1,70 @@
 # Workspace and file previews
 
-Each room has a Workspace for files shared across its conversation. Agenvyl
-keeps earlier file versions, lets you preview agent output, and protects
-parallel work from silently overwriting newer changes.
+Each room has one Workspace shared by its conversation and agents. Work agents
+use this live folder one at a time; Plan agents can inspect it concurrently.
+Agenvyl records the folder in Git and keeps immutable versions for attachments,
+response files, history, and restore.
 
 The Workspace also has an **App** view for static builds captured from agent
-runs. See [App builds and previews](app-builds.md) for the functional workflow,
-history labels, stale-build behavior, and supported output layouts.
+runs. See [App builds and previews](app-builds.md).
 
 ## At a glance
 
 ```mermaid
 flowchart TD
   Button[Workspace button] -->|Current files; tree visible| Window[Full-screen Workspace]
-  Artifact[Attachment or agent artifact] -->|Exact saved version; tree hidden| Window
-  Window --> Tree[Browse and manage files]
+  Artifact[Attachment or changed file] -->|Exact saved version| Window
+  Window --> Tree[Browse and manage current files]
   Window --> Preview[Rendered or Source view]
   Window --> App[Current or historical app build]
-  Window --> History[Version history]
-  History --> Older[View an older version without changing the file]
+  Window --> History[Immutable file versions]
+  History --> Older[View an older version]
   Older -->|Restore| Current[Create a new current version]
 ```
 
 ## Open the Workspace
 
-There are two common entry points:
-
 - Select **+** beside the message composer, then **Open workspace**, to open the
-  full-screen Workspace with the file tree visible.
-- Select an attachment, image, or agent artifact to open that exact saved
-  version as a full-screen preview. The file tree starts hidden so the content
-  uses the available space.
+  current files with the tree visible.
+- Select an attachment or a changed file below an agent response to open the
+  exact saved version associated with that message. The file tree remains
+  available and can be shown when you need the rest of the room files.
 
-Use the panel button at the left of the header to show or hide the file tree.
-On desktop, drag the tree's right edge to resize it. Agenvyl remembers the
-width on that browser.
+Use the panel button to show or hide the tree. On desktop, drag its right edge
+to resize it. Agenvyl remembers the width in that browser.
 
 ## Use the header
 
-The single-line header keeps the current context and its main controls
-together:
+The header contains the controls available for the current file:
 
 - **Workspace / filename** identifies the open file.
 - The eye and code icons switch between **Rendered** and **Source** when both
-  views are available.
-- The arrows move through older and newer versions. Select the `N / M`
-  counter to open the complete version history.
-- The actions menu contains the operations available for the selected file,
-  such as Attach, Download, Restore, Rename, Move, Delete, and Refresh.
-- The close button exits the Workspace.
-
-When the room contains a captured static app, **App** and **Files** switch
-between the runnable build and the editable project tree. App build history is
-separate from the version history of an individual file.
+  are available.
+- The arrows move through older and newer versions. Select the `N / M` counter
+  to open the complete history.
+- The actions menu can contain Attach, Download, Restore, Rename, Move, Delete,
+  and Refresh.
+- **App** and **Files** switch between a captured app build and the editable
+  file tree.
 
 Hover over an icon to see its label.
 
 ## Browse and manage files
 
-The file tree supports:
+The file tree supports search, upload, drag-and-drop upload, folders, rename,
+move, delete, Trash, restore, and opening the current version. Double-click a
+normal file in the tree to rename it.
 
-- searching by file or folder name;
-- uploading from the toolbar or by dropping files onto the tree;
-- creating folders;
-- renaming, moving, and deleting files;
-- opening **Trash** and restoring deleted files; and
-- opening a file's current version.
+The upload picker accepts up to 10 files in one action. If a path already
+exists, Agenvyl asks whether to replace it or choose another name. The default
+file-size limit is 50 MiB. Larger files written by an agent or external program
+can appear as `oversize`, but cannot be versioned or attached.
 
-Double-click a normal file in the tree to rename it. File operations are also
-available from the header menu after selecting the file.
-
-The upload picker accepts up to 10 files in one action. If a file already
-exists, Agenvyl asks whether to save the upload as a new version. The default
-workspace file limit is 50 MiB; an operator can configure a different limit.
-Uploads above the configured limit are rejected. Larger files written by an
-external program or agent can appear as `oversize`, but cannot be versioned or
-attached.
+Workspace actions are temporarily blocked while any agent run is active in the
+room, including Plan. Wait for the runs to finish or stop before uploading,
+moving, restoring, or deleting files.
 
 ## Preview and inspect files
-
-The available view depends on the file:
 
 | File type | Available view |
 | --- | --- |
@@ -88,109 +73,108 @@ The available view depends on the file:
 | Images and PDF | Rendered |
 | Unsupported binary content | File information and Download |
 
-Rendered HTML opens in an isolated preview context. Source always displays the
-saved bytes as text and does not execute HTML or SVG. See
+Rendered HTML opens in an isolated preview context. Source displays saved
+bytes as text and does not execute HTML or SVG. See
 [Trust and security](trust-and-security.md#file-preview-boundary) before
 opening unfamiliar generated content.
+
+### Image and SVG controls
+
+Use the preview controls to fit or zoom images. For SVG, place the pointer over
+the rendered image and use the mouse wheel to zoom around that point. Drag the
+zoomed preview to inspect another area. Reset or fit the preview to return to
+the complete image.
+
+SVG content is constrained to the preview area so an oversized intrinsic canvas
+does not expand the Workspace layout.
 
 ### Source controls
 
 Source view detects UTF-8 and common encodings automatically. If text looks
 incorrect, use **Encoding** to choose UTF-8, UTF-16 LE/BE, Windows-1251,
-Windows-1252, or KOI8-R. Changing the display encoding does not modify the
-saved file.
+Windows-1252, or KOI8-R. This changes display only.
 
-The source toolbar can wrap long lines and copy the decoded text. On desktop,
-the read-only code viewer also provides line numbers, search, folding, and
-syntax highlighting. Compact and mobile layouts use a lighter read-only
-viewer.
+The source toolbar can wrap long lines and copy text. On desktop, the read-only
+code viewer also provides line numbers, search, folding, and highlighting.
 
-Source preview has separate display limits:
+- Up to 1 MiB: full syntax highlighting.
+- Above 1 MiB and up to 5 MiB: plain text.
+- Above 5 MiB: download only.
 
-- up to 1 MiB: full syntax highlighting;
-- above 1 MiB and up to 5 MiB: plain text without highlighting;
-- above 5 MiB: no inline source preview; use Download.
-
-These display limits do not change the workspace upload limit.
+These display limits do not change the Workspace file-size limit.
 
 ## Work with file versions
 
-The version counter shows the selected version and the total history. Its
-history list identifies:
+The version list identifies:
 
-- **Current** — the version currently published in the room Workspace; and
-- **Viewing** — an older version open without changing the current file.
+- **Current** — the bytes currently present at the Workspace path; and
+- **Viewing** — an older immutable version opened without changing the file.
 
-Opening an older version is read-only and does not change the file. Select
-**Restore this version** from the actions menu to create a new current version
-with the older content. Restore never erases the intervening history.
+Select **Restore this version** to write the older content as a new current
+version. Restore keeps the intervening history. Renaming or moving a tracked
+file also keeps its saved history.
 
-When you open a current file, the viewer follows new versions and reports when
-the current version changes. After you deliberately select an older version,
-that historical view remains pinned. Renaming or moving a file does not remove
-its version history.
+The viewer follows changes while you are viewing Current. A deliberately opened
+historical version remains pinned until you return to Current.
 
 ## Attach and download a version
 
-**Attach** adds the version currently being viewed to the message composer.
-The attachment remains tied to those saved bytes even if the Workspace file
-changes later. **Download** also downloads the selected version, not
-necessarily the current one.
+**Attach** adds the version currently being viewed to the composer. It remains
+tied to those exact bytes even if the current file changes. **Download** also
+uses the selected version.
 
-Images opened from one message or agent response can be browsed as a gallery.
-Image navigation and file-version navigation are separate: gallery arrows move
-between images, while the header arrows move through versions of one file.
+Images opened from one message or response can be browsed as a gallery. Gallery
+navigation moves between images; version navigation moves through one file's
+history.
 
-The menu beside an attachment or artifact also offers:
+## Understand agent file changes
 
-- **Open in Workspace** to inspect that exact version with Workspace controls;
-  and
-- **Download** to save it directly.
+Work runs use a FIFO queue and share the same live folder. A later Work run sees
+files left by the previous run after finalization. Plan runs can execute in
+parallel against that folder. There is no separate publication or
+conflict-resolution step.
 
-## Understand parallel agent changes
+Parallel Plan relies on the harness remaining read-only. Native Plan provides
+the strongest protection available from that harness; instruction-only Plan
+cannot prevent concurrent writes. Use Work when agents may change files.
 
-Agents started together receive the same published Workspace state, but each
-run works in its own isolated copy. They do not see another parallel run's
-unfinished file changes.
+When a run ends, Agenvyl records a Git checkpoint, compares it with the
+checkpoint from before the run, and saves exact versions of changed project
+files. The timeline shows:
 
-When a run finishes, Agenvyl captures its result:
+- **Finalizing files…** while this recording is in progress; and
+- **Workspace updated · N files** when project files were recorded.
 
-- non-conflicting file changes are applied to the room Workspace;
-- conflicting paths keep the newer room version until you choose a result;
-- an incomplete capture is saved with the response but is not published.
+Select a file below the response to open its exact captured version. Generated,
+dependency, cache, test, and secret-like paths are omitted from the response's
+normal changed-file list. A static build can still retain its generated output
+as a separate preview bundle.
 
-The response timeline shows **Changes applied to room workspace** when
-publication succeeds. Changed files appear directly below the agent response;
-select a file chip to open the exact captured version. The first four files are
-shown initially, with the remainder available through **+N more**.
+Failed and cancelled runs can leave file changes. Stopping a run does not roll
+back commands that already completed.
 
-Tool calls and workspace events are grouped under the collapsible **Run
-activity** section so the answer remains easy to scan. These details do not
-change which captured file version or published snapshot the response points
-to.
+### Git-backed behavior
 
-If the timeline shows **Partially published**, select **Review conflicts** and
-choose one result for every path:
+The room folder is a visible Git repository. Agenvyl creates checkpoints before
+and after runs and after Workspace actions. External edits are included in the
+next checkpoint.
 
-- **Keep current** preserves the room's current path;
-- **Accept agent** publishes the agent's candidate; or
-- **Delete path** removes the path.
+Do not leave the repository in the middle of merge, rebase, cherry-pick,
+revert, or bisect. Agenvyl blocks a run when it detects an unfinished Git
+operation so it does not record an ambiguous checkpoint. Complete or abort the
+Git operation in the room folder, then retry the run.
 
-If the Workspace changes while the conflict panel is open, Agenvyl recalculates
-the conflicts and asks you to review them again. Captured response artifacts
-remain available even when some or all changes were not published.
+`.git`, `.versions`, and `.agenvyl` are reserved paths in the Workspace UI.
+Do not remove or edit application-managed version content by hand.
 
 ## Use `plan.md`
 
-`plan.md` is an ordinary versioned Markdown file. It can be uploaded, viewed,
-renamed, moved, downloaded, or deleted under the same rules as any other file.
-Turning on Plan does not create or update it automatically.
+`plan.md` is an ordinary versioned Markdown file. Turning on Plan does not
+create or update it automatically.
 
 ## Close and return
 
-Use the close button, press `Escape`, or use the browser's Back action to close
-a Workspace opened from the room. Moving between files, versions, and preview
-modes updates the current Workspace location without adding a Back step for
-every click.
-
-A direct link can reopen the same file, version, view mode, and tree state.
+Use the close button, press `Escape`, or use the browser Back action. Moving
+between files, versions, and preview modes updates the Workspace location
+without adding a Back step for every selection. A direct link can reopen the
+same file, version, view mode, and tree state.

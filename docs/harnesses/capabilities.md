@@ -73,6 +73,11 @@ structured clarification.
 | Concurrent runs | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Event replay and Core reattach | ✅ Same epoch | ✅ Same epoch | ✅ Same epoch | ✅ Same epoch | ✅ Same epoch | ✅ Same epoch |
 
+Concurrent-run support means the harness can participate in parallel Plan runs
+within one room and in runs from different rooms. Work is an exclusive FIFO
+writer: it waits for active Plan runs and blocks later Plan runs until it
+finishes.
+
 Replay and Core reattach work only while the same Connector process epoch is
 alive and the requested events remain replayable. If Connector restarts, Core
 does not attach an old run to the new process: the run ends fail-closed.

@@ -620,7 +620,11 @@ describe("room management", () => {
     });
     expect(created.statusCode).toBe(201);
     const room = created.json();
-    expect(room).toMatchObject({ title: "Новый проект", participant_count: 1 });
+    expect(room).toMatchObject({
+      title: "Новый проект",
+      participant_count: 1,
+      workflow_mode: "plan",
+    });
     expect(
       (await app.inject(`/api/v1/personas?room_id=${room.id}`))
         .json()
@@ -1188,6 +1192,15 @@ describe("Runs API backend", () => {
       fetch: fetchMock,
       distPath: "missing-dist",
     });
+    expect(
+      (
+        await app.inject({
+          method: "PUT",
+          url: "/api/v1/rooms/demo-room/workflow-mode",
+          payload: { workflow_mode: "plan" },
+        })
+      ).statusCode,
+    ).toBe(200);
 
     const response = await app.inject({
       method: "POST",
@@ -1226,6 +1239,15 @@ describe("Runs API backend", () => {
       );
       expect(eventCalls).toHaveLength(1);
     });
+    expect(
+      (
+        await app.inject({
+          method: "PUT",
+          url: "/api/v1/rooms/demo-room/workflow-mode",
+          payload: { workflow_mode: "plan" },
+        })
+      ).statusCode,
+    ).toBe(200);
     expect(
       (
         await app.inject({

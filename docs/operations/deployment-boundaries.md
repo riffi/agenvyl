@@ -38,12 +38,14 @@ and users you do not trust.
 ## Persistent state
 
 - PostgreSQL contains application records and room event history.
-- The configured workspace root contains live room files and immutable file
-  versions.
+- The configured Workspace root contains live room Git repositories and
+  immutable file versions.
+- The configured Artifact root contains immutable static app preview bundles.
 - Harness credentials remain in their native host-side stores.
 
-Back up both PostgreSQL and the workspace root before upgrades. Never bake `.env`,
-`connector.yaml`, credential stores, or workspace data into an image or commit.
+PostgreSQL, Workspace root, and Artifact root form one recovery point. Back up
+all three before upgrades. Never bake `.env`, `connector.yaml`, credential
+stores, Workspace data, or preview bundles into an image or commit.
 
 ## Private deployments
 

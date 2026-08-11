@@ -44,7 +44,7 @@ describe('room agent pickers',()=>{
     const onCreated=vi.fn().mockResolvedValue(undefined);
     render(<CreateRoomDialog personas={[]} groups={[]} onClose={vi.fn()} onCreated={onCreated}/>);
     expect(screen.queryByRole('textbox',{name:/name/i})).toBeNull();
-    expect(screen.getByText('Choose agents and optionally a project. The room will be named from your first message.')).toBeTruthy();
+    expect(screen.getByText('Choose agents and optionally a project. The room starts in Plan mode and will be named from your first message.')).toBeTruthy();
     expect(document.activeElement).toBe(screen.getByRole('button',{name:'Add project'}));
     fireEvent.click(screen.getByRole('button',{name:'Create room'}));
     await waitFor(()=>expect(onCreated).toHaveBeenCalledWith([],null));

@@ -4,6 +4,7 @@ import { runsApi, type AgentHandle,type Run } from '../../../entities/run';
 import { ApiError } from '../../../shared/api';
 import { WebSocketRoomEventStream } from '../../../shared/api/realtime';
 import { FakeRoomEventStream, type FakeEventScenario } from './FakeRoomEventStream';
+import type {WorkflowMode} from '@agenvyl/contracts';
 
 export interface RoomGateway { readonly mode:'real'|'fake'; subscribe(listener: (event: RoomEvent) => void): () => void; send(text: string, targets?: AgentHandle[], messageId?:string,attachmentVersionIds?:string[]): Promise<Message>; resolve(runId:string,requestId:string,value:import('@agenvyl/contracts').RunRequestResolution|string):Promise<void>; intervene(runId:string,text:string,interventionId?:string):Promise<void>; cancel(runId?: string): Promise<void>; retry(runId:string):Promise<void>; select(runId:string):Promise<void>; dispose(): void }
 export type DemoKind = FakeEventScenario;
@@ -11,7 +12,7 @@ export type DemoKind = FakeEventScenario;
 export class FakeRoomGateway implements RoomGateway {
   readonly mode='fake' as const;
   private readonly stream:FakeRoomEventStream;
-  constructor(titlePending=false){this.stream=new FakeRoomEventStream(titlePending);}
+  constructor(titlePending=false,workflowMode:WorkflowMode='work'){this.stream=new FakeRoomEventStream(titlePending,workflowMode);}
   subscribe(listener: (event: RoomEvent) => void) { return this.stream.subscribe(listener); }
   send(text: string, targets: AgentHandle[]) { return this.stream.send(text,targets); }
   demo(kind: DemoKind) { this.stream.demo(kind); }
@@ -20,6 +21,7 @@ export class FakeRoomGateway implements RoomGateway {
   async cancel(runId?: string) { this.stream.cancel(runId); }
   async retry(){throw new ApiError(501,'unsupported','Retry is unavailable in demo mode')}
   async select(){throw new ApiError(501,'unsupported','Attempt selection is unavailable in demo mode')}
+  setWorkflowMode(workflowMode:WorkflowMode){this.stream.setWorkflowMode(workflowMode);}
   dispose() { this.stream.dispose(); }
 }
 

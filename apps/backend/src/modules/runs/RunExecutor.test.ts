@@ -12,6 +12,7 @@ import {ConnectorRunAdapter} from '../../integrations/connector/ConnectorRunAdap
 import {connectorContractFixtures,type ConnectorExecutionEvent} from '@agenvyl/connector-contract';
 
 const workProfile={workflowMode:'work' as const,requestedReasoningEffort:null,reasoningEffort:null,reasoningEffortFallback:false,reasoningEffortSource:'auto',planEnforcement:null,permissionProfileId:null,agentVariantId:null};
+const planProfile={...workProfile,workflowMode:'plan' as const,planEnforcement:'native' as const};
 const profiles=(personas:Array<{id:string}>)=>new Map(personas.map(persona=>[persona.id,workProfile]));
 
 describe('RunExecutor', () => {
@@ -179,14 +180,14 @@ describe('RunExecutor', () => {
     await vi.waitFor(()=>expect(created).toEqual(['upstream-1','upstream-2']));await vi.waitFor(()=>expect(registry.get('fifo-2')).toBeUndefined());await executor.shutdown();await database.close();
   });
 
-  it('runs every writer in one room sequentially, including agents from the same turn',async()=>{
+  it('runs every Work writer in one room sequentially, including agents from the same turn',async()=>{
     const streams=new Map<string,ReadableStreamDefaultController<Uint8Array>>(),created:string[]=[],encoder=new TextEncoder();
     const {executor,registry,database}=await fixture(async(input,init)=>{const url=String(input);if(url.endsWith('/v1/runs')){const body=JSON.parse(String(init?.body)) as {input:string};created.push(body.input);return new Response(JSON.stringify({run_id:`upstream-${body.input}`}),{status:202});}const id=url.match(/upstream-([^/]+)\/events/)?.[1]??'';if(id==='next')return new Response(`data: ${JSON.stringify({event:'run.completed'})}\n\n`,{status:200});return new Response(new ReadableStream({start(controller){streams.set(id,controller);}}),{status:200});},3);
     registry.add(run('turn-one-a','message-one'));registry.add(run('turn-one-b','message-one'));registry.add(run('turn-two','message-two'));
     executor.start('turn-one-a','first');executor.start('turn-one-b','peer');executor.start('turn-two','next');
     await vi.waitFor(()=>{expect(created).toEqual(['first']);expect([...streams.keys()]).toEqual(['first']);});
     streams.get('first')!.enqueue(encoder.encode(`data: ${JSON.stringify({event:'run.completed'})}\n\n`));streams.get('first')!.close();
-    await vi.waitFor(()=>expect(created).toEqual(['first','peer']));
+    await vi.waitFor(()=>{expect(created).toEqual(['first','peer']);expect(streams.has('peer')).toBe(true);});
     streams.get('peer')!.enqueue(encoder.encode(`data: ${JSON.stringify({event:'run.completed'})}\n\n`));streams.get('peer')!.close();
     await vi.waitFor(()=>expect(created).toEqual(['first','peer','next']));await vi.waitFor(()=>expect(registry.get('turn-two')).toBeUndefined());await executor.shutdown();await database.close();
   });
@@ -261,6 +262,29 @@ describe('RunExecutor', () => {
     let release!:()=>void;const proceed=new Promise<void>(resolve=>{release=resolve;}),pending={id:'question-recovered',kind:'clarification' as const,prompt:'Which format?',choices:['PNG','SVG']},snapshot={...connectorContractFixtures.execution,executionId:'execution-clarification',status:'waiting_for_user' as const,cursor:7,earliestReplayableCursor:1,pendingRequests:[pending]},connector=executionClient(snapshot,async function*(){await proceed;yield{...connectorEvent(8,'request.resolved',{requestId:pending.id,outcome:'answered'}),executionId:'execution-clarification'};yield{...connectorEvent(9,'execution.status',{status:'running'}),executionId:'execution-clarification'};yield{...connectorEvent(10,'execution.completed',{}),executionId:'execution-clarification'};}),transport=new ConnectorRunAdapter(connector),{executor,registry,database,personas,messages}=await fixture(vi.fn<typeof fetch>(),4,connector,transport),persona=(await personas.find('persona-architect'))!,round=await messages.createRound('demo-room','control',[persona],profiles([persona])),runId=round.runs[0].id;
     vi.mocked(connector.resolve).mockResolvedValue({execution:{...snapshot,cursor:8,pendingRequests:[]},request:{...pending,resolution:{outcome:'answered',value:'WebP'}}});await database.sql`UPDATE agent_runs SET status='waiting_clarification',connector_execution_id='execution-clarification',connector_epoch='epoch-1',connector_cursor=7 WHERE id=${runId}`;
     expect(await executor.reconcilePersistedRuns()).toBe(0);await vi.waitFor(()=>expect(registry.get(runId)?.pendingRequests?.get(pending.id)?.kind).toBe('clarification'));await executor.approve(runId,pending.id,' WebP ');expect(connector.resolve).toHaveBeenCalledWith('execution-clarification','question-recovered','WebP');release();await vi.waitFor(async()=>expect((await database.sql`SELECT status FROM agent_runs WHERE id=${runId}`)[0]?.status).toBe('completed'));await vi.waitFor(()=>expect(registry.get(runId)).toBeUndefined());await executor.shutdown();await database.close();
+  });
+
+  it('runs Plan responders from the same room in parallel',async()=>{
+    const streams=new Map<string,ReadableStreamDefaultController<Uint8Array>>(),created:string[]=[],encoder=new TextEncoder();
+    const {executor,registry,database}=await fixture(async(input,init)=>{const url=String(input);if(url.endsWith('/v1/runs')){const body=JSON.parse(String(init?.body)) as {input:string};created.push(body.input);return new Response(JSON.stringify({run_id:`upstream-${body.input}`}),{status:202});}const id=url.match(/upstream-([^/]+)\/events/)?.[1]??'';return new Response(new ReadableStream({start(controller){streams.set(id,controller);}}),{status:200});},3);
+    registry.add(run('plan-a','message-one',planProfile));registry.add(run('plan-b','message-one',planProfile));registry.add(run('plan-c','message-two',planProfile));
+    executor.start('plan-a','alpha');executor.start('plan-b','beta');executor.start('plan-c','gamma');
+    await vi.waitFor(()=>{expect(created).toHaveLength(3);expect(new Set(created)).toEqual(new Set(['alpha','beta','gamma']));expect(streams.size).toBe(3);expect(new Set(streams.keys())).toEqual(new Set(['alpha','beta','gamma']));});
+    for(const stream of streams.values()){stream.enqueue(encoder.encode(`data: ${JSON.stringify({event:'run.completed'})}\n\n`));stream.close();}
+    await vi.waitFor(()=>expect(executor.stats()).toMatchObject({active:0,queued:0}));await executor.shutdown();await database.close();
+  });
+
+  it('treats Work as an exclusive FIFO barrier between Plan batches',async()=>{
+    const streams=new Map<string,ReadableStreamDefaultController<Uint8Array>>(),created:string[]=[],encoder=new TextEncoder();
+    const {executor,registry,database}=await fixture(async(input,init)=>{const url=String(input);if(url.endsWith('/v1/runs')){const body=JSON.parse(String(init?.body)) as {input:string};created.push(body.input);return new Response(JSON.stringify({run_id:`upstream-${body.input}`}),{status:202});}const id=url.match(/upstream-([^/]+)\/events/)?.[1]??'';return new Response(new ReadableStream({start(controller){streams.set(id,controller);}}),{status:200});},4);
+    registry.add(run('plan-before-a','message-one',planProfile));registry.add(run('plan-before-b','message-one',planProfile));registry.add(run('work-barrier','message-two'));registry.add(run('plan-after','message-three',planProfile));
+    executor.start('plan-before-a','before-a');executor.start('plan-before-b','before-b');executor.start('work-barrier','work');executor.start('plan-after','after');
+    await vi.waitFor(()=>{expect(created).toEqual(['before-a','before-b']);expect([...streams.keys()]).toEqual(['before-a','before-b']);});
+    for(const id of ['before-a','before-b']){streams.get(id)!.enqueue(encoder.encode(`data: ${JSON.stringify({event:'run.completed'})}\n\n`));streams.get(id)!.close();}
+    await vi.waitFor(()=>{expect(created).toEqual(['before-a','before-b','work']);expect(streams.has('work')).toBe(true);});
+    streams.get('work')!.enqueue(encoder.encode(`data: ${JSON.stringify({event:'run.completed'})}\n\n`));streams.get('work')!.close();
+    await vi.waitFor(()=>{expect(created).toEqual(['before-a','before-b','work','after']);expect(streams.has('after')).toBe(true);});streams.get('after')!.enqueue(encoder.encode(`data: ${JSON.stringify({event:'run.completed'})}\n\n`));streams.get('after')!.close();
+    await vi.waitFor(()=>expect(executor.stats()).toMatchObject({active:0,queued:0}));await executor.shutdown();await database.close();
   });
 
   it('restores and resolves a same-epoch MCP elicitation through Connector',async()=>{
@@ -365,14 +389,14 @@ function connectorEvent<T extends ConnectorExecutionEvent['type']>(cursor:number
 
 function executionClient(snapshot:import('@agenvyl/connector-contract').ExecutionSnapshot,events:ConnectorExecutionClient['events']):ConnectorExecutionClient{return{health:vi.fn().mockResolvedValue({...connectorContractFixtures.health,connectorEpoch:snapshot.connectorEpoch}),inspect:vi.fn().mockResolvedValue(snapshot),instances:vi.fn().mockResolvedValue(connectorContractFixtures.instances),catalog:vi.fn().mockResolvedValue(connectorContractFixtures.catalog),start:vi.fn().mockResolvedValue(snapshot),stop:vi.fn().mockResolvedValue(snapshot),resolve:vi.fn(),events:vi.fn(events)};}
 
-function run(id: string,messageId=id): RunContext {
+function run(id: string,messageId=id,executionProfile:RunContext['executionProfile']=workProfile): RunContext {
   return {
     id,
     messageId,
     roomId: 'demo-room',
     personaVersionId: 'persona-architect-v1',
     requestedModel: 'sol',
-    harnessInstanceId:'local-hermes',harnessType:'hermes',modelId:'sol',executionProfile:workProfile,
+    harnessInstanceId:'local-hermes',harnessType:'hermes',modelId:'sol',executionProfile,
     conversationHistory: [],
     terminal: false,
     refreshContext: true,

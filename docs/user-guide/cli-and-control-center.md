@@ -87,8 +87,8 @@ The exact menu depends on installation and runtime state.
 | --- | --- | --- | --- |
 | Set up and launch | Initializes the portable runtime, starts it, and opens browser setup | Before initialization | `agenvyl init`, then `agenvyl setup` |
 | Repair and restart | Reinitializes an installation that needs attention, starts it, and opens setup | Failed or stale runtime | `agenvyl repair`, then `agenvyl start` |
-| Start | Starts the runtime and opens the Web UI | Installed and stopped | `agenvyl start` starts without opening a browser |
-| Open Web UI | Opens the running app in the default browser | Running | Open <http://127.0.0.1:8791> |
+| Start | Starts the runtime and opens the most recently active room in the Web UI | Installed and stopped | `agenvyl start` starts without opening a browser |
+| Open Web UI | Opens the most recently active room in the default browser | Running | Open <http://127.0.0.1:8791> |
 | Stop | Stops Core, Connector, and managed PostgreSQL | Running or needs attention | `agenvyl stop` |
 | Configure connectors | Detects and enables installed agent tools | Running | `agenvyl setup` is the safe CLI fallback |
 | Diagnostics | Runs installation, port, and component checks | Always | `agenvyl doctor` |
@@ -121,7 +121,9 @@ agenvyl stop
 
 `agenvyl start` starts managed PostgreSQL, Connector, and Core. Unlike the TUI
 **Start** entry and platform Start launcher, it does not open a browser. Visit
-<http://127.0.0.1:8791> or run `agenvyl` and choose **Open Web UI**.
+<http://127.0.0.1:8791> or run `agenvyl` and choose **Open Web UI**. The base
+address selects the room with the newest message; it does not track the last
+room viewed in that browser.
 
 `agenvyl status` returns exit code `0` while the runtime is running and `3`
 when it is stopped or has stale state.
@@ -222,8 +224,8 @@ settings before recreating them.
 
 ### Uninstall
 
-Remove the application while preserving rooms, workspaces, logs, backups, and
-configuration:
+Remove the application while preserving rooms, workspaces, captured app preview
+artifacts, logs, backups, and configuration:
 
 ```bash
 agenvyl uninstall

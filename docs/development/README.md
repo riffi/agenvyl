@@ -32,7 +32,8 @@ npm run dev:all
 
 The development runner:
 
-1. creates `data/room-workspaces`;
+1. creates `data/room-workspaces` and uses `data/artifacts` for captured app
+   preview bundles;
 2. copies `connector.example.yaml` to ignored `connector.yaml` when it is
    missing;
 3. starts PostgreSQL through Docker Compose;
@@ -70,7 +71,8 @@ authentication. Development-only Connector variables are documented in the
 
 Live harnesses run with your host user permissions against
 `data/room-workspaces`. Never point development or smoke tests at an important
-personal workspace.
+personal Workspace or Artifact root. Each development room directory is a live
+Git repository used directly by its agents.
 
 ## Run components separately
 

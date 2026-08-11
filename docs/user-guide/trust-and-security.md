@@ -76,7 +76,9 @@ not disable SmartScreen globally.
   validated root through an approval card. Treat every listed root as part of
   that instance's trusted file boundary.
 - Harness processes run with the permissions of your operating-system user.
-- A room workspace is a shared working directory, **not a sandbox**.
+- A room Workspace is one shared live Git working directory. Work agents use it
+  sequentially, while Plan agents can use it concurrently. It is **not a
+  sandbox**.
 - A selected local project is only a recommended path in the agent's
   instructions. It grants no access and does not restrict the agent to that
   folder; the harness permission profile remains authoritative.
@@ -85,8 +87,13 @@ not disable SmartScreen globally.
   and future harnesses without one are **Instruction-only**, which cannot
   technically block writes to the recommended external project.
 - Native Plan is the strongest read-only mode a harness exposes, not a universal
-  operating-system sandbox. Managed run-workspace changes can still be captured
-  and published to the room Workspace.
+  operating-system sandbox. A harness can still change the shared Workspace or
+  an external path when its native controls and operating-system permissions
+  allow it.
+- Parallel Plan assumes agents honor their read-only controls. Instruction-only
+  Plan agents can write concurrently and produce filesystem races.
+- Runs in different rooms can execute concurrently. If those rooms recommend
+  the same external project, Agenvyl does not serialize access to that folder.
 
 Do not enable an agent tool or permission profile that you would not trust with
 the selected files. Agenvyl has no public multi-user authorization layer. Put a

@@ -48,6 +48,18 @@ the previous recognized directory. See
 [Troubleshooting](troubleshooting.md#agenvyl-does-not-start-after-an-update)
 for recovery checks.
 
+### Upgrade from v0.7.0
+
+The v0.8.0 Workspace model is an intentional clean break from v0.7.0. Live room
+files and messages remain, but the update removes legacy publication/conflict
+records and snapshot-based app-build history instead of converting them to the
+new Git checkpoint and preview-bundle model.
+
+Keep the complete pre-upgrade backup if you may need that history. Viewing it
+again requires restoring the old Agenvyl version together with its matching
+PostgreSQL database and Workspace data. Do not restore only the old database
+over a Workspace already used by the new version.
+
 ## Remove the app but keep personal data
 
 Use the control center action **Remove application, preserve user data**, a
@@ -59,7 +71,8 @@ agenvyl uninstall
 
 This stops Agenvyl and removes the recognized application directory, owned
 command shim, owned shortcuts, and owned Windows User `PATH` entry. Rooms,
-workspaces, logs, backups, configuration, and the PostgreSQL cluster remain.
+workspaces, captured app preview artifacts, logs, backups, configuration, and
+the PostgreSQL cluster remain.
 
 This is the recommended mode before reinstalling or moving to another release.
 
@@ -74,7 +87,7 @@ agenvyl uninstall --purge --yes
 
 This permanently deletes the application and the Agenvyl configuration and
 data roots. It cannot be undone unless you have an external database dump and
-workspace copy.
+matching Workspace, Artifact, and configuration copies.
 
 The uninstaller refuses to remove an application directory without a
 recognized portable manifest. It does not delete external databases or

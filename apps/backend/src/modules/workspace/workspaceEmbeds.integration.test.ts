@@ -30,7 +30,7 @@ describe('persisted workspace embeds',()=>{
       expect(context.history.every(item=>!item.content.includes('Зафиксированные inline-изображения ответа'))).toBe(true);
       await workspace.upload('demo-room','fake.jpg','image/jpeg',Buffer.from('<html>not an image</html>'));
       await expect(workspace.resolveRunEmbeds('demo-room',next.message.runIds[0],'![Fake](workspace:fake.jpg)')).resolves.toEqual([{kind:'image',path:'fake.jpg',status:'error',error:'invalid_content'}]);
-    }finally{workspace.close();await repositories.database.close();await rm(root,{recursive:true,force:true});}
+    }finally{await repositories.database.close();await rm(root,{recursive:true,force:true});}
   });
 });
 

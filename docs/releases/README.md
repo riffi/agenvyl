@@ -56,6 +56,11 @@ changes, supported platforms and harnesses, security/trust boundaries, and the
 installation entry point. Permanent guides remain evergreen; exact versions
 belong here.
 
+When a migration intentionally removes or stops projecting historical data,
+add a dedicated **Upgrade warning** that names the affected versions and data,
+lists the complete backup recovery point, and states whether rollback requires
+restoring the old application together with its database and filesystem data.
+
 Verify release metadata:
 
 ```bash

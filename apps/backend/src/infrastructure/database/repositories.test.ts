@@ -31,7 +31,7 @@ describe("PostgreSQL repositories", () => {
         await p.database
           .sql`SELECT version FROM schema_migrations ORDER BY version`
       ).map((row) => row.version),
-    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]);
+    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33]);
     expect(
       await p.database.sql`SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='personas' AND column_name='role'`,
     ).toEqual([]);
@@ -106,6 +106,20 @@ describe("PostgreSQL repositories", () => {
     expect((await database.sql`SELECT title,title_source FROM rooms WHERE id='legacy-title-room'`)[0]).toEqual({title:'Existing title',title_source:'manual'});
     await database.close();
   });
+  it('changes only the default workflow mode for rooms created after migration 033',async()=>{
+    const url=testDatabaseUrl('migration_v33_plan_default');
+    await seedDatabaseThroughMigration(url,32);
+    const sql=connectTestDatabase(url),now=new Date().toISOString();
+    await sql`INSERT INTO rooms(id,title,created_at)VALUES('existing-work-room','Existing room',${now})`;
+    await sql.end();
+    const database=await Database.connect(url);
+    await database.sql`INSERT INTO rooms(id,title,created_at)VALUES('new-plan-room','New room',${now})`;
+    expect(await database.sql`SELECT id,workflow_mode FROM rooms WHERE id=ANY(${['existing-work-room','new-plan-room']}) ORDER BY id`).toEqual([
+      {id:'existing-work-room',workflow_mode:'work'},
+      {id:'new-plan-room',workflow_mode:'plan'},
+    ]);
+    await database.close();
+  });
   it("upgrades an initial-schema database and removes the legacy workspace pipeline", async () => {
     const url = testDatabaseUrl("migration_v1"),
       parsed = new URL(url),
@@ -137,7 +151,7 @@ describe("PostgreSQL repositories", () => {
         await repositories.database
           .sql`SELECT version FROM schema_migrations ORDER BY version`
       ).map((row) => row.version),
-    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]);
+    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33]);
     expect(
       await repositories.database.sql`SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='personas' AND column_name='role'`,
     ).toEqual([]);

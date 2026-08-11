@@ -23,16 +23,18 @@ Important paths below those roots are:
 | `secrets.json` | Generated Connector token and managed PostgreSQL password |
 | `supervisor-settings.json` | Language, shortcuts, and owned command integration |
 | `postgres/` | Personal PostgreSQL cluster |
-| `workspaces/` | Published room files, hidden immutable versions, and managed run worktrees |
+| `workspaces/` | Live Git-backed room folders and hidden immutable file versions |
+| `artifacts/` | Immutable static app preview bundles captured from runs |
 | `logs/` | Supervisor, PostgreSQL, Connector, Core, and restore logs |
 | `state/` | Runtime lock, process, and health state; not a backup |
 | `backups/` | Database dumps created by `agenvyl backup` |
 | `versions/` | Installed portable application versions |
 
-Do not edit `secrets.json`, the PostgreSQL data directory, workspace
-`.versions/` directories, reserved `.agenvyl/` directories, or runtime state
-by hand. `.versions/` stores immutable file content; `.agenvyl/` contains
-application-managed run worktrees and markers. Configuration and backup files
+Do not edit `secrets.json`, the PostgreSQL data directory, the Workspace root
+`.versions/` directory, preview bundles, reserved `.agenvyl/` paths, or
+runtime state by hand. Each room folder is a visible Git repository used for
+Agenvyl checkpoints. `.versions/` stores immutable file content and
+`artifacts/` stores immutable preview bundles. Configuration and backup files
 can contain sensitive local information and should not be committed or placed
 in a public cloud folder.
 
@@ -57,7 +59,8 @@ complete recoverable backup needs:
 1. the PostgreSQL dump;
 2. the entire `workspaces/` directory, including all hidden application-managed
    content; and
-3. the configuration directory if you want to preserve Connector selections
+3. the entire `artifacts/` directory; and
+4. the configuration directory if you want to preserve Connector selections
    and local settings.
 
 ## Create a consistent backup
@@ -75,8 +78,8 @@ complete recoverable backup needs:
    agenvyl stop
    ```
 
-4. Copy the new `.dump` file, the complete `workspaces/` directory, and the
-   configuration directory to protected storage.
+4. Copy the new `.dump` file, the complete `workspaces/` and `artifacts/`
+   directories, and the configuration directory to protected storage.
 5. Start Agenvyl again:
 
    ```bash
@@ -98,14 +101,15 @@ Agenvyl database.
    agenvyl stop
    ```
 
-3. Restore the matching `workspaces/` tree to the platform data directory.
+3. Restore the matching `workspaces/` and `artifacts/` trees to the platform
+   data directory.
 4. Restore the database dump:
 
    ```bash
    agenvyl restore /absolute/path/to/agenvyl-backup.dump
    ```
 
-5. Start Agenvyl and inspect the rooms and workspace:
+5. Start Agenvyl and inspect rooms, Workspace files, and historical app builds:
 
    ```bash
    agenvyl start

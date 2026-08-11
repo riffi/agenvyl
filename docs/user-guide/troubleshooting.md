@@ -41,7 +41,7 @@ For command syntax, components, and exit codes, see
 
 Open the file in Workspace and check the selected version first. An attachment
 or agent artifact intentionally opens the exact saved version from that
-message, which may be older than the file currently published in the room.
+message, which may be older than the file currently present in the room.
 
 For HTML, Markdown, or SVG, switch between **Rendered** and **Source**. If text
 contains incorrect characters, open Source and change **Encoding** from Auto to
@@ -59,20 +59,40 @@ format and version behavior.
 
 ## Agent file changes are missing from the current Workspace
 
-Check the status shown with the agent response:
+Agents write directly to the room Workspace. Check the run and file state:
 
-- **Changes applied to room workspace** means the captured changes were
-  published.
-- **Partially published** means non-conflicting changes were applied but one or
-  more paths need a decision. Select **Review conflicts**, choose Keep current,
-  Accept agent, or Delete path for every conflict, and apply the resolutions.
-- **Snapshot saved · Room workspace unchanged** means Agenvyl preserved the
-  captured result but did not publish it, commonly because capture was
-  incomplete.
+- **Finalizing files…** means Agenvyl is recording the post-run Git checkpoint
+  and exact versions. Wait for finalization to finish.
+- **Workspace updated · N files** means Agenvyl recorded that many visible
+  project-file changes. Select **Changed files** below the response to inspect
+  their exact versions.
+- Generated output, dependencies, caches, test output, VCS metadata, secrets,
+  and ignored paths are hidden from the normal changed-file list. A captured
+  static build can still include its generated output.
+- A failed or cancelled run can leave files behind. Stop does not roll back a
+  command that already wrote to disk.
 
-Response artifacts remain available for preview and download even when they
-are not the current Workspace versions. Parallel agents start from the same
-published state but do not see one another's unfinished file changes.
+Use **Refresh workspace** after an external edit. If finalization failed,
+inspect Core logs and retry only after resolving the reported filesystem or Git
+problem.
+
+## Workspace actions are blocked while an agent runs
+
+Uploads, rename, move, delete, restore, and similar Workspace actions return
+`workspace_writer_active` while any run is active in that room, including
+Plan. Wait for every active run to finish or stop, then repeat the action.
+Agents in another room do not block this room.
+
+## A run reports an unfinished Git operation
+
+Each room Workspace is a visible Git repository. Agenvyl refuses to create a
+checkpoint while merge, rebase, cherry-pick, revert, or bisect state is still
+open.
+
+Open the room folder with Git, inspect its status, and either complete or abort
+the operation. Do not delete individual files below `.git` to bypass the check.
+Start or retry the agent only after `git status` no longer reports an unfinished
+operation.
 
 ## An installed harness is not detected
 
@@ -190,8 +210,8 @@ Do not add a token or harness credentials to the YAML while troubleshooting.
 3. Re-run the same version installer to repair application files.
 4. If the stable command is unavailable, run the control center from the
    extracted application directory.
-5. Preserve the database dump, configuration, and workspace copy before any
-   reinstall or restore.
+5. Preserve the database dump, configuration, Workspace copy, and `artifacts/`
+   copy before any reinstall or restore.
 
 If the problem remains, report it with the Agenvyl version, operating system,
 `doctor` output, and redacted component logs.

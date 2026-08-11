@@ -34,6 +34,10 @@ implementation-plan foreign keys, columns, legacy approval events, and the old
 execution-profile JSON key without deleting messages, run history, or workspace
 files. An existing `plan.md` remains an ordinary versioned Markdown file.
 
+Migration 033 changes the column default to `plan`. It does not update existing
+room rows: only rooms inserted after the migration start in Plan. Existing
+rooms keep their selected Plan or Work mode.
+
 ### Agent role removal
 
 Migration 022 removes the standalone persona `role` column. Agent identity is
@@ -44,6 +48,32 @@ instructions would change agent behavior.
 
 Back up PostgreSQL before upgrading a persistent installation if historical
 role values must be retained outside Agenvyl.
+
+### Transparent Git Workspace clean break
+
+Migrations 029 through 032 introduce generated room-title provenance, immutable
+preview bundles, direct Git checkpoints, and the final removal of the legacy
+Workspace publication pipeline.
+
+Migration 032 is intentionally destructive for legacy Workspace orchestration
+metadata. It:
+
+- deletes `run_workspace_results` created by legacy or warm-slot drivers;
+- removes base, result, and published snapshot references;
+- removes publication, conflict, cleanup, driver, and slot columns;
+- drops room snapshot/materialization state; and
+- drops snapshot, slot, and publication-conflict tables.
+
+Room messages and live Workspace files are not deleted. Existing immutable file
+objects can remain on disk, but legacy publication/conflict state and
+snapshot-based app-build history are not migrated to `preview_bundles` and are
+no longer addressable through the current application model.
+
+This is an intentional clean break. Before upgrading from `v0.7.0`, keep a
+verified pre-upgrade recovery point if the old build or conflict history must be
+inspected later. Roll back the complete application and all matching durable
+state to that backup; do not restore only the old database over new Workspace
+repositories.
 
 For local development data, reset PostgreSQL before testing these migration
 breaks:
@@ -60,16 +90,22 @@ directories manually.
 
 ## Backup before upgrade
 
-Create and verify a logical backup before applying migrations in a persistent
-environment:
+Wait for runs and Workspace mutations to finish. Create and verify a logical
+backup before applying migrations in a persistent environment:
 
 ```bash
 pg_dump --format=custom --no-owner --no-acl "$AGENVYL_DATABASE_URL" > agenvyl.dump
 pg_restore --list agenvyl.dump >/dev/null
 ```
 
-Restore into a separate database first when rehearsing an upgrade. Do not restore
-over a running application database.
+Stop Core after the dump, then copy the complete Workspace and Artifact roots.
+Retain the database dump and both filesystem copies as one labeled recovery
+point. Copy configuration and secrets when the rehearsal must reproduce
+Connector and local-runtime settings.
+
+Restore into a separate database and separate filesystem roots when rehearsing
+an upgrade. Do not restore over a running application database or mix an old
+database with newer room Git repositories.
 
 ## Restore rehearsal
 
@@ -82,5 +118,6 @@ pg_restore --exit-on-error --no-owner --no-acl \
 ```
 
 Start a disposable Core instance against the restored database and verify
-readiness, room counts, timeline replay, and workspace references. Database and
-workspace backups form one recovery point and should be retained together.
+readiness, room counts, timeline replay, Workspace references, Git repository
+health, and historical app previews. Database, Workspace, and Artifact backups
+form one recovery point and must be retained together.

@@ -6,14 +6,18 @@ or from the room's **Project…** action.
 
 Projects are guidance, not storage or a security boundary:
 
-- the agent process still starts in its isolated room workspace;
+- the agent process starts in the room's shared Git-backed Workspace;
 - selecting a project does not change the process working directory, extend a
   sandbox, or add the folder to an allowlist;
 - the selected harness and permission profile still decide which paths the
   agent can access;
 - agents may use other folders when their permissions and task allow it; and
-- workspace versioning, artifacts, and conflict handling continue to apply
-  only to the room workspace.
+- Workspace versioning and captured artifacts apply only to the room Workspace.
+
+Work agents are serialized within one room. Plan agents in that room and runs
+from different rooms can execute concurrently. Two concurrent runs that can
+write the same external project can therefore race. Use Work in one room for
+coordinated changes or otherwise protect the external repository yourself.
 
 ### Harness access requirements
 
@@ -49,7 +53,7 @@ the recommended project is unavailable.
 
 Each run records the project name and path it started with. Changing the room's
 project affects future runs only. A retry keeps the original run's project
-snapshot and checks that path again before starting.
+selection and checks that path again before starting.
 
 Deleting a project removes it from every room after confirmation. It does not
 delete or modify the local folder.

@@ -288,8 +288,11 @@ MCP configuration. Connector passes that file to the child process with
 `--permission-prompt-tool`. It never persists the server through
 `claude mcp add` or edits user, project, or local Claude configuration.
 
-Run tokens isolate parallel executions. Permission requests are correlated
-with their execution and tool request before they are published through the
+Run tokens isolate concurrent executions, which can originate from different
+rooms or parallel Plan responders in one room. Core keeps Work exclusive but
+cannot guarantee that an instruction-only Plan harness remains read-only.
+Permission requests are correlated with their execution and tool request before
+they are published through the
 normal Connector request events. Resolving, cancelling, or stopping an
 execution completes only its own pending MCP calls. Tokens, MCP sessions, and
 temporary files are removed at the end of the execution; a Connector restart

@@ -142,7 +142,7 @@ export const WorkspaceWindow = ({
     const prior = previousCurrentRef.current;
     previousCurrentRef.current = currentId;
     if (!prior || prior === currentId || !request?.followCurrent || target?.versionId === currentId) return;
-    setNotice('A new current version was published.');
+    setNotice('A new current version was created.');
     onRequestChange({ target: { ...target, versionId: currentId }, followCurrent: true });
   }, [onRequestChange, open, request?.followCurrent, selected?.current_version_id, target]);
 

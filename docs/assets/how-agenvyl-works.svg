@@ -1,173 +1,85 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="620" viewBox="0 0 1200 620" role="img" aria-labelledby="title desc">
-  <title id="title">How Agenvyl brings existing coding-agent harnesses into one room</title>
-  <desc id="desc">Existing local harnesses keep their models, skills, tools, and MCP integrations. Agenvyl coordinates their agents in a shared conversation and workspace, where later agents can review and synthesize earlier answers.</desc>
-
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" role="img" aria-labelledby="title desc">
+  <title id="title">How Agenvyl coordinates Work and Plan agents</title>
+  <desc id="desc">A message enters a mode-aware room scheduler. Plan agents may run in parallel. Work waits for them, then runs alone against the shared Git-backed Workspace. Answers return to the shared conversation.</desc>
   <defs>
     <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#f8f9fd"/>
-      <stop offset="1" stop-color="#edf1f8"/>
+      <stop offset="0" stop-color="#f8f7ff"/>
+      <stop offset="1" stop-color="#eef5ff"/>
     </linearGradient>
-    <linearGradient id="roomHeader" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#202c40"/>
-      <stop offset="1" stop-color="#2e3b55"/>
-    </linearGradient>
-    <linearGradient id="message" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#f1eeff"/>
-      <stop offset="1" stop-color="#e8edff"/>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#6d5ef7"/>
+      <stop offset="1" stop-color="#3b82f6"/>
     </linearGradient>
     <filter id="shadow" x="-20%" y="-20%" width="140%" height="160%">
-      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#26344d" flood-opacity="0.12"/>
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#172235" flood-opacity="0.12"/>
     </filter>
-    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0 0 10 5 0 10Z" fill="#8390a6"/>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0l10 5-10 5z" fill="#6d5ef7"/>
     </marker>
     <style>
-      .eyebrow { font: 700 15px 'Segoe UI', sans-serif; letter-spacing: 3px; fill: #6d5ef7; }
-      .heading { font: 700 28px 'Segoe UI', sans-serif; fill: #172235; }
-      .label { font: 700 16px 'Segoe UI', sans-serif; fill: #172235; }
-      .body { font: 400 14px 'Segoe UI', sans-serif; fill: #627087; }
-      .small { font: 400 12px 'Segoe UI', sans-serif; fill: #7a879a; }
-      .tiny { font: 700 10px 'Segoe UI', sans-serif; letter-spacing: 1px; fill: #8a95a8; }
-      .line { fill: none; stroke: #8794a9; stroke-width: 2.5; marker-end: url(#arrow); }
-      .branch { fill: none; stroke: #aeb8c9; stroke-width: 2; }
+      .heading{font:700 25px 'Segoe UI',sans-serif;fill:#172235}
+      .label{font:700 15px 'Segoe UI',sans-serif;fill:#172235}
+      .body{font:400 13px 'Segoe UI',sans-serif;fill:#536078}
+      .small{font:600 12px 'Segoe UI',sans-serif;fill:#6d5ef7}
+      .card{fill:#fff;stroke:#d9def0;stroke-width:1.5}
     </style>
   </defs>
-
-  <rect width="1200" height="620" rx="28" fill="url(#background)"/>
-  <circle cx="1110" cy="72" r="125" fill="#6d5ef7" opacity="0.045"/>
-  <circle cx="82" cy="572" r="145" fill="#3b82f6" opacity="0.04"/>
-
-  <text x="56" y="54" class="eyebrow">HOW AGENVYL WORKS</text>
-  <text x="56" y="92" class="heading">Your harnesses. Their capabilities. One shared room.</text>
-
-  <!-- Existing harnesses -->
-  <g filter="url(#shadow)">
-    <rect x="56" y="142" width="284" height="364" rx="24" fill="#ffffff"/>
-    <path d="M80 142h236a24 24 0 0 1 24 24v54H56v-54a24 24 0 0 1 24-24z" fill="#202c40"/>
-    <text x="80" y="173" style="font: 700 18px 'Segoe UI', sans-serif; fill: #ffffff;">Already on your computer</text>
-    <text x="80" y="195" style="font: 400 12px 'Segoe UI', sans-serif; fill: #bdc7d8;">installed and authenticated</text>
-  </g>
-
-  <g>
-    <rect x="78" y="242" width="240" height="58" rx="15" fill="#f8f9fc" stroke="#e2e7ef"/>
-    <circle cx="108" cy="271" r="16" fill="#3b82f6"/>
-    <text x="108" y="276" text-anchor="middle" style="font: 800 12px 'Segoe UI', sans-serif; fill: #ffffff;">O</text>
-    <text x="136" y="269" class="label">OpenCode</text>
-    <text x="136" y="287" class="small">your existing setup</text>
-  </g>
-  <g>
-    <rect x="78" y="312" width="240" height="58" rx="15" fill="#f8f9fc" stroke="#e2e7ef"/>
-    <circle cx="108" cy="341" r="16" fill="#6d5ef7"/>
-    <text x="108" y="346" text-anchor="middle" style="font: 800 12px 'Segoe UI', sans-serif; fill: #ffffff;">C</text>
-    <text x="136" y="339" class="label">Codex</text>
-    <text x="136" y="357" class="small">your existing setup</text>
-  </g>
-  <g>
-    <rect x="78" y="382" width="240" height="58" rx="15" fill="#f8f9fc" stroke="#e2e7ef"/>
-    <circle cx="108" cy="411" r="16" fill="#66758c"/>
-    <text x="108" y="416" text-anchor="middle" style="font: 800 12px 'Segoe UI', sans-serif; fill: #ffffff;">A</text>
-    <text x="136" y="409" class="label">Antigravity</text>
-    <text x="136" y="427" class="small">your existing setup</text>
-  </g>
-
-  <rect x="78" y="456" width="240" height="32" rx="11" fill="#eeeaff"/>
-  <text x="198" y="477" text-anchor="middle" style="font: 700 12px 'Segoe UI', sans-serif; fill: #5c4ee5;">models · skills · tools · MCP</text>
-  <text x="198" y="501" text-anchor="middle" style="font: 400 10px 'Segoe UI', sans-serif; fill: #7a879a;">as supported by each harness</text>
-
-  <!-- Harnesses to room -->
-  <path d="M340 324H406" class="line"/>
-
-  <!-- Agenvyl room -->
-  <g filter="url(#shadow)">
-    <rect x="420" y="126" width="390" height="396" rx="24" fill="#ffffff"/>
-    <path d="M444 126h342a24 24 0 0 1 24 24v58H420v-58a24 24 0 0 1 24-24z" fill="url(#roomHeader)"/>
-    <rect x="444" y="150" width="34" height="34" rx="10" fill="#ffffff"/>
-    <text x="461" y="173" text-anchor="middle" style="font: 800 17px 'Segoe UI', sans-serif; fill: #202c40;">A</text>
-    <text x="494" y="163" style="font: 700 18px 'Segoe UI', sans-serif; fill: #ffffff;">Agenvyl room</text>
-    <text x="494" y="184" style="font: 400 12px 'Segoe UI', sans-serif; fill: #bec8d8;">coordination layer</text>
-    <circle cx="758" cy="167" r="5" fill="#34d399"/>
-    <text x="771" y="172" style="font: 600 11px 'Segoe UI', sans-serif; fill: #dce4ef;">local</text>
-  </g>
-
-  <rect x="448" y="228" width="334" height="52" rx="14" fill="url(#message)" stroke="#d8dcff"/>
-  <rect x="464" y="243" width="44" height="22" rx="8" fill="#6d5ef7"/>
-  <text x="486" y="258" text-anchor="middle" style="font: 700 11px 'Segoe UI', sans-serif; fill: #ffffff;">@all</text>
-  <text x="520" y="258" class="body">Explore the task in parallel</text>
-
-  <!-- Clean parallel fan-out -->
-  <path d="M615 280v22M489 302h252" class="branch"/>
-  <path d="M489 302v30" class="line"/>
-  <path d="M615 302v30" class="line"/>
-  <path d="M741 302v30" class="line"/>
-
-  <g>
-    <rect x="448" y="338" width="104" height="88" rx="15" fill="#ffffff" stroke="#dfe5ee"/>
-    <rect x="448" y="338" width="5" height="88" rx="3" fill="#6d5ef7"/>
-    <circle cx="468" cy="364" r="12" fill="#6d5ef7"/>
-    <text x="468" y="364" text-anchor="middle" dominant-baseline="central" style="font: 800 10px 'Segoe UI', sans-serif; fill: #ffffff;">A</text>
-    <text x="487" y="368" style="font: 700 11.5px 'Segoe UI', sans-serif; fill: #172235;">Architect</text>
-    <text x="464" y="396" class="small">OpenCode</text>
-    <text x="464" y="413" class="tiny">PARALLEL</text>
-  </g>
-  <g>
-    <rect x="563" y="338" width="104" height="88" rx="15" fill="#ffffff" stroke="#dfe5ee"/>
-    <rect x="563" y="338" width="5" height="88" rx="3" fill="#3b82f6"/>
-    <circle cx="583" cy="364" r="12" fill="#3b82f6"/>
-    <text x="583" y="364" text-anchor="middle" dominant-baseline="central" style="font: 800 10px 'Segoe UI', sans-serif; fill: #ffffff;">B</text>
-    <text x="602" y="368" style="font: 700 11.5px 'Segoe UI', sans-serif; fill: #172235;">Builder</text>
-    <text x="579" y="396" class="small">Codex</text>
-    <text x="579" y="413" class="tiny">PARALLEL</text>
-  </g>
-  <g>
-    <rect x="678" y="338" width="104" height="88" rx="15" fill="#ffffff" stroke="#dfe5ee"/>
-    <rect x="678" y="338" width="5" height="88" rx="3" fill="#66758c"/>
-    <circle cx="698" cy="364" r="12" fill="#66758c"/>
-    <text x="698" y="364" text-anchor="middle" dominant-baseline="central" style="font: 800 10px 'Segoe UI', sans-serif; fill: #ffffff;">R</text>
-    <text x="717" y="368" style="font: 700 11.5px 'Segoe UI', sans-serif; fill: #172235;">Reviewer</text>
-    <text x="694" y="396" class="small">AGY</text>
-    <text x="694" y="413" class="tiny">PARALLEL</text>
-  </g>
-
-  <path d="M500 426v20M615 426v20M730 426v20" class="branch"/>
-  <rect x="448" y="452" width="334" height="58" rx="14" fill="#f5f7fb" stroke="#dfe5ee"/>
-  <circle cx="474" cy="481" r="7" fill="#34d399"/>
-  <text x="492" y="476" style="font: 700 14px 'Segoe UI', sans-serif; fill: #172235;">Shared conversation</text>
-  <text x="492" y="495" class="small">completed answers become context for later turns</text>
-
-  <!-- Room to coordinated outcomes -->
-  <path d="M810 324H876" class="line"/>
+  <rect width="1200" height="520" rx="28" fill="url(#background)"/>
+  <text x="60" y="62" class="heading">Plan explores in parallel. Work stays ordered.</text>
+  <text x="60" y="88" class="body">Responders share pre-round conversation context and one live Git-backed Workspace.</text>
 
   <g filter="url(#shadow)">
-    <rect x="890" y="164" width="254" height="330" rx="24" fill="#ffffff"/>
-    <text x="918" y="201" class="label">Agenvyl coordinates</text>
-    <text x="918" y="223" class="small">without replacing the harnesses</text>
+    <rect class="card" x="60" y="140" width="230" height="150" rx="20"/>
+    <circle cx="98" cy="180" r="18" fill="#ede9fe"/>
+    <path d="M89 180h18M98 171v18" stroke="#6d5ef7" stroke-width="3" stroke-linecap="round"/>
+    <text x="128" y="178" class="label">Message</text>
+    <text x="88" y="220" class="body">@architect @builder</text>
+    <text x="88" y="244" class="body">@reviewer Review and build.</text>
+    <text x="88" y="270" class="small">Creates mode-aware runs</text>
   </g>
 
-  <g>
-    <circle cx="924" cy="265" r="17" fill="#eeeaff"/>
-    <path d="M917 265h14M924 258v14" stroke="#6d5ef7" stroke-width="2.2" stroke-linecap="round"/>
-    <text x="954" y="262" class="label">Parallel runs</text>
-    <text x="954" y="281" class="small">one prompt, several agents</text>
-  </g>
-  <line x1="918" y1="302" x2="1116" y2="302" stroke="#e5e9f0"/>
-  <g>
-    <circle cx="924" cy="337" r="17" fill="#e8f2ff"/>
-    <path d="M917 332h14M917 338h11M917 344h13" stroke="#3b82f6" stroke-width="2.2" stroke-linecap="round"/>
-    <text x="954" y="334" class="label">Shared timeline</text>
-    <text x="954" y="353" class="small">answers stay in context</text>
-  </g>
-  <line x1="918" y1="374" x2="1116" y2="374" stroke="#e5e9f0"/>
-  <g>
-    <circle cx="924" cy="409" r="17" fill="#e9f9f3"/>
-    <path d="M916 405h8l3 4h9v9h-20z" fill="none" stroke="#20a779" stroke-width="2" stroke-linejoin="round"/>
-    <text x="954" y="406" class="label">Room workspace</text>
-    <text x="954" y="425" class="small">the same files and versions</text>
-  </g>
-  <rect x="918" y="450" width="198" height="26" rx="9" fill="#f1eeff"/>
-  <text x="1017" y="467" text-anchor="middle" style="font: 700 11px 'Segoe UI', sans-serif; fill: #5c4ee5;">review · evaluate · synthesize</text>
+  <path d="M290 215h70" stroke="#6d5ef7" stroke-width="3" marker-end="url(#arrow)"/>
 
-  <!-- Bottom promise -->
-  <rect x="56" y="548" width="1088" height="44" rx="14" fill="#202c40"/>
-  <circle cx="82" cy="570" r="7" fill="#34d399"/>
-  <text x="100" y="575" style="font: 600 14px 'Segoe UI', sans-serif; fill: #ffffff;">Agenvyl orchestrates the harnesses you already use—it does not replace or reconfigure them.</text>
+  <g filter="url(#shadow)">
+    <rect class="card" x="370" y="120" width="360" height="230" rx="20"/>
+    <text x="400" y="158" class="label">Room scheduler</text>
+    <g>
+      <rect x="400" y="180" width="300" height="42" rx="12" fill="#ede9fe"/>
+      <circle cx="425" cy="201" r="13" fill="#6d5ef7"/>
+      <text x="421" y="206" style="font:700 12px 'Segoe UI',sans-serif;fill:#fff">P</text>
+      <text x="450" y="206" class="body">Plan · Architect · starts now</text>
+    </g>
+    <g>
+      <rect x="400" y="232" width="300" height="42" rx="12" fill="#eef5ff"/>
+      <circle cx="425" cy="253" r="13" fill="#3b82f6"/>
+      <text x="421" y="258" style="font:700 12px 'Segoe UI',sans-serif;fill:#fff">P</text>
+      <text x="450" y="258" class="body">Plan · Reviewer · starts now</text>
+    </g>
+    <g>
+      <rect x="400" y="284" width="300" height="42" rx="12" fill="#f1f5f9"/>
+      <circle cx="425" cy="305" r="13" fill="#64748b"/>
+      <text x="419" y="310" style="font:700 12px 'Segoe UI',sans-serif;fill:#fff">W</text>
+      <text x="450" y="310" class="body">Work · Builder · waits, then runs alone</text>
+    </g>
+  </g>
+
+  <path d="M730 215h70" stroke="#6d5ef7" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <g filter="url(#shadow)">
+    <rect class="card" x="810" y="140" width="330" height="150" rx="20"/>
+    <rect x="842" y="172" width="58" height="58" rx="14" fill="url(#accent)"/>
+    <path d="M855 192h32M855 203h24M855 214h28" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
+    <text x="922" y="190" class="label">Shared Git Workspace</text>
+    <text x="922" y="216" class="body">Direct writes and checkpoints</text>
+    <text x="842" y="260" class="small">No publication or conflict-resolution stage</text>
+  </g>
+
+  <path d="M975 290v70H220v-50" fill="none" stroke="#6d5ef7" stroke-width="3" marker-end="url(#arrow)"/>
+  <g filter="url(#shadow)">
+    <rect class="card" x="60" y="370" width="1080" height="92" rx="20"/>
+    <text x="90" y="408" class="label">Shared conversation</text>
+    <text x="90" y="435" class="body">Answers and exact changed-file versions return to the room. Send a follow-up message when one agent should review peer answers.</text>
+    <rect x="935" y="393" width="165" height="40" rx="20" fill="#ede9fe"/>
+    <text x="963" y="418" class="small">Other rooms can run too</text>
+  </g>
 </svg>

@@ -5,7 +5,7 @@
 Agenvyl is a local web interface that brings your already-installed coding
 agents into shared rooms. Each tool keeps its own models, accounts, skills,
 tools, and MCP integrations while Agenvyl coordinates the conversation,
-parallel runs, and shared files.
+the run queue, and shared files.
 
 ![Technical Preview](https://img.shields.io/badge/status-technical_preview-f59e0b?style=flat-square)
 ![Local-first](https://img.shields.io/badge/local--first-no_telemetry-22c55e?style=flat-square)
@@ -16,8 +16,6 @@ parallel runs, and shared files.
 [Connect an agent](docs/harnesses/README.md) ·
 [Read the documentation](docs/README.md)
 
-![Agenvyl Web UI showing three coding agents answering in parallel](docs/assets/agenvyl-overview.png)
-
 ## Why Agenvyl?
 
 Coding agents usually live in separate terminals and chats. Their context,
@@ -27,10 +25,10 @@ Agenvyl gives them one browser-based room:
 
 - **Shared context** — later agents can read, critique, and combine completed
   answers from earlier turns.
-- **Parallel runs** — mention several agents once and let them explore the same
-  task independently.
-- **Shared files** — agents start from the same saved room files. Agenvyl keeps
-  earlier versions and safely applies completed changes.
+- **Mode-aware runs** — Work agents run one at a time in a room so file edits
+  stay ordered; Plan agents can explore in parallel.
+- **Shared files** — agents work directly in the room Workspace. Agenvyl records
+  Git checkpoints and keeps earlier file versions.
 - **Your existing setup** — reuse each harness with its configured models,
   permissions, skills, tools, hooks, and MCP servers.
 
@@ -48,16 +46,17 @@ On desktop, collapse the left sidebar when you want more room for the
 conversation; Agenvyl remembers that browser preference. Use the **+** menu by
 the composer to attach files or open the room Workspace.
 
-Agents launched by the same message receive the same pre-round conversation and
-the same starting files, and can run in parallel. They do not see one another's
-unfinished output or file changes. Agenvyl applies completed file changes to the
-room and asks you to resolve a conflict instead of silently overwriting newer
-work. Completed selected answers become context for later turns.
+Agents launched by the same message receive the same pre-round conversation.
+In Work, they enter a FIFO queue and run one at a time in that room; later Work
+agents see files left by earlier runs but not peer answers from the same
+message. In Plan, responders can run in parallel against the shared Workspace.
+Runs in different rooms can also proceed in parallel, subject to the configured
+global concurrency limit.
 
 When an agent produces a static web build, Agenvyl captures it with that exact
 response. Open the current app from the Workspace, inspect any response's build,
 or compare build history without replacing the room's source files. Agenvyl
-warns when later source changes make the latest applied build outdated.
+warns when later source changes make the latest captured build outdated.
 
 A message without an `@mention` is saved in the room but starts no agent.
 
@@ -117,9 +116,11 @@ the [User Guide](docs/user-guide/installation.md).
 
 ## Your first room
 
-New rooms start as **New room** and are named automatically from the first
-substantive message. You can still rename a room manually from its sidebar
-menu.
+New rooms start in **Plan** as **New room** and are named automatically from the
+first substantive message. You can still rename a room manually from its
+sidebar menu. Opening Agenvyl later returns you to the most recently active
+room. This is the room with the newest message, not necessarily the room you
+last viewed.
 
 Ask every agent in the room for an independent proposal:
 
@@ -141,10 +142,11 @@ Or guide a software workflow:
 @architect @reviewer Check the change from different perspectives.
 ```
 
-Turn on the room's **Plan** switch when agents should inspect and discuss the
-project without implementing the request. The mode stays active for every new
-message and responder until you switch back to Work. Native Plan is the
-strongest mode each harness provides; an **Instruction-only** badge means the
+New rooms already have **Plan** enabled so agents can inspect and discuss the
+project without implementing the request. Plan responders can run in parallel;
+switch to Work when you are ready for ordered implementation. The mode stays
+active for every new message and responder until you switch it again. Native
+Plan is the strongest mode each harness provides; an **Instruction-only** badge means the
 harness has no technical read-only control and can still write with your
 operating-system permissions.
 
@@ -168,6 +170,7 @@ and model comparison all use the same shared-history pattern.
 Use the [documentation map](docs/README.md) to choose a route:
 
 - [Install and use Agenvyl](docs/user-guide/installation.md)
+- [Work with rooms and agent runs](docs/user-guide/rooms-and-runs.md)
 - [Use the command line and terminal control center](docs/user-guide/cli-and-control-center.md)
 - [Work with Workspace files and previews](docs/user-guide/workspace.md)
 - [Open and compare captured app builds](docs/user-guide/app-builds.md)

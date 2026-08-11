@@ -1,127 +1,120 @@
 # App build architecture
 
-This page describes how Agenvyl discovers, stores, selects, and serves static
-app builds. For the task-oriented explanation, see
+This page describes static build detection, immutable bundle storage, current
+selection, and preview serving. For user tasks, see
 [App builds and previews](../user-guide/app-builds.md).
 
 ## Domain model and invariants
 
-An app build is a projection of a terminal run's immutable result snapshot. It
-is not a second mutable workspace and is not copied into the room's published
-source tree.
+An app build is an immutable preview bundle captured from the live room
+Workspace during terminal run finalization. It is not a Workspace snapshot and
+is not read from mutable current files when served.
 
 The implementation preserves these invariants:
 
-- every preview is scoped to one room, run, and result snapshot;
-- generated output may be hidden from publication without being deleted from
-  the result snapshot;
-- selecting a historical build never mutates room state;
-- a build is current only when a conflict-free published result still matches
-  the current publishable project content;
-- preview assets come from the same result snapshot and output root as the
-  selected entry point; and
-- incomplete captures never enter build history.
+- every preview bundle belongs to one room and one run;
+- the bundle stores one recognized output root with a deterministic entry point;
+- bundle files are immutable after successful publication to the artifact store;
+- a historical selection never mutates Workspace state;
+- a build is current only when `preview_bundles.source_head` equals the room's
+  current Git HEAD;
+- every preview asset resolves inside the selected bundle;
+- a failed or cancelled run may have a bundle if terminal finalization captured
+  usable output; and
+- failed or oversized bundle capture does not fail Workspace finalization.
 
-The shared contracts are `RoomStaticPreview`, `WorkspaceBuildPreview`,
-`RunArtifact`, and `RunArtifactSummary` in `packages/contracts`. A room
-workspace response contains an optional `staticPreview` state plus ordered
-`previewHistory`.
+Shared contracts are `RoomStaticPreview`, `WorkspaceBuildPreview`,
+`RunArtifact`, and `RunArtifactSummary` in `packages/contracts`.
 
-## Capture, classification, and publication
+## Capture flow
 
 ```mermaid
 flowchart TD
-  Base[Base snapshot] --> Run[Isolated run workspace]
-  Run --> Capture[Complete result snapshot]
-  Capture --> Diff[Diff against base]
+  Base[base_head] --> Run[Run in live room Git tree]
+  Run --> Final[result_head checkpoint]
+  Base --> Diff[Git path diff]
+  Final --> Diff
+  Diff --> Versions[Immutable changed-file versions]
   Diff --> Policy[RunArtifactPolicy]
-  Policy -->|project| Candidate[Publish candidate and visible artifacts]
-  Policy -->|hidden| Hidden[Generated, ignored, cache, and secret entries]
-  Candidate --> Merge[Three-way publication]
-  Capture --> Detection[Static build detection]
-  Hidden --> Detection
-  Detection --> History[Immutable build history]
+  Policy --> Visible[Project files shown with response]
+  Policy --> Hidden[Generated, ignored, cache, VCS, secret-like paths hidden]
+  Final --> Detection[Static entry-point detection]
+  Detection --> Bundle[Immutable ZIP preview bundle]
+  Bundle --> Metadata[(preview_bundles)]
 ```
 
-`RoomWorkspaceService.finalizeRun` captures the complete isolated tree before
-publication. `RunArtifactPolicy` then classifies every changed path as
-`project` or `hidden` using two layers:
+`RoomWorkspaceService.finalizeRun` asks `TransparentGitWorkspace` to commit
+remaining changes, calculates changed paths between `base_head` and
+`result_head`, captures exact versions for changed files, and applies
+`RunArtifactPolicy` to the response projection.
 
-1. hard-hidden generated, dependency, cache, test, VCS, environment, and
-   platform paths; and
-2. rules from the result snapshot's root `.gitignore`.
+The policy hard-hides generated output, dependencies, caches, tests, VCS data,
+platform artifacts, and secret `.env*` paths except `.env.example`. It also
+applies the root `.gitignore`; malformed ignore content is ignored rather than
+failing capture. Hidden means omitted from the normal changed-file list. It
+does not delete the file from the live working tree.
 
-Malformed `.gitignore` content is ignored rather than failing capture.
-Negation rules work for ordinary ignored paths, but the hard-hidden set cannot
-be re-enabled. The project candidate begins with the base snapshot and applies
-only project-visible changes. Consequently, generated output stays in the run
-snapshot while source changes participate in normal three-way publication.
-
-`run_artifacts.visibility` persists the classification. Timeline projections
-return only `project` artifacts and include total, project, and hidden counts.
-Migration `028_run_artifact_visibility.sql` backfills the hard-hidden cases for
-existing artifacts.
+Static build detection uses the complete terminal tree, including recognized
+generated output directories that are skipped by ordinary Workspace scanning.
 
 ## Static entry-point detection
 
-`selectStaticPreviewPath` evaluates normalized snapshot paths. It accepts an
-`index.html` whose parent directory is `dist`, `build`, or `out`, including
-nested projects. Candidates are ordered by:
+`selectStaticPreviewPath` accepts `index.html` whose parent is `dist`, `build`,
+or `out`, including nested projects. Candidates are ordered by:
 
 1. output name: `dist`, then `build`, then `out`;
-2. path depth, shallowest first; and
-3. lexical path order for a deterministic tie-break.
+2. shallowest path; and
+3. lexical path.
 
-A root `index.html` is accepted only when the same snapshot has no root
-`package.json`. The root `package.json` plus root `index.html` combination is
-the marker for an unbuilt web project; it produces `build_missing` when no
-recognized output exists.
+A root `index.html` is accepted only without a root `package.json`. A root
+`package.json` plus root `index.html` without recognized output represents an
+unbuilt web project.
 
-This convention deliberately supports static production output without
-attempting to infer framework-specific commands or start arbitrary processes.
+Once selected, only the output directory containing the entry point is written
+to the bundle. Paths are made relative to that output root.
 
-## Per-run projection and room history
+## Preview bundle storage
 
-There are two related projections:
+`PreviewBundleStore` writes one ZIP and JSON metadata record below
+`AGENVYL_ARTIFACT_ROOT`. Publishing uses a temporary directory followed by an
+atomic rename. An existing bundle ID is accepted only when the SHA-256 matches;
+different content for the same ID fails.
 
-- `WorkspaceRepository.artifactProjections` enriches runs shown in the room
-  timeline with visible artifacts, counts, `staticPreview`, and
-  `staticPreviewStatus`.
-- `RoomWorkspaceService.resolveRoomPreviewProjection` builds the room-level
-  current state and complete preview history.
+Both uncompressed and compressed sizes must be at or below
+`AGENVYL_ARTIFACT_MAX_BYTES`, 250 MiB by default. Metadata records bundle hash,
+compressed and uncompressed sizes, file paths, MIME types, hashes, and the
+entry point.
 
-`WorkspaceSnapshotRepository.previewCandidates` selects every room run with
-`capture_status = complete` and a result snapshot, newest first. It does not
-require a completed run or successful publication. This is why a failed,
-cancelled, partially published, or unapplied run can remain inspectable when
-its filesystem capture completed successfully.
+PostgreSQL `preview_bundles` stores run/room ownership, `source_head`, entry
+point, source manifest hash, bundle hash and sizes, file count, status, and
+capture error. Only `ready` rows enter room history.
 
-For each candidate, Core selects the entry point and hashes the selected output
-subtree by content. Adjacent equal output manifests produce
-`sameBuildAsPrevious`; run status alone does not affect equivalence.
+Deleting a room collects its preview IDs and removes the associated bundle
+directories after database ownership has been resolved.
 
-### Selecting the current build
+## Timeline projection and current selection
 
-The current preview is stricter than history. Core considers candidates whose
-publication status is `published` or `noop` and whose conflict count is zero,
-ordered by the publication result update time. It calculates a content
-manifest for the current project-visible snapshot and compares it with each
-candidate's project-visible result manifest.
+`WorkspaceRepository.artifactProjections` enriches terminal runs with visible
+changed-file artifacts, total/project/hidden counts, and an optional preview.
+`RoomWorkspaceService.resolveRoomPreviewProjection` builds ordered room history
+from ready preview bundles.
 
-The first exact match becomes:
+Adjacent history entries with the same `bundle_sha256` receive
+`sameBuildAsPrevious`. Run status does not affect equivalence.
+
+Current selection is a Git identity comparison:
 
 ```text
-staticPreview = { status: "ready", runId, attachment }
+preview.source_head === currentWorkspaceHead
 ```
 
-If a published build exists but none matches the current project manifest, the
-state is `outdated`. If Agenvyl detects an unbuilt web project and no eligible
-published build exists, the state is `build_missing`. A partially published
-result cannot become current even when it remains in history.
+The first matching history entry becomes `status: "ready"`. If no build
+matches and the current tree is an unbuilt web project, history produces
+`outdated`; no history produces `build_missing`. If the current tree is not an
+unbuilt web project, Core returns history without a room-level static preview
+state.
 
-Because generated output is hidden from the project manifest, a source match
-is not invalidated merely because `dist`, `build`, or `out` is absent from the
-published Workspace.
+There are no publication status or conflict-count eligibility checks.
 
 ## Preview serving boundary
 
@@ -131,62 +124,58 @@ sequenceDiagram
   participant Frame as sandboxed iframe :8792
   participant Preview as Preview proxy
   participant Core as Core
-  participant Store as immutable versions
-  UI->>Frame: selected run preview URL
+  participant Store as PreviewBundleStore
+  UI->>Frame: run-scoped preview URL
   Frame->>Preview: GET /rooms/:roomId/runs/:runId/preview/
-  Preview->>Core: relay same scoped path
-  Core->>Store: resolve result snapshot entry point
+  Preview->>Core: relay scoped request
+  Core->>Store: read entry point from immutable ZIP
   Core-->>Frame: HTML with scoped base URL
-  Frame->>Preview: request JS/CSS/image asset
+  Frame->>Preview: request JS/CSS/image
   Preview->>Core: relay or referer-scope root asset
-  Core->>Store: resolve asset under build root in same snapshot
+  Core->>Store: read asset from the same bundle
 ```
 
-The main Web UI receives `preview_origin` from Core and loads app HTML in an
-iframe with `sandbox="allow-scripts allow-same-origin allow-pointer-lock"` on a
-separate origin, normally `127.0.0.1:8792`. Pointer lock supports interactive
-3D previews while the remaining iframe sandbox restrictions stay enabled. The
-preview Fastify app relays only version, snapshot, and run-preview routes to
-Core. A root-relative asset request is
-redirected into a run scope only when its same-host `Referer` identifies that
-scope and all decoded path segments are safe.
+The Web UI uses a separate-origin iframe with
+`sandbox="allow-scripts allow-same-origin allow-pointer-lock"`, normally on
+`127.0.0.1:8792`. Pointer lock enables interactive 3D controls without removing
+the other sandbox restrictions.
 
-Core resolves the entry point again from the run's result snapshot. Every
-asset is joined beneath that entry point's output directory and looked up in
-the same snapshot. Traversal, absolute paths, unsafe segments, missing files,
-and cross-room/run lookups fail closed.
+The preview Fastify app relays only immutable version-preview and run-preview
+routes. A root-relative asset is redirected into a run scope only when a
+same-host `Referer` identifies that scope and decoded path segments are safe.
 
-HTML responses receive a scoped `<base>` element, CSP,
-`X-Content-Type-Options: nosniff`, and inline disposition. Run and snapshot
-resources use their content hash as an ETag and immutable one-year caching.
-The CSP permits scripts and network access needed by generated apps, so the
-origin boundary and iframe sandbox reduce coupling to the product UI but do
-not make untrusted application code harmless.
+Core resolves every run preview through the ready `preview_bundles` row and
+reads the requested path from the matching ZIP. Traversal, absolute paths,
+unsafe segments, missing assets, and cross-room/run lookups fail closed.
 
-## Frontend state and navigation
+HTML receives a scoped `<base>`, CSP, `X-Content-Type-Options: nosniff`, and
+inline disposition. Immutable resources use content hashes for ETag and
+long-lived cache headers. The origin boundary reduces coupling to the product
+UI but does not make generated application code trusted.
 
-`WorkspaceWindow` has orthogonal `files | app` sections. `wsSection` and
-`wsBuild` URL parameters make the selected section and historical run
-addressable. The App section selects, in order, the explicitly requested run,
-the current matching run, or the newest history item. An `outdated` state gates
-implicit display until the user explicitly opens the latest build.
+## Frontend state
 
-`WorkspaceBuildPicker` renders build order, agent, timestamps, run and
-publication statuses, equality, and historical/current state.
-`WorkspaceAppPreview` owns the ready, outdated, and unavailable presentations.
-The timeline opens a response build with its run ID, preserving the exact
-historical selection rather than redirecting to the current build.
+`WorkspaceWindow` has independent `files | app` sections. `wsSection` and
+`wsBuild` URL parameters make a historical run addressable. App selects the
+explicit run, the current matching run, or the newest history item. An outdated
+state requires the user to explicitly open the latest bundle.
+
+`WorkspaceBuildPicker` renders order, agent, timestamp, run status,
+`sameBuildAsPrevious`, and historical/current state. It has no publication or
+conflict badges.
 
 ## Code map
 
 | Responsibility | Location |
 | --- | --- |
-| Capture, policy application, current/history selection, scoped asset lookup | `apps/backend/src/modules/workspace/RoomWorkspaceService.ts` |
-| Project/hidden classification | `apps/backend/src/modules/workspace/RunArtifactPolicy.ts` |
+| Git prepare/finalize and changed paths | `apps/backend/src/modules/workspace/TransparentGitWorkspace.ts` |
+| Finalization, capture, selection, scoped lookup | `apps/backend/src/modules/workspace/RoomWorkspaceService.ts` |
+| Immutable bundle filesystem storage | `apps/backend/src/modules/workspace/PreviewBundleStore.ts` |
+| Artifact visibility | `apps/backend/src/modules/workspace/RunArtifactPolicy.ts` |
 | Entry-point rules | `apps/backend/src/modules/workspace/runStaticPreview.ts` |
-| Candidate persistence queries | `apps/backend/src/modules/workspace/workspaceSnapshots.repository.ts` |
-| Per-run artifact projection | `apps/backend/src/modules/workspace/workspace.repository.ts` |
-| Core preview routes and response headers | `apps/backend/src/modules/workspace/workspace.routes.ts` |
+| Version and bundle persistence | `apps/backend/src/modules/workspace/workspace.repository.ts` |
+| Per-run Git result persistence | `apps/backend/src/modules/workspace/RunWorkspaceRepository.ts` |
+| Core preview routes | `apps/backend/src/modules/workspace/workspace.routes.ts` |
 | Separate-origin relay | `apps/backend/src/app/buildPreviewApp.ts` |
-| App view and build history | `apps/frontend/src/widgets/workspace-window/` |
-| Cross-layer types and events | `packages/contracts/src/index.ts` |
+| App view and history | `apps/frontend/src/widgets/workspace-window/` |
+| Cross-layer contracts | `packages/contracts/src/index.ts` |

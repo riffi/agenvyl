@@ -106,12 +106,13 @@ In the setup screen:
 1. review the detected harnesses and keep only the ones you trust;
 2. read and accept any tool-specific permission warning;
 3. enter your display name and mention handle;
-4. choose the absolute workspace root where Agenvyl stores room files and
-   isolated agent workspaces;
+4. choose the absolute workspace root where Agenvyl stores shared Git-backed
+   room folders;
 5. finish setup.
 
-Agenvyl creates the first room as **New room** and names it automatically from
-the first substantive message. You can rename it manually at any time.
+Agenvyl creates the first room in Plan as **New room** and names it
+automatically from the first substantive message. Switch to Work when you are
+ready to implement. You can rename the room manually at any time.
 
 You can type the workspace root or select **Choose…**. Agenvyl creates the
 directory when needed, persists it for Core and Connector, and uses it for all
@@ -141,7 +142,9 @@ Select **Refresh** on **Agents** to retry; saved models remain usable while
 stale data is available.
 
 If the browser does not open, visit <http://127.0.0.1:8791>. If setup cannot
-find a tool, use its [harness guide](../harnesses/README.md).
+find a tool, use its [harness guide](../harnesses/README.md). After setup, the
+base Web UI address opens the room with the newest message, falling back to the
+most recently created room when no messages exist.
 
 ## Send the first message
 
@@ -151,8 +154,10 @@ Address all agents connected to the room:
 @all Propose the best approach to this task from your perspective.
 ```
 
-Agents addressed in the same message run independently. After they finish, ask
-one agent to compare their answers:
+Agents addressed in the same Work message enter a one-at-a-time queue. In Plan,
+they can run in parallel. In both modes they share the Workspace and receive the
+same conversation from before that message. After they finish, ask one agent to
+compare their answers:
 
 ```text
 @reviewer Read the answers above and synthesize the best result.

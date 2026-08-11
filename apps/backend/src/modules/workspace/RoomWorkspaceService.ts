@@ -61,32 +61,36 @@ export class RoomWorkspaceService{
   async recoverRuns(){for(const item of await this.runWorkspaces.abandoned())await this.finalizeRun(item.roomId,item.runId,item.status).catch(()=>{});}
 
   async prepareRun(roomId:string,runId:string){
-    const started=Date.now(),directory=await this.ensure(roomId),checkpoint=await this.git.prepare(directory,runId);
-    await this.runWorkspaces.prepare(roomId,runId,checkpoint.head);
-    this.logger?.info({metric:'workspace.prepare',roomId,runId,driver:'direct',durationMs:Date.now()-started,baseHead:checkpoint.head},'Direct Git workspace prepared');
-    return{relativePath:'.',absolutePath:this.agentRoomPath(roomId)};
+    return this.withRoomOperation(roomId,async()=>{
+      const started=Date.now(),directory=await this.ensure(roomId),checkpoint=await this.git.prepare(directory,runId);
+      await this.runWorkspaces.prepare(roomId,runId,checkpoint.head);
+      this.logger?.info({metric:'workspace.prepare',roomId,runId,driver:'direct',durationMs:Date.now()-started,baseHead:checkpoint.head},'Direct Git workspace prepared');
+      return{relativePath:'.',absolutePath:this.agentRoomPath(roomId)};
+    });
   }
 
   runWorkspaceResult(runId:string){return this.runWorkspaces.result(runId);}
 
   async finalizeRun(roomId:string,runId:string,status:'completed'|'failed'|'cancelled'):Promise<RunWorkspaceResult|undefined>{
-    const started=Date.now(),existing=await this.runWorkspaces.resultForRoom(roomId,runId);
-    if(!existing)return undefined;
-    if(existing.capture_status==='complete'||existing.capture_status==='incomplete')return existing;
-    await this.runWorkspaces.markFinalizing(runId);
-    const directory=await this.ensure(roomId);
-    try{
-      const checkpoint=await this.git.finalize(directory,runId,status),captured=await this.captureRunTree(roomId,runId,directory,existing.base_head,checkpoint.head);
-      await this.capturePreviewBundle(roomId,runId,checkpoint.head,captured).catch(error=>this.logPreviewCaptureFailure(roomId,runId,error));
-      const result=(await this.runWorkspaces.complete(runId,{resultHead:checkpoint.head,checkpointSha:checkpoint.checkpointSha,errors:captured.errors}))!;
-      await this.emitFinalized(roomId,runId,result);
-      this.logger?.info({metric:'workspace.capture',roomId,runId,driver:'direct',durationMs:Date.now()-started,captureStatus:result.capture_status,resultHead:checkpoint.head,changedPaths:captured.changedPaths.size},'Direct Git workspace finalized');
-      return result;
-    }catch(error){
-      await this.runWorkspaces.markFailed(runId,{path:'',code:'read_failed'}).catch(()=>{});
-      this.logger?.warn({metric:'workspace.capture',roomId,runId,driver:'direct',durationMs:Date.now()-started,error:message(error)},'Direct Git workspace finalization failed');
-      throw error;
-    }
+    return this.withRoomOperation(roomId,async()=>{
+      const started=Date.now(),existing=await this.runWorkspaces.resultForRoom(roomId,runId);
+      if(!existing)return undefined;
+      if(existing.capture_status==='complete'||existing.capture_status==='incomplete')return existing;
+      await this.runWorkspaces.markFinalizing(runId);
+      const directory=await this.ensure(roomId);
+      try{
+        const checkpoint=await this.git.finalize(directory,runId,status),captured=await this.captureRunTree(roomId,runId,directory,existing.base_head,checkpoint.head);
+        await this.capturePreviewBundle(roomId,runId,checkpoint.head,captured).catch(error=>this.logPreviewCaptureFailure(roomId,runId,error));
+        const result=(await this.runWorkspaces.complete(runId,{resultHead:checkpoint.head,checkpointSha:checkpoint.checkpointSha,errors:captured.errors}))!;
+        await this.emitFinalized(roomId,runId,result);
+        this.logger?.info({metric:'workspace.capture',roomId,runId,driver:'direct',durationMs:Date.now()-started,captureStatus:result.capture_status,resultHead:checkpoint.head,changedPaths:captured.changedPaths.size},'Direct Git workspace finalized');
+        return result;
+      }catch(error){
+        await this.runWorkspaces.markFailed(runId,{path:'',code:'read_failed'}).catch(()=>{});
+        this.logger?.warn({metric:'workspace.capture',roomId,runId,driver:'direct',durationMs:Date.now()-started,error:message(error)},'Direct Git workspace finalization failed');
+        throw error;
+      }
+    });
   }
 
   async resolveRunPreview(roomId:string,runId:string,assetInput=''){
@@ -223,7 +227,8 @@ export class RoomWorkspaceService{
   }
   private async versionRow(roomId:string,id:string){await this.assertRoom(roomId);const version=await this.repository.version(roomId,id);if(!version)throw new AppError('version_not_found',404,'Version not found');return version;}
   private async assertRoom(roomId:string){if(!await this.rooms.exists(roomId))throw new AppError('room_not_found',404,'Room not found');}
-  private async withRoomMutation<T>(roomId:string,operation:()=>Promise<T>):Promise<T>{const prior=this.roomMutations.get(roomId)??Promise.resolve();let release!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve}),queued=prior.catch(()=>{}).then(()=>gate);this.roomMutations.set(roomId,queued);await prior.catch(()=>{});try{if([...this.activeRuns.values()].some(run=>run.roomId===roomId&&run.started&&!run.terminal))throw new AppError('workspace_writer_active',409,'Workspace changes are blocked while an agent is writing in this room');return await operation();}finally{release();if(this.roomMutations.get(roomId)===queued)this.roomMutations.delete(roomId)}}
+  private withRoomMutation<T>(roomId:string,operation:()=>Promise<T>):Promise<T>{return this.withRoomOperation(roomId,async()=>{if([...this.activeRuns.values()].some(run=>run.roomId===roomId&&run.started&&!run.terminal))throw new AppError('workspace_writer_active',409,'Workspace changes are blocked while an agent is writing in this room');return operation();});}
+  private async withRoomOperation<T>(roomId:string,operation:()=>Promise<T>):Promise<T>{const prior=this.roomMutations.get(roomId)??Promise.resolve();let release!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve}),queued=prior.catch(()=>{}).then(()=>gate);this.roomMutations.set(roomId,queued);await prior.catch(()=>{});try{return await operation();}finally{release();if(this.roomMutations.get(roomId)===queued)this.roomMutations.delete(roomId)}}
 }
 
 const safeRelative=(input:string)=>{const normalized=input.replace(/\\/g,'/').replace(/^\/+/,''),segments=normalized.split('/').filter(Boolean);if(!segments.length||segments.some(segment=>segment==='.'||segment==='..'||segment.includes('\0')))throw new AppError('invalid_file_name',400,'Invalid file path');return segments.join('/');};

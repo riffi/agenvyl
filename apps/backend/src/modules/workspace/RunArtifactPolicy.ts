@@ -17,7 +17,7 @@ export class RunArtifactPolicy{
     this.matcher=ignore();
     if(gitignore.trim()){
       try{this.matcher.add(gitignore);}catch{
-        // A malformed user file must not make snapshot capture or publication fail.
+        // A malformed user file must not make run capture fail.
       }
     }
   }

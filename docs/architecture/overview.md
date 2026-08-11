@@ -1,76 +1,95 @@
 # How Agenvyl works
 
-Agenvyl gives several coding agents one shared place to work. You use a room in
-the browser; Agenvyl sends each request to the coding-agent tool already
-installed on your computer and brings the results back into the same
-conversation.
+Agenvyl gives several coding agents one shared place to work. A room combines a
+conversation, personas, run history, and one live Git-backed Workspace. Core
+queues work, Connector talks to installed agent tools, and results return to the
+same browser conversation.
 
-This page first explains that flow in user-facing terms, then describes the
-technical boundaries for contributors and operators. It reflects the current
-open-source implementation, not a future roadmap.
+This page describes the current implementation for contributors and operators.
 
-## The short version
+## Product model
 
 ```mermaid
 flowchart LR
   User[You in the browser] --> Room[Agenvyl room]
-  Room --> Agents[Selected agents]
-  Agents --> Tools[Your installed agent tools]
-  Room --> Files[Published room workspace]
-  Files --> Copies[Isolated run copies]
-  Copies <--> Tools
-  Copies -->|publish completed changes| Files
+  Room --> Mode{Workflow mode}
+  Mode -->|Work| Queue[Exclusive per-room FIFO]
+  Mode -->|Plan| Parallel[Parallel Plan batch]
+  Queue --> Agents[Selected agents]
+  Parallel --> Agents
+  Agents <--> Tools[Installed agent tools]
+  Agents <--> Files[Shared Git-backed Workspace]
   Agents --> Room
+  Files --> Versions[Immutable file versions]
+  Files --> Builds[Immutable preview bundles]
 ```
 
-- A **room** is a conversation with its own members and working folder.
-- An **agent** is an Agenvyl persona: a name, instructions, model, permissions,
-  and a connection to an installed coding-agent tool.
-- A **coding-agent tool** (or *harness*) is the program that does the actual
-  model and tool work, such as Codex CLI, Claude Code, OpenCode, Hermes, AGY,
-  or Cursor CLI.
-- The **workspace** is the room's published set of files. Each run starts from
-  an isolated copy of that published state.
-- A **project** is an optional registered local directory recommended to agents
-  in a room. It is run context, not the run working directory or an access
-  grant.
+- A **room** is a conversation with members and one working folder.
+- An **agent** is a persona version: name, instructions, model, permissions,
+  and a selected harness instance.
+- A **harness** is the installed tool that performs model and tool work, such as
+  Codex CLI, Claude Code, OpenCode, Hermes, AGY, or Cursor CLI.
+- The **Workspace** is the room's live Git working tree. Runs use it directly.
+- A **project** is an optional external directory recommended in run context.
+  It is not the process working directory, access grant, or sandbox boundary.
+- A **preview bundle** is immutable static build output captured for one run and
+  stored outside the live Workspace.
 
-Agenvyl coordinates these parts. It does not provide model access and does not
-replace the agent tools or their accounts.
+Agenvyl coordinates these parts. It does not provide model access or replace a
+harness account.
 
-## What happens when you send a message
+## Message and run flow
 
 Suppose a room contains `@architect`, `@builder`, and `@reviewer`.
 
-1. You address one agent, several agents, or `@all`.
-2. Agenvyl saves the message and creates one run for every addressed agent.
-3. Agents addressed in the same message start independently and can run in
-   parallel. They all receive the conversation as it existed before that round.
-4. Each agent works through its configured tool in an isolated copy of the same
-   published room workspace.
-5. Agenvyl streams supported progress back to the room, captures the resulting
-   files, and publishes changes that do not conflict with newer room changes.
-6. If the same path changed independently, Agenvyl keeps the current room path
-   until the user resolves the conflict.
-7. Completed results become context for later messages, so another agent can
-   compare or combine them.
+1. The user addresses one or more agents, or `@all`.
+2. Core persists the message, one run per responder, immutable persona and
+   execution-profile snapshots, initial room events, and the pre-round
+   conversation context in one transaction.
+3. Runs enter the process-local scheduler. Global concurrency is bounded. Work
+   runs are exclusive and preserve FIFO order within the room; Plan runs can
+   start together while no earlier or active Work run forms a barrier.
+4. Immediately before a queued run starts, Core refreshes conversation context
+   through the current message boundary. Responders from the same message still
+   receive the same pre-round conversation; they do not receive peer answers
+   from that message.
+5. `RoomWorkspaceService.prepareRun` commits dirty room files if necessary,
+   records the resulting Git HEAD as `base_head`, and passes the room's own
+   Workspace path to Connector.
+6. The harness runs in that live folder. Work starts alone and sees the state
+   left by earlier runs. Plan responders can inspect the same folder
+   concurrently.
+7. Finalization commits remaining changes, records `result_head`, stores exact
+   versions for changed paths, classifies response artifacts, and optionally
+   captures a static preview bundle.
+8. Selected completed answers become context for later messages. A retry creates
+   a new attempt and preserves the original run's saved configuration and
+   workflow mode.
 
-The agents in one round do not see one another's unfinished answers or file
-changes. Send a follow-up message when you want an agent to review the
-completed answers and published files from that round. A message without an
-`@mention` is saved but starts no agent.
+Parallel Plan and runs in different rooms share the
+`AGENVYL_RUN_CONCURRENCY` limit. Work is a FIFO barrier: it waits for earlier
+Plan runs and prevents later Plan runs from overtaking it. This scheduler policy
+does not protect an external project shared by concurrent runs.
 
-If you retry an answer, Agenvyl creates a separate attempt with the same saved
-agent configuration and conversation snapshot. You can compare completed
-attempts and select the one that should represent that answer in later context.
+Plan execution overlaps, but Core serializes the short Workspace prepare and
+finalization sections per room. This prevents concurrent Git index operations
+from colliding; it does not isolate instruction-only Plan writes made between
+those sections.
 
-## The four main parts
+A message without an `@mention` is persisted but creates no run.
+
+New rooms default to Plan. PostgreSQL applies that default when a room is
+created; changing the default does not rewrite existing rooms. The selected
+room mode remains sticky until it is explicitly toggled.
+
+## Main components
 
 ```mermaid
 flowchart LR
   Browser[Web UI] -->|REST + WebSocket| Core[Agenvyl Core]
   Core --> Database[(PostgreSQL)]
-  Core --> Workspace[(Room workspaces)]
+  Core --> Workspace[(Room Git repositories)]
+  Core --> Artifacts[(Preview bundle store)]
   Core -->|Authenticated HTTP + SSE| Connector[Connector]
   Connector --> Workspace
   Connector --> Harnesses[Installed agent tools]
@@ -78,253 +97,181 @@ flowchart LR
 
 ### Web UI
 
-The browser shows rooms, messages, runs, agent settings, and workspace files.
-It talks only to Core. Live updates arrive over a room WebSocket; after a
-disconnect, the UI can replay events it missed.
+The browser shows rooms, messages, runs, agent settings, current Workspace
+files, immutable file versions, and app builds. It talks only to Core. Room
+events arrive over WebSocket and replay after a disconnect.
+
+The base route loads setup and the room list, then redirects to the room ordered
+first by backend activity: newest room message, falling back to room creation
+time. It does not persist a last-viewed-room preference.
 
 ### Core
 
-Core is the product backend. It:
-
-- serves the Web UI and REST API;
-- owns rooms, projects, agents, messages, run state, and orchestration;
-- decides which saved conversation and configuration belong to a run;
-- publishes durable room events; and
-- reads and versions room files.
-
-Core is deliberately unaware of vendor credentials and does not start agent
-tools directly.
+Core is the Fastify product backend. It owns product state, scheduling,
+conversation projection, Workspace checkpoints, immutable file versions,
+preview bundles, and durable room events. Vendor credentials and executable
+locations do not enter Core.
 
 ### Connector
 
-Connector is the bridge between Agenvyl and the tools installed on the
-computer. It:
+Connector discovers harnesses and models, starts or contacts the selected tool,
+normalizes progress and interaction, and keeps harness-specific credentials out
+of Core. It is the only execution path; Core has no direct vendor fallback.
 
-- discovers available tools, models, and controls;
-- starts or contacts the selected tool;
-- converts different tool protocols into one Agenvyl protocol;
-- forwards progress, approvals, questions, results, and cancellation where the
-  tool supports them; and
-- keeps tool credentials and executable locations out of Core.
+### Durable storage
 
-Connector is the only execution path: Core has no direct fallback to a vendor
-tool.
+There are three coordinated durable data locations:
 
-### PostgreSQL and room workspaces
+- PostgreSQL stores rooms, projects, persona versions, messages, run attempts,
+  `base_head`/`result_head` capture metadata, immutable-version references,
+  preview-bundle metadata, and ordered events.
+- The Workspace root stores one live Git repository per room plus the
+  content-addressed `.versions` object store.
+- The Artifact root stores immutable ZIP preview bundles and their metadata.
 
-PostgreSQL stores product records: rooms, registered local projects, versioned
-agent configurations, messages, run attempts, workspace metadata, and the
-ordered event history.
+A recoverable backup must contain matching copies of all three. Configuration
+and secrets are separate operational state.
 
-The filesystem stores live room files and application-managed immutable
-versions. Message attachments point to a saved version, so a later edit does
-not silently change an earlier message.
+## Installed application
 
-These are the two durable data locations. Backups need to cover both. See the
-[data and backups guide](../user-guide/data-and-backups.md) for the supported
-backup and restore workflow.
-
-## How the installed app runs
-
-The normal downloadable app is a local, single-user runtime for Windows, macOS,
-and Linux. It includes its own Node.js and PostgreSQL, so it does not require
-Docker, a system Node installation, systemd, launchd, or a Windows service.
-
-The `agenvyl` control program initializes and starts the local stack in this
-order:
+The downloadable single-user runtime includes Node.js and PostgreSQL. The
+`agenvyl` supervisor starts bundled PostgreSQL, Connector, Core with the built
+Web UI, and the separate preview origin.
 
 ```mermaid
 flowchart TB
-  Control[agenvyl control program] --> Database[(Bundled PostgreSQL)]
-  Control --> Connector[Connector]
-  Control --> Core[Core + built Web UI]
-  Browser[Browser<br/>127.0.0.1:8791] --> Core
-  Core -->|127.0.0.1:8793| Database
-  Core -->|127.0.0.1:4310 + Bearer token| Connector
-  Core --> Workspace[(Local room workspaces)]
+  Control[agenvyl] --> Database[(Bundled PostgreSQL)]
+  Control --> Connector[Connector :4310]
+  Control --> Core[Core + Web UI :8791]
+  Control --> Preview[Preview origin :8792]
+  Browser --> Core
+  Browser --> Preview
+  Core --> Database
+  Core --> Workspace[(Room workspaces)]
+  Core --> Artifacts[(Preview bundles)]
   Connector --> Workspace
   Connector --> Harnesses[User-installed agent tools]
 ```
 
-Application data lives outside the replaceable app directory in the
-platform-appropriate user data location. The source repository also supports a
-development/server workflow in which PostgreSQL may run through Docker Compose,
-while Core and Connector remain host processes so they can reach the same local
-workspaces and agent tools.
+Personal data lives outside replaceable application versions. Development and
+custom deployments can use an external PostgreSQL instance, but Core and
+Connector must resolve the configured Workspace to the same files.
 
-Deployment-specific domains, TLS, authentication proxies, service managers,
-and secrets are outside the product repository. See
-[deployment boundaries](../operations/deployment-boundaries.md).
+## Workspace invariants
 
-## Supported tool integrations
+- Every room folder is a visible Git repository. New folders are initialized on
+  `main` with an Agenvyl-authored initial commit.
+- A run uses the room folder directly; there are no per-run worktrees,
+  publication snapshots, workspace slots, or three-way conflict records.
+- Work is the only exclusive writer mode. Multiple Plan runs can be active in a
+  room, but an active or earlier queued Work run blocks them. Direct Workspace
+  mutations are rejected with `workspace_writer_active` while any run is
+  active.
+- Prepare records `base_head`; finalization records `result_head` and optional
+  `checkpoint_sha`. Changed paths come from `git diff base_head result_head`.
+- Failed and cancelled runs are finalized too, so their filesystem side effects
+  can be checkpointed and exposed as changed files.
+- Merge, rebase, cherry-pick, revert, and bisect markers cause prepare or
+  finalization to fail closed until the Git operation is completed or aborted.
+- `.git`, `.versions`, and `.agenvyl` are reserved from public Workspace
+  mutations. Immutable attachment and artifact references resolve through
+  saved versions, not later live bytes.
+- UI uploads, moves, restores, and deletions create their own Git checkpoints.
+- `plan.md` is an ordinary file. Plan is a sticky execution-profile snapshot,
+  not a special Workspace artifact.
 
-| Tool | How Connector uses it |
-| --- | --- |
-| Hermes | Connects to an existing local HTTP service |
-| OpenCode | Connects to, or manages, an OpenCode server |
-| Codex CLI | Starts the user-installed `codex app-server` |
-| Claude Code CLI *(experimental)* | Starts a fresh user-installed `claude` process for each attempt and routes unresolved permissions through a shared loopback MCP bridge |
-| Antigravity / AGY | Starts a fresh `agy --print` process for each attempt |
-| Cursor CLI *(experimental)* | Starts a fresh headless `agent` process for each attempt |
-
-Connector reports only behavior an integration can represent safely. The
-[harness capability matrix](../harnesses/capabilities.md) compares the current
-configuration, output, interaction, and lifecycle support without duplicating
-those details here. Setup, version, authentication, and safety requirements are
-documented in the [harness guides](../harnesses/README.md).
-
-## Files, history, and retries
-
-Several rules keep a room understandable and reproducible:
-
-- Each room has one canonical published workspace state.
-- Each run records the workspace snapshot it started from and works in a
-  separate materialized directory.
-- Run results are captured as immutable snapshots before publication.
-- Non-conflicting changes are merged into a new published snapshot. Conflicting
-  paths require an explicit choice between the current room state, the agent
-  candidate, or deletion.
-- Attachments refer to immutable versions rather than mutable paths.
-- Every run saves the exact agent version, tool instance, model, execution
-  controls, conversation snapshot, workspace base snapshot, and recommended
-  project snapshot it started with.
-- Changing or deleting a room project affects future runs only. A retry keeps
-  the original project's name and path, then checks that path again before it
-  starts.
-- Every attempt ends once as completed, failed, or cancelled.
-- A retry is a new attempt; it does not rewrite the original attempt.
-- Only the selected completed attempt is included in later conversation
-  history.
-
-Each room stores a sticky `plan | work` workflow mode. Message creation locks
-the room row and snapshots that mode into every responder run, so a concurrent
-toggle and send cannot produce a mixed round. Retry copies the source run's
-snapshot instead of consulting the room's current mode. Plan is an exploration
-mode: agents inspect and discuss without implementing. `plan.md` has no special
-meaning and is handled like any other Markdown file.
-
-### Workspace capture and publication
+### Finalization and artifacts
 
 ```mermaid
 flowchart LR
-  Base[Run base snapshot] --> Run[Isolated run workspace]
-  Run --> Result[Captured result snapshot]
-  Base --> Merge[Three-way merge]
-  Latest[Latest published snapshot] --> Merge
-  Result --> Merge
-  Merge --> Next[Next published snapshot]
-  Merge --> Conflicts[Conflict set]
-  Conflicts --> Resolution[Explicit user resolution]
-  Resolution --> Next
+  Dirty[Current room tree] --> Prepare[Checkpoint before run]
+  Prepare -->|base_head| Run[Harness uses same tree]
+  Run --> Final[Checkpoint terminal state]
+  Final -->|result_head| Diff[Git changed paths]
+  Diff --> Versions[Immutable changed-file versions]
+  Diff --> Policy[Artifact visibility]
+  Final --> Detection[Static output detection]
+  Detection --> Bundle[Immutable preview bundle]
 ```
 
-Publication compares three states: the run's base snapshot, the latest
-published snapshot, and the captured run result. A path changed only by the run
-can be published automatically. If the published path also changed since the
-run started, the latest room state wins provisionally and Agenvyl records a
-conflict for the user.
+`RunArtifactPolicy` hides generated, dependency, cache, test, VCS,
+environment-secret, and root `.gitignore` matches from normal response file
+lists. This classification does not remove live files. Recognized static output
+is copied to a preview bundle before history projection.
 
-The captured result remains addressable independently of publication. This is
-why a response can still preview or download an exact artifact when its run was
-only partially published or could not publish an incomplete capture.
+A build is current when its stored `source_head` equals the room's current Git
+HEAD. Otherwise a recognized unbuilt web project produces `outdated` when
+history exists or `build_missing` when it does not. See
+[App build architecture](app-builds.md).
 
-Complete result snapshots can also expose a static app build. Generated output
-is retained with the run while artifact policy excludes it from ordinary source
-publication. The room-level current build is selected only when its published,
-conflict-free project manifest still matches the current workspace; all other
-complete builds remain historical. See
-[App build architecture](app-builds.md) for detection, projection, preview
-serving, and frontend navigation.
+## Workflow mode and lifecycle controls
 
-For the task-oriented UI, version, and conflict workflow, see
-[Workspace and file previews](../user-guide/workspace.md). Operational
-materialization, cleanup, and recovery rules are in the
-[runtime policy](../operations/runtime.md#room-workspaces).
+Each room stores sticky `plan | work` state. Message creation locks the room and
+copies that mode into every responder run. Retry copies the original run's
+execution profile.
+
+The scheduler uses that immutable run profile. Plan runs may execute in
+parallel until an earlier Work run is encountered. Work requires no active run
+in the room and no earlier same-room pending run, making it an exclusive FIFO
+barrier between Plan batches.
+
+Native Plan is expected to remain read-only. Instruction-only Plan does not
+enforce that invariant, so concurrent Plan harnesses can race in the shared
+Workspace or an external project. Finalization records the resulting live Git
+state but cannot reconstruct isolated per-agent changes.
+
+Add instruction is currently Codex-only. It interrupts the active Codex turn,
+preserves the preceding answer segment with author, timestamp, and status, then
+continues in the same thread and run. It does not roll back tool or Workspace
+side effects.
 
 ## Reliability model
 
-Core stores the human message, run snapshots, and initial room events in one
-database transaction. It then schedules runs through an in-process FIFO queue
-with bounded concurrency.
+The scheduler is process-local and intentionally assumes one Core process.
+PostgreSQL is durable, but the queue is not distributed.
 
-Connector gives every execution a process-lifetime epoch and ordered event
-cursors. Core saves an accepted cursor and the room events derived from it in
-the same database transaction. This lets the system:
+Connector executions use a process epoch and ordered cursors. Core commits an
+accepted cursor with its projected room events, enabling same-epoch reattach,
+deduplication, and browser replay. A Connector restart or unavailable replay
+window fails the run closed and leaves it retryable.
 
-- avoid duplicate room events after reconnecting;
-- resume a run after a same-epoch Core restart when replay is still available;
-- detect that Connector restarted and an old execution can no longer be
-  trusted; and
-- replay durable room events to a reconnecting browser.
-
-The current design intentionally assumes one Core process. PostgreSQL is the
-durable source of truth, but the run queue itself is not distributed.
+At startup, Core also finds terminal runs whose Workspace capture remains
+`ready` or `finalizing` and retries finalization against their room repository.
 
 ## Security and trust
 
-Agenvyl is local-first, but local does not mean sandboxed:
+- Core, Connector, preview server, and bundled PostgreSQL bind to loopback in
+  the personal runtime.
+- Connector requires a generated token and owns harness credentials.
+- Harnesses run with the operating-system user's permissions. The Workspace is
+  a shared working directory, not a sandbox.
+- A recommended external project grants no access and adds no isolation.
+- Different rooms may access the same external path concurrently.
+- Rendered app builds run on a separate sandboxed origin, but generated code can
+  still use network capabilities allowed by preview policy.
+- Agenvyl adds no telemetry; connected tools keep their own network, telemetry,
+  hook, plugin, and MCP behavior.
 
-- Core does not receive harness credentials. Connector reads them from
-  environment variables or the tool's own credential store.
-- Core, Connector, and bundled PostgreSQL bind to loopback in the personal
-  runtime. Connector also requires a token of at least 32 characters.
-- Connector validates room workspace paths and rejects traversal, absolute
-  request paths, symlink escapes, missing targets, and ambiguous roots.
-- OpenCode external-directory requests use a separate, explicit per-instance
-  allowlist. The list is empty by default; adding a root expands the files that
-  OpenCode may request during a run.
-- Agent tools still run with the permissions of the operating-system user who
-  started Agenvyl. A workspace is a shared working directory, **not a security
-  boundary**.
-- Agenvyl adds no telemetry or remote analytics. Connected tools may retain
-  their own network, telemetry, hook, and plugin behavior.
+Put an authenticated TLS reverse proxy in front of Core before non-loopback or
+multi-user exposure.
 
-Do not enable a tool or permission mode that you would not trust with the
-selected files. Put an authenticated TLS reverse proxy in front of Core before
-any non-loopback or multi-user exposure.
+## Code map
 
-## Code map for contributors
-
-Core is a Fastify modular monolith with ports-and-adapters boundaries:
+Core is a Fastify modular monolith:
 
 ```text
 apps/backend/src/
   app/                    composition root and Fastify plugins
-  modules/                use cases and repositories by product capability
+  modules/                product use cases and repositories
   integrations/connector Connector HTTP/SSE client and run adapter
-  infrastructure/        PostgreSQL, migrations, HTTP, and realtime transport
-  shared/                 validation, identity, and error mapping
+  infrastructure/        PostgreSQL, migrations, HTTP, realtime transport
+  shared/                 validation, identity, error mapping
 ```
 
-Routes validate and translate HTTP input. Services own use cases, repositories
-own persistence, and infrastructure code owns database and transport details.
-Boundary checks keep vendor-specific behavior out of product modules.
+The React frontend follows `app -> pages -> widgets -> features -> entities ->
+shared`. Connector adapters live under `apps/connector/src/adapters/`. Shared
+Core/Connector protocol shapes are versioned in `packages/connector-contract`.
 
-The React frontend uses directional layers:
-
-```text
-app -> pages -> widgets -> features -> entities -> shared
-```
-
-TanStack Query owns server state, `RoomEventStream` owns live updates and replay
-sequencing, and local component state owns temporary UI such as dialogs,
-drawers, drafts, and selections.
-
-Connector adapters live under:
-
-```text
-apps/connector/src/adapters/
-  hermes/
-  opencode/
-  codex/
-  claude/
-  antigravity/
-  cursor/
-```
-
-Shared Core/Connector request and event shapes are versioned in
-`packages/connector-contract`. Mixed protocol versions are rejected.
-
-For operational detail, continue with the [runtime](../operations/runtime.md),
-[Connector](../operations/connector.md), and
-[database](../operations/database.md) guides.
+Continue with [runtime policy](../operations/runtime.md),
+[Connector operations](../operations/connector.md), and
+[database migrations](../operations/database.md).

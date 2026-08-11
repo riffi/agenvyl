@@ -250,9 +250,9 @@ export class RunExecutor {
   private canStart(item:QueuedRun,pendingIndex:number){
     const run=this.dependencies.activeRuns.get(item.runId);if(!run)return false;
     const runningInRoom=[...this.tasks.keys()].map(id=>this.dependencies.activeRuns.get(id)).filter((candidate):candidate is RunContext=>candidate!==undefined&&candidate.roomId===run.roomId);
-    if(runningInRoom.length)return false;
-    const earlier=this.pending.slice(0,pendingIndex).map(candidate=>this.dependencies.activeRuns.get(candidate.runId)).find(candidate=>candidate?.roomId===run.roomId);
-    return !earlier;
+    const earlierInRoom=this.pending.slice(0,pendingIndex).map(candidate=>this.dependencies.activeRuns.get(candidate.runId)).filter((candidate):candidate is RunContext=>candidate!==undefined&&candidate.roomId===run.roomId);
+    if(run.executionProfile.workflowMode!=='plan')return !runningInRoom.length&&!earlierInRoom.length;
+    return runningInRoom.every(isPlanRun)&&earlierInRoom.every(isPlanRun);
   }
 
   private async execute(runId: string, text: string) {
@@ -460,6 +460,8 @@ function validElicitationAnswer(value:unknown):value is import('@agenvyl/contrac
   if(answer.action!=='accept'||!jsonValue(answer.content,0))return false;
   try{return JSON.stringify(answer.content).length<=64_000;}catch{return false;}
 }
+
+const isPlanRun=(run:RunContext)=>run.executionProfile.workflowMode==='plan';
 function jsonValue(value:unknown,depth:number):boolean{if(depth>12)return false;if(value===null||typeof value==='string'||typeof value==='boolean')return true;if(typeof value==='number')return Number.isFinite(value);if(Array.isArray(value))return value.length<=256&&value.every(item=>jsonValue(item,depth+1));if(!value||typeof value!=='object')return false;const values=Object.values(value);return values.length<=256&&values.every(item=>jsonValue(item,depth+1));}
 
 function connectorTerminal(execution:ExecutionSnapshot):{status:'completed'|'failed'|'cancelled';error?:string}|undefined{if(execution.status==='completed')return{status:'completed'};if(execution.status==='cancelled')return{status:'cancelled'};if(execution.status==='failed')return{status:'failed',...(execution.error?.message?{error:execution.error.message}:{})};return undefined;}

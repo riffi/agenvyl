@@ -5,7 +5,7 @@ import {FakeRoomGateway,HttpRoomGateway} from './RoomGateway';
 
 describe('FakeRoomGateway',()=>{
   it('emits parallel runs that complete',()=>{vi.useFakeTimers();const gateway=new FakeRoomGateway();let state:RoomState=initialState;gateway.subscribe(event=>{state=roomReducer(state,event)});gateway.demo('parallel');expect(state.runOrder).toHaveLength(2);vi.runAllTimers();expect(state.runOrder.map(id=>state.runs[id].status)).toEqual(['completed','completed']);gateway.dispose();vi.useRealTimers()});
-  it('mirrors automatic naming for a newly created demo room',async()=>{const gateway=new FakeRoomGateway(true);let state:RoomState=initialState;gateway.subscribe(event=>{state=roomReducer(state,event)});await gateway.send('Hello. Fix the OAuth redirect.',['architect']);expect(state.latestTitle).toBe('Fix the OAuth redirect.');gateway.dispose();});
+  it('starts a newly created demo room in Plan and mirrors automatic naming',async()=>{const gateway=new FakeRoomGateway(true,'plan');let state:RoomState=initialState;gateway.subscribe(event=>{state=roomReducer(state,event)});await gateway.send('Hello. Fix the OAuth redirect.',['architect']);expect(state.workflowMode).toBe('plan');expect(state.runs[state.runOrder[0]!]?.executionProfile).toMatchObject({workflowMode:'plan',planEnforcement:'instruction_only'});expect(state.latestTitle).toBe('Fix the OAuth redirect.');gateway.dispose();});
 });
 
 describe('HttpRoomGateway',()=>{
