@@ -153,8 +153,9 @@ function RunCard({
       ui-spec-block-id="agent_response_card"
     >
       <Avatar className={styles['run-avatar']} label={persona.name} color={persona.color} />
-      <div className={styles['run-body']}>
-        <header className={styles['run-header']}>
+      <div className={styles['run-surface']}>
+        <div className={styles['run-body']}>
+          <header className={styles['run-header']}>
           <span className={styles['run-identity']}>
             <span className={styles['run-name']}>
               <strong style={{ color: persona.color }}>{persona.name}</strong>
@@ -174,7 +175,7 @@ function RunCard({
               {canRetry&&<IconButton className={styles['retry-run']} disabled={retrying} onClick={()=>void retryRun()} title={retrying?'Starting…':retryLabel} aria-label={`${retryLabel}: ${persona.name}`}>{retrying?<LoaderCircle className={styles['action-spinner']}/>:<RotateCcw/>}</IconButton>}
             </span>
           </span>
-        </header>
+          </header>
         {run.upstreamStatus&&<UpstreamStatusNotice status={run.upstreamStatus}/>}
         {run.status==='finalizing'&&<div className={`${styles['workspace-state']} ${styles['workspace-state-progress']}`} role="status" aria-live="polite"><LoaderCircle aria-hidden="true"/><span>Finalizing files…</span></div>}
         {run.reasoning&&<ReasoningBlock text={run.reasoning} harnessType={run.harnessType}/>}
@@ -202,7 +203,8 @@ function RunCard({
         {attemptCount>1&&<div className={styles['run-footer']}>
           {attemptCount>1&&<span className={styles['attempt-carousel']}><IconButton onClick={previousAttempt} disabled={attemptIndex===0} aria-label="Previous attempt">‹</IconButton><small>{attemptIndex+1} of {attemptCount}</small><IconButton onClick={nextAttempt} disabled={attemptIndex===attemptCount-1} aria-label="Next attempt">›</IconButton></span>}
         </div>}
-        {retryError&&<Alert tone="error">{retryError}</Alert>}
+          {retryError&&<Alert tone="error">{retryError}</Alert>}
+        </div>
       </div>
     </article>
   );

@@ -18,6 +18,17 @@ const gateway: RoomGateway = { mode: 'fake', subscribe: vi.fn(() => vi.fn()), se
 afterEach(()=>{cleanup();vi.restoreAllMocks();vi.unstubAllGlobals();});
 
 describe('Timeline run details', () => {
+  it('keeps the agent avatar outside the bordered response surface',()=>{
+    const state={...initialState,hydrated:true,messages:[{id:'message-1',text:'@coder work',createdAt:'2026-07-20T12:00:00.000Z',targets:['coder' as const],runIds:['run-1'],author,addressedToAll:false}],runs:{'run-1':run},runOrder:['run-1']};
+    const {container}=render(<Timeline state={state} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()}/>);
+    const card=container.querySelector(`.${styles['run-card']}`)!;
+    const avatar=card.querySelector(`.${styles['run-avatar']}`)!;
+    const surface=card.querySelector(`.${styles['run-surface']}`)!;
+    expect(avatar.parentElement).toBe(card);
+    expect(surface.parentElement).toBe(card);
+    expect(surface.contains(avatar)).toBe(false);
+  });
+
   it('offers Add instruction only for an explicitly supported streaming run',()=>{
     const redirect=vi.fn(),streamingRun:Run={...run,status:'streaming',harnessInstanceId:'local-codex',harnessType:'codex'},state={...initialState,hydrated:true,messages:[{id:'message-1',text:'@coder work',createdAt:'2026-07-20T12:00:00.000Z',targets:['coder' as const],runIds:['run-1'],author:{profileId:'local-user',displayName:'User',handle:'user'},addressedToAll:false}],runs:{'run-1':streamingRun},runOrder:['run-1']},catalog={connectorEpoch:'epoch',cache:{state:'fresh' as const,refreshedAt:'2026-07-20T00:00:00.000Z',expiresAt:'2026-07-20T01:00:00.000Z'},instances:[{id:'local-codex',type:'codex',status:'healthy' as const,capabilities:[],interventionMode:'interrupt_then_continue' as const,models:[],controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]},catalogCache:{state:'fresh' as const,refreshedAt:'2026-07-20T00:00:00.000Z'}}]};
     const view=render(<Timeline state={state} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()} harnessCatalog={catalog} addInstructionToRun={redirect}/>);
