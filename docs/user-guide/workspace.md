@@ -5,8 +5,8 @@ use this live folder one at a time; Plan agents can inspect it concurrently.
 Agenvyl records the folder in Git and keeps immutable versions for attachments,
 response files, history, and restore.
 
-The Workspace also has an **App** view for static builds captured from agent
-runs. See [App builds and previews](app-builds.md).
+The Workspace also has an **App preview** view for static builds captured from
+agent runs. See [App builds and previews](app-builds.md).
 
 ## At a glance
 
@@ -16,7 +16,7 @@ flowchart TD
   Artifact[Attachment or changed file] -->|Exact saved version| Window
   Window --> Tree[Browse and manage current files]
   Window --> Preview[Rendered or Source view]
-  Window --> App[Current or historical app build]
+  Window --> App[Current or historical app preview]
   Window --> History[Immutable file versions]
   History --> Older[View an older version]
   Older -->|Restore| Current[Create a new current version]
@@ -44,8 +44,8 @@ The header contains the controls available for the current file:
   to open the complete history.
 - The actions menu can contain Attach, Download, Restore, Rename, Move, Delete,
   and Refresh.
-- **App** and **Files** switch between a captured app build and the editable
-  file tree.
+- **App preview** and **Files** switch between a captured app build and the
+  editable file tree.
 
 Hover over an icon to see its label.
 
@@ -56,9 +56,9 @@ move, delete, Trash, restore, and opening the current version. Double-click a
 normal file in the tree to rename it.
 
 The upload picker accepts up to 10 files in one action. If a path already
-exists, Agenvyl asks whether to replace it or choose another name. The default
-file-size limit is 50 MiB. Larger files written by an agent or external program
-can appear as `oversize`, but cannot be versioned or attached.
+exists, Agenvyl asks whether to save the upload as a new version of that file.
+The default file-size limit is 50 MiB. Larger files written by an agent or
+external program can appear as `oversize`, but cannot be versioned or attached.
 
 Workspace actions are temporarily blocked while any agent run is active in the
 room, including Plan. Wait for the runs to finish or stop before uploading,
@@ -166,11 +166,6 @@ Git operation in the room folder, then retry the run.
 
 `.git`, `.versions`, and `.agenvyl` are reserved paths in the Workspace UI.
 Do not remove or edit application-managed version content by hand.
-
-## Use `plan.md`
-
-`plan.md` is an ordinary versioned Markdown file. Turning on Plan does not
-create or update it automatically.
 
 ## Close and return
 
