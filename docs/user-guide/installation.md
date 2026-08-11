@@ -111,7 +111,8 @@ In the setup screen:
 5. finish setup.
 
 Agenvyl creates the first room in Plan as **New room** and names it
-automatically from the first substantive message. Switch to Work when you are
+automatically from the first substantive message. The compact mode button beside
+the composer shows Plan or Work with its matching icon; select it when you are
 ready to implement. You can rename the room manually at any time.
 
 You can type the workspace root or select **Choose…**. Agenvyl creates the

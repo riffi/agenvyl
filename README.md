@@ -143,9 +143,11 @@ Or guide a software workflow:
 ```
 
 New rooms already have **Plan** enabled so agents can inspect and discuss the
-project without implementing the request. Plan responders can run in parallel;
-switch to Work when you are ready for ordered implementation. The mode stays
-active for every new message and responder until you switch it again. Native
+project without implementing the request. Plan responders can run in parallel.
+The compact mode button beside the composer shows **Plan** or **Work** with its
+matching icon; select it when you are ready for ordered implementation. The
+mode stays active for every new message and responder until you switch it
+again. Native
 Plan is the strongest mode each harness provides; an **Instruction-only** badge means the
 harness has no technical read-only control and can still write with your
 operating-system permissions.

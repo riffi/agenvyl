@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ArrowUp, FileText, LoaderCircle, MessageSquarePlus, RefreshCw, Shield, Square, X } from 'lucide-react';
+import { ArrowUp, FileText, Hammer, LoaderCircle, MessageSquarePlus, RefreshCw, Shield, Square, X } from 'lucide-react';
 import {personaModelName,type HarnessCatalog} from '../../entities/harness';
 import type { Persona } from '../../entities/persona';
 import { FakeRoomGateway, type DemoKind, type RoomGateway } from '../../features/room-session';
@@ -112,7 +112,8 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   useLayoutEffect(()=>{if(!mention||!matchMedia('(max-width: 767px)').matches)return;const position=()=>{const popover=mentionPopoverRef.current,editor=editorRef.current;if(!popover||!editor)return;popover.style.setProperty('--mention-bottom',`${Math.max(0,window.innerHeight-editor.getBoundingClientRect().top)}px`)};position();window.visualViewport?.addEventListener('resize',position);addEventListener('resize',position);return()=>{window.visualViewport?.removeEventListener('resize',position);removeEventListener('resize',position)}},[mention,text,targets.length]);
   const updateMention=(value:string,caret:number)=>setMention(activeMentionQuery(value,caret));
   const chooseMention=(handle:string)=>{if(!mention)return;const next=`${text.slice(0,mention.start)}@${handle} ${text.slice(mention.end)}`,caret=mention.start+handle.length+2;setText(next);setMention(undefined);requestAnimationFrame(()=>{editorRef.current?.focus();editorRef.current?.setSelectionRange(caret,caret)});};
-  const toggleWorkflowMode=async()=>{if(modeSaving)return;setModeSaving(true);setModeError(undefined);try{await updateWorkflowMode(workflowMode==='plan'?'work':'plan')}catch(error){setModeError(error instanceof Error?error.message:String(error))}finally{setModeSaving(false)}};
+  const selectWorkflowMode=async(nextMode:WorkflowMode)=>{if(modeSaving||nextMode===workflowMode)return;setModeSaving(true);setModeError(undefined);try{await updateWorkflowMode(nextMode)}catch(error){setModeError(error instanceof Error?error.message:String(error))}finally{setModeSaving(false)}};
+  const workflowModeLabel=workflowMode==='plan'?'Plan':'Work',nextWorkflowMode:WorkflowMode=workflowMode==='plan'?'work':'plan',nextWorkflowModeLabel=nextWorkflowMode==='plan'?'Plan':'Work';
   const send = async (retry=sendError) => {
     if(interventionTarget){
       const outgoing=text.trim();if(!outgoing||sending)return;
@@ -222,7 +223,16 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
         <footer className={interventionTarget?styles['instruction-footer']:undefined}>
           {!interventionTarget&&<ComposerAddMenu attachmentDisabled={attachments.length>=10||attachmentsBusy} onAttach={openAttachmentPicker} onOpenWorkspace={()=>openWorkspace()}/>}
           <small className={styles['composer-status']} role="status" aria-live="polite">{composerStatus}</small>
-          {!interventionTarget&&<Button className={`${styles['plan-button']} ${workflowMode==='plan'?styles['plan-button-active']:''}`} size="sm" variant="ghost" title="Plan: inspect the project without implementing changes" aria-pressed={workflowMode==='plan'} disabled={modeSaving} onClick={()=>void toggleWorkflowMode()} icon={modeSaving?<LoaderCircle className={styles.spinning}/>:<Shield/>}>Plan</Button>}
+          {!interventionTarget&&<Button
+            className={styles['plan-button']}
+            size="sm"
+            variant="ghost"
+            title={`${workflowModeLabel} mode. Switch to ${nextWorkflowModeLabel}`}
+            aria-label={`${workflowModeLabel} mode. Switch to ${nextWorkflowModeLabel}`}
+            disabled={modeSaving}
+            onClick={()=>void selectWorkflowMode(nextWorkflowMode)}
+            icon={modeSaving?<LoaderCircle className={styles.spinning} aria-hidden="true"/>:workflowMode==='plan'?<Shield aria-hidden="true"/>:<Hammer aria-hidden="true"/>}
+          >{workflowModeLabel}</Button>}
           <Button
             className={styles.send}
             size="sm"

@@ -42,12 +42,23 @@ describe('Composer agent list',()=>{
     expect(screen.queryByText(/Implementation/)).toBeNull();
   });
 
-  it('persists Plan through the room workflow callback and does not send a message',async()=>{
+  it('shows the current workflow mode and persists either selection',async()=>{
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
     const send=vi.fn<RoomGateway['send']>().mockResolvedValue(sentMessage),updateWorkflowMode=vi.fn(async()=>undefined),localGateway={...gateway,send};
-    render(<Composer gateway={localGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} workflowMode="work" updateWorkflowMode={updateWorkflowMode}/>);
-    fireEvent.click(screen.getByRole('button',{name:'Plan'}));
+    const props={gateway:localGateway,active:0,personas:[persona],harnessCatalog:catalog,catalogReady:true,onSent:vi.fn(async()=>undefined),openWorkspace:vi.fn(),roomId:'room',attachments:[],attachmentsBusy:false,openAttachmentPicker:vi.fn(),uploadFiles:vi.fn(),removeAttachment:vi.fn(),retryAttachment:vi.fn(),clearAttachments:vi.fn(),updateWorkflowMode};
+    const view=render(<Composer {...props} workflowMode="work"/>);
+    const workButton=screen.getByRole('button',{name:'Work mode. Switch to Plan'});
+    expect(workButton.textContent).toContain('Work');
+    expect(workButton.querySelector('.lucide-hammer')).toBeTruthy();
+    expect(workButton.hasAttribute('aria-pressed')).toBe(false);
+    fireEvent.click(workButton);
     await waitFor(()=>expect(updateWorkflowMode).toHaveBeenCalledWith('plan'));
+    view.rerender(<Composer {...props} workflowMode="plan"/>);
+    const planButton=screen.getByRole('button',{name:'Plan mode. Switch to Work'});
+    expect(planButton.textContent).toContain('Plan');
+    expect(planButton.querySelector('.lucide-shield')).toBeTruthy();
+    fireEvent.click(planButton);
+    await waitFor(()=>expect(updateWorkflowMode).toHaveBeenCalledWith('work'));
     expect(send).not.toHaveBeenCalled();
   });
 
@@ -60,7 +71,8 @@ describe('Composer agent list',()=>{
     await waitFor(()=>expect(send).toHaveBeenCalled());
     expect(send.mock.calls[0]?.slice(0,2)).toEqual(['@all inspect this',['coder','reviewer']]);
     rerender(<Composer gateway={localGateway} active={0} personas={[persona,second]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} workflowMode="plan"/>);
-    expect(screen.getByRole('button',{name:'Plan'}).getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByRole('button',{name:'Plan mode. Switch to Work'}).textContent).toContain('Plan');
+    expect(screen.queryByRole('button',{name:'Work mode. Switch to Plan'})).toBeNull();
   });
 
   it('warns when a selected harness has instruction-only Plan enforcement',()=>{

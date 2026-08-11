@@ -320,7 +320,6 @@
 .plan-button:hover { background:#eef2f7!important;color:#1e293b!important; }
 .plan-button:focus-visible { outline:2px solid #4f6ef7;outline-offset:2px; }
 .plan-button svg { width:15px!important;height:15px!important;stroke-width:1.8; }
-.plan-button-active { border-color:#c7d2fe!important;background:#eef2ff!important;color:#3730a3!important; }
 .compose-card footer .send {
   width:36px;
   height:36px;

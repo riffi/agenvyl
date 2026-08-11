@@ -56,9 +56,11 @@ send a follow-up message such as:
 ## Choose Work or Plan
 
 Plan is the default for a new room. It asks agents to inspect and discuss
-without implementing and allows parallel responders. Switch to Work when you
-are ready for ordered implementation. The selected mode stays active for new
-messages until you switch it again; retry keeps the mode of the original run.
+without implementing and allows parallel responders. The compact mode button
+beside the composer shows Plan or Work with its matching icon; select it to
+switch modes when you are ready for ordered implementation. The selected mode
+stays active for new messages until you switch it again; retry keeps the mode
+of the original run.
 
 Native Plan is the strongest read-only control offered by each harness. An
 **Instruction-only** badge means the harness receives a planning instruction
