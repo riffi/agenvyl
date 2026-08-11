@@ -37,6 +37,13 @@ describe('transparent Git workspace',()=>{
       const workspace=await service.list('demo-room');
       expect(workspace.staticPreview).toMatchObject({status:'ready',runId:run.id});
       expect((await service.resolveRunPreview('demo-room',run.id)).data.toString()).toContain('script');
+
+      const planProfile={...workProfile,workflowMode:'plan' as const,planEnforcement:'native' as const},planRound=await repositories.messages.createRound('demo-room','plan it',[persona],new Map([[persona.id,planProfile]])),planRun=planRound.runs[0];
+      await service.prepareRun('demo-room',planRun.id);
+      const planResult=await service.finalizeRun('demo-room',planRun.id,'completed');
+      expect(planResult).toMatchObject({base_head:planResult?.result_head,capture_status:'complete'});
+      expect(await repositories.workspace.previewBundleForRun('demo-room',planRun.id)).toBeUndefined();
+      expect((await service.list('demo-room')).previewHistory).toHaveLength(1);
     }finally{await repositories.database.close();await Promise.all([rm(root,{recursive:true,force:true}),rm(artifacts,{recursive:true,force:true})]);}
   });
 });

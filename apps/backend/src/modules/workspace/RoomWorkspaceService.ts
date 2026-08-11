@@ -80,7 +80,7 @@ export class RoomWorkspaceService{
       const directory=await this.ensure(roomId);
       try{
         const checkpoint=await this.git.finalize(directory,runId,status),captured=await this.captureRunTree(roomId,runId,directory,existing.base_head,checkpoint.head);
-        await this.capturePreviewBundle(roomId,runId,checkpoint.head,captured).catch(error=>this.logPreviewCaptureFailure(roomId,runId,error));
+        if(captured.changedPaths.size)await this.capturePreviewBundle(roomId,runId,checkpoint.head,captured).catch(error=>this.logPreviewCaptureFailure(roomId,runId,error));
         const result=(await this.runWorkspaces.complete(runId,{resultHead:checkpoint.head,checkpointSha:checkpoint.checkpointSha,errors:captured.errors}))!;
         await this.emitFinalized(roomId,runId,result);
         this.logger?.info({metric:'workspace.capture',roomId,runId,driver:'direct',durationMs:Date.now()-started,captureStatus:result.capture_status,resultHead:checkpoint.head,changedPaths:captured.changedPaths.size},'Direct Git workspace finalized');
