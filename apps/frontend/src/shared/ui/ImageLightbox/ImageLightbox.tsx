@@ -49,6 +49,13 @@ export const ImageLightbox = ({
     slides={slides}
     plugins={plugins}
     carousel={{ finite: true, imageFit: 'contain' }}
+    zoom={{
+      minZoom: 0.25,
+      maxZoomPixelRatio: 4,
+      zoomInMultiplier: 1.5,
+      wheelZoomDistanceFactor: 1000,
+      scrollToZoom: true,
+    }}
     controller={{ aria: true, closeOnBackdropClick: true }}
     captions={{ descriptionTextAlign: 'center', descriptionMaxLines: 2, showToggle: false }}
     counter={{ separator: ' of ' }}

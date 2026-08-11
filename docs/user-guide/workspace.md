@@ -80,10 +80,9 @@ opening unfamiliar generated content.
 
 ### Image and SVG controls
 
-Use the preview controls to fit or zoom images. For SVG, place the pointer over
-the rendered image and use the mouse wheel to zoom around that point. Drag the
-zoomed preview to inspect another area. Reset or fit the preview to return to
-the complete image.
+Use the preview controls to fit or zoom images. Place the pointer over a
+rendered image or SVG and use the mouse wheel to zoom. Open the full-screen
+viewer for additional zoom and navigation controls.
 
 SVG content is constrained to the preview area so an oversized intrinsic canvas
 does not expand the Workspace layout.

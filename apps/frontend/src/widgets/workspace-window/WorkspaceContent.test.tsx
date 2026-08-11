@@ -55,12 +55,14 @@ describe('Workspace image viewer', () => {
     expect(screen.getByRole('button', { name: /Open image “logo.svg”/ })).toBeTruthy();
   });
 
-  it('zooms an SVG with the mouse wheel in the workspace viewer', () => {
-    const svg = image('diagram.svg', 'image/svg+xml');
-    render(<WorkspaceContent attachment={svg} mode="rendered" />);
+  it.each([
+    ['raster image', image('photo.png')],
+    ['SVG', image('diagram.svg', 'image/svg+xml')],
+  ])('zooms a %s with the mouse wheel in the workspace viewer', (_label, attachment) => {
+    render(<WorkspaceContent attachment={attachment} mode="rendered" />);
 
-    const stage = screen.getByRole('button', { name: /Open image “diagram.svg”/ });
-    const rendered = screen.getByRole('img', { name: 'diagram.svg' });
+    const stage = screen.getByRole('button', { name: new RegExp(`Open image “${attachment.name}”`) });
+    const rendered = screen.getByRole('img', { name: attachment.name });
     fireEvent.wheel(stage, { deltaY: -100 });
 
     expect(rendered.style.transform).toBe('scale(1.1)');

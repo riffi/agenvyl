@@ -120,10 +120,10 @@ const ImageGallery = ({
   }, [openIndex]);
   return <div className={styles.imageCanvas}>
     {index > 0 && <button className={`${styles.galleryArrow} ${styles.galleryPrevious}`} onClick={() => navigate(-1)} aria-label="Previous image"><ChevronLeft /></button>}
-    <button ref={openerRef} className={styles.imageStage} type="button" onClick={openLightbox} onWheel={vector ? handleWheel : undefined} aria-label={`Open image “${attachment.name}” in full-screen view`} title={vector ? 'Use the mouse wheel to zoom; click for full-screen viewer' : 'Open full-screen viewer'}>
-      <img className={vector ? styles.vectorImage : undefined} src={attachment.preview_url} alt={attachment.name} style={vector ? { transform: `scale(${zoom})` } : undefined} />
+    <button ref={openerRef} className={styles.imageStage} type="button" onClick={openLightbox} onWheel={handleWheel} aria-label={`Open image “${attachment.name}” in full-screen view`} title="Use the mouse wheel to zoom; click for full-screen viewer">
+      <img className={vector ? styles.vectorImage : undefined} src={attachment.preview_url} alt={attachment.name} style={{ transform: `scale(${zoom})` }} />
       <span className={styles.imageInspect}><Expand />Inspect</span>
-      {vector && zoom !== 1 && <span className={styles.imageZoom}>{Math.round(zoom * 100)}%</span>}
+      {zoom !== 1 && <span className={styles.imageZoom}>{Math.round(zoom * 100)}%</span>}
     </button>
     {index < images.length - 1 && <button className={`${styles.galleryArrow} ${styles.galleryNext}`} onClick={() => navigate(1)} aria-label="Next image"><ChevronRight /></button>}
     {images.length > 1 && <span className={styles.galleryCounter}>Image {index + 1} of {images.length}</span>}
