@@ -5,9 +5,10 @@ import {afterEach,describe,expect,it} from 'vitest';
 import {CodexAppServerClient} from './app-server-client.js';
 
 const roots:string[]=[];afterEach(async()=>{for(const root of roots.splice(0))await rm(root,{recursive:true,force:true});});
+const subprocessTestTimeoutMs=15_000;
 
 describe('Codex app-server subprocess protocol',()=>{
-  it('opts into experimental and MCP form APIs, preserves UTF-8 JSONL and correlates out-of-order responses',async()=>{const root=await mkdtemp(join(tmpdir(),'agenvyl-codex-process-'));roots.push(root);const fixture=join(root,'fixture server.mjs'),command=process.platform==='win32'?join(root,'codex command.cmd'):join(root,'codex command');await writeFile(fixture,serverSource);if(process.platform==='win32')await writeFile(command,`@echo off\r\n"${process.execPath}" "${fixture}" %*\r\n`);else{await writeFile(command,`#!/bin/sh\nexec "${process.execPath}" "${fixture}" "$@"\n`);await chmod(command,0o755);}const client=new CodexAppServerClient(command);try{await client.start();const [first,second]=await Promise.all([client.request('echo',{value:'первый 🌱'}),client.request('echo',{value:'second'})]);expect(first).toEqual({value:'первый 🌱'});expect(second).toEqual({value:'second'});}finally{await client.close();}});
+  it('opts into experimental and MCP form APIs, preserves UTF-8 JSONL and correlates out-of-order responses',async()=>{const root=await mkdtemp(join(tmpdir(),'agenvyl-codex-process-'));roots.push(root);const fixture=join(root,'fixture server.mjs'),command=process.platform==='win32'?join(root,'codex command.cmd'):join(root,'codex command');await writeFile(fixture,serverSource);if(process.platform==='win32')await writeFile(command,`@echo off\r\n"${process.execPath}" "${fixture}" %*\r\n`);else{await writeFile(command,`#!/bin/sh\nexec "${process.execPath}" "${fixture}" "$@"\n`);await chmod(command,0o755);}const client=new CodexAppServerClient(command);try{await client.start();const [first,second]=await Promise.all([client.request('echo',{value:'первый 🌱'}),client.request('echo',{value:'second'})]);expect(first).toEqual({value:'первый 🌱'});expect(second).toEqual({value:'second'});}finally{await client.close();}},subprocessTestTimeoutMs);
   it('terminates descendants that hold a run workspace as their current directory',async()=>{
     const root=await mkdtemp(join(tmpdir(),'agenvyl-codex-tree-'));roots.push(root);
     const workspace=join(root,'workspace'),pidFile=join(root,'child.pid'),fixture=join(root,'fixture.mjs'),command=process.platform==='win32'?join(root,'codex.cmd'):join(root,'codex');
@@ -20,7 +21,7 @@ describe('Codex app-server subprocess protocol',()=>{
     await client.close();
     await expect.poll(()=>processExists(childPid),{timeout:5_000}).toBe(false);
     await expect(rm(workspace,{recursive:true})).resolves.toBeUndefined();
-  });
+  },subprocessTestTimeoutMs);
   it('terminates descendants when the app-server exits before client cleanup',async()=>{
     const root=await mkdtemp(join(tmpdir(),'agenvyl-codex-orphan-'));roots.push(root);
     const workspace=join(root,'workspace'),pidFile=join(root,'child.pid'),fixture=join(root,'fixture.mjs'),command=process.platform==='win32'?join(root,'codex.cmd'):join(root,'codex');
@@ -34,7 +35,7 @@ describe('Codex app-server subprocess protocol',()=>{
     await expect.poll(()=>processExists(childPid),{timeout:5_000}).toBe(false);
     await expect(rm(workspace,{recursive:true})).resolves.toBeUndefined();
     await client.close();
-  });
+  },subprocessTestTimeoutMs);
 });
 
 const serverSource=`
