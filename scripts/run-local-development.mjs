@@ -36,6 +36,7 @@ const processes = [
     ...sharedEnvironment,
     AGENVYL_CONNECTOR_URL: 'http://127.0.0.1:4310',
     AGENVYL_DATABASE_URL: `postgres://agenvyl:${encodeURIComponent(postgresPassword)}@127.0.0.1:${postgresPort}/agenvyl`,
+    AGENVYL_SERVE_STATIC_FRONTEND: 'false',
   }),
   startProcess('frontend', process.execPath, [localBinary('vite', 'bin/vite.js'), '--config', 'apps/frontend/vite.config.ts'], {
     ...sharedEnvironment,

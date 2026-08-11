@@ -131,7 +131,7 @@ export class ExecutionRegistry {
   async stop(executionId: string): Promise<ExecutionSnapshot> {
     const record = this.require(executionId);
     if (terminalStatuses.has(record.status)) return this.snapshot(record);
-    this.failActiveIntervention(record, { code: 'execution_stopped', message: 'Redirect was cancelled because the run was stopped' });
+    this.failActiveIntervention(record, { code: 'execution_stopped', message: 'The instruction was cancelled because the run was stopped' });
     if (record.status !== 'stopping') {
       record.status = 'stopping';
       this.append(record, 'execution.status', { status: 'stopping' });
@@ -190,10 +190,10 @@ export class ExecutionRegistry {
       if(existing.text!==text)throw new RegistryError('intervention_conflict','Intervention ID is already used with different text',409);
       return{execution:this.snapshot(record),intervention:structuredClone(existing)};
     }
-    if(record.status!=='running')throw new RegistryError('execution_not_intervenable','Only a running execution can be redirected',409);
-    if(record.pendingRequests.size)throw new RegistryError('execution_waiting_for_user','Resolve the pending request before redirecting this run',409);
-    if(record.activeInterventionId)throw new RegistryError('intervention_in_progress','Another redirect is already in progress',409);
-    if(record.adapter.interventionMode!=='interrupt_then_continue'||!record.adapter.intervene)throw new RegistryError('intervention_unsupported','This Connector instance does not support redirecting active runs',409);
+    if(record.status!=='running')throw new RegistryError('execution_not_intervenable','Instructions can be added only to a running execution',409);
+    if(record.pendingRequests.size)throw new RegistryError('execution_waiting_for_user','Resolve the pending request before adding an instruction',409);
+    if(record.activeInterventionId)throw new RegistryError('intervention_in_progress','Another instruction is already in progress',409);
+    if(record.adapter.interventionMode!=='interrupt_then_continue'||!record.adapter.intervene)throw new RegistryError('intervention_unsupported','This Connector instance does not support adding instructions to active runs',409);
     if(!record.upstream)throw new RegistryError('adapter_unavailable','Adapter execution is not available',503);
     const intervention:ExecutionIntervention={interventionId:input.interventionId,text,status:'pending'};
     record.interventions.set(intervention.interventionId,intervention);
@@ -340,7 +340,7 @@ export class ExecutionRegistry {
 
   private appendTerminal(record: ExecutionRecord, type: 'execution.completed' | 'execution.failed' | 'execution.cancelled', payload: Record<string, never> | { error: { code: string; message: string } }) {
     if (terminalStatuses.has(record.status)) return;
-    this.failActiveIntervention(record,{code:'execution_ended',message:'Redirect could not be applied before the run ended'});
+    this.failActiveIntervention(record,{code:'execution_ended',message:'The instruction could not be applied before the run ended'});
     const requestOutcome = type === 'execution.completed' ? 'superseded' : 'cancelled';
     for (const request of record.pendingRequests.values()) this.append(record, 'request.resolved', { requestId: request.id, outcome: requestOutcome });
     record.status = type === 'execution.completed' ? 'completed' : type === 'execution.cancelled' ? 'cancelled' : 'failed';

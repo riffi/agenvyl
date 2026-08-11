@@ -354,9 +354,8 @@ export class RunExecutor {
       if(event.type==='request.resolved'&&typeof event.payload.requestId==='string')run.pendingRequests?.delete(event.payload.requestId);
       if(event.type==='run.intervention.updated'&&event.payload.intervention&&typeof event.payload.intervention==='object'){
         const intervention=event.payload.intervention as {id?:unknown;text?:unknown;status?:unknown};
-        if(intervention.status==='pending'&&typeof intervention.id==='string'&&typeof intervention.text==='string')run.pendingIntervention={id:intervention.id,text:intervention.text};
+        if(intervention.status==='pending'&&typeof intervention.id==='string'&&typeof intervention.text==='string'){run.pendingIntervention={id:intervention.id,text:intervention.text};run.responseText='';}
         if((intervention.status==='applied'||intervention.status==='failed')&&run.pendingIntervention?.id===intervention.id)run.pendingIntervention=undefined;
-        if(intervention.status==='applied')run.responseText='';
       }
     }
     if(mapping.terminal)await this.terminal(run,mapping.terminal.status,mapping.terminal.error,mapping.terminal.errorCode);

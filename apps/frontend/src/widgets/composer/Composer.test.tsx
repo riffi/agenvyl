@@ -16,21 +16,21 @@ const sentMessage={id:'message-1',text:'',createdAt:'2026-07-22T00:00:00.000Z',t
 afterEach(()=>{cleanup();vi.unstubAllGlobals()});
 
 describe('Composer agent list',()=>{
-  it('preserves the normal draft while submitting a text-only redirect',async()=>{
-    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));const intervene=vi.fn(async()=>undefined),exitIntervention=vi.fn(),redirectGateway={...gateway,intervene};
-    const props={gateway:redirectGateway,active:1,personas:[persona],harnessCatalog:catalog,catalogReady:true,onSent:vi.fn(async()=>undefined),openWorkspace:vi.fn(),roomId:'room',attachments:[],attachmentsBusy:false,openAttachmentPicker:vi.fn(),uploadFiles:vi.fn(),removeAttachment:vi.fn(),retryAttachment:vi.fn(),clearAttachments:vi.fn()};
+  it('preserves the normal draft while submitting a text-only instruction',async()=>{
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));const intervene=vi.fn(async()=>undefined),exitIntervention=vi.fn(),instructionGateway={...gateway,intervene};
+    const props={gateway:instructionGateway,active:1,personas:[persona],harnessCatalog:catalog,catalogReady:true,onSent:vi.fn(async()=>undefined),openWorkspace:vi.fn(),roomId:'room',attachments:[],attachmentsBusy:false,openAttachmentPicker:vi.fn(),uploadFiles:vi.fn(),removeAttachment:vi.fn(),retryAttachment:vi.fn(),clearAttachments:vi.fn()};
     const view=render(<Composer {...props}/>);fireEvent.change(screen.getByRole('textbox',{name:'Message'}),{target:{value:'Ordinary draft'}});
     view.rerender(<Composer {...props} interventionTarget={{runId:'run-1',agent:'coder',active:true}} exitIntervention={exitIntervention}/>);
-    const editor=screen.getByRole('textbox',{name:'Redirect coder'}),redirectButton=screen.getByRole('button',{name:'Redirect run'}),redirectFooter=redirectButton.closest('footer');expect(editor.getAttribute('maxlength')).toBe('2000');expect((editor as HTMLTextAreaElement).value).toBe('');expect(screen.queryByRole('button',{name:'Add to message'})).toBeNull();expect(redirectFooter?.children).toHaveLength(2);expect(redirectFooter?.firstElementChild?.textContent).toBe('0 / 2000');expect(redirectFooter?.parentElement?.className).toContain('compose-card-expanded');
-    fireEvent.change(editor,{target:{value:'Focus on the API'}});fireEvent.click(screen.getByRole('button',{name:'Redirect run'}));
+    const editor=screen.getByRole('textbox',{name:'Instruction for coder'}),instructionButton=screen.getByRole('button',{name:'Send instruction'}),instructionFooter=instructionButton.closest('footer');expect(editor.getAttribute('maxlength')).toBe('2000');expect((editor as HTMLTextAreaElement).value).toBe('');expect(editor.getAttribute('placeholder')).toBe('Add an instruction for @coder…');expect(screen.queryByRole('button',{name:'Add to message'})).toBeNull();expect(instructionFooter?.children).toHaveLength(2);expect(instructionFooter?.firstElementChild?.textContent).toBe('0 / 2000');expect(instructionFooter?.parentElement?.className).toContain('compose-card-expanded');
+    fireEvent.change(editor,{target:{value:'Focus on the API'}});fireEvent.click(screen.getByRole('button',{name:'Send instruction'}));
     await waitFor(()=>expect(intervene).toHaveBeenCalledWith('run-1','Focus on the API'));expect(exitIntervention).toHaveBeenCalledOnce();
     view.rerender(<Composer {...props}/>);expect((screen.getByRole('textbox',{name:'Message'}) as HTMLTextAreaElement).value).toBe('Ordinary draft');
   });
 
-  it('keeps the redirect draft when the run has already finished',async()=>{
-    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));const intervene=vi.fn(),redirectGateway={...gateway,intervene};
-    render(<Composer gateway={redirectGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} interventionTarget={{runId:'run-1',agent:'coder',active:false}}/>);
-    const editor=screen.getByRole('textbox',{name:'Redirect coder'});fireEvent.change(editor,{target:{value:'Still useful'}});fireEvent.click(screen.getByRole('button',{name:'Redirect run'}));
+  it('keeps the instruction draft when the run has already finished',async()=>{
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));const intervene=vi.fn(),instructionGateway={...gateway,intervene};
+    render(<Composer gateway={instructionGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} interventionTarget={{runId:'run-1',agent:'coder',active:false}}/>);
+    const editor=screen.getByRole('textbox',{name:'Instruction for coder'});fireEvent.change(editor,{target:{value:'Still useful'}});fireEvent.click(screen.getByRole('button',{name:'Send instruction'}));
     expect(intervene).not.toHaveBeenCalled();expect(await screen.findByText(/run has already finished/)).toBeTruthy();expect((editor as HTMLTextAreaElement).value).toBe('Still useful');
   });
   it('shows the model in mention suggestions',()=>{

@@ -58,7 +58,7 @@ export function sanitizeAdapterEvent(event: AdapterExecutionEvent): AdapterExecu
           ...('interventionId' in event.payload ? { interventionId:event.payload.interventionId,text:event.payload.text } : {}),
           error: {
             code: safeErrorCode(event.payload.error.code),
-            message: redactConnectorText(event.payload.error.message, 500) || (event.type === 'execution.intervention.failed' ? 'Redirect failed' : 'Adapter execution failed'),
+            message: redactConnectorText(event.payload.error.message, 500) || (event.type === 'execution.intervention.failed' ? 'Instruction could not be applied' : 'Adapter execution failed'),
           },
         },
       } as AdapterExecutionEvent;

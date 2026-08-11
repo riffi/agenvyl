@@ -11,19 +11,56 @@ import type { WorkspaceAttachment } from '@agenvyl/contracts';
 import styles from './Timeline.module.css';
 
 const persona: Persona = { id: 'persona-1', handle: 'coder', name: 'Coder', color: '#64748b', requested_model: 'sol', effective_model: null, harness_instance_id: 'local-hermes', harness_type: 'hermes', model_id: 'sol', permission_profile_id:null,agent_variant_id:null, default_reasoning_effort:null, group_id: null, archived_at: null };
+const author={profileId:'local-user',displayName:'User',handle:'user'};
 const run: Run = { id: 'run-1', messageId: 'message-1', agent: 'coder', harnessInstanceId: 'local-hermes', harnessType: 'hermes', modelId: 'sol', executionProfile:{workflowMode:'work',requestedReasoningEffort:null,reasoningEffort:null,reasoningEffortFallback:false,reasoningEffortSource:'auto',planEnforcement:null,permissionProfileId:null,agentVariantId:null}, status: 'completed', text: 'Готово', tools: [],interventions:[], usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 } };
 const workspaceResult={base_head:'base',result_head:'result',capture_status:'complete' as const,errors:[],updated_at:'2026-07-23T07:32:00.000Z'};
 const gateway: RoomGateway = { mode: 'fake', subscribe: vi.fn(() => vi.fn()), send: vi.fn(), resolve: vi.fn(), intervene:vi.fn(), cancel: vi.fn(), retry: vi.fn(), select: vi.fn(), dispose: vi.fn() };
 afterEach(()=>{cleanup();vi.restoreAllMocks();vi.unstubAllGlobals();});
 
 describe('Timeline run details', () => {
-  it('offers Redirect only for an explicitly supported streaming run',()=>{
+  it('offers Add instruction only for an explicitly supported streaming run',()=>{
     const redirect=vi.fn(),streamingRun:Run={...run,status:'streaming',harnessInstanceId:'local-codex',harnessType:'codex'},state={...initialState,hydrated:true,messages:[{id:'message-1',text:'@coder work',createdAt:'2026-07-20T12:00:00.000Z',targets:['coder' as const],runIds:['run-1'],author:{profileId:'local-user',displayName:'User',handle:'user'},addressedToAll:false}],runs:{'run-1':streamingRun},runOrder:['run-1']},catalog={connectorEpoch:'epoch',cache:{state:'fresh' as const,refreshedAt:'2026-07-20T00:00:00.000Z',expiresAt:'2026-07-20T01:00:00.000Z'},instances:[{id:'local-codex',type:'codex',status:'healthy' as const,capabilities:[],interventionMode:'interrupt_then_continue' as const,models:[],controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]},catalogCache:{state:'fresh' as const,refreshedAt:'2026-07-20T00:00:00.000Z'}}]};
-    const view=render(<Timeline state={state} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()} harnessCatalog={catalog} redirectRun={redirect}/>);
-    fireEvent.click(screen.getByRole('button',{name:'Redirect Coder response'}));expect(redirect).toHaveBeenCalledWith('run-1');
-    view.rerender(<Timeline state={{...state,runs:{'run-1':{...streamingRun,interventions:[{id:'redirect',text:'Change direction',status:'pending'}]}}}} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()} harnessCatalog={catalog} redirectRun={redirect}/>);
-    expect(screen.queryByRole('button',{name:'Redirect Coder response'})).toBeNull();expect(screen.getByText('Redirecting…')).toBeTruthy();
+    const view=render(<Timeline state={state} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()} harnessCatalog={catalog} addInstructionToRun={redirect}/>);
+    fireEvent.click(screen.getByRole('button',{name:'Add instruction to Coder'}));expect(redirect).toHaveBeenCalledWith('run-1');
+    view.rerender(<Timeline state={{...state,runs:{'run-1':{...streamingRun,text:'',interventions:[{id:'instruction',text:'Change direction',status:'pending',precedingText:'Готово',author,createdAt:'2026-07-20T12:01:00.000Z'}]}}}} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()} harnessCatalog={catalog} addInstructionToRun={redirect}/>);
+    expect(screen.queryByRole('button',{name:'Add instruction to Coder'})).toBeNull();expect(screen.getByText('Sending…')).toBeTruthy();
   });
+  it('renders answer segments around an instruction and keeps only its state live',()=>{
+    const instructionRun:Run={...run,reasoning:'Plan carefully',text:'After instruction',interventions:[{id:'instruction',text:'Focus on the API',status:'applied',precedingText:'Before instruction',author,createdAt:'2026-07-20T12:01:00.000Z'}]};
+    const state={...initialState,hydrated:true,messages:[{id:'message-1',text:'@coder work',createdAt:'2026-07-20T12:00:00.000Z',targets:['coder' as const],runIds:['run-1'],author,addressedToAll:false}],runs:{'run-1':instructionRun},runOrder:['run-1']};
+    render(<Timeline state={state} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()}/>);
+    const reasoning=screen.getByText('Reasoning'),before=screen.getByText('Before instruction'),instruction=screen.getByLabelText('Instruction from User'),after=screen.getByText('After instruction');
+    expect(reasoning.compareDocumentPosition(before)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(before.compareDocumentPosition(instruction)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(instruction.compareDocumentPosition(after)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(instruction).getByRole('status').textContent).toBe('Applied');
+    expect(instruction.getAttribute('role')).toBeNull();
+    expect(screen.queryByText(/Earlier output before/)).toBeNull();
+    expect(screen.queryByText('Redirect')).toBeNull();
+  });
+
+  it('keeps failed and legacy instructions in the visible answer history',()=>{
+    const instructionRun:Run={...run,status:'streaming',text:'Current answer',interventions:[{id:'legacy',text:'Legacy guidance',status:'applied',supersededText:'Legacy answer'},{id:'failed',text:'Try another path',status:'failed',error:'Instruction rejected'}]};
+    const state={...initialState,hydrated:true,messages:[{id:'message-1',text:'@coder work',createdAt:'2026-07-20T12:00:00.000Z',targets:['coder' as const],runIds:['run-1'],author,addressedToAll:false}],runs:{'run-1':instructionRun},runOrder:['run-1']};
+    render(<Timeline state={state} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()}/>);
+    const legacy=screen.getByText('Legacy answer'),current=screen.getByText('Current answer'),failed=screen.getByText('Try another path');
+    expect(legacy.compareDocumentPosition(current)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(current.compareDocumentPosition(failed)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText('Instruction rejected')).toBeTruthy();
+    const cursor=document.querySelector(`.${styles.cursor}`)!;
+    expect(failed.compareDocumentPosition(cursor)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('does not auto-collapse a completed answer with instructions',()=>{
+    const instructionRun:Run={...run,text:`After ${'detail '.repeat(80)}`,interventions:[{id:'instruction',text:'Continue',status:'applied',precedingText:`Before ${'detail '.repeat(80)}`,author}]};
+    const state={...initialState,hydrated:true,messages:[{id:'message-1',text:'@coder work',createdAt:'2026-07-20T12:00:00.000Z',targets:['coder' as const],runIds:['run-1'],author,addressedToAll:false}],runs:{'run-1':instructionRun},runOrder:['run-1']};
+    const {container}=render(<Timeline state={state} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()}/>);
+    const history=container.querySelector(`.${styles['answer-history']}`)!;
+    expect(history.classList.contains(styles['answer-collapsed'])).toBe(false);
+    fireEvent.click(screen.getByRole('button',{name:'Collapse response'}));
+    expect(history.classList.contains(styles['answer-collapsed'])).toBe(true);
+  });
+
   it('offers run details when the run has usage but no tool calls', () => {
     const historicalRun={...run,harnessInstanceId:'local-opencode',harnessType:'opencode'};
     const state = { ...initialState, hydrated: true, messages: [{ id: 'message-1', text: '@coder ответь', createdAt: '2026-07-20T12:00:00.000Z', targets: ['coder' as const], runIds: ['run-1'], author: { profileId: 'local-user', displayName: 'User', handle: 'user' }, addressedToAll: false }], runs: { 'run-1': historicalRun }, runOrder: ['run-1'] };

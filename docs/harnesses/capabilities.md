@@ -69,7 +69,7 @@ structured clarification.
 | Capability | Hermes | OpenCode | Codex CLI | Claude Code *(experimental)* | AGY | Cursor CLI *(experimental)* |
 | --- | --- | --- | --- | --- | --- | --- |
 | Cancellation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Redirect active run | — | — | ✅ | — | — | — |
+| Add instruction to active run | — | — | ✅ | — | — | — |
 | Concurrent runs | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Event replay and Core reattach | ✅ Same epoch | ✅ Same epoch | ✅ Same epoch | ✅ Same epoch | ✅ Same epoch | ✅ Same epoch |
 
@@ -77,8 +77,8 @@ Replay and Core reattach work only while the same Connector process epoch is
 alive and the requested events remain replayable. If Connector restarts, Core
 does not attach an old run to the new process: the run ends fail-closed.
 
-Redirect is a Codex-only cooperative interrupt. It interrupts the current turn
-and starts a new turn in the same Codex thread, run, and workspace. It is not a
+Add instruction is a Codex-only cooperative interrupt. It interrupts the current
+turn and starts a new turn in the same Codex thread, run, and workspace. It is not a
 pause or rollback: a command may finish before the interrupt is observed, and
 filesystem or external side effects that already happened remain in place.
 
@@ -123,7 +123,7 @@ Cancellation, retry visibility, concurrent execution, and replay/reattach are
 lifecycle behavior. They are intentionally described in this document but are
 not members of the `ConnectorCapability` enum.
 
-Redirect is lifecycle behavior too. A Connector instance advertises it with the
+Add instruction is lifecycle behavior too. A Connector instance advertises it with the
 optional `interventionMode: "interrupt_then_continue"` metadata field. Instances
 that omit the field are unsupported; Core and the UI do not emulate a fallback.
 

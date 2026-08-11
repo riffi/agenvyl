@@ -19,7 +19,7 @@ import {registerFeatureRoutes} from '../modules/features/features.routes.js';
 import {registerProjectRoutes} from '../modules/projects/projects.routes.js';
 import path from 'node:path';
 
-export type AppOptions = { databaseUrl?: string; connectorUrl?:string; connectorToken?:string; fetch?: typeof fetch; distPath?: string; runConcurrency?: number; runTimeoutMs?:number; shutdownTimeoutMs?: number; websocketMaxBufferedBytes?: number; workspaceRoot?:string; workspaceAgentRoot?:string; workspaceMaxFileBytes?:number; artifactRoot?:string;artifactMaxBytes?:number;previewOrigin?:string; logger?:boolean;legacySeed?:boolean };
+export type AppOptions = { databaseUrl?: string; connectorUrl?:string; connectorToken?:string; fetch?: typeof fetch; distPath?: string; serveStaticFrontend?:boolean; runConcurrency?: number; runTimeoutMs?:number; shutdownTimeoutMs?: number; websocketMaxBufferedBytes?: number; workspaceRoot?:string; workspaceAgentRoot?:string; workspaceMaxFileBytes?:number; artifactRoot?:string;artifactMaxBytes?:number;previewOrigin?:string; logger?:boolean;legacySeed?:boolean };
 
 export async function buildApp(options: AppOptions = {}) {
   const config = resolveAppConfig({
@@ -27,6 +27,7 @@ export async function buildApp(options: AppOptions = {}) {
     connectorUrl:options.connectorUrl,
     connectorToken:options.connectorToken,
     distPath: options.distPath,
+    serveStaticFrontend:options.serveStaticFrontend,
     runConcurrency:options.runConcurrency,
     runTimeoutMs:options.runTimeoutMs,
     shutdownTimeoutMs:options.shutdownTimeoutMs,
@@ -64,6 +65,6 @@ export async function buildApp(options: AppOptions = {}) {
 
   await registerRunRoutes(app, runsService);
 
-  await registerStaticFrontend(app, config.distPath);
+  if(config.serveStaticFrontend)await registerStaticFrontend(app, config.distPath);
   return app;
 }

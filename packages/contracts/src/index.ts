@@ -64,6 +64,10 @@ export type RunIntervention = {
   id: string;
   text: string;
   status: 'pending' | 'applied' | 'failed';
+  precedingText?: string;
+  author?: HumanAuthorSnapshot;
+  createdAt?: string;
+  /** @deprecated Read legacy persisted events through precedingText instead. */
   supersededText?: string;
   error?: string;
 };
@@ -371,7 +375,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 function isTokenUsage(value:unknown):value is TokenUsage{if(!isRecord(value)||!tokenCount(value.inputTokens)||!tokenCount(value.outputTokens))return false;return['totalTokens','reasoningTokens','cacheReadTokens','cacheWriteTokens'].every(key=>value[key]===undefined||tokenCount(value[key]));}
-function isRunIntervention(value:unknown):value is RunIntervention{return isRecord(value)&&strings(value,'id','text','status')&&['pending','applied','failed'].includes(String(value.status))&&(value.supersededText===undefined||typeof value.supersededText==='string')&&(value.error===undefined||typeof value.error==='string');}
+function isRunIntervention(value:unknown):value is RunIntervention{return isRecord(value)&&strings(value,'id','text','status')&&['pending','applied','failed'].includes(String(value.status))&&(value.precedingText===undefined||typeof value.precedingText==='string')&&(value.author===undefined||isHumanAuthorSnapshot(value.author))&&(value.createdAt===undefined||typeof value.createdAt==='string')&&(value.supersededText===undefined||typeof value.supersededText==='string')&&(value.error===undefined||typeof value.error==='string');}
+function isHumanAuthorSnapshot(value:unknown):value is HumanAuthorSnapshot{return isRecord(value)&&strings(value,'profileId','displayName','handle');}
 function isRunWorkspaceResult(value:unknown):value is RunWorkspaceResult{if(!isRecord(value)||typeof value.base_head!=='string'||typeof value.capture_status!=='string'||!Array.isArray(value.errors)||typeof value.updated_at!=='string')return false;return['ready','finalizing','complete','incomplete','failed'].includes(value.capture_status);}
 function isRunArtifactSummary(value:unknown):value is RunArtifactSummary{return isRecord(value)&&['total_count','project_count','hidden_count'].every(key=>Number.isSafeInteger(value[key])&&Number(value[key])>=0);}
 function isWorkspaceAttachment(value:unknown):value is WorkspaceAttachment{return isRecord(value)&&strings(value,'version_id','name','path','mime_type','url','preview_url')&&Number.isSafeInteger(value.size)&&Number(value.size)>=0;}

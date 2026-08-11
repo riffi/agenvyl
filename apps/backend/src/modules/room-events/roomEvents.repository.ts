@@ -12,11 +12,12 @@ export class RoomEventRepository {
     if(runId&&type==='run.reasoning.delta')await db`UPDATE agent_runs SET reasoning=reasoning||${String((payload as {text?:unknown}).text??'')},updated_at=now() WHERE id=${runId}`;
     if(runId&&type==='run.intervention.updated'){
       const intervention=(payload as {intervention?:unknown}).intervention;
-      if(intervention&&typeof intervention==='object'&&(intervention as {status?:unknown}).status==='applied'){
-        const[row]=await db`SELECT text FROM agent_runs WHERE id=${runId} FOR UPDATE`;
-        const supersededText=typeof row?.text==='string'?row.text:'';
-        projectedPayload={...(payload as Record<string,unknown>),intervention:{...(intervention as Record<string,unknown>),supersededText}};
-        await db`UPDATE agent_runs SET text='',reasoning='',updated_at=now() WHERE id=${runId}`;
+      if(intervention&&typeof intervention==='object'&&(intervention as {status?:unknown}).status==='pending'){
+        const[row]=await db`SELECT text,reasoning FROM agent_runs WHERE id=${runId} FOR UPDATE`,[profile]=await db`SELECT id,display_name,handle FROM local_user_profiles WHERE id='local-user'`;
+        const precedingText=typeof row?.text==='string'?row.text:'',reasoning=typeof row?.reasoning==='string'?row.reasoning:'',separatedReasoning=reasoning&&!reasoning.endsWith('\n\n')?`${reasoning}\n\n`:reasoning;
+        const author=profile?{profileId:String(profile.id),displayName:String(profile.display_name),handle:String(profile.handle)}:undefined;
+        projectedPayload={...(payload as Record<string,unknown>),intervention:{...(intervention as Record<string,unknown>),precedingText,...(author?{author}:{}),createdAt}};
+        await db`UPDATE agent_runs SET text='',reasoning=${separatedReasoning},updated_at=now() WHERE id=${runId}`;
       }
     }
     if(runId&&type==='run.upstream_status'){const state=(payload as {state?:unknown}).state;await db`UPDATE agent_runs SET upstream_status=${state==='recovered'?null:this.database.sql.json(withoutRunId(payload) as never)},updated_at=now() WHERE id=${runId}`;}

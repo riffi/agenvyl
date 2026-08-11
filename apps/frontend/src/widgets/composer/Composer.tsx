@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ArrowUp, CornerUpLeft, FileText, LoaderCircle, RefreshCw, Shield, Square, X } from 'lucide-react';
+import { ArrowUp, FileText, LoaderCircle, MessageSquarePlus, RefreshCw, Shield, Square, X } from 'lucide-react';
 import {personaModelName,type HarnessCatalog} from '../../entities/harness';
 import type { Persona } from '../../entities/persona';
 import { FakeRoomGateway, type DemoKind, type RoomGateway } from '../../features/room-session';
@@ -92,7 +92,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
       : text.length>=3600
         ? `${text.length} / 4000`
         : '';
-  const composerPlaceholder=interventionTarget?`Redirect @${interventionTarget.agent}…`:!catalogReady&&!composerExpanded?'Agent catalog unavailable':'Message @handle or @all…';
+  const composerPlaceholder=interventionTarget?`Add an instruction for @${interventionTarget.agent}…`:!catalogReady&&!composerExpanded?'Agent catalog unavailable':'Message @handle or @all…';
   const mentionCandidates=useMemo(()=>[
     {handle:'all',name:'All agents',detail:'Notify every participant',color:'#4f6ef7'},
     ...personas.map(persona=>({handle:persona.handle,name:persona.name,detail:personaModelName(persona,harnessCatalog),color:persona.color})),
@@ -116,7 +116,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   const send = async (retry=sendError) => {
     if(interventionTarget){
       const outgoing=text.trim();if(!outgoing||sending)return;
-      if(!interventionTarget.active){setInterventionError('This run has already finished. Your redirect draft is still here.');return;}
+      if(!interventionTarget.active){setInterventionError('This run has already finished. Your instruction draft is still here.');return;}
       setSending(true);setInterventionError(undefined);
       try{await gateway.intervene(interventionTarget.runId,outgoing);interventionDraftsRef.current.delete(interventionTarget.runId);previousInterventionRef.current=undefined;setText(ordinaryDraftRef.current);exitIntervention();}
       catch(error){setInterventionError(error instanceof ApiError?`${error.code}: ${error.message}`:error instanceof Error?error.message:String(error));}
@@ -170,9 +170,9 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
       {!interventionTarget&&instructionOnlyTargets.length>0&&<Alert className={styles['plan-warning']} tone="warning">Instruction-only for {instructionOnlyTargets.map(item=>`@${item.handle}`).join(', ')}: this mode does not technically block writes to the external project.</Alert>}
       {profileError&&<Alert className={styles['send-error']} tone="error">Could not apply execution settings: {profileError}</Alert>}
       {sendError&&<Alert className={styles['send-error']} tone="error">Failed to send: {sendError.message} <Button size="sm" variant="danger" onClick={()=>void send(sendError)} disabled={sending}>Retry</Button></Alert>}
-      {interventionError&&<Alert className={styles['send-error']} tone="error">Could not redirect: {interventionError}</Alert>}
-      <div className={`${styles['compose-card']} ${composerExpanded?styles['compose-card-expanded']:styles['compose-card-compact']} ${interventionTarget?styles['redirect-card']:''}`}>
-        {interventionTarget&&<header className={styles['redirect-header']}><span><CornerUpLeft aria-hidden="true"/><strong>Redirect @{interventionTarget.agent}</strong></span><button type="button" onClick={exitIntervention} aria-label="Exit redirect mode" title="Back to message composer"><X/></button></header>}
+      {interventionError&&<Alert className={styles['send-error']} tone="error">Unable to add instruction: {interventionError}</Alert>}
+      <div className={`${styles['compose-card']} ${composerExpanded?styles['compose-card-expanded']:styles['compose-card-compact']} ${interventionTarget?styles['instruction-card']:''}`}>
+        {interventionTarget&&<header className={styles['instruction-header']}><span><MessageSquarePlus aria-hidden="true"/><strong>Add instruction to @{interventionTarget.agent}</strong></span><button type="button" onClick={exitIntervention} aria-label="Exit instruction mode" title="Back to message composer"><X/></button></header>}
         {!interventionTarget&&attachments.length>0&&<div className={styles.attachments}>{attachments.map(item=><span key={item.id} className={[item.status==='error'?styles['attachment-error']:'',item.mimeType.startsWith('image/')&&item.attachment?styles['image-attachment']:''].filter(Boolean).join(' ')}>{item.status==='uploading'?<LoaderCircle className={styles.spinning}/>:item.mimeType.startsWith('image/')&&item.attachment?<img src={item.attachment.preview_url} alt=""/>:<FileText/>}<button type="button" disabled={!item.attachment} onClick={event=>item.attachment&&openArtifact(item.attachment,readyAttachments,event.currentTarget)}>{item.name}</button><small>{item.status==='uploading'?`${item.progress}%`:item.status==='error'?item.error:formatBytes(item.size)}</small>{item.status==='uploading'&&<i style={{width:`${item.progress}%`}}/>}{item.attachment&&<WorkspaceArtifactActions attachment={item.attachment} openWorkspace={openWorkspace}/>} {item.status==='error'&&<button type="button" aria-label={`Retry upload ${item.name}`} onClick={()=>retryAttachment(item.id)}><RefreshCw/></button>}<button type="button" aria-label={`Remove ${item.name}`} onClick={()=>removeAttachment(item.id)}><X/></button></span>)}</div>}
         {!interventionTarget&&targets.length>0&&<div className={styles['target-row']}>
           <span>Responders:</span>
@@ -215,11 +215,11 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
                 e.preventDefault();void send();
               }
             }}
-            aria-label={interventionTarget?`Redirect ${interventionTarget.agent}`:'Message'}
+            aria-label={interventionTarget?`Instruction for ${interventionTarget.agent}`:'Message'}
             placeholder={composerPlaceholder}
           />
         </div>
-        <footer className={interventionTarget?styles['redirect-footer']:undefined}>
+        <footer className={interventionTarget?styles['instruction-footer']:undefined}>
           {!interventionTarget&&<ComposerAddMenu attachmentDisabled={attachments.length>=10||attachmentsBusy} onAttach={openAttachmentPicker} onOpenWorkspace={()=>openWorkspace()}/>}
           <small className={styles['composer-status']} role="status" aria-live="polite">{composerStatus}</small>
           {!interventionTarget&&<Button className={`${styles['plan-button']} ${workflowMode==='plan'?styles['plan-button-active']:''}`} size="sm" variant="ghost" title="Plan: inspect the project without implementing changes" aria-pressed={workflowMode==='plan'} disabled={modeSaving} onClick={()=>void toggleWorkflowMode()} icon={modeSaving?<LoaderCircle className={styles.spinning}/>:<Shield/>}>Plan</Button>}
@@ -227,12 +227,12 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
             className={styles.send}
             size="sm"
             variant="primary"
-            aria-label={interventionTarget?(sending?'Redirecting run':'Redirect run'):sending?'Sending message':targets.length?`Send to ${targets.length} ${targets.length===1?'agent':'agents'}`:'Post to room'}
+            aria-label={interventionTarget?(sending?'Sending instruction':'Send instruction'):sending?'Sending message':targets.length?`Send to ${targets.length} ${targets.length===1?'agent':'agents'}`:'Post to room'}
             disabled={interventionTarget?!text.trim()||sending:(!text.trim()&&!attachments.some(item=>item.status==='ready')) || !catalogReady || sending || attachmentsBusy}
             onClick={()=>void send()}
-            title={interventionTarget?'Redirect run':targets.length?`Send to ${targets.length} ${targets.length===1?'agent':'agents'}`:'Post to room'}
+            title={interventionTarget?'Send instruction':targets.length?`Send to ${targets.length} ${targets.length===1?'agent':'agents'}`:'Post to room'}
           >
-            {sending?<LoaderCircle className={styles.spinning}/>:interventionTarget?<><CornerUpLeft/><span>Redirect</span></>:<ArrowUp/>}
+            {interventionTarget?(sending?<><LoaderCircle className={styles.spinning}/><span>Sending…</span></>:<><MessageSquarePlus/><span>Send instruction</span></>):sending?<LoaderCircle className={styles.spinning}/>:<ArrowUp/>}
           </Button>
         </footer>
       </div>

@@ -5,6 +5,7 @@ export type AppConfig = {
   connectorUrl: string;
   connectorToken: string;
   distPath: string;
+  serveStaticFrontend: boolean;
   runConcurrency: number;
   runTimeoutMs: number;
   shutdownTimeoutMs: number;
@@ -34,6 +35,7 @@ export function resolveAppConfig(overrides: AppConfigOverrides = {}): AppConfig 
     connectorUrl,
     connectorToken,
     distPath: overrides.distPath ?? 'apps/frontend/dist',
+    serveStaticFrontend: overrides.serveStaticFrontend ?? booleanSetting(process.env.AGENVYL_SERVE_STATIC_FRONTEND, true, 'AGENVYL_SERVE_STATIC_FRONTEND'),
     runConcurrency: positiveInteger(overrides.runConcurrency ?? process.env.AGENVYL_RUN_CONCURRENCY, 4),
     runTimeoutMs: positiveInteger(overrides.runTimeoutMs ?? process.env.AGENVYL_RUN_TIMEOUT_MS, 15*60_000),
     shutdownTimeoutMs: positiveInteger(overrides.shutdownTimeoutMs ?? process.env.AGENVYL_SHUTDOWN_TIMEOUT_MS, 10_000),
@@ -45,6 +47,13 @@ export function resolveAppConfig(overrides: AppConfigOverrides = {}): AppConfig 
     artifactMaxBytes:positiveInteger(overrides.artifactMaxBytes??process.env.AGENVYL_ARTIFACT_MAX_BYTES,250*1024*1024),
     previewOrigin: overrides.previewOrigin ?? process.env.AGENVYL_PREVIEW_ORIGIN ?? `http://127.0.0.1:${positiveInteger(process.env.AGENVYL_PREVIEW_PORT,8792)}`,
   };
+}
+
+function booleanSetting(value:unknown,fallback:boolean,name:string){
+  if(value===undefined)return fallback;
+  if(value==='true')return true;
+  if(value==='false')return false;
+  throw new Error(`${name} must be true or false`);
 }
 
 function positiveInteger(value: unknown, fallback: number) {

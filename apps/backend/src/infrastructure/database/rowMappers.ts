@@ -35,7 +35,7 @@ export function toRoomEvent(row: DatabaseRow): RoomEvent {
 }
 
 export function toTimelineRun(row: DatabaseRow, tools: ToolActivity[], requests:RunRequest[]=[],interventions:RunIntervention[]=[],artifacts:RunArtifact[]=[],embeds:RunEmbed[]=[],artifactSummary?:RunArtifactSummary,staticPreview?:WorkspaceAttachment,staticPreviewStatus?:Run['staticPreviewStatus']): Run {
-  const connector=connectorRunState(row),status=runStatus(row.status),projectedInterventions=['completed','failed','cancelled'].includes(status)?interventions.map(item=>item.status==='pending'?{...item,status:'failed' as const,error:item.error??'Run ended before the redirect was applied'}:item):interventions;
+  const connector=connectorRunState(row),status=runStatus(row.status),projectedInterventions=['completed','failed','cancelled'].includes(status)?interventions.map(item=>item.status==='pending'?{...item,status:'failed' as const,error:item.error??'Run ended before the instruction was applied'}:item):interventions;
   return {
     id:text(row.id),messageId:text(row.message_id),agent:text(row.persona_handle),requestedModel:text(row.requested_model),harnessInstanceId:text(row.harness_instance_id),harnessType:text(row.harness_type),...(row.adapter_generation==null?{}:{adapterGeneration:number(row.adapter_generation)}),modelId:text(row.model_id),executionProfile:runExecutionProfile(row.execution_profile),status,text:text(row.text),reasoning:text(row.reasoning),tools,interventions:projectedInterventions,
     ...(row.upstream_status && typeof row.upstream_status === 'object' ? { upstreamStatus: row.upstream_status as Run['upstreamStatus'] } : {}),

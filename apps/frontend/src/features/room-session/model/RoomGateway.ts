@@ -16,7 +16,7 @@ export class FakeRoomGateway implements RoomGateway {
   send(text: string, targets: AgentHandle[]) { return this.stream.send(text,targets); }
   demo(kind: DemoKind) { this.stream.demo(kind); }
   async resolve(runId:string,requestId:string,value:import('@agenvyl/contracts').RunRequestResolution|string){this.stream.resolve(runId,requestId,typeof value==='string'?value:'resolution' in value?value.resolution:'answered');}
-  async intervene(){throw new ApiError(501,'unsupported','Redirect is unavailable in demo mode')}
+  async intervene(){throw new ApiError(501,'unsupported','Adding instructions is unavailable in demo mode')}
   async cancel(runId?: string) { this.stream.cancel(runId); }
   async retry(){throw new ApiError(501,'unsupported','Retry is unavailable in demo mode')}
   async select(){throw new ApiError(501,'unsupported','Attempt selection is unavailable in demo mode')}

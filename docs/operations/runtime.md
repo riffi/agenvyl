@@ -65,23 +65,25 @@ Recovered pending approvals are restored into the active run context, so approva
 cancel controls continue through the Connector after a Core restart. Connector runs
 aborted by graceful Core shutdown remain non-terminal for this recovery path.
 
-## Run redirect
+## Add instruction to a run
 
-An active Codex run may accept one redirect at a time. Redirect is a single lifecycle
-command: Connector interrupts the current Codex turn and starts a replacement turn in
+An active Codex run may accept one instruction at a time. Add instruction is a single
+lifecycle command: Connector interrupts the current Codex turn and starts a replacement turn in
 the same thread with the original model, workflow, sandbox and approval settings. It
 does not create a room message, conversation round, workspace, or scheduler state.
 
 Connector publishes accepted, applied and failed intervention events with the
 intervention ID and text. These events use the normal durable execution cursor, so a
 same-epoch Core restart reconstructs the command through replay. Connector restart
-keeps the existing fail-closed behavior. Stop has priority over a redirect and prevents
+keeps the existing fail-closed behavior. Stop has priority over an instruction and prevents
 a replacement turn from starting.
 
-When applied, Core advances the Connector cursor, archives the partial answer as the
-intervention's `supersededText`, clears the active answer and reasoning, and writes the
-room event in one database transaction. Tool activity and workspace side effects are
-not rolled back. Usage and execution timeout continue across both turns of the run.
+When accepted, Core snapshots the current answer segment as the intervention's
+`precedingText`, records the local author and timestamp, starts an empty answer segment,
+and writes the room event in one database transaction. Later applied or failed events
+update that intervention without moving it. Reasoning and tool activity remain aggregated;
+workspace side effects are not rolled back. Usage and execution timeout continue across
+both turns of the run. Historical `supersededText` values are read as `precedingText`.
 
 ## Shutdown
 

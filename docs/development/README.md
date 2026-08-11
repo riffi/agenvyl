@@ -44,6 +44,10 @@ WebSocket traffic to Core on `127.0.0.1:8791`. Development PostgreSQL uses host
 port `55432` by default so it does not collide with a normal local PostgreSQL
 installation.
 
+`dev:all` intentionally disables Core's production static frontend. Opening
+`127.0.0.1:8791` directly therefore cannot fall back to a stale
+`apps/frontend/dist`; use the Vite URL for the development UI.
+
 Press `Ctrl+C` to stop the three watch processes. PostgreSQL deliberately stays
 running for the next development session. Stop it with:
 

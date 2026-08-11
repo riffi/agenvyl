@@ -5,6 +5,7 @@ import type { PersonaRepository } from "../personas/personas.repository.js";
 import type { Room } from "../../types.js";
 import {
   upsertToolActivity,
+  type HumanAuthorSnapshot,
   type Persona,
   type RoomPersona,
   type Run,
@@ -138,8 +139,8 @@ export class RoomRepository {
           if(event.type==='run.intervention.updated'&&payload.intervention&&typeof payload.intervention==='object'){
             const intervention=payload.intervention as Record<string,unknown>;
             if(typeof intervention.id==='string'&&typeof intervention.text==='string'&&['pending','applied','failed'].includes(String(intervention.status))){
-              const prior=extra.interventions.get(intervention.id);
-              extra.interventions.set(intervention.id,{...prior,id:intervention.id,text:intervention.text,status:intervention.status as RunIntervention['status'],...(typeof intervention.supersededText==='string'?{supersededText:intervention.supersededText}:{}),...(typeof intervention.error==='string'?{error:intervention.error}:{})});
+              const prior=extra.interventions.get(intervention.id),precedingText=typeof intervention.precedingText==='string'?intervention.precedingText:typeof intervention.supersededText==='string'?intervention.supersededText:undefined,author=isHumanAuthor(intervention.author)?intervention.author:undefined;
+              extra.interventions.set(intervention.id,{...prior,id:intervention.id,text:intervention.text,status:intervention.status as RunIntervention['status'],...(precedingText!==undefined?{precedingText}:{}),...(author?{author}:{}),...(typeof intervention.createdAt==='string'?{createdAt:intervention.createdAt}:{}),...(typeof intervention.error==='string'?{error:intervention.error}:{})});
             }
           }
           extras.set(runId, extra);
@@ -340,6 +341,11 @@ function isTool(value: unknown): value is ToolActivity {
       String((value as { status?: unknown }).status),
     ),
   );
+}
+function isHumanAuthor(value:unknown):value is HumanAuthorSnapshot{
+  if(!value||typeof value!=="object")return false;
+  const author=value as Record<string,unknown>;
+  return typeof author.profileId==="string"&&typeof author.displayName==="string"&&typeof author.handle==="string";
 }
 function isStructuredQuestion(value: unknown): value is StructuredQuestion {
   if (!value || typeof value !== "object") return false;

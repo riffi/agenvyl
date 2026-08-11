@@ -100,7 +100,7 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
     const state=this.require(execution.upstreamId);
     if(state.status!=='running'||!state.turnId)throw new Error('Codex execution is not running');
     if(state.pending.size)throw new Error('Codex is waiting for user input');
-    if(state.intervention)throw new Error('A Codex redirect is already in progress');
+    if(state.intervention)throw new Error('A Codex instruction is already being applied');
     let resolve!:()=>void,reject!:(error:Error)=>void;
     const promise=new Promise<void>((resolvePromise,rejectPromise)=>{resolve=resolvePromise;reject=rejectPromise;});
     const transition:InterventionTransition={...input,phase:'interrupting',buffered:[],promise,resolve,reject};
@@ -112,7 +112,7 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
   async stop(execution:AdapterExecution){
     const state=this.require(execution.upstreamId);
     if(!state.turnId||isTerminal(state.status))return;
-    if(state.intervention)this.rejectIntervention(state,state.intervention,'execution_stopped','Redirect was cancelled because the run was stopped');
+    if(state.intervention)this.rejectIntervention(state,state.intervention,'execution_stopped','The instruction was cancelled because the run was stopped');
     state.status='stopping';
     try{await state.client.request('turn/interrupt',{threadId:state.threadId,turnId:state.turnId});}
     catch(error){if(!isNoActiveTurnError(error))throw error;}
@@ -229,14 +229,14 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
       for(const message of buffered)this.onMessage(state,message);
     }catch(error){
       if(state.intervention===transition){
-        this.rejectIntervention(state,transition,'codex_turn_start_failed',error instanceof Error?error.message:'Codex could not start the redirected turn');
-        this.fail(state,'codex_turn_start_failed','Codex could not start the redirected turn');
+        this.rejectIntervention(state,transition,'codex_turn_start_failed',error instanceof Error?error.message:'Codex could not continue with the instruction');
+        this.fail(state,'codex_turn_start_failed','Codex could not continue with the instruction');
       }
     }
   }
   private rejectIntervention(state:ExecutionState,transition:InterventionTransition,code:string,message:string){
     if(state.intervention!==transition)return;
-    const safeMessage=redactConnectorText(message,500)||'Redirect failed';
+    const safeMessage=redactConnectorText(message,500)||'Instruction could not be applied';
     state.queue.push({type:'execution.intervention.failed',payload:{interventionId:transition.interventionId,text:transition.text,error:{code,message:safeMessage}}});
     state.intervention=undefined;transition.reject(new Error(safeMessage));
   }
@@ -253,7 +253,7 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
   }
   private settle(state:ExecutionState,status:'completed'|'failed'|'cancelled',error?:{code:string;message:string}){
     if(state.settling)return state.settling;
-    if(state.intervention)this.rejectIntervention(state,state.intervention,status==='cancelled'?'execution_stopped':'execution_ended',status==='cancelled'?'Redirect was cancelled because the run was stopped':'Redirect could not be applied before the run ended');
+    if(state.intervention)this.rejectIntervention(state,state.intervention,status==='cancelled'?'execution_stopped':'execution_ended',status==='cancelled'?'The instruction was cancelled because the run was stopped':'The instruction could not be applied before the run ended');
     state.status=status;
     state.settling=this.finish(state,status,error);
     return state.settling;

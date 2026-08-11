@@ -113,7 +113,7 @@ export function WorkspaceApp({
     [refreshingHarness,setRefreshingHarness]=useState(false),
     [refreshHarnessError,setRefreshHarnessError]=useState<string>(),
     [selected, setSelected] = useState<string>();
-  const [redirectRunId,setRedirectRunId]=useState<string>();
+  const [instructionRunId,setInstructionRunId]=useState<string>();
   const attachments=useRoomAttachments(roomId);
   const [attachmentPicker,setAttachmentPicker]=useState(false);
   const [workspaceTransient,setWorkspaceTransient]=useState<WorkspaceOpenRequest>();
@@ -144,7 +144,7 @@ export function WorkspaceApp({
     }finally{setRefreshingHarness(false);}
   };
   useEffect(()=>{if(!fake&&view==='chat'&&roomsQuery.data?.length&&!roomsQuery.data.some(room=>room.id===roomId))navigateToRoom(roomsQuery.data[0].id,{replace:true})},[fake,view,roomId,roomsQuery.data,navigateToRoom]);
-  useEffect(()=>{setAttachmentPicker(false);setDraggingFiles(false);setRedirectRunId(undefined);dragDepth.current=0},[roomId]);
+  useEffect(()=>{setAttachmentPicker(false);setDraggingFiles(false);setInstructionRunId(undefined);dragDepth.current=0},[roomId]);
   useEffect(() => () => gateway.dispose(), [gateway]);
   const createRoomMutation=useMutation({mutationFn:({personaIds,projectId}:{personaIds:string[];projectId:string|null})=>roomsApi.create(personaIds,projectId),onSuccess:()=>invalidateRooms()});
   const assignProjectMutation=useMutation({mutationFn:({id,projectId}:{id:string;projectId:string|null})=>roomsApi.assignProject(id,projectId),onSuccess:()=>invalidateRooms()});
@@ -170,8 +170,8 @@ export function WorkspaceApp({
     ].includes(r.status),
   ).length;
   const selectedRun = selected ? state.runs[selected] : undefined;
-  const redirectRun=redirectRunId?state.runs[redirectRunId]:undefined;
-  const interventionTarget:ComposerInterventionTarget|undefined=redirectRun?{runId:redirectRun.id,agent:redirectRun.agent,active:redirectRun.status==='streaming'&&!(redirectRun.requests??[]).some(request=>!request.resolved)&&!redirectRun.interventions.some(intervention=>intervention.status==='pending')}:undefined;
+  const instructionRun=instructionRunId?state.runs[instructionRunId]:undefined;
+  const interventionTarget:ComposerInterventionTarget|undefined=instructionRun?{runId:instructionRun.id,agent:instructionRun.agent,active:instructionRun.status==='streaming'&&!(instructionRun.requests??[]).some(request=>!request.resolved)&&!instructionRun.interventions.some(intervention=>intervention.status==='pending')}:undefined;
   const selectedPersona = selectedRun
     ? (personaCatalog.find((p) => p.handle === selectedRun.agent) ??
       unknownPersona(selectedRun.agent))
@@ -255,8 +255,8 @@ export function WorkspaceApp({
             openArtifacts={() => openWorkspace()}
             manageAgents={() => setManagingAgents(true)}
           />
-          <Timeline roomId={roomId} state={state} personas={personaCatalog} harnessCatalog={harnessCatalog} select={setSelected} gateway={gateway} loadOlder={loadOlder} loadingOlder={loadingOlder} initialLoading={!fake&&timelineQuery.isPending} onMentionPersona={handle=>composerRef.current?.insertMention(handle)} openWorkspace={openWorkspace} openArtifact={openArtifact} redirectRun={setRedirectRunId}/>
-          <Composer ref={composerRef} gateway={gateway} active={active} personas={personas} roomPersonas={roomPersonas} updateParticipantReasoning={updateParticipantReasoning} harnessCatalog={harnessCatalog} catalogReady={gateway.mode === "fake" || (!catalogLoading && !catalogError)} onSent={async()=>{await invalidateRooms()}} openWorkspace={openWorkspace} openArtifact={openArtifact} roomId={roomId} attachments={attachments.items} attachmentsBusy={attachments.busy} openAttachmentPicker={()=>setAttachmentPicker(true)} uploadFiles={files=>void attachments.uploadFiles(files)} removeAttachment={attachments.remove} retryAttachment={attachments.retry} clearAttachments={attachments.clear} workflowMode={state.workflowMode} updateWorkflowMode={updateWorkflowMode} interventionTarget={interventionTarget} exitIntervention={()=>setRedirectRunId(undefined)}/>
+          <Timeline roomId={roomId} state={state} personas={personaCatalog} harnessCatalog={harnessCatalog} select={setSelected} gateway={gateway} loadOlder={loadOlder} loadingOlder={loadingOlder} initialLoading={!fake&&timelineQuery.isPending} onMentionPersona={handle=>composerRef.current?.insertMention(handle)} openWorkspace={openWorkspace} openArtifact={openArtifact} addInstructionToRun={setInstructionRunId}/>
+          <Composer ref={composerRef} gateway={gateway} active={active} personas={personas} roomPersonas={roomPersonas} updateParticipantReasoning={updateParticipantReasoning} harnessCatalog={harnessCatalog} catalogReady={gateway.mode === "fake" || (!catalogLoading && !catalogError)} onSent={async()=>{await invalidateRooms()}} openWorkspace={openWorkspace} openArtifact={openArtifact} roomId={roomId} attachments={attachments.items} attachmentsBusy={attachments.busy} openAttachmentPicker={()=>setAttachmentPicker(true)} uploadFiles={files=>void attachments.uploadFiles(files)} removeAttachment={attachments.remove} retryAttachment={attachments.retry} clearAttachments={attachments.clear} workflowMode={state.workflowMode} updateWorkflowMode={updateWorkflowMode} interventionTarget={interventionTarget} exitIntervention={()=>setInstructionRunId(undefined)}/>
         </>:<div className={styles['empty-chat']}><div className={styles['empty-mobile-header']}><button type="button" aria-label="Open menu" onClick={()=>setMenu(true)}><Menu /></button><strong>agenvyl</strong></div><EmptyState icon={<MessageCircle />} title="No rooms" description="Create a room to start a conversation with agents." action={<Button variant="primary" icon={<Plus />} onClick={()=>setCreatingRoom(true)}>Create room</Button>} /></div>):<PersonasScreen
           personas={personaCatalog}
           harnessCatalog={harnessCatalog}
