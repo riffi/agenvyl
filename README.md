@@ -16,75 +16,10 @@ the run queue, and shared files.
 [Connect an agent](docs/harnesses/README.md) ·
 [Read the documentation](docs/README.md)
 
-## Why Agenvyl?
-
-Coding agents usually live in separate terminals and chats. Their context,
-files, and decisions become fragmented.
-
-Agenvyl gives them one browser-based room:
-
-- **Shared context** — later agents can read, critique, and combine completed
-  answers from earlier turns.
-- **Mode-aware runs** — Work agents run one at a time in a room so file edits
-  stay ordered; Plan agents can explore in parallel.
-- **Shared files** — agents work directly in the room Workspace. Agenvyl records
-  Git checkpoints and keeps earlier file versions.
-- **Your existing setup** — reuse each harness with its configured models,
-  permissions, skills, tools, hooks, and MCP servers.
-
-## How it works
-
-![Diagram showing one message running several agents in an Agenvyl room and collecting their results](docs/assets/how-agenvyl-works.svg)
-
-1. Create a room for a project, review, experiment, or other task.
-2. Add agents with different names, models, and instructions.
-3. Send one message to an agent, several agents, or `@all`.
-4. Review their completed answers and ask another agent to synthesize the
-   result.
-
-On desktop, collapse the left sidebar when you want more room for the
-conversation; Agenvyl remembers that browser preference. Use the **+** menu by
-the composer to attach files or open the room Workspace.
-
-Agents launched by the same message receive the same pre-round conversation.
-In Work, they enter a FIFO queue and run one at a time in that room; later Work
-agents see files left by earlier runs but not peer answers from the same
-message. In Plan, responders can run in parallel against the shared Workspace.
-Runs in different rooms can also proceed in parallel, subject to the configured
-global concurrency limit.
-
-When an agent produces a static web build, Agenvyl captures it with that exact
-response. Open the current app from the Workspace, inspect any response's build,
-or compare build history without replacing the room's source files. Agenvyl
-warns when later source changes make the latest captured build outdated.
-
-A message without an `@mention` is saved in the room but starts no agent.
-
-For components, persistence, retries, and security boundaries, read
-[How Agenvyl works](docs/architecture/overview.md).
-
-## Supported coding-agent harnesses
-
-| Harness | Connection |
-| --- | --- |
-| [Codex CLI](docs/harnesses/codex.md) | Agenvyl starts the user-installed `codex app-server` |
-| [Claude Code](docs/harnesses/claude.md) *(experimental)* | Agenvyl starts a fresh user-installed CLI process per attempt |
-| [OpenCode](docs/harnesses/opencode.md) | Agenvyl connects to or manages an OpenCode server |
-| [Antigravity / AGY](docs/harnesses/antigravity.md) | Agenvyl starts a fresh `agy --print` process per attempt |
-| [Hermes](docs/harnesses/hermes.md) | Agenvyl connects to an authenticated local Hermes API Server |
-| [Cursor CLI](docs/harnesses/cursor.md) *(experimental)* | Agenvyl starts a fresh headless `agent` process per attempt |
-
-Agenvyl does not provide model access. The harness must already be installed or
-running and authenticated on the same computer. One harness can power several
-Agenvyl agents with different names, models, permissions, and instructions.
-
 ## Quick start
 
 The downloadable app includes Node.js and PostgreSQL. You do **not** need
 Docker, npm, or a source checkout.
-
-Supported packages are Windows 10/11 x64, Linux x64/arm64, and macOS on Intel or
-Apple silicon.
 
 > [!WARNING]
 > Agenvyl is an unsigned Technical Preview for a trusted, single-user computer.
@@ -107,12 +42,63 @@ Open a terminal:
 curl -fsSL https://github.com/riffi/agenvyl/releases/latest/download/install.sh | sh
 ```
 
-The installer verifies the selected archive, initializes the local stack,
-detects supported harnesses, and opens the guided setup. If the browser does not
-open, visit <http://127.0.0.1:8791>.
+Packages support Windows 10/11 x64, Linux x64/arm64, and macOS on Intel or
+Apple silicon. The installer verifies the selected archive, initializes the
+local stack, detects supported harnesses, and opens the guided setup. If the
+browser does not open, visit <http://127.0.0.1:8791>.
 
 For archive installation, data locations, backups, updates, and uninstall, use
 the [User Guide](docs/user-guide/installation.md).
+
+![Agenvyl room showing three coding agents answering the same request in parallel](docs/assets/agenvyl-room-overview.png)
+
+## Why Agenvyl?
+
+Coding agents usually live in separate terminals and chats. Their context,
+files, and decisions become fragmented.
+
+Agenvyl gives them one browser-based room:
+
+- **Shared context** — later agents can read, critique, and combine completed
+  answers from earlier turns.
+- **Mode-aware runs** — Work agents run one at a time in a room so file edits
+  stay ordered; Plan agents can explore in parallel.
+- **Shared files** — agents work directly in the room Workspace. Agenvyl records
+  Git checkpoints and keeps earlier file versions.
+- **Your existing setup** — reuse each harness with its configured models,
+  permissions, skills, tools, hooks, and MCP servers.
+
+## How it works
+
+![Diagram showing coding agents sharing one Agenvyl room, conversation, and Workspace](docs/assets/how-agenvyl-works.svg)
+
+1. Create a room for a project, review, experiment, or other task.
+2. Add agents backed by the coding tools already installed on your computer.
+3. Ask one agent, several agents, or `@all` to work from the same conversation
+   and Workspace.
+4. Compare their answers, hand work to another agent, and continue without
+   losing the discussion or file history.
+
+Choose **Plan** for parallel exploration and discussion, or **Work** for ordered
+implementation against the shared Workspace.
+
+For run ordering, persistence, retries, and security boundaries, read
+[How Agenvyl works](docs/architecture/overview.md).
+
+## Supported coding-agent harnesses
+
+| Harness | Connection |
+| --- | --- |
+| [Codex CLI](docs/harnesses/codex.md) | Agenvyl starts the user-installed `codex app-server` |
+| [Claude Code](docs/harnesses/claude.md) *(experimental)* | Agenvyl starts a fresh user-installed CLI process per attempt |
+| [OpenCode](docs/harnesses/opencode.md) | Agenvyl connects to or manages an OpenCode server |
+| [Antigravity / AGY](docs/harnesses/antigravity.md) | Agenvyl starts a fresh `agy --print` process per attempt |
+| [Hermes](docs/harnesses/hermes.md) | Agenvyl connects to an authenticated local Hermes API Server |
+| [Cursor CLI](docs/harnesses/cursor.md) *(experimental)* | Agenvyl starts a fresh headless `agent` process per attempt |
+
+Agenvyl does not provide model access. The harness must already be installed or
+running and authenticated on the same computer. One harness can power several
+Agenvyl agents with different names, models, permissions, and instructions.
 
 ## Your first room
 

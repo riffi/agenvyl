@@ -1,17 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" role="img" aria-labelledby="title desc">
-  <title id="title">How Agenvyl coordinates Work and Plan agents</title>
-  <desc id="desc">A message enters a mode-aware room scheduler. Plan agents may run in parallel. Work waits for them, then runs alone against the shared Git-backed Workspace. Answers return to the shared conversation.</desc>
+  <title id="title">How Agenvyl connects coding agents in one room</title>
+  <desc id="desc">A message to one or several coding agents enters one Agenvyl room. The agents share the room conversation and Git-backed Workspace. Their answers and file versions stay connected for review, handoff, and follow-up.</desc>
   <defs>
     <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#f8f7ff"/>
       <stop offset="1" stop-color="#eef5ff"/>
     </linearGradient>
-    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#6d5ef7"/>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#765df6"/>
       <stop offset="1" stop-color="#3b82f6"/>
     </linearGradient>
     <filter id="shadow" x="-20%" y="-20%" width="140%" height="160%">
-      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#172235" flood-opacity="0.12"/>
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#172235" flood-opacity="0.11"/>
     </filter>
     <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
       <path d="M0 0l10 5-10 5z" fill="#6d5ef7"/>
@@ -21,65 +21,87 @@
       .label{font:700 15px 'Segoe UI',sans-serif;fill:#172235}
       .body{font:400 13px 'Segoe UI',sans-serif;fill:#536078}
       .small{font:600 12px 'Segoe UI',sans-serif;fill:#6d5ef7}
+      .tiny{font:400 11px 'Segoe UI',sans-serif;fill:#64748b}
       .card{fill:#fff;stroke:#d9def0;stroke-width:1.5}
     </style>
   </defs>
+
   <rect width="1200" height="520" rx="28" fill="url(#background)"/>
-  <text x="60" y="62" class="heading">Plan explores in parallel. Work stays ordered.</text>
-  <text x="60" y="88" class="body">Responders share pre-round conversation context and one live Git-backed Workspace.</text>
+  <text x="60" y="62" class="heading">One room connects your agents, conversation, and files.</text>
+  <text x="60" y="88" class="body">Ask the coding agents you already use to work from shared context instead of separate terminals and chats.</text>
 
   <g filter="url(#shadow)">
-    <rect class="card" x="60" y="140" width="230" height="150" rx="20"/>
-    <circle cx="98" cy="180" r="18" fill="#ede9fe"/>
-    <path d="M89 180h18M98 171v18" stroke="#6d5ef7" stroke-width="3" stroke-linecap="round"/>
-    <text x="128" y="178" class="label">Message</text>
-    <text x="88" y="220" class="body">@architect @builder</text>
-    <text x="88" y="244" class="body">@reviewer Review and build.</text>
-    <text x="88" y="270" class="small">Creates mode-aware runs</text>
+    <rect class="card" x="60" y="150" width="230" height="185" rx="20"/>
+    <circle cx="98" cy="190" r="18" fill="#ede9fe"/>
+    <path d="M89 190h18M98 181v18" stroke="#6d5ef7" stroke-width="3" stroke-linecap="round"/>
+    <text x="128" y="188" class="label">Your message</text>
+    <text x="88" y="229" class="body">Ask one agent, several,</text>
+    <text x="88" y="251" class="body">or everyone at once.</text>
+    <rect x="88" y="273" width="174" height="36" rx="10" fill="#f1efff"/>
+    <text x="105" y="296" class="small">@all Review this project</text>
   </g>
 
-  <path d="M290 215h70" stroke="#6d5ef7" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M290 242h58" stroke="#6d5ef7" stroke-width="3" marker-end="url(#arrow)"/>
 
   <g filter="url(#shadow)">
-    <rect class="card" x="370" y="120" width="360" height="230" rx="20"/>
-    <text x="400" y="158" class="label">Room scheduler</text>
+    <rect class="card" x="370" y="120" width="460" height="265" rx="22"/>
+    <text x="402" y="158" class="label">One Agenvyl room</text>
+    <text x="402" y="181" class="body">Every handoff keeps the project context</text>
+
+    <rect x="402" y="203" width="190" height="58" rx="14" fill="#f1efff"/>
+    <circle cx="427" cy="232" r="13" fill="#6d5ef7"/>
+    <path d="M421 228h12M421 233h9M421 238h11" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+    <text x="449" y="228" class="small">Conversation</text>
+    <text x="449" y="247" class="tiny">Answers and decisions</text>
+
+    <rect x="608" y="203" width="190" height="58" rx="14" fill="#eef5ff"/>
+    <circle cx="633" cy="232" r="13" fill="#3b82f6"/>
+    <path d="M626 227h6l2 3h7v9h-15z" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/>
+    <text x="655" y="228" class="small">Workspace</text>
+    <text x="655" y="247" class="tiny">Shared files and versions</text>
+
     <g>
-      <rect x="400" y="180" width="300" height="42" rx="12" fill="#ede9fe"/>
-      <circle cx="425" cy="201" r="13" fill="#6d5ef7"/>
-      <text x="421" y="206" style="font:700 12px 'Segoe UI',sans-serif;fill:#fff">P</text>
-      <text x="450" y="206" class="body">Plan · Architect · starts now</text>
+      <rect x="402" y="282" width="122" height="70" rx="14" fill="#fafafe" stroke="#e4e7f2"/>
+      <circle cx="425" cy="306" r="12" fill="#765df6"/>
+      <text x="421" y="310" style="font:700 11px 'Segoe UI',sans-serif;fill:#fff">A</text>
+      <text x="445" y="306" class="small">Architect</text>
+      <text x="425" y="333" class="tiny">Codex</text>
     </g>
     <g>
-      <rect x="400" y="232" width="300" height="42" rx="12" fill="#eef5ff"/>
-      <circle cx="425" cy="253" r="13" fill="#3b82f6"/>
-      <text x="421" y="258" style="font:700 12px 'Segoe UI',sans-serif;fill:#fff">P</text>
-      <text x="450" y="258" class="body">Plan · Reviewer · starts now</text>
+      <rect x="539" y="282" width="122" height="70" rx="14" fill="#fafafe" stroke="#e4e7f2"/>
+      <circle cx="562" cy="306" r="12" fill="#3b82f6"/>
+      <text x="558" y="310" style="font:700 11px 'Segoe UI',sans-serif;fill:#fff">B</text>
+      <text x="582" y="306" class="small">Builder</text>
+      <text x="562" y="333" class="tiny">Claude Code</text>
     </g>
     <g>
-      <rect x="400" y="284" width="300" height="42" rx="12" fill="#f1f5f9"/>
-      <circle cx="425" cy="305" r="13" fill="#64748b"/>
-      <text x="419" y="310" style="font:700 12px 'Segoe UI',sans-serif;fill:#fff">W</text>
-      <text x="450" y="310" class="body">Work · Builder · waits, then runs alone</text>
+      <rect x="676" y="282" width="122" height="70" rx="14" fill="#fafafe" stroke="#e4e7f2"/>
+      <circle cx="699" cy="306" r="12" fill="#64748b"/>
+      <text x="695" y="310" style="font:700 11px 'Segoe UI',sans-serif;fill:#fff">R</text>
+      <text x="719" y="306" class="small">Reviewer</text>
+      <text x="699" y="333" class="tiny">OpenCode</text>
     </g>
   </g>
 
-  <path d="M730 215h70" stroke="#6d5ef7" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M830 242h58" stroke="#6d5ef7" stroke-width="3" marker-end="url(#arrow)"/>
 
   <g filter="url(#shadow)">
-    <rect class="card" x="810" y="140" width="330" height="150" rx="20"/>
-    <rect x="842" y="172" width="58" height="58" rx="14" fill="url(#accent)"/>
-    <path d="M855 192h32M855 203h24M855 214h28" stroke="#fff" stroke-width="3" stroke-linecap="round"/>
-    <text x="922" y="190" class="label">Shared Git Workspace</text>
-    <text x="922" y="216" class="body">Direct writes and checkpoints</text>
-    <text x="842" y="260" class="small">No publication or conflict-resolution stage</text>
+    <rect class="card" x="910" y="150" width="230" height="185" rx="20"/>
+    <rect x="940" y="176" width="42" height="42" rx="12" fill="url(#accent)"/>
+    <path d="M950 190h22M950 198h16M950 206h19" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
+    <text x="996" y="194" class="label">Connected results</text>
+    <circle cx="951" cy="244" r="9" fill="#ede9fe"/>
+    <path d="M947 244l3 3 5-6" fill="none" stroke="#6d5ef7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="970" y="248" class="body">Agent answers</text>
+    <circle cx="951" cy="274" r="9" fill="#e7f0ff"/>
+    <path d="M947 274l3 3 5-6" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="970" y="278" class="body">File versions</text>
+    <circle cx="951" cy="304" r="9" fill="#eef2f7"/>
+    <path d="M947 304l3 3 5-6" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="970" y="308" class="body">Follow-up context</text>
   </g>
 
-  <path d="M975 290v70H220v-50" fill="none" stroke="#6d5ef7" stroke-width="3" marker-end="url(#arrow)"/>
-  <g filter="url(#shadow)">
-    <rect class="card" x="60" y="370" width="1080" height="92" rx="20"/>
-    <text x="90" y="408" class="label">Shared conversation</text>
-    <text x="90" y="435" class="body">Answers and exact changed-file versions return to the room. Send a follow-up message when one agent should review peer answers.</text>
-    <rect x="935" y="393" width="165" height="40" rx="20" fill="#ede9fe"/>
-    <text x="963" y="418" class="small">Other rooms can run too</text>
-  </g>
+  <path d="M1025 335v76H175v-56" fill="none" stroke="#6d5ef7" stroke-width="3" marker-end="url(#arrow)"/>
+  <rect x="475" y="394" width="250" height="40" rx="20" fill="#ede9fe"/>
+  <text x="517" y="419" class="small">Review · hand off · continue</text>
 </svg>
