@@ -15,6 +15,7 @@ import { CONNECTOR_API_VERSION } from '@agenvyl/connector-contract';
 import type { AdapterExecution, AdapterExecutionEvent, ConnectorAdapter } from './adapter.js';
 import { AdapterGenerationError, type AdapterGenerationBinding } from './adapter-generations.js';
 import { safeAdapterError, sanitizeAdapterEvent } from './safety.js';
+import {experimentalTailV1ConversationHistory} from './conversation-history.js';
 import { WorkspacePolicy } from './workspace-policy.js';
 
 const terminalStatuses = new Set<ExecutionStatus>(['completed', 'failed', 'cancelled']);
@@ -70,6 +71,7 @@ export class ExecutionRegistry {
     private readonly workspacePolicy: WorkspacePolicy,
     private readonly replayLimit = 1_000,
     private readonly now: () => string = () => new Date().toISOString(),
+    private readonly logger?:{info:(details:Record<string,unknown>,message?:string)=>void},
   ) {
     if (!Number.isSafeInteger(replayLimit) || replayLimit < 1) throw new Error('replayLimit must be a positive integer');
   }
@@ -216,6 +218,8 @@ export class ExecutionRegistry {
 
   private async startAdapter(record: ExecutionRecord) {
     try {
+      const {history:_,...historyMetrics}=experimentalTailV1ConversationHistory(record.request.input.history);
+      this.logger?.info({...historyMetrics,harnessType:record.harnessType},'Prepared conversation history');
       record.upstream = await record.adapter.start({
         ...record.request,
         workspace: { ...record.request.workspace, absolutePath: record.workspacePath },

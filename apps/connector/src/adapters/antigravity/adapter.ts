@@ -3,6 +3,7 @@ import { spawn, spawnSync, type ChildProcessByStdio } from 'node:child_process';
 import type { Readable } from 'node:stream';
 import type { ExecutionStatus } from '@agenvyl/connector-contract';
 import type { AdapterExecution, AdapterExecutionEvent, AdapterStartExecutionRequest, ConnectorAdapter } from '../../adapter.js';
+import {experimentalTailV1ConversationHistory} from '../../conversation-history.js';
 import { commandInvocation, resolveCommand } from '../../discovery.js';
 import { redactConnectorText } from '../../safety.js';
 
@@ -247,12 +248,13 @@ export function antigravityPrompt(request: AdapterStartExecutionRequest) {
   ].join('\n');
 }
 
-function boundedAntigravityPrompt(request:AdapterStartExecutionRequest,fits:(prompt:string)=>boolean){
+export function boundedAntigravityPrompt(request:AdapterStartExecutionRequest,fits:(prompt:string)=>boolean){
   const promptFor=(history:AdapterStartExecutionRequest['input']['history'])=>antigravityPrompt({...request,input:{...request.input,history}});
+  const tail=experimentalTailV1ConversationHistory(request.input.history).history;
   let history:AdapterStartExecutionRequest['input']['history']=[],prompt=promptFor(history);
   if(!fits(prompt))throw new Error('Antigravity current request exceeds the configured CLI argv boundary');
-  for(const item of [...request.input.history].reverse()){
-    const candidate=[{...item,content:item.content.slice(0,16_000)},...history],candidatePrompt=promptFor(candidate);
+  for(const item of [...tail].reverse()){
+    const candidate=[item,...history],candidatePrompt=promptFor(candidate);
     if(!fits(candidatePrompt))break;
     history=candidate;prompt=candidatePrompt;
   }

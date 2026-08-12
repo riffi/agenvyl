@@ -15,6 +15,14 @@ beforeAll(async () => {
 afterAll(async () => { await rm(workspaceRoot, { recursive: true, force: true }); });
 
 describe('ExecutionRegistry live subscriptions', () => {
+  it('logs only safe tail-v1 counters when a run starts',async()=>{
+    const adapter=new LiveAdapter(),logs:Array<Record<string,unknown>>=[];
+    const registry=createRegistry(adapter,{info:details=>logs.push(details)}),request=structuredClone(connectorContractFixtures.startExecution) as StartExecutionRequest;
+    request.input.history=[{role:'user',content:'private-history-content'}];
+    registry.start(request);await waitFor(()=>registry.inspect(request.executionId).status==='running');
+    expect(logs).toEqual([{historyPolicy:'tail-v1',historyItemsTotal:1,historyItemsIncluded:1,historyItemsDropped:0,historyJsonChars:JSON.stringify(request.input.history[0]).length,harnessType:'hermes'}]);
+    expect(JSON.stringify(logs)).not.toContain('private-history-content');
+  });
   it('serializes idempotent interventions and publishes strict cursor order',async()=>{
     const adapter=new RedirectAdapter(),registry=createRegistry(adapter),request=structuredClone(connectorContractFixtures.startExecution) as StartExecutionRequest;
     registry.start(request);await waitFor(()=>registry.inspect(request.executionId).status==='running');
@@ -258,9 +266,9 @@ class RedirectAdapter extends LiveAdapter{
   apply(){const pending=this.pending;if(!pending)throw new Error('No pending intervention');this.pending=undefined;this.emit({type:'execution.intervention.applied',payload:pending.input});pending.resolve();}
 }
 
-function createRegistry(adapter:ConnectorAdapter){
+function createRegistry(adapter:ConnectorAdapter,logger?:{info:(details:Record<string,unknown>)=>void}){
   return new ExecutionRegistry('epoch-test',instanceId=>{
     if(instanceId!=='local-hermes')throw new Error('unexpected instance');
     return{adapter,harnessType:'hermes',adapterGeneration:1,release:()=>undefined};
-  },new WorkspacePolicy([workspaceRoot]));
+  },new WorkspacePolicy([workspaceRoot]),1_000,()=>new Date().toISOString(),logger);
 }

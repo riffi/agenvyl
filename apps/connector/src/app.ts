@@ -61,6 +61,7 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
     workspacePolicy,
     options.replayLimit,
     options.now,
+    app.log,
   );
   const instanceSnapshot=(instance:ConnectorConfig['instances'][number])=>{
     const adapter=generations.current.adapters.get(instance.id),ownership=instance.type==='opencode'&&instance.managed!==undefined?{managed:instance.managed}:{},intervention=adapter?.interventionMode?{interventionMode:adapter.interventionMode}:{},activeExecutions=registry.activeCount(instance.id),runtimeError=runtimeErrors.get(instance.id);

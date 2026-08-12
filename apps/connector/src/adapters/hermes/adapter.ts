@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { ExecutionStatus } from '@agenvyl/connector-contract';
 import type { AdapterExecution, AdapterStartExecutionRequest, ConnectorAdapter } from '../../adapter.js';
+import {experimentalTailV1ConversationHistory} from '../../conversation-history.js';
 import { HermesToolLifecycle, mapHermesEvent } from './events.js';
 import { parseSse } from './parse-sse.js';
 
@@ -35,13 +36,7 @@ export class HermesConnectorAdapter implements ConnectorAdapter {
     const response = await this.request(`${this.baseUrl}/v1/runs`, {
       method: 'POST',
       headers: this.headers(true),
-      body: JSON.stringify({
-        input: request.input.message,
-        session_id: sessionId(request.executionId),
-        instructions: workspaceInstructions(request.input.systemPrompt, request.workspace.absolutePath),
-        conversation_history: request.input.history,
-        model: request.modelId,
-      }),
+      body: JSON.stringify(hermesRunBody(request)),
     });
     const body = await safeJson(response);
     if (!response.ok) throw httpError('creation', response.status);
@@ -143,6 +138,17 @@ export class HermesConnectorAdapter implements ConnectorAdapter {
     };
   }
 }
+
+export const hermesRunBody=(request:AdapterStartExecutionRequest)=>{
+  const {history}=experimentalTailV1ConversationHistory(request.input.history);
+  return{
+    input:request.input.message,
+    session_id:sessionId(request.executionId),
+    instructions:workspaceInstructions(request.input.systemPrompt,request.workspace.absolutePath),
+    conversation_history:history,
+    model:request.modelId,
+  };
+};
 
 function normalizeBaseUrl(value: string) {
   let url: URL;

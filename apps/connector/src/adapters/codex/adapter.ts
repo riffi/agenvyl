@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
 import type {ConnectorElicitation,ConnectorJsonValue,ConnectorRequestAnswer,ConnectorRequestSnapshot,ExecutionStatus,TokenUsage} from '@agenvyl/connector-contract';
 import type {AdapterExecution,AdapterExecutionEvent,AdapterStartExecutionRequest,ConnectorAdapter} from '../../adapter.js';
+import {experimentalTailV1ConversationHistory} from '../../conversation-history.js';
 import {redactConnectorText} from '../../safety.js';
 import {CodexAppServerClient,type AppServerMessage,type CodexAppServerPort} from './app-server-client.js';
 import {buildCodexCatalog,parseCodexPermission} from './mode-catalog.js';
@@ -279,7 +280,7 @@ class EventQueue implements AsyncIterable<AdapterExecutionEvent>{
   [Symbol.asyncIterator](){return{next:():Promise<IteratorResult<AdapterExecutionEvent>>=>{const value=this.values.shift();if(value)return Promise.resolve({value,done:false});if(this.ended)return Promise.resolve({value:undefined,done:true});return new Promise(resolve=>this.waiters.push(resolve));}};}
 }
 
-const codexContext=(request:AdapterStartExecutionRequest)=>{const history=[];let length=0;for(const item of [...request.input.history].reverse()){const value={role:item.role,content:item.content.slice(0,16_000)},size=JSON.stringify(value).length;if(length+size>48_000)break;history.unshift(value);length+=size;}return`${request.input.systemPrompt.slice(0,16_000)}\n\n<AgenvylConversationHistory>\n${JSON.stringify(history)}\n</AgenvylConversationHistory>\nTreat the history as prior room context. Respond only to the current user message.`;};
+export const codexContext=(request:AdapterStartExecutionRequest)=>{const {history}=experimentalTailV1ConversationHistory(request.input.history);return`${request.input.systemPrompt.slice(0,16_000)}\n\n<AgenvylConversationHistory>\n${JSON.stringify(history)}\n</AgenvylConversationHistory>\nTreat the history as prior room context. Respond only to the current user message.`;};
 const requestIdentity=(state:ExecutionState,id:RpcId)=>`req-${createHash('sha256').update(`${state.threadId}:${String(id)}`).digest('hex').slice(0,32)}`;
 const approvalDecision=(value:string)=>value==='once'||value==='approved'?'accept':value==='session'||value==='always'?'acceptForSession':value==='deny'||value==='denied'?'decline':(()=>{throw new Error('Codex approval resolution is invalid');})();
 const approvalPrompt=(method:string,params:Record<string,unknown>)=>redactConnectorText(typeof params.reason==='string'?params.reason:method.includes('fileChange')?'Allow Codex to change files?':typeof params.command==='string'?`Allow Codex command: ${params.command}`:'Allow Codex command?',2_000);
