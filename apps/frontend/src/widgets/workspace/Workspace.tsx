@@ -128,6 +128,7 @@ export function WorkspaceApp({
     treeVisible:urlWorkspaceRequest.treeVisible,
   }:undefined,[urlWorkspaceRequest,workspaceTransient]);
   const composerRef=useRef<ComposerHandle>(null);
+  const mentionPersona=useCallback((handle:string)=>composerRef.current?.insertMention(handle),[]);
   const [draggingFiles,setDraggingFiles]=useState(false);
   const dragDepth=useRef(0);
   const invalidateRooms=()=>queryClient.invalidateQueries({queryKey:roomKeys.all});
@@ -255,7 +256,7 @@ export function WorkspaceApp({
             openArtifacts={() => openWorkspace()}
             manageAgents={() => setManagingAgents(true)}
           />
-          <Timeline roomId={roomId} state={state} personas={personaCatalog} harnessCatalog={harnessCatalog} select={setSelected} gateway={gateway} loadOlder={loadOlder} loadingOlder={loadingOlder} initialLoading={!fake&&timelineQuery.isPending} onMentionPersona={handle=>composerRef.current?.insertMention(handle)} openWorkspace={openWorkspace} openArtifact={openArtifact} addInstructionToRun={setInstructionRunId}/>
+          <Timeline roomId={roomId} state={state} personas={personaCatalog} harnessCatalog={harnessCatalog} select={setSelected} gateway={gateway} loadOlder={loadOlder} loadingOlder={loadingOlder} initialLoading={!fake&&timelineQuery.isPending} onMentionPersona={mentionPersona} openWorkspace={openWorkspace} openArtifact={openArtifact} addInstructionToRun={setInstructionRunId}/>
           <Composer ref={composerRef} gateway={gateway} active={active} personas={personas} roomPersonas={roomPersonas} updateParticipantReasoning={updateParticipantReasoning} harnessCatalog={harnessCatalog} catalogReady={gateway.mode === "fake" || (!catalogLoading && !catalogError)} onSent={async()=>{await invalidateRooms()}} openWorkspace={openWorkspace} openArtifact={openArtifact} roomId={roomId} attachments={attachments.items} attachmentsBusy={attachments.busy} openAttachmentPicker={()=>setAttachmentPicker(true)} uploadFiles={files=>void attachments.uploadFiles(files)} removeAttachment={attachments.remove} retryAttachment={attachments.retry} clearAttachments={attachments.clear} workflowMode={state.workflowMode} updateWorkflowMode={updateWorkflowMode} interventionTarget={interventionTarget} exitIntervention={()=>setInstructionRunId(undefined)}/>
         </>:<div className={styles['empty-chat']}><div className={styles['empty-mobile-header']}><button type="button" aria-label="Open menu" onClick={()=>setMenu(true)}><Menu /></button><strong>agenvyl</strong></div><EmptyState icon={<MessageCircle />} title="No rooms" description="Create a room to start a conversation with agents." action={<Button variant="primary" icon={<Plus />} onClick={()=>setCreatingRoom(true)}>Create room</Button>} /></div>):<PersonasScreen
           personas={personaCatalog}

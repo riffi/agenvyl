@@ -1,29 +1,36 @@
+// @vitest-environment jsdom
+
+import {cleanup,fireEvent,render,screen} from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import {afterEach, describe, expect, it } from 'vitest';
 import { ReasoningBlock, UpstreamStatusNotice } from './Timeline';
+
+afterEach(cleanup);
 
 describe('ReasoningBlock', () => {
   it('renders reasoning in a collapsed disclosure by default', () => {
-    const html = renderToStaticMarkup(<ReasoningBlock text={'**Planning**\n\n- inspect data\n- render safely'} />);
-    expect(html).toContain('Reasoning');
-    expect(html).toContain('<strong>Planning</strong>');
-    expect(html).toContain('<li>inspect data</li>');
-    expect(html).not.toContain('**Planning**');
-    expect(html).toContain('<details');
-    expect(html).not.toContain('<details open');
+    const {container}=render(<ReasoningBlock text={'**Planning**\n\n- inspect data\n- render safely'} />);
+    const details=container.querySelector('details') as HTMLDetailsElement;
+    expect(details.open).toBe(false);
+    expect(screen.queryByText('Planning')).toBeNull();
+    fireEvent.click(screen.getByText('Reasoning').closest('summary')!);
+    expect(screen.getByText('Planning').tagName).toBe('STRONG');
+    expect(screen.getByText('inspect data').tagName).toBe('LI');
   });
 
   it('does not load images embedded in reasoning markdown',()=>{
-    const html=renderToStaticMarkup(<ReasoningBlock text="![private diagram](https://example.com/diagram.png)"/>);
-    expect(html).toContain('[Image omitted: private diagram]');
-    expect(html).not.toContain('<img');
-    expect(html).not.toContain('https://example.com/diagram.png');
+    const {container}=render(<ReasoningBlock text="![private diagram](https://example.com/diagram.png)"/>);
+    fireEvent.click(screen.getByText('Reasoning').closest('summary')!);
+    expect(screen.getByText('[Image omitted: private diagram]')).toBeTruthy();
+    expect(container.querySelector('img')).toBeNull();
+    expect(container.innerHTML).not.toContain('https://example.com/diagram.png');
   });
 
   it('restores paragraph boundaries in reasoning persisted by the legacy Codex adapter',()=>{
-    const html=renderToStaticMarkup(<ReasoningBlock harnessType="codex" text="**Inspecting data****Summarizing results**"/>);
-    expect(html).toContain('<p><strong>Inspecting data</strong></p>');
-    expect(html).toContain('<p><strong>Summarizing results</strong></p>');
+    const {container}=render(<ReasoningBlock harnessType="codex" text="**Inspecting data****Summarizing results**"/>);
+    fireEvent.click(screen.getByText('Reasoning').closest('summary')!);
+    expect(container.innerHTML).toContain('<p><strong>Inspecting data</strong></p>');
+    expect(container.innerHTML).toContain('<p><strong>Summarizing results</strong></p>');
   });
 });
 

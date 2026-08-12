@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Activity } from 'lucide-react';
 import styles from './Timeline.module.css';
 
@@ -13,18 +13,19 @@ export const RunActivity = ({
   hasWorkspaceEvent,
   children,
 }: RunActivityProps) => {
+  const [open,setOpen]=useState(false);
   const summary = activitySummary({
     actionCount,
     hasWorkspaceEvent,
   });
 
-  return <details className={styles['run-activity']}>
-    <summary role="button" aria-label={`Run activity: ${summary}`}>
+  return <details className={styles['run-activity']} onToggle={event=>setOpen(event.currentTarget.open)}>
+    <summary role="button" aria-label={`Run activity: ${summary}`} onClick={event=>setOpen(!(event.currentTarget.parentElement as HTMLDetailsElement).open)}>
       <Activity />
       <strong>Run activity</strong>
       <span>{summary}</span>
     </summary>
-    <div className={styles['run-activity-body']}>{children}</div>
+    {open&&<div className={styles['run-activity-body']}>{children}</div>}
   </details>;
 };
 

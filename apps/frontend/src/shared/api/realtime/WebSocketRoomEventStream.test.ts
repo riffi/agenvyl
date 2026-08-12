@@ -20,8 +20,10 @@ describe('WebSocketRoomEventStream', () => {
     vi.stubGlobal('location', { protocol: 'https:', host: 'chat.test' });
     vi.stubGlobal('WebSocket', Socket);
     const stream = new WebSocketRoomEventStream<RoomEvent>('room / 1');
+    expect(Socket.instances).toHaveLength(0);
     const received: RoomEvent[] = [];
     stream.subscribe((event) => received.push(event));
+    expect(Socket.instances).toHaveLength(1);
     const event = { id: 'event-4', sequence: 4, type: 'message.created', payload: { id: 'message-1', text: 'hello', targets: [], runIds: [], createdAt: '2026-07-15',author:{profileId:'local-user',displayName:'User',handle:'user'},addressedToAll:false } } as RoomEvent;
     Socket.instances[0].onmessage?.({ data: JSON.stringify(event) });
     Socket.instances[0].onmessage?.({ data: JSON.stringify(event) });

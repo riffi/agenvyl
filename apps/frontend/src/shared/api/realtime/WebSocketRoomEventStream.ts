@@ -12,14 +12,14 @@ export class WebSocketRoomEventStream<Event extends SequencedEvent> implements R
   private pending: Event[] = [];
   private connectedReported=false;
 
-  constructor(private readonly roomId: string,initialSequence=0,connectImmediately=true) {
+  constructor(private readonly roomId: string,initialSequence=0) {
     this.lastSequence=initialSequence??0;
-    if(connectImmediately)this.connect();
   }
 
   subscribe(listener: (event: Event) => void) {
     this.listeners.add(listener);
-    if (this.stopped) { this.stopped = false; this.connect(); }
+    if (this.stopped) this.stopped = false;
+    if (!this.socket) this.connect();
     if (this.pending.length) {
       const pending = this.pending;
       this.pending = [];
@@ -57,6 +57,7 @@ export class WebSocketRoomEventStream<Event extends SequencedEvent> implements R
       catch { /* malformed upstream events are isolated from subscribers */ }
     };
     this.socket.onclose = () => {
+      this.socket = undefined;
       if (this.stopped) return;
       this.connectedReported=false;
       this.connection('reconnecting');
@@ -67,7 +68,9 @@ export class WebSocketRoomEventStream<Event extends SequencedEvent> implements R
   dispose() {
     this.stopped = true;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-    this.socket?.close();
+    const socket=this.socket;
+    this.socket=undefined;
+    socket?.close();
     this.pending = [];
     this.listeners.clear();
   }
