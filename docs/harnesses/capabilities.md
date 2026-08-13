@@ -69,7 +69,8 @@ structured clarification.
 | Capability | Hermes | OpenCode | Codex CLI | Claude Code *(experimental)* | AGY | Cursor CLI *(experimental)* |
 | --- | --- | --- | --- | --- | --- | --- |
 | Cancellation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Add instruction to active run | — | — | ✅ | — | — | — |
+| Add instruction to active run | — | ✅ | ✅ | — | — | — |
+| Continue selected completed response | — | ✅ | ✅ | — | — | — |
 | Concurrent runs | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Event replay and Core reattach | ✅ Same epoch | ✅ Same epoch | ✅ Same epoch | ✅ Same epoch | ✅ Same epoch | ✅ Same epoch |
 
@@ -82,10 +83,12 @@ Replay and Core reattach work only while the same Connector process epoch is
 alive and the requested events remain replayable. If Connector restarts, Core
 does not attach an old run to the new process: the run ends fail-closed.
 
-Add instruction is a Codex-only cooperative interrupt. It interrupts the current
-turn and starts a new turn in the same Codex thread, run, and workspace. It is not a
-pause or rollback: a command may finish before the interrupt is observed, and
-filesystem or external side effects that already happened remain in place.
+Add instruction is a cooperative interrupt for Codex and OpenCode. It
+interrupts the current turn and starts a new turn in the same native session,
+run, and workspace. On a selected completed response, it creates a linked run
+from that preserved session. It is not a pause or rollback: a command may
+finish before the interrupt is observed, and filesystem or external side
+effects that already happened remain in place.
 
 ## Important distinctions
 
@@ -131,6 +134,8 @@ not members of the `ConnectorCapability` enum.
 Add instruction is lifecycle behavior too. A Connector instance advertises it with the
 optional `interventionMode: "interrupt_then_continue"` metadata field. Instances
 that omit the field are unsupported; Core and the UI do not emulate a fallback.
+Post-turn support is advertised separately with `postTurnContinuation`; Agenvyl
+currently uses native sessions with explicit release for Codex and OpenCode.
 
 ## Verification and maintenance
 

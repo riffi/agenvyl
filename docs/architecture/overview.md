@@ -220,10 +220,11 @@ enforce that invariant, so concurrent Plan harnesses can race in the shared
 Workspace or an external project. Finalization records the resulting live Git
 state but cannot reconstruct isolated per-agent changes.
 
-Add instruction is currently Codex-only. It interrupts the active Codex turn,
-preserves the preceding answer segment with author, timestamp, and status, then
-continues in the same thread and run. It does not roll back tool or Workspace
-side effects.
+Add instruction is supported by Codex and OpenCode. It interrupts the active
+native turn, preserves the preceding answer segment with author, timestamp, and
+status, then continues in the same native session and run. A selected completed
+response can also create a linked run from its retained native session. It does
+not roll back tool or Workspace side effects.
 
 ## Reliability model
 

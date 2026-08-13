@@ -27,6 +27,141 @@ describe('OpenCodeConnectorAdapter', () => {
     });
     expect(client.providers).toHaveBeenCalledWith('/workspace/catalog');
     expect(client.agents).toHaveBeenCalledWith('/workspace/catalog');
+    expect(adapter.interventionMode).toBe('interrupt_then_continue');
+    expect(adapter.postTurnContinuation).toEqual({mode:'native_session',durability:'connector_restart',retention:'explicit_release'});
+  });
+
+  it('interrupts an active turn and continues the same session with the original configuration',async()=>{
+    const client=fixtureClient(),firstUsage={id:'assistant-1',sessionID:'session-1',role:'assistant',tokens:{input:10,output:2,reasoning:1,cache:{read:3,write:0}}},secondUsage={id:'assistant-2',sessionID:'session-1',role:'assistant',tokens:{input:8,output:4,reasoning:0,cache:{read:2,write:0}}};
+    client.subscribe=vi.fn().mockResolvedValue(events([
+      {type:'message.part.updated',properties:{sessionID:'session-1',part:{id:'old-text',type:'text'}}},
+      {type:'message.part.delta',properties:{sessionID:'session-1',partID:'old-text',field:'text',delta:'Old answer'}},
+      {type:'message.updated',properties:{info:firstUsage}},
+      {type:'session.error',properties:{sessionID:'session-1',error:{name:'MessageAbortedError',data:{message:'aborted'}}}},
+      {type:'session.idle',properties:{sessionID:'session-1'}},
+      {type:'session.status',properties:{sessionID:'session-1',status:{type:'idle'}}},
+      {type:'session.status',properties:{sessionID:'session-1',status:{type:'busy'}}},
+      {type:'message.part.updated',properties:{sessionID:'session-1',part:{id:'new-text',type:'text'}}},
+      {type:'message.part.delta',properties:{sessionID:'session-1',partID:'new-text',field:'text',delta:'New answer'}},
+      {type:'message.updated',properties:{info:secondUsage}},
+      ...assistantFinished(),
+      {type:'session.idle',properties:{sessionID:'session-1'}},
+    ]));
+    const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client}),execution=await adapter.start(startRequest());
+    const applying=adapter.intervene(execution,{interventionId:'c226f522-d864-4f1c-a53f-25d22dc9109f',text:'Change direction'});
+
+    const normalized=await collect(adapter.events(execution));
+    await expect(applying).resolves.toBeUndefined();
+
+    expect(client.abortSession).toHaveBeenCalledWith('session-1','/srv/workspaces/room-1/subdir');
+    expect(client.prompt).toHaveBeenCalledTimes(2);
+    expect(client.prompt).toHaveBeenNthCalledWith(2,{...vi.mocked(client.prompt).mock.calls[0]![0],message:'Change direction'});
+    expect(normalized).toEqual([
+      {type:'output.text.delta',payload:{text:'Old answer'}},
+      {type:'usage.updated',payload:{usage:{inputTokens:10,outputTokens:2,reasoningTokens:1,cacheReadTokens:3,cacheWriteTokens:0}}},
+      {type:'execution.intervention.applied',payload:{interventionId:'c226f522-d864-4f1c-a53f-25d22dc9109f',text:'Change direction'}},
+      {type:'output.text.delta',payload:{text:'New answer'}},
+      {type:'usage.updated',payload:{usage:{inputTokens:18,outputTokens:6,reasoningTokens:1,cacheReadTokens:5,cacheWriteTokens:0}}},
+      completion(),
+    ]);
+  });
+
+  it('fails an intervention and the execution when the replacement prompt cannot start',async()=>{
+    const client=fixtureClient();client.subscribe=vi.fn().mockResolvedValue(events([{type:'session.idle',properties:{sessionID:'session-1'}}]));
+    client.prompt=vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('replacement failed token=secret'));
+    const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client}),execution=await adapter.start(startRequest());
+    const applying=adapter.intervene(execution,{interventionId:'c226f522-d864-4f1c-a53f-25d22dc9109f',text:'Change direction'}).catch(error=>error);
+
+    const normalized=await collect(adapter.events(execution));
+
+    await expect(applying).resolves.toBeInstanceOf(Error);
+    expect(normalized).toEqual([
+      {type:'execution.intervention.failed',payload:{interventionId:'c226f522-d864-4f1c-a53f-25d22dc9109f',text:'Change direction',error:{code:'opencode_turn_start_failed',message:'replacement failed token=[REDACTED]'}}},
+      {type:'execution.failed',payload:{error:{code:'opencode_turn_start_failed',message:'replacement failed token=[REDACTED]'}}},
+    ]);
+    expect(client.deleteSession).toHaveBeenCalledWith('session-1','/srv/workspaces/room-1/subdir');
+  });
+
+  it('keeps the original turn active when the intervention abort fails',async()=>{
+    const client=fixtureClient();client.abortSession=vi.fn().mockRejectedValue(new Error('abort unavailable'));
+    client.subscribe=vi.fn().mockResolvedValue(events([...completedTurn(),{type:'session.idle',properties:{sessionID:'session-1'}}]));
+    const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client}),execution=await adapter.start(startRequest()),applying=adapter.intervene(execution,{interventionId:'c226f522-d864-4f1c-a53f-25d22dc9109f',text:'Change direction'}).catch(error=>error);
+
+    await expect(applying).resolves.toBeInstanceOf(Error);
+    await expect(collect(adapter.events(execution))).resolves.toEqual([completion()]);
+    expect(client.prompt).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a pending intervention when the adapter closes',async()=>{
+    const client=fixtureClient(),adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client}),execution=await adapter.start(startRequest()),applying=adapter.intervene(execution,{interventionId:'c226f522-d864-4f1c-a53f-25d22dc9109f',text:'Change direction'}).catch(error=>error);
+
+    await adapter.close();
+
+    await expect(applying).resolves.toBeInstanceOf(Error);
+    expect(client.deleteSession).toHaveBeenCalledWith('session-1','/srv/workspaces/room-1/subdir');
+  });
+
+  it('rejects intervention while waiting for user input and while another intervention is pending',async()=>{
+    const client=fixtureClient();client.subscribe=vi.fn().mockResolvedValue(events([{type:'permission.asked',properties:{id:'native-request',sessionID:'session-1',permission:'bash',patterns:['git status'],metadata:{},always:[]}}]));
+    const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client}),execution=await adapter.start(startRequest()),iterator=adapter.events(execution)[Symbol.asyncIterator]();
+    await expect(iterator.next()).resolves.toMatchObject({value:{type:'request.opened'}});
+    expect(()=>adapter.intervene(execution,{interventionId:'c226f522-d864-4f1c-a53f-25d22dc9109f',text:'Change'})).toThrow('waiting for user input');
+    await iterator.return?.();
+
+    const otherClient=fixtureClient(),otherAdapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client:otherClient}),other=await otherAdapter.start(startRequest()),first=otherAdapter.intervene(other,{interventionId:'c226f522-d864-4f1c-a53f-25d22dc9109f',text:'First'}).catch(error=>error);
+    expect(()=>otherAdapter.intervene(other,{interventionId:'777f7444-e6a9-4e85-818f-20d536876ff7',text:'Second'})).toThrow('already being applied');
+    await otherAdapter.stop(other);await expect(first).resolves.toBeInstanceOf(Error);
+  });
+
+  it('gives Stop priority while an intervention is waiting for idle',async()=>{
+    const client=fixtureClient(),adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client}),execution=await adapter.start(startRequest()),applying=adapter.intervene(execution,{interventionId:'c226f522-d864-4f1c-a53f-25d22dc9109f',text:'Change'}).catch(error=>error);
+
+    await adapter.stop(execution);
+
+    await expect(applying).resolves.toBeInstanceOf(Error);
+    expect(client.prompt).toHaveBeenCalledTimes(1);
+    expect(client.abortSession).toHaveBeenCalledTimes(2);
+    expect(client.deleteSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not hide a genuine session failure received during interruption',async()=>{
+    const client=fixtureClient();client.subscribe=vi.fn().mockResolvedValue(events([{type:'session.error',properties:{sessionID:'session-1',error:{name:'ProviderAuthError',data:{message:'unauthorized'}}}}]));
+    const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client}),execution=await adapter.start(startRequest()),applying=adapter.intervene(execution,{interventionId:'c226f522-d864-4f1c-a53f-25d22dc9109f',text:'Change'}).catch(error=>error);
+
+    const normalized=await collect(adapter.events(execution));
+
+    await expect(applying).resolves.toBeInstanceOf(Error);
+    expect(normalized.at(-1)).toMatchObject({type:'execution.failed',payload:{error:{code:'provider_authentication_failed'}}});
+    expect(client.prompt).toHaveBeenCalledTimes(1);
+  });
+
+  it('resumes a preserved session without replay and releases it explicitly',async()=>{
+    const sourceClient=fixtureClient();sourceClient.subscribe=vi.fn().mockResolvedValue(events([...completedTurn(),{type:'session.idle',properties:{sessionID:'session-1'}}]));
+    const sourceAdapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client:sourceClient}),terminal=(await collect(sourceAdapter.events(await sourceAdapter.start(startRequest())))).at(-1);
+    if(!terminal||terminal.type!=='execution.completed'||!terminal.payload.continuation)throw new Error('Expected OpenCode continuation');
+    const system=vi.mocked(sourceClient.prompt).mock.calls[0]![0].system,handle=terminal.payload.continuation.handle,resumedClient=fixtureClient();
+    resumedClient.sessionMessages=vi.fn().mockResolvedValue([{info:{role:'user',system}}]);
+    resumedClient.subscribe=vi.fn().mockResolvedValue(events([...completedTurn('Continued'),{type:'session.idle',properties:{sessionID:'session-1'}}]));
+    const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client:resumedClient}),request={...startRequest(),executionId:'execution-2',input:{systemPrompt:'Be useful.',history:[],message:'Continue natively'},continuation:{handle}};
+
+    const resumed=await adapter.startContinuation(request,handle);
+    expect(resumed).toEqual({upstreamId:'session-1'});
+    expect(resumedClient.createSession).not.toHaveBeenCalled();
+    expect(resumedClient.sessionMessages).toHaveBeenCalledWith('session-1','/srv/workspaces/room-1/subdir');
+    expect(resumedClient.prompt).toHaveBeenCalledWith(expect.objectContaining({sessionID:'session-1',system,message:'Continue natively'}));
+    await expect(collect(adapter.events(resumed))).resolves.toEqual([completion()]);
+    await expect(adapter.releaseContinuation(handle,{instanceId:'local-opencode'})).resolves.toBe('released');
+    expect(resumedClient.deleteSession).toHaveBeenCalledWith('session-1','/srv/workspaces/room-1/subdir');
+    resumedClient.deleteSession=vi.fn().mockResolvedValue(false);
+    await expect(adapter.releaseContinuation(handle,{instanceId:'local-opencode'})).resolves.toBe('not_found');
+    await expect(adapter.releaseContinuation(handle,{instanceId:'other-opencode'})).rejects.toMatchObject({code:'continuation_incompatible'});
+    await expect(adapter.releaseContinuation('broken',{instanceId:'local-opencode'})).rejects.toMatchObject({code:'continuation_unavailable'});
+    const otherScope=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4097',client:fixtureClient()});
+    await expect(otherScope.startContinuation(request,handle)).rejects.toMatchObject({code:'continuation_incompatible'});
+    const changedContextClient=fixtureClient();changedContextClient.sessionMessages=vi.fn().mockResolvedValue([{info:{role:'user',system:'changed'}}]);
+    const changedContext=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client:changedContextClient});
+    await expect(changedContext.startContinuation(request,handle)).rejects.toMatchObject({code:'continuation_incompatible'});
+    expect(changedContextClient.deleteSession).not.toHaveBeenCalled();
   });
 
   it('subscribes before prompting a fresh session with isolated workspace and role-preserving context', async () => {
@@ -58,21 +193,21 @@ describe('OpenCodeConnectorAdapter', () => {
     expect(system).not.toContain('tool named `question`');
   });
 
-  it('deletes a completed session and disposes its OpenCode instance before reporting completion',async()=>{
+  it('preserves a completed session and disposes its OpenCode instance before reporting a continuation',async()=>{
     const calls:string[]=[],client=fixtureClient(calls);
     client.subscribe=vi.fn(async()=>{calls.push('subscribe');return events([...completedTurn(),{type:'session.idle',properties:{sessionID:'session-1'}}]);});
-    client.deleteSession=vi.fn(async()=>{calls.push('delete');});
+    client.deleteSession=vi.fn(async()=>{calls.push('delete');return true;});
     client.disposeInstance=vi.fn(async()=>{calls.push('dispose');});
     const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client});
 
-    await expect(collect(adapter.events(await adapter.start(startRequest())))).resolves.toEqual([{type:'execution.completed',payload:{}}]);
+    await expect(collect(adapter.events(await adapter.start(startRequest())))).resolves.toEqual([completion()]);
 
     expect(client.abortSession).not.toHaveBeenCalled();
-    expect(client.deleteSession).toHaveBeenCalledWith('session-1','/srv/workspaces/room-1/subdir');
+    expect(client.deleteSession).not.toHaveBeenCalled();
     expect(client.disposeInstance).toHaveBeenCalledWith('/srv/workspaces/room-1/subdir');
-    expect(calls).toEqual(['create','subscribe','prompt','delete','dispose']);
+    expect(calls).toEqual(['create','subscribe','prompt','dispose']);
     await adapter.close();
-    expect(client.deleteSession).toHaveBeenCalledTimes(1);
+    expect(client.deleteSession).not.toHaveBeenCalled();
     expect(client.disposeInstance).toHaveBeenCalledTimes(1);
   });
 
@@ -141,7 +276,7 @@ describe('OpenCodeConnectorAdapter', () => {
     expect(normalized).toEqual([
       { type: 'output.reasoning.delta', payload: { text: 'private' } },
       { type: 'output.text.delta', payload: { text: 'Hello' } },
-      { type: 'execution.completed', payload: {} },
+      completion(),
     ]);
     expect(JSON.stringify(normalized)).not.toContain('do-not-leak');
   });
@@ -161,7 +296,7 @@ describe('OpenCodeConnectorAdapter', () => {
       {type:'output.text.delta',payload:{text:'First'}},
       {type:'output.text.delta',payload:{text:' message.'}},
       {type:'output.text.delta',payload:{text:'\n\nSecond message.'}},
-      {type:'execution.completed',payload:{}},
+      completion(),
     ]);
   });
 
@@ -181,7 +316,7 @@ describe('OpenCodeConnectorAdapter', () => {
       {type:'usage.updated',payload:{usage:{inputTokens:10,outputTokens:3,reasoningTokens:2,cacheReadTokens:4,cacheWriteTokens:1}}},
       {type:'usage.updated',payload:{usage:{inputTokens:12,outputTokens:5,reasoningTokens:2,cacheReadTokens:4,cacheWriteTokens:1}}},
       {type:'usage.updated',payload:{usage:{inputTokens:20,outputTokens:7,reasoningTokens:3,cacheReadTokens:4,cacheWriteTokens:1}}},
-      {type:'execution.completed',payload:{}},
+      completion(),
     ]);
   });
 
@@ -249,7 +384,7 @@ describe('OpenCodeConnectorAdapter', () => {
       { type: 'tool.updated', payload: { toolId: 'call-1', name: 'bash', safeSummary: 'Run [ABSOLUTE_PATH]' } },
       { type: 'tool.completed', payload: { toolId: 'call-1', name: 'bash', safeSummary: 'Command finished' } },
       { type: 'tool.failed', payload: { toolId: 'call-2', name: 'edit', safeSummary: 'edit failed' } },
-      { type: 'execution.completed', payload: {} },
+      completion(),
     ]);
     expect(JSON.stringify(normalized)).not.toContain('secret');
   });
@@ -281,7 +416,7 @@ describe('OpenCodeConnectorAdapter', () => {
     expect(client.replyPermission).toHaveBeenCalledWith({
       sessionID: 'session-1', requestID: 'native-request-1', directory: '/srv/workspaces/room-1/subdir', reply: 'once', version,
     });
-    await expect(iterator.next()).resolves.toEqual({ done: false, value: { type: 'execution.completed', payload: {} } });
+    await expect(iterator.next()).resolves.toEqual({ done: false, value: completion() });
     await expect(iterator.next()).resolves.toEqual({ done: true, value: undefined });
   });
 
@@ -346,7 +481,7 @@ describe('OpenCodeConnectorAdapter', () => {
     const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client,externalDirectoryRoots:[escaped],grantExternalDirectoryRoot});
     const request={...startRequest(),workspace:{...startRequest().workspace,absolutePath:active},executionProfile:{...startRequest().executionProfile,permissionProfileId}};
 
-    await expect(collect(adapter.events(await adapter.start(request)))).resolves.toEqual([{type:'execution.completed',payload:{}}]);
+    await expect(collect(adapter.events(await adapter.start(request)))).resolves.toEqual([completion()]);
     expect(client.replyPermission).toHaveBeenCalledWith(expect.objectContaining({requestID:'native-external',reply:'reject'}));
     expect(grantExternalDirectoryRoot).not.toHaveBeenCalled();
   });
@@ -381,7 +516,7 @@ describe('OpenCodeConnectorAdapter', () => {
     const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client,externalDirectoryRoots:['/srv/shared']});
     const executionProfile={...startRequest().executionProfile,permissionProfileId:'auto-approve'};
 
-    await expect(collect(adapter.events(await adapter.start({...startRequest(),executionProfile})))).resolves.toEqual([{type:'execution.completed',payload:{}}]);
+    await expect(collect(adapter.events(await adapter.start({...startRequest(),executionProfile})))).resolves.toEqual([completion()]);
     expect(client.replyPermission).toHaveBeenNthCalledWith(1,expect.objectContaining({requestID:'native-bash',reply:'once'}));
     expect(client.replyPermission).toHaveBeenNthCalledWith(2,expect.objectContaining({requestID:'native-external',reply:'once'}));
   });
@@ -396,7 +531,7 @@ describe('OpenCodeConnectorAdapter', () => {
     const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client,externalDirectoryRoots:['C:\\work']});
     const executionProfile={...startRequest().executionProfile,permissionProfileId:'auto-approve'};
 
-    await expect(collect(adapter.events(await adapter.start({...startRequest(),executionProfile})))).resolves.toEqual([{type:'execution.completed',payload:{}}]);
+    await expect(collect(adapter.events(await adapter.start({...startRequest(),executionProfile})))).resolves.toEqual([completion()]);
     expect(client.replyPermission).toHaveBeenCalledWith(expect.objectContaining({requestID:'native-external-bash',reply:'once'}));
   });
 
@@ -442,7 +577,7 @@ describe('OpenCodeConnectorAdapter', () => {
     if(!opened.value||opened.value.type!=='request.opened')throw new Error('Expected approval request');
     await adapter.resolveRequest(execution,opened.value.payload.request,'deny');
 
-    await expect(collectIterator(iterator)).resolves.toEqual([{type:'execution.completed',payload:{}}]);
+    await expect(collectIterator(iterator)).resolves.toEqual([completion()]);
     expect(client.replyPermission).toHaveBeenCalledWith(expect.objectContaining({reply:'reject'}));
   });
 
@@ -577,10 +712,10 @@ describe('OpenCodeConnectorAdapter', () => {
   it('does not turn a successful execution into a failure when upstream cleanup times out',async()=>{
     const client=fixtureClient();
     client.subscribe=vi.fn().mockResolvedValue(events([...completedTurn(),{type:'session.idle',properties:{sessionID:'session-1'}}]));
-    client.deleteSession=vi.fn(()=>new Promise<void>(()=>undefined));
+    client.disposeInstance=vi.fn(()=>new Promise<void>(()=>undefined));
     const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client,cleanupTimeoutMs:5});
 
-    await expect(collect(adapter.events(await adapter.start(startRequest())))).resolves.toEqual([{type:'execution.completed',payload:{}}]);
+    await expect(collect(adapter.events(await adapter.start(startRequest())))).resolves.toEqual([completion()]);
     expect(client.disposeInstance).toHaveBeenCalledWith('/srv/workspaces/room-1/subdir');
   });
 
@@ -656,11 +791,12 @@ function fixtureClient(calls: string[] = []): OpenCodeClientPort {
     createSession: vi.fn(async () => { calls.push('create'); return { id: 'session-1' }; }),
     sessionStatuses: vi.fn().mockResolvedValue({ 'session-1': { type: 'idle' } }),
     subscribe: vi.fn(async () => { calls.push('subscribe'); return events([]); }),
+    sessionMessages:vi.fn().mockResolvedValue([{info:{role:'user',system:'Be useful.'}}]),
     prompt: vi.fn(async () => { calls.push('prompt'); }),
     replyPermission: vi.fn().mockResolvedValue(undefined),
     replyQuestion: vi.fn().mockResolvedValue(undefined),
     abortSession: vi.fn().mockResolvedValue(undefined),
-    deleteSession: vi.fn().mockResolvedValue(undefined),
+    deleteSession: vi.fn().mockResolvedValue(true),
     disposeInstance: vi.fn().mockResolvedValue(undefined),
   };
 }
@@ -668,6 +804,7 @@ function fixtureClient(calls: string[] = []): OpenCodeClientPort {
 async function* events(values: unknown[]) { yield* values; }
 async function collect<T>(source: AsyncIterable<T>) { const values: T[] = []; for await (const value of source) values.push(value); return values; }
 async function collectIterator<T>(iterator:AsyncIterator<T>){const values:T[]=[];while(true){const next=await iterator.next();if(next.done)return values;values.push(next.value);}}
+function completion(){return{type:'execution.completed',payload:{continuation:{handle:expect.any(String)}}};}
 function assistantFinished(reason='stop'){return[{type:'message.updated',properties:{info:{id:'assistant-final',sessionID:'session-1',role:'assistant',finish:reason}}}];}
 function completedTurn(text='Done'){return[
   {type:'message.part.updated',properties:{sessionID:'session-1',part:{id:'text-final',type:'text',text}}},

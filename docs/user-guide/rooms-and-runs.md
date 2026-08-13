@@ -78,17 +78,21 @@ After a run reaches Completed, Failed, or Cancelled, use its retry action to
 create another attempt when retry is available. The original attempt remains
 in the timeline.
 
-## Add an instruction to an active run
+## Add an instruction to a run
 
-An active Codex run can accept **Add instruction**. Agenvyl interrupts the
-current Codex turn and continues in the same run with the new instruction. The
-answer already produced remains visible as an earlier segment with its author,
-time, and instruction status.
+An active Codex or OpenCode run can accept **Add instruction**. Agenvyl
+interrupts the current native turn and continues in the same run with the new
+instruction. The answer already produced remains visible as an earlier segment
+with its author, time, and instruction status.
 
 Add instruction is not a pause or rollback. Existing tool activity, usage,
 elapsed timeout, file changes, and external side effects remain part of the
-same run. Stop takes priority over a pending instruction. Other harnesses do
-not currently support this action.
+same run. Stop takes priority over a pending instruction.
+
+The selected completed Codex or OpenCode response also offers **Add
+instruction** while its native continuation remains available. That action
+creates a linked run in the same timeline card and resumes the preserved native
+session without replaying the room conversation.
 
 ## Continue with files and builds
 

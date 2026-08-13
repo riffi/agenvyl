@@ -78,7 +78,16 @@ environment used for every Agenvyl start.
 OpenCode supplies its model catalog and provider agent variants. Agenvyl
 supports text and reasoning streams, tools, manual approvals, structured
 clarifications with up to four questions including multi-select, usage, retries
-reported by the provider, and cancellation.
+reported by the provider, cancellation, and **Add instruction**.
+
+During an active run, **Add instruction** aborts the current OpenCode turn and
+starts a replacement turn in the same session, run, and workspace. After a
+successful selected response, the same action creates a linked run backed by
+the preserved native OpenCode session. Agenvyl deletes preserved sessions when
+their continuation chain is invalidated or explicitly released.
+
+Add instruction is not a rollback. Tool calls can finish before OpenCode
+observes the abort, and filesystem or external side effects remain in place.
 
 Each OpenCode agent has one of two permission profiles:
 

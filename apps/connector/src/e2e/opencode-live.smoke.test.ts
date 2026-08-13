@@ -31,7 +31,8 @@ describe('live OpenCode adapter', () => {
     expect(text).toContain('AGENVYL_OPENCODE_OK');
     const usage=events.filter(event=>event.type==='usage.updated').at(-1)?.payload.usage;
     expect(usage).toMatchObject({inputTokens:expect.any(Number),outputTokens:expect.any(Number)});
-    expect(events.at(-1)).toEqual({ type: 'execution.completed', payload: {} });
+    expect(events.at(-1)).toMatchObject({ type: 'execution.completed', payload: {continuation:{handle:expect.any(String)}} });
+    await releaseTerminal(adapter,events);
   }, 130_000);
 
   it('streams a real workspace tool lifecycle without approval', async () => {
@@ -43,7 +44,8 @@ describe('live OpenCode adapter', () => {
     expect(events.some(event => event.type === 'tool.started' || event.type === 'tool.updated')).toBe(true);
     expect(events.some(event => event.type === 'tool.completed')).toBe(true);
     expect(await readFile(join(workspace, 'tool-smoke.txt'), 'utf8')).toBe('TOOL_SMOKE_OK');
-    expect(events.at(-1)).toEqual({ type: 'execution.completed', payload: {} });
+    expect(events.at(-1)).toMatchObject({ type: 'execution.completed', payload: {continuation:{handle:expect.any(String)}} });
+    await releaseTerminal(adapter,events);
   }, 130_000);
 
   it('pauses for a real manual permission and resumes only after an explicit reply', async () => {
@@ -63,7 +65,8 @@ describe('live OpenCode adapter', () => {
     expect(approvalSeen).toBe(true);
     expect(events.some(event => event.type === 'tool.completed')).toBe(true);
     expect(await readFile(join(workspace, 'approval-smoke.txt'), 'utf8')).toBe('APPROVAL_SMOKE_OK');
-    expect(events.at(-1)).toEqual({ type: 'execution.completed', payload: {} });
+    expect(events.at(-1)).toMatchObject({ type: 'execution.completed', payload: {continuation:{handle:expect.any(String)}} });
+    await releaseTerminal(adapter,events);
   }, 130_000);
 
   it('pauses for one real clarification and resumes only after an explicit answer', async () => {
@@ -83,7 +86,8 @@ describe('live OpenCode adapter', () => {
     expect(clarificationSeen).toBe(true);
     const text = events.filter(event => event.type === 'output.text.delta').map(event => event.payload.text).join('');
     expect(text).toContain('CLARIFICATION_SMOKE_OK');
-    expect(events.at(-1)).toEqual({ type: 'execution.completed', payload: {} });
+    expect(events.at(-1)).toMatchObject({ type: 'execution.completed', payload: {continuation:{handle:expect.any(String)}} });
+    await releaseTerminal(adapter,events);
   }, 130_000);
 
   it('aborts a real long-running tool after explicit permission', async () => {
@@ -108,6 +112,35 @@ describe('live OpenCode adapter', () => {
     await adapter.stop(execution);
     await expect(nextBefore(iterator, 5_000)).resolves.toEqual({ done: true, value: undefined });
   }, 130_000);
+
+  it('interrupts a real active turn and applies a replacement instruction',async()=>{
+    const adapter=liveAdapter(),execution=await adapter.start(startRequest('Use bash to run exactly: sleep 60. Do not answer before it finishes.')),iterator=adapter.events(execution)[Symbol.asyncIterator]();
+    const deadline=Date.now()+120_000;let running=false;
+    while(Date.now()<deadline&&!running){
+      const next=await nextBefore(iterator,deadline-Date.now());if(next.done)throw new Error('OpenCode stream ended before intervention');
+      if(next.value.type==='request.opened')await adapter.resolveRequest(execution,next.value.payload.request,'once');
+      if(next.value.type==='tool.updated')running=true;
+    }
+    expect(running).toBe(true);
+    const applying=adapter.intervene(execution,{interventionId:crypto.randomUUID(),text:'Stop the previous task and reply with exactly OPENCODE_INTERVENTION_OK.'}),remaining=await collectIteratorBefore(iterator,120_000);
+    await expect(applying).resolves.toBeUndefined();
+    expect(remaining.some(event=>event.type==='execution.intervention.applied')).toBe(true);
+    expect(remaining.filter(event=>event.type==='output.text.delta').map(event=>event.payload.text).join('')).toContain('OPENCODE_INTERVENTION_OK');
+    expect(remaining.at(-1)).toMatchObject({type:'execution.completed',payload:{continuation:{handle:expect.any(String)}}});
+    await releaseTerminal(adapter,remaining);
+  },250_000);
+
+  it('continues a completed response in the same native session and releases it',async()=>{
+    const adapter=liveAdapter(),sourceRequest=startRequest('Reply with exactly OPENCODE_SOURCE_OK and nothing else.'),sourceEvents=await collect(adapter.events(await adapter.start(sourceRequest)),120_000),terminal=sourceEvents.at(-1);
+    if(!terminal||terminal.type!=='execution.completed'||!terminal.payload.continuation)throw new Error('OpenCode did not return a continuation handle');
+    const handle=terminal.payload.continuation.handle,continuedRequest={...sourceRequest,executionId:crypto.randomUUID(),input:{...sourceRequest.input,history:[],message:'Reply with exactly OPENCODE_CONTINUATION_OK and nothing else.'},continuation:{handle}};
+
+    const events=await collect(adapter.events(await adapter.startContinuation(continuedRequest,handle)),120_000);
+    const text=events.filter(event=>event.type==='output.text.delta').map(event=>event.payload.text).join('');
+    expect(text).toContain('OPENCODE_CONTINUATION_OK');
+    expect(events.at(-1)).toMatchObject({type:'execution.completed',payload:{continuation:{handle:expect.any(String)}}});
+    await expect(adapter.releaseContinuation(handle,{instanceId:'local-opencode'})).resolves.toMatch(/released|not_found/);
+  },250_000);
 });
 
 function liveAdapter() {
@@ -164,4 +197,14 @@ async function nextBefore<T>(iterator: AsyncIterator<T>, timeoutMs: number) {
     iterator.next(),
     new Promise<never>((_, reject) => timeout.addEventListener('abort', () => reject(new Error('OpenCode live smoke timed out')), { once: true })),
   ]);
+}
+
+async function collectIteratorBefore<T>(iterator:AsyncIterator<T>,timeoutMs:number){
+  const values:T[]=[],deadline=Date.now()+timeoutMs;
+  while(true){const next=await nextBefore(iterator,deadline-Date.now());if(next.done)return values;values.push(next.value);}
+}
+
+async function releaseTerminal(adapter:OpenCodeConnectorAdapter,events:Awaited<ReturnType<typeof collect>>){
+  const terminal=events.at(-1);
+  if(terminal?.type==='execution.completed'&&terminal.payload.continuation)await adapter.releaseContinuation(terminal.payload.continuation.handle,{instanceId:'local-opencode'});
 }

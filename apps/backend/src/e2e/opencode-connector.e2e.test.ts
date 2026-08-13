@@ -185,6 +185,39 @@ describe.sequential('Core -> Connector -> OpenCode-compatible black-box gate', (
     await expectSingleTerminal(runtime.databaseUrl, [runId]);
   }, 20_000);
 
+  it('interrupts an active OpenCode turn and continues the same run and session',async()=>{
+    const runtime=await startRuntime(cleanups),runId=await createRun(runtime.coreUrl,'[opencode:intervention]');
+    const instances=await fetch(`${runtime.connectorUrl}/v2/instances`,{headers:{authorization:`Bearer ${connectorToken}`}});
+    expect((await instances.json() as{instances:Array<unknown>}).instances[0]).toMatchObject({interventionMode:'interrupt_then_continue',postTurnContinuation:{mode:'native_session',durability:'connector_restart',retention:'explicit_release'}});
+    await waitForRun(runtime.coreUrl,runId,run=>run.status==='streaming'&&run.text==='before-intervention');
+    const interventionId=randomUUID(),response=await fetch(`${runtime.coreUrl}/api/v1/runs/${runId}/interventions`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({intervention_id:interventionId,text:'Use the corrected direction'})});
+    expect(response.status,await response.clone().text()).toBe(202);
+    expect(await response.json()).toEqual({mode:'active_redirect',intervention_id:interventionId,status:'pending'});
+
+    const completed=await waitForRun(runtime.coreUrl,runId,run=>run.status==='completed');
+    expect(completed).toMatchObject({text:'after-intervention',interventions:[{id:interventionId,text:'Use the corrected direction',status:'applied',precedingText:'before-intervention'}]});
+    expect(runtime.fixture.createdSessionIds).toHaveLength(1);
+    expect(runtime.fixture.abortedSessionIds).toEqual([runtime.fixture.createdSessionIds[0]]);
+    await expectSingleTerminal(runtime.databaseUrl,[runId]);
+  },20_000);
+
+  it('continues a completed OpenCode response in the preserved native session',async()=>{
+    const runtime=await startRuntime(cleanups),sourceId=await createRun(runtime.coreUrl,'[opencode:post-turn]');
+    expect(await waitForRun(runtime.coreUrl,sourceId,run=>run.status==='completed')).toMatchObject({text:'source-answer'});
+    const interventionId=randomUUID(),response=await fetch(`${runtime.coreUrl}/api/v1/runs/${sourceId}/interventions`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({intervention_id:interventionId,text:'Continue from the preserved session'})});
+    expect(response.status,await response.clone().text()).toBe(202);
+    const result=await response.json() as{mode:string;run_id:string;continued_from_run_id:string};
+    expect(result).toMatchObject({mode:'post_turn_continuation',continued_from_run_id:sourceId});
+
+    expect(await waitForRun(runtime.coreUrl,result.run_id,run=>run.status==='completed')).toMatchObject({text:'continued-answer',continuedFromRunId:sourceId});
+    expect(runtime.fixture.createdSessionIds).toHaveLength(1);
+    const preservedSessionId=runtime.fixture.createdSessionIds[0]!,nextId=await createRun(runtime.coreUrl,'[opencode:reasoning]');
+    await waitForRun(runtime.coreUrl,nextId,run=>run.status==='completed');
+    for(let attempt=0;attempt<40&&!runtime.fixture.deletedSessionIds.includes(preservedSessionId);attempt++)await new Promise(resolve=>setTimeout(resolve,25));
+    expect(runtime.fixture.deletedSessionIds).toContain(preservedSessionId);
+    await expectSingleTerminal(runtime.databaseUrl,[sourceId,result.run_id]);
+  },20_000);
+
   it('retries with a fresh OpenCode session and preserves the immutable harness snapshot', async () => {
     const runtime = await startRuntime(cleanups);
     const sourceId = await createRun(runtime.coreUrl, '[opencode:retry]');
@@ -219,6 +252,8 @@ type TimelineRun = {
   harnessType: string;
   modelId: string;
   requests?: Array<{id:string;kind:string;prompt?:string;directory?:string;choices?:string[];resolved?:string}>;
+  interventions?:Array<{id:string;text:string;status:string;precedingText?:string}>;
+  continuedFromRunId?:string;
   error?: string;
   errorCode?: string;
 };
@@ -265,7 +300,7 @@ async function startRuntime(cleanups: Array<() => Promise<void>>, runTimeoutMs?:
   await configureArchitect(database.url);
   return {
     get coreUrl() { return core.url; },
-    databaseUrl: database.url, fixture, connectorEpoch,externalDirectoryRoots,
+    databaseUrl: database.url, fixture, connectorEpoch,externalDirectoryRoots,connectorUrl,
     async restartCore() { await core.app.close(); core = await startCore(); },
   };
 }
@@ -353,12 +388,13 @@ async function dropSchema(databaseUrl: string, schema: string) {
   try { await sql`DROP SCHEMA IF EXISTS ${sql(schema)} CASCADE`; } finally { await sql.end(); }
 }
 
-type FixtureSession = { id: string; status: 'busy' | 'idle'; queue: AsyncEventQueue; subscribed: boolean; scenario?: string };
+type FixtureSession = { id: string; status: 'busy' | 'idle'; queue: AsyncEventQueue; subscribed: boolean; scenario?: string;messages:Array<{info:{role:'user';system?:string}}> };
 
 class OpenCodeFixture {
   readonly app = Fastify({ logger: false });
   readonly abortedSessionIds: string[] = [];
   readonly createdSessionIds: string[] = [];
+  readonly deletedSessionIds:string[]=[];
   readonly permissionReplies: Array<{ requestId: string; reply: string }> = [];
   readonly questionReplies: Array<{ requestId: string; answers: string[][] }> = [];
   readonly promptVariants: Array<string | null> = [];
@@ -378,23 +414,30 @@ class OpenCodeFixture {
     this.app.get('/session/status', async () => Object.fromEntries([...this.sessions].map(([id, session]) => [id, { type: session.status }])));
     this.app.post<{ Querystring: { directory?: string }; Body: { title?: string } }>('/session', async (request) => {
       const id = `fixture-session-${++this.sequence}`;
-      this.sessions.set(id, { id, status: 'idle', queue: new AsyncEventQueue(), subscribed: false });
+      this.sessions.set(id, { id, status: 'idle', queue: new AsyncEventQueue(), subscribed: false,messages:[] });
       this.createdSessionIds.push(id);
       return { id, projectID: 'fixture-project', directory: request.query.directory ?? '/', title: request.body?.title ?? id, version: '1', time: { created: Date.now(), updated: Date.now() } };
     });
     this.app.get('/event', async (_request, reply) => {
       const session = [...this.sessions.values()].find(candidate => !candidate.subscribed);
       if (!session) return reply.code(409).send({ error: 'no_session' });
-      session.subscribed = true;
-      return reply.header('content-type', 'text/event-stream; charset=utf-8').header('cache-control', 'no-cache').send(Readable.from(session.queue));
+      session.subscribed = true;const queue=session.queue;
+      reply.raw.once('close',()=>{session.subscribed=false;if(session.queue===queue)session.queue=new AsyncEventQueue();});
+      return reply.header('content-type', 'text/event-stream; charset=utf-8').header('cache-control', 'no-cache').send(Readable.from(queue));
     });
-    this.app.post<{ Params: { id: string }; Body: { parts?: Array<{ type?: string; text?: string }>; variant?: string } }>('/session/:id/prompt_async', async (request, reply) => {
+    this.app.get<{Params:{id:string}}>('/session/:id/message',async(request,reply)=>{
+      const session=this.sessions.get(request.params.id);if(!session)return reply.code(404).send({error:'not_found'});return session.messages;
+    });
+    this.app.post<{ Params: { id: string }; Body: { parts?: Array<{ type?: string; text?: string }>; variant?: string;system?:string } }>('/session/:id/prompt_async', async (request, reply) => {
       const session = this.sessions.get(request.params.id);
       if (!session) return reply.code(404).send({ error: 'not_found' });
       this.promptVariants.push(request.body?.variant ?? null);
       session.status = 'busy';
+      session.queue.push({type:'session.status',properties:{sessionID:session.id,status:{type:'busy'}}});
       const text = request.body?.parts?.find(part => part.type === 'text')?.text ?? '';
+      const previousScenario=session.scenario;
       session.scenario = text;
+      session.messages.push({info:{role:'user',...(request.body?.system?{system:request.body.system}:{})}});
       const attempt = (this.scenarioAttempts.get(text) ?? 0) + 1;
       this.scenarioAttempts.set(text, attempt);
       if (text.includes('restart-approval')) {
@@ -420,6 +463,12 @@ class OpenCodeFixture {
         finishAssistant(session);
         session.status='idle';
         session.queue.push({type:'session.idle',properties:{sessionID:session.id}});
+      } else if(text.includes('[opencode:intervention]')){
+        pushPart(session,'text','before-intervention');
+      } else if(previousScenario?.includes('[opencode:intervention]')){
+        pushPart(session,'text','after-intervention');finishAssistant(session);session.status='idle';session.queue.push({type:'session.idle',properties:{sessionID:session.id}});
+      } else if(text.includes('[opencode:post-turn]')||previousScenario?.includes('[opencode:post-turn]')){
+        pushPart(session,'text',previousScenario?.includes('[opencode:post-turn]')?'continued-answer':'source-answer');finishAssistant(session);session.status='idle';session.queue.push({type:'session.idle',properties:{sessionID:session.id}});
       } else {
         const delta = text.includes('timeout') ? 'timeout-started' : 'cancel-started';
         pushPart(session,'text',delta);
@@ -464,10 +513,13 @@ class OpenCodeFixture {
       if (!session) return reply.code(404).send({ error: 'not_found' });
       this.abortedSessionIds.push(session.id);
       session.status = 'idle';
-      session.queue.close();
+      session.queue.push({type:'session.error',properties:{sessionID:session.id,error:{name:'MessageAbortedError',data:{message:'aborted'}}}});
+      session.queue.push({type:'session.idle',properties:{sessionID:session.id}});
+      session.queue.push({type:'session.status',properties:{sessionID:session.id,status:{type:'idle'}}});
       return true;
     });
     this.app.delete<{Params:{id:string}}>('/session/:id',async request=>{
+      this.deletedSessionIds.push(request.params.id);
       this.sessions.delete(request.params.id);
       return true;
     });

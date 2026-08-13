@@ -4,7 +4,7 @@ import { createOpencodeClient } from '@opencode-ai/sdk/v2/client';
 import type { SessionStatus } from '@opencode-ai/sdk/v2/client';
 import type { ExecutionStatus, TokenUsage } from '@agenvyl/connector-contract';
 import type { UpstreamStatus, UpstreamStatusReason } from '@agenvyl/connector-contract';
-import type { AdapterExecution, AdapterExecutionEvent, AdapterStartExecutionRequest, ConnectorAdapter } from '../../adapter.js';
+import {AdapterContinuationError,type AdapterExecution, type AdapterExecutionEvent, type AdapterStartExecutionRequest, type ConnectorAdapter } from '../../adapter.js';
 import {experimentalTailV1ConversationHistory} from '../../conversation-history.js';
 import { redactConnectorText } from '../../safety.js';
 import {
@@ -23,6 +23,9 @@ type CatalogProvider = {
 type CatalogAgent = { name: string; description?: string; mode: 'subagent' | 'primary' | 'all'; hidden?: boolean };
 type PermissionReply = 'once' | 'always' | 'reject';
 type QuestionVersion = 'legacy' | 'v2';
+type PromptConfiguration={system:string;agent?:string;variant?:string;model:{providerID:string;modelID:string}};
+type InterventionTransition={interventionId:string;text:string;phase:'interrupting'|'starting';promise:Promise<void>;resolve:()=>void;reject:(error:Error)=>void};
+type OpenCodeContinuationHandle={v:1;harness:'opencode';instanceId:string;sessionId:string;directory:string;storageScopeHash:string;configurationHash:string;contextHash:string};
 
 export interface OpenCodeClientPort {
   providers(directory?: string): Promise<{ all: CatalogProvider[]; connected: string[] }>;
@@ -30,11 +33,12 @@ export interface OpenCodeClientPort {
   createSession(input: { directory: string; title: string; agent?: string; model: { id: string; providerID: string } }): Promise<{ id: string }>;
   sessionStatuses(directory?: string): Promise<Record<string, SessionStatus>>;
   subscribe(directory: string, signal: AbortSignal): Promise<AsyncIterable<unknown>>;
+  sessionMessages(sessionID:string,directory:string):Promise<Array<{info?:{role?:string;system?:string}}>>;
   prompt(input: { sessionID: string; directory: string; system: string; message: string; agent?: string; variant?: string; model: { providerID: string; modelID: string } }): Promise<void>;
   replyPermission(input: { sessionID: string; requestID: string; directory: string; reply: PermissionReply; version: 'legacy' | 'v2' }): Promise<void>;
   replyQuestion(input: { sessionID: string; requestID: string; directory: string; answers: string[][]; version: QuestionVersion }): Promise<void>;
   abortSession(sessionID: string, directory?: string): Promise<void>;
-  deleteSession(sessionID: string, directory?: string): Promise<void>;
+  deleteSession(sessionID: string, directory?: string): Promise<boolean>;
   disposeInstance(directory: string): Promise<void>;
 }
 
@@ -52,6 +56,8 @@ export type OpenCodeAdapterOptions = {
 
 type ActiveSession = {
   directory:string;
+  continuationHandle:string;
+  promptConfiguration:PromptConfiguration;
   permissionProfile:OpenCodePermissionProfile;
   controller:AbortController;
   stream:AsyncIterable<unknown>;
@@ -70,6 +76,9 @@ type ActiveSession = {
   assistantCompleted:boolean;
   lastFinish?:string;
   lastUsage?:TokenUsage;
+  intervention?:InterventionTransition;
+  awaitingReplacementStart:boolean;
+  stopping:boolean;
   cleanup?:Promise<void>;
 };
 type PendingPermission = { upstreamId: string; nativeRequestId: string; directory: string; version: 'legacy' | 'v2';externalDirectory:boolean;externalDirectoryRoot?:string };
@@ -78,7 +87,10 @@ type PendingQuestion = { upstreamId: string; nativeRequestId: string; directory:
 export class OpenCodeConnectorAdapter implements ConnectorAdapter {
   readonly type = 'opencode';
   readonly capabilities: ConnectorAdapter['capabilities'] = ['model_catalog', 'execution_profiles', 'text_streaming', 'reasoning', 'tools', 'approvals', 'clarifications', 'usage'];
+  readonly interventionMode='interrupt_then_continue' as const;
+  readonly postTurnContinuation={mode:'native_session',durability:'connector_restart',retention:'explicit_release'} as const;
   private readonly client: OpenCodeClientPort;
+  private readonly storageScopeHash:string;
   private readonly catalogDirectory: string | undefined;
   private readonly cleanupTimeoutMs:number;
   private readonly externalDirectoryRoots:string[];
@@ -94,6 +106,7 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
 
   constructor(options: OpenCodeAdapterOptions) {
     const baseUrl = normalizeBaseUrl(options.baseUrl);
+    this.storageScopeHash=createHash('sha256').update(JSON.stringify({protocol:'opencode-server-v1',baseUrl,username:options.username??null})).digest('hex');
     this.client = options.client ?? sdkClient(baseUrl, options.request ?? fetch, options.username, options.password);
     this.catalogDirectory = options.catalogDirectory || undefined;
     this.cleanupTimeoutMs=options.cleanupTimeoutMs??3_000;
@@ -132,7 +145,19 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
     return { models, controls:{nativeWorkflowModes,permissionProfiles:openCodePermissionProfiles.map(profile=>({...profile})),agentVariants:variants} };
   }
 
-  async start(request: AdapterStartExecutionRequest): Promise<AdapterExecution> {
+  start(request: AdapterStartExecutionRequest): Promise<AdapterExecution> {return this.startNative(request);}
+  startContinuation(request:AdapterStartExecutionRequest,handle:string):Promise<AdapterExecution>{return this.startNative(request,handle);}
+
+  async releaseContinuation(handle:string,scope:{instanceId:string}){
+    const continuation=parseContinuationHandle(handle);
+    if(!continuation)throw new AdapterContinuationError('continuation_unavailable','OpenCode continuation handle is invalid');
+    if(continuation.instanceId!==scope.instanceId)throw new AdapterContinuationError('continuation_incompatible','OpenCode continuation belongs to another Connector instance');
+    if(continuation.storageScopeHash!==this.storageScopeHash)throw new AdapterContinuationError('continuation_incompatible','OpenCode continuation storage scope changed');
+    try{return await this.client.deleteSession(continuation.sessionId,continuation.directory)?'released' as const:'not_found' as const;}
+    catch(error){if(isSessionNotFoundError(error))return'not_found' as const;throw error;}
+  }
+
+  private async startNative(request: AdapterStartExecutionRequest,handle?:string): Promise<AdapterExecution> {
     const model = parseModel(request.modelId);
     if(!this.catalogLoaded)await this.catalog();
     const profile=request.executionProfile,permissionProfile=parseOpenCodePermissionProfile(profile.permissionProfileId),native=profile.workflowMode==='plan'&&this.agentNames.has('plan')?'plan':undefined;
@@ -140,19 +165,26 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
     if(mode&&!this.agentNames.has(mode))throw new Error('OpenCode agent variant is not supported');
     const variant=profile.reasoningEffort??undefined;
     if(variant&&!this.supportedModelVariants.get(request.modelId)?.has(variant))throw new Error('OpenCode model variant is not supported');
-    const directory=request.workspace.absolutePath,controller=new AbortController();
+    const directory=request.workspace.absolutePath,controller=new AbortController(),configurationHash=continuationConfiguration(request),continuation=handle?parseContinuationHandle(handle):undefined;
+    if(handle&&!continuation)throw new AdapterContinuationError('continuation_unavailable','OpenCode continuation handle is invalid');
+    if(continuation&&(!request.continuation||request.input.history.length||continuation.instanceId!==request.harnessInstanceId||continuation.directory!==directory||continuation.storageScopeHash!==this.storageScopeHash||continuation.configurationHash!==configurationHash))throw new AdapterContinuationError('continuation_incompatible','OpenCode continuation is incompatible with the requested execution snapshot');
     await this.retainDirectory(directory);
     let session:{id:string}|undefined,active:ActiveSession|undefined;
     try {
-      session = await this.client.createSession({
+      session = continuation?{id:continuation.sessionId}:await this.client.createSession({
         directory,
         title: `Agenvyl execution ${request.executionId}`,
         ...(mode ? { agent: mode } : {}),
         model: { id: model.modelID, providerID: model.providerID },
       });
+      const system=continuation?await this.loadContinuationSystem(session.id,directory,continuation):openCodeSystemContext(request);
       const stream = await this.client.subscribe(directory, controller.signal);
+      const promptConfiguration:PromptConfiguration={system,...(mode?{agent:mode}:{}),...(variant?{variant}:{}),model};
+      const continuationHandle=encodeContinuationHandle({v:1,harness:'opencode',instanceId:request.harnessInstanceId,sessionId:session.id,directory,storageScopeHash:this.storageScopeHash,configurationHash,contextHash:contextHash(system)});
       active={
         directory,
+        continuationHandle,
+        promptConfiguration,
         permissionProfile:profile.workflowMode==='plan'?'standard':permissionProfile,
         controller,
         stream,
@@ -169,22 +201,21 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
         postBoundaryText:false,
         externalDirectoryDenied:false,
         assistantCompleted:false,
+        awaitingReplacementStart:false,
+        stopping:false,
       };
       this.sessions.set(session.id,active);
       await this.client.prompt({
         sessionID: session.id,
         directory,
-        system: openCodeSystemContext(request),
         message: request.input.message,
-        ...(mode ? { agent: mode } : {}),
-        ...(variant ? { variant } : {}),
-        model,
+        ...promptConfiguration,
       });
       return { upstreamId: session.id };
     } catch (error) {
       controller.abort();
       if(session&&active)await this.cleanupSession(session.id,active,true).catch(()=>undefined);
-      else if(session)await this.cleanupUpstream(session.id,directory,true).catch(()=>undefined);
+      else if(session&&!continuation)await this.cleanupUpstream(session.id,directory,true).catch(()=>undefined);
       else await this.releaseDirectory(directory).catch(()=>undefined);
       throw error;
     }
@@ -212,7 +243,10 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
           yield { type: 'execution.upstream_status' as const, payload: normalizeRetryStatus(nativeStatus) };
           continue;
         }
-        if (nativeStatus?.type === 'busy') continue;
+        if (nativeStatus?.type === 'busy') {
+          active.awaitingReplacementStart=false;
+          continue;
+        }
         if(event.type==='message.updated'){
           rememberAssistantMessage(active,event);
           const usage=normalizeMessageUsage(active,event);
@@ -312,13 +346,32 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
           continue;
         }
         if (event.type === 'session.error') {
+          if(active.intervention?.phase==='interrupting'&&isExpectedInterruptionError(event))continue;
+          if(active.intervention)this.rejectIntervention(active,active.intervention,'opencode_turn_failed','OpenCode failed while applying the instruction');
           await this.cleanupSession(execution.upstreamId,active,false).catch(()=>undefined);
           yield normalizeSessionFailure(event);
           return;
         }
         if (event.type === 'session.idle' || isIdleStatus(event)) {
-          await this.cleanupSession(execution.upstreamId,active,false).catch(()=>undefined);
-          yield completionEvent(active);
+          if(active.intervention){
+            const result=await this.continueAfterIntervention(execution.upstreamId,active,active.intervention);
+            if(result.type==='applied'){yield result.event;continue;}
+            yield result.interventionEvent;
+            await this.cleanupSession(execution.upstreamId,active,true).catch(()=>undefined);
+            yield result.executionEvent;
+            return;
+          }
+          // Abort may publish both session.idle and session.status(idle). The
+          // replacement turn starts only after OpenCode publishes busy again.
+          if(active.awaitingReplacementStart)continue;
+          const terminal=completionEvent(active);
+          if(terminal.type==='execution.completed'){
+            await this.preserveSession(execution.upstreamId,active).catch(()=>undefined);
+            yield{type:'execution.completed' as const,payload:{continuation:{handle:active.continuationHandle}}};
+          }else{
+            await this.cleanupSession(execution.upstreamId,active,false).catch(()=>undefined);
+            yield terminal;
+          }
           return;
         }
       }
@@ -367,13 +420,28 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
     return { outcome: reply === 'reject' ? 'declined' as const : 'answered' as const };
   }
 
+  intervene(execution:AdapterExecution,input:{interventionId:string;text:string}){
+    const active=this.requireActive(execution.upstreamId);
+    if(active.stopping||active.cleanup)throw new Error('OpenCode execution is not running');
+    if(this.hasPendingRequest(execution.upstreamId))throw new Error('OpenCode is waiting for user input');
+    if(active.intervention)throw new Error('An OpenCode instruction is already being applied');
+    let resolve!:()=>void,reject!:(error:Error)=>void;
+    const promise=new Promise<void>((resolvePromise,rejectPromise)=>{resolve=resolvePromise;reject=rejectPromise;});
+    const transition:InterventionTransition={...input,phase:'interrupting',promise,resolve,reject};
+    active.intervention=transition;
+    void this.abortForIntervention(execution.upstreamId,active,transition);
+    return promise;
+  }
+
   async stop(execution: AdapterExecution): Promise<void> {
     const active = this.sessions.get(execution.upstreamId);
     if(!active)return;
+    active.stopping=true;
+    if(active.intervention)this.rejectIntervention(active,active.intervention,'execution_stopped','The instruction was cancelled because the run was stopped');
     await this.cleanupSession(execution.upstreamId,active,true);
   }
 
-  async close(){await Promise.allSettled([...this.sessions].map(([sessionId,active])=>this.cleanupSession(sessionId,active,true)));await Promise.allSettled(this.directoryDisposals.values());}
+  async close(){await Promise.allSettled([...this.sessions.keys()].map(sessionId=>this.stop({upstreamId:sessionId})));await Promise.allSettled(this.directoryDisposals.values());}
 
   private cleanupSession(sessionId:string,active:ActiveSession,abort:boolean){
     if(active.cleanup)return active.cleanup;
@@ -385,10 +453,61 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
     return active.cleanup;
   }
 
+  private preserveSession(sessionId:string,active:ActiveSession){
+    if(active.cleanup)return active.cleanup;
+    active.controller.abort();
+    active.cleanup=this.releaseDirectory(active.directory).finally(()=>{
+      if(this.sessions.get(sessionId)===active)this.sessions.delete(sessionId);
+      this.clearPending(sessionId);
+    });
+    return active.cleanup;
+  }
+
+  private async abortForIntervention(sessionId:string,active:ActiveSession,transition:InterventionTransition){
+    try{await this.client.abortSession(sessionId,active.directory);}
+    catch(error){if(active.intervention===transition&&transition.phase==='interrupting')this.rejectIntervention(active,transition,'opencode_interrupt_failed',error instanceof Error?error.message:'OpenCode interrupt failed');}
+  }
+
+  private async continueAfterIntervention(sessionId:string,active:ActiveSession,transition:InterventionTransition){
+    if(active.intervention!==transition||active.stopping)return this.failedIntervention(transition,'execution_stopped','The instruction was cancelled because the run was stopped');
+    transition.phase='starting';
+    resetTurnState(active);
+    active.awaitingReplacementStart=true;
+    try{
+      await this.client.prompt({sessionID:sessionId,directory:active.directory,message:transition.text,...active.promptConfiguration});
+      if(active.intervention!==transition||active.stopping)return this.failedIntervention(transition,'execution_stopped','The instruction was cancelled because the run was stopped');
+      active.intervention=undefined;transition.resolve();
+      return{type:'applied' as const,event:{type:'execution.intervention.applied' as const,payload:{interventionId:transition.interventionId,text:transition.text}}};
+    }catch(error){
+      const message=redactConnectorText(error instanceof Error?error.message:'OpenCode could not continue with the instruction',500)||'OpenCode could not continue with the instruction';
+      if(active.intervention===transition){active.intervention=undefined;transition.reject(new Error(message));}
+      return this.failedIntervention(transition,'opencode_turn_start_failed',message);
+    }
+  }
+
+  private failedIntervention(transition:InterventionTransition,code:string,message:string){
+    const safeMessage=redactConnectorText(message,500)||'Instruction could not be applied';
+    return{type:'failed' as const,interventionEvent:{type:'execution.intervention.failed' as const,payload:{interventionId:transition.interventionId,text:transition.text,error:{code,message:safeMessage}}},executionEvent:{type:'execution.failed' as const,payload:{error:{code,message:safeMessage}}}};
+  }
+
+  private rejectIntervention(active:ActiveSession,transition:InterventionTransition,code:string,message:string){
+    if(active.intervention!==transition)return;
+    active.intervention=undefined;
+    const safeMessage=redactConnectorText(message,500)||code;
+    transition.reject(new Error(safeMessage));
+  }
+
+  private requireActive(sessionId:string){const active=this.sessions.get(sessionId);if(!active)throw new Error('OpenCode execution is not active');return active;}
+  private hasPendingRequest(sessionId:string){return[...this.pendingPermissions.values()].some(item=>item.upstreamId===sessionId)||[...this.pendingQuestions.values()].some(item=>item.upstreamId===sessionId);}
+  private async loadContinuationSystem(sessionId:string,directory:string,continuation:OpenCodeContinuationHandle){
+    try{return continuationSystem(await this.client.sessionMessages(sessionId,directory),continuation);}
+    catch(error){if(isSessionNotFoundError(error))throw new AdapterContinuationError('continuation_unavailable','OpenCode continuation session is unavailable');throw error;}
+  }
+
   private async cleanupUpstream(sessionId:string,directory:string,abort:boolean){
     const errors:unknown[]=[];
     if(abort)await this.captureCleanup(errors,()=>this.client.abortSession(sessionId,directory),'session abort');
-    await this.captureCleanup(errors,()=>this.client.deleteSession(sessionId,directory),'session deletion');
+    await this.captureCleanup(errors,async()=>{await this.client.deleteSession(sessionId,directory);},'session deletion');
     await this.captureCleanup(errors,()=>this.releaseDirectory(directory),'instance disposal');
     if(errors.length)throw errors[0];
   }
@@ -517,6 +636,7 @@ function sdkClient(baseUrl: string, request: typeof fetch, username?: string, pa
     async createSession(input) { return required((await client.session.create(input, { throwOnError: true })).data, 'session creation'); },
     async sessionStatuses(directory) { return required((await client.session.status(directory ? { directory } : {}, { throwOnError: true })).data, 'session status'); },
     async subscribe(directory, signal) { return (await client.event.subscribe({ directory }, { signal })).stream; },
+    async sessionMessages(sessionID,directory){return required((await client.session.messages({sessionID,directory,limit:20},{throwOnError:true})).data,'session messages');},
     async prompt(input) {
       await client.session.promptAsync({
         sessionID: input.sessionID,
@@ -543,7 +663,7 @@ function sdkClient(baseUrl: string, request: typeof fetch, username?: string, pa
       await client.question.reply({ requestID: input.requestID, directory: input.directory, answers: input.answers }, { throwOnError: true });
     },
     async abortSession(sessionID, directory) { await client.session.abort({ sessionID, ...(directory ? { directory } : {}) }, { throwOnError: true }); },
-    async deleteSession(sessionID, directory) { await client.session.delete({ sessionID, ...(directory ? { directory } : {}) }, { throwOnError: true }); },
+    async deleteSession(sessionID, directory) { return required((await client.session.delete({ sessionID, ...(directory ? { directory } : {}) }, { throwOnError: true })).data,'session deletion'); },
     async disposeInstance(directory) { await client.instance.dispose({ directory }, { throwOnError: true }); },
   };
 }
@@ -579,6 +699,25 @@ function parseModel(value: string) {
   if (separator < 1 || separator === value.length - 1) throw new Error('OpenCode model ID must use provider/model format');
   return { providerID: value.slice(0, separator), modelID: value.slice(separator + 1) };
 }
+
+const continuationConfiguration=(request:AdapterStartExecutionRequest)=>createHash('sha256').update(JSON.stringify({
+  harness:'opencode',instanceId:request.harnessInstanceId,modelId:request.modelId,executionProfile:request.executionProfile,
+  workspace:{roomId:request.workspace.roomId,absolutePath:request.workspace.absolutePath},systemPrompt:request.input.systemPrompt,
+})).digest('hex');
+const contextHash=(value:string)=>createHash('sha256').update(value).digest('hex');
+const encodeContinuationHandle=(value:OpenCodeContinuationHandle)=>Buffer.from(JSON.stringify(value),'utf8').toString('base64url');
+const parseContinuationHandle=(handle:string):OpenCodeContinuationHandle|undefined=>{try{const value=asRecord(JSON.parse(Buffer.from(handle,'base64url').toString('utf8')));if(value?.v!==1||value.harness!=='opencode'||typeof value.instanceId!=='string'||typeof value.sessionId!=='string'||typeof value.directory!=='string'||typeof value.storageScopeHash!=='string'||typeof value.configurationHash!=='string'||typeof value.contextHash!=='string')return;return value as OpenCodeContinuationHandle;}catch{return;}};
+const continuationSystem=(messages:Array<{info?:{role?:string;system?:string}}>,continuation:OpenCodeContinuationHandle)=>{
+  const system=[...messages].reverse().find(message=>message.info?.role==='user'&&typeof message.info.system==='string')?.info?.system;
+  if(!system)throw new AdapterContinuationError('continuation_unavailable','OpenCode continuation system context is unavailable');
+  if(contextHash(system)!==continuation.contextHash)throw new AdapterContinuationError('continuation_incompatible','OpenCode continuation system context changed');
+  return system;
+};
+
+const resetTurnState=(active:ActiveSession)=>{
+  active.partTypes.clear();active.eligibleTextParts.clear();active.emittedTextParts.clear();active.textByPart.clear();active.toolStates.clear();active.pendingTools.clear();
+  active.hasText=false;active.needsFinalText=false;active.postBoundaryText=false;active.externalDirectoryDenied=false;active.assistantCompleted=false;active.lastFinish=undefined;
+};
 
 function normalizeBaseUrl(value: string) {
   let url: URL;
@@ -735,3 +874,5 @@ function normalizeApprovalReply(resolution: string): PermissionReply {
 }
 
 function isAbortError(error: unknown) { return error instanceof Error && error.name === 'AbortError'; }
+function isExpectedInterruptionError(event:Record<string,unknown>){const properties=asRecord(event.properties),error=asRecord(properties?.error),data=asRecord(error?.data),evidence=`${String(error?.name??'')} ${String(error?.message??'')} ${String(data?.message??'')}`;return/(message)?aborted|interrupted/i.test(evidence);}
+function isSessionNotFoundError(error:unknown){const value=asRecord(error),data=asRecord(value?.data),status=value?.status??value?.statusCode??data?.status??data?.statusCode;return status===404||(error instanceof Error&&/(session.*not found|not found.*session|unknown session)/i.test(error.message));}

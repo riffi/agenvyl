@@ -86,10 +86,11 @@ reattach.
 
 ## Add instruction to a run
 
-An active Codex run may accept one instruction at a time. Connector interrupts
-the current Codex turn and starts a replacement turn in the same thread with
-the original model, workflow, sandbox, and approval settings. It does not
-create a room message, conversation round, Workspace, or scheduler entry.
+An active Codex or OpenCode run may accept one instruction at a time. Connector
+interrupts the current native turn and starts a replacement turn in the same
+session with the original model, workflow, permissions, and agent settings. It
+does not create a room message, conversation round, Workspace, or scheduler
+entry.
 
 Accepted, applied, and failed intervention events use the normal durable
 Connector cursor. Core stores the current answer segment as `precedingText`
@@ -100,6 +101,11 @@ values are read as `precedingText`.
 Reasoning, tools, usage, timeout, Workspace writes, and external side effects
 remain aggregated in the same run. Add instruction is not rollback. Stop takes
 priority and prevents a replacement turn from starting.
+
+For a selected completed Codex or OpenCode response, Add instruction creates a
+linked run without replaying canonical history. Connector resumes the retained
+native session, and Core invalidates and explicitly releases the session when
+the continuation chain is no longer selectable.
 
 ## Shutdown
 
