@@ -22,6 +22,7 @@ type WorkspaceLogger={info:(context:Record<string,unknown>,message:string)=>void
 type CapturedFile={path:string;data:Buffer;sha256:string;mimeType:string;version?:WorkspaceVersionRow};
 type CaptureResult={files:CapturedFile[];paths:string[];errors:WorkspaceCaptureError[];changedPaths:Set<string>};
 type RunArtifactProjection={artifacts:RunArtifact[];artifactSummary:RunArtifactSummary;staticPreview?:WorkspaceAttachment;staticPreviewStatus?:'ready'|'build_missing'|'capture_failed'};
+const supportedRunImageMimeTypes=new Set(['image/png','image/jpeg','image/webp','image/gif']);
 
 export class RoomWorkspaceService{
   private roomMutations=new Map<string,Promise<void>>();
@@ -140,17 +141,14 @@ export class RoomWorkspaceService{
   streamVersion(roomId:string,versionId:string){return this.resolveVersion(roomId,versionId).then(file=>({...file,stream:createReadStream(file.path)}));}
 
   async resolveRunEmbeds(roomId:string,runId:string,markdown:string){
-    const supported=new Set(['image/png','image/jpeg','image/webp','image/gif']),embeds:RunEmbed[]=[];
-    for(const reference of extractWorkspaceImageReferences(markdown)){
-      if(reference.error){embeds.push({kind:'image',path:reference.path,status:'error',error:reference.error});continue;}
-      let version=await this.repository.currentVersion(roomId,reference.path);
-      if(!version&&await stat(path.join(this.roomPath(roomId),reference.path)).then(item=>item.isFile()).catch(()=>false))version=(await this.capture(roomId,reference.path,'agent',[runId],'updated',true)).version;
-      if(!version){embeds.push({kind:'image',path:reference.path,status:'error',error:'not_found'});continue;}
-      if(!supported.has(version.mime_type)){embeds.push({kind:'image',path:reference.path,status:'error',error:'unsupported_type'});continue;}
-      const content=await readFile(this.objectPath(version.sha256));if(!content.length||imageMime(content)!==version.mime_type){embeds.push({kind:'image',path:reference.path,status:'error',error:'invalid_content'});continue;}
-      embeds.push({kind:'image',path:reference.path,status:'resolved',attachment:{version_id:version.id,...(version.entry_id?{entry_id:version.entry_id}:{}),path:version.path,name:path.basename(version.path),size:version.size,mime_type:version.mime_type,url:`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace/versions/${encodeURIComponent(version.id)}`,preview_url:`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace/versions/${encodeURIComponent(version.id)}/preview`}});
-    }
-    await this.repository.saveRunEmbeds(runId,embeds);return embeds;
+    return this.withRoomOperation(roomId,async()=>{
+      const embeds:RunEmbed[]=[];
+      for(const reference of extractWorkspaceImageReferences(markdown)){
+        if(reference.error){embeds.push({kind:'image',path:reference.path,status:'error',error:reference.error});continue;}
+        embeds.push(await this.resolveRunImage(roomId,runId,reference.path));
+      }
+      await this.repository.saveRunEmbeds(runId,embeds);return embeds;
+    });
   }
 
   async purgeCandidates(roomId:string){return{hashes:await this.repository.roomHashes(roomId),previewIds:await this.repository.previewBundleIds(roomId)};}
@@ -173,6 +171,19 @@ export class RoomWorkspaceService{
     }
     const policy=await this.artifactPolicy(root);await this.repository.applyRunArtifactVisibility(runId,policy);
     return{files,paths,errors,changedPaths};
+  }
+
+  private async resolveRunImage(roomId:string,runId:string,relative:string):Promise<RunEmbed>{
+    const target=path.join(this.roomPath(roomId),...relative.split('/')),read=await stableReadWorkspaceFile(target).catch(()=>undefined);
+    if(!read)return{kind:'image',path:relative,status:'error',error:'not_found'};
+    if(read.data.length>this.maxFileBytes)return{kind:'image',path:relative,status:'error',error:'limit_exceeded'};
+    const mimeType=mimeFor(relative,read.data);
+    if(!supportedRunImageMimeTypes.has(mimeType))return{kind:'image',path:relative,status:'error',error:'unsupported_type'};
+    if(!read.data.length||imageMime(read.data)!==mimeType)return{kind:'image',path:relative,status:'error',error:'invalid_content'};
+    const saved=await this.captureBuffer(roomId,relative,read.data,'agent',[runId],'updated'),version=saved.version??await this.repository.currentVersion(roomId,relative);
+    if(!version)return{kind:'image',path:relative,status:'error',error:'not_found'};
+    const url=`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace/versions/${encodeURIComponent(version.id)}`;
+    return{kind:'image',path:relative,status:'resolved',attachment:{version_id:version.id,...(version.entry_id?{entry_id:version.entry_id}:{}),path:version.path,name:path.basename(version.path),size:version.size,mime_type:version.mime_type,url,preview_url:`${url}/preview`}};
   }
 
   private async capturePreviewBundle(roomId:string,runId:string,sourceHead:string,captured:CaptureResult){

@@ -1,4 +1,4 @@
-import {mkdtemp,rm} from 'node:fs/promises';
+import {mkdir,mkdtemp,readFile,rm,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {tmpdir} from 'node:os';
 import {describe,expect,it,vi} from 'vitest';
@@ -30,6 +30,25 @@ describe('persisted workspace embeds',()=>{
       expect(context.history.every(item=>!item.content.includes('Зафиксированные inline-изображения ответа'))).toBe(true);
       await workspace.upload('demo-room','fake.jpg','image/jpeg',Buffer.from('<html>not an image</html>'));
       await expect(workspace.resolveRunEmbeds('demo-room',next.message.runIds[0],'![Fake](workspace:fake.jpg)')).resolves.toEqual([{kind:'image',path:'fake.jpg',status:'error',error:'invalid_content'}]);
+    }finally{await repositories.database.close();await rm(root,{recursive:true,force:true});}
+  });
+
+  it('captures a new immutable version when an ignored image path is overwritten',async()=>{
+    const root=await mkdtemp(path.join(tmpdir(),'workspace-embeds-')),repositories=await createRepositories(testDatabaseUrl('run_embed_overwrite')),events=new RoomEventService(repositories.roomEvents,new RoomEventBus()),activeRuns=new ActiveRunRegistry(),workspace=new RoomWorkspaceService(repositories.rooms,repositories.workspace,repositories.runWorkspaces,events,activeRuns,root,root,10*1024*1024);
+    try{
+      const roomRoot=await workspace.ensure('demo-room'),target=path.join(roomRoot,'test-results','result.png'),persona=(await repositories.personas.find('persona-architect'))!;
+      await mkdir(path.dirname(target),{recursive:true});await writeFile(target,png('first'));
+      const firstRound=await repositories.messages.createRound('demo-room','first',[persona],new Map([[persona.id,workProfile]])),first=(await workspace.resolveRunEmbeds('demo-room',firstRound.runs[0].id,'![Result](workspace:test-results/result.png)'))[0]!;
+      await writeFile(target,png('second'));
+      const secondRound=await repositories.messages.createRound('demo-room','second',[persona],new Map([[persona.id,workProfile]])),second=(await workspace.resolveRunEmbeds('demo-room',secondRound.runs[0].id,'![Result](workspace:test-results/result.png)'))[0]!;
+      const thirdRound=await repositories.messages.createRound('demo-room','third',[persona],new Map([[persona.id,workProfile]])),unchanged=(await workspace.resolveRunEmbeds('demo-room',thirdRound.runs[0].id,'![Result](workspace:test-results/result.png)'))[0]!;
+      expect(first).toMatchObject({status:'resolved',attachment:{path:'test-results/result.png'}});
+      expect(second).toMatchObject({status:'resolved',attachment:{path:'test-results/result.png'}});
+      expect(second.attachment?.version_id).not.toBe(first.attachment?.version_id);
+      expect(unchanged.attachment?.version_id).toBe(second.attachment?.version_id);
+      const firstFile=await workspace.resolveVersion('demo-room',first.attachment!.version_id),secondFile=await workspace.resolveVersion('demo-room',second.attachment!.version_id);
+      expect(await readFile(firstFile.path)).toEqual(png('first'));
+      expect(await readFile(secondFile.path)).toEqual(png('second'));
     }finally{await repositories.database.close();await rm(root,{recursive:true,force:true});}
   });
 });
