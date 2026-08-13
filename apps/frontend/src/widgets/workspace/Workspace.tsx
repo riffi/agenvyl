@@ -20,6 +20,7 @@ import { RunDrawer } from "../run-drawer";
 import { Sidebar, useSidebarCollapse } from "../sidebar";
 import { Timeline } from "../timeline";
 import {DEFAULT_ROOM_TITLE,type RoomPersona} from '@agenvyl/contracts';
+import {instructionTargetMode} from './instructionTarget';
 import styles from "./Workspace.module.css";
 const unknownPersona = (handle: string): Persona => ({
   id: "",
@@ -172,7 +173,7 @@ export function WorkspaceApp({
   ).length;
   const selectedRun = selected ? state.runs[selected] : undefined;
   const instructionRun=instructionRunId?state.runs[instructionRunId]:undefined;
-  const interventionTarget:ComposerInterventionTarget|undefined=instructionRun?{runId:instructionRun.id,agent:instructionRun.agent,active:instructionRun.status==='streaming'&&!(instructionRun.requests??[]).some(request=>!request.resolved)&&!instructionRun.interventions.some(intervention=>intervention.status==='pending')}:undefined;
+  const interventionTarget:ComposerInterventionTarget|undefined=instructionRun?{runId:instructionRun.id,agent:instructionRun.agent,mode:instructionTargetMode(instructionRun,harnessCatalog)}:undefined;
   const selectedPersona = selectedRun
     ? (personaCatalog.find((p) => p.handle === selectedRun.agent) ??
       unknownPersona(selectedRun.agent))

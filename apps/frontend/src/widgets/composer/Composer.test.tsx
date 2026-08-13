@@ -20,18 +20,25 @@ describe('Composer agent list',()=>{
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));const intervene=vi.fn(async()=>undefined),exitIntervention=vi.fn(),instructionGateway={...gateway,intervene};
     const props={gateway:instructionGateway,active:1,personas:[persona],harnessCatalog:catalog,catalogReady:true,onSent:vi.fn(async()=>undefined),openWorkspace:vi.fn(),roomId:'room',attachments:[],attachmentsBusy:false,openAttachmentPicker:vi.fn(),uploadFiles:vi.fn(),removeAttachment:vi.fn(),retryAttachment:vi.fn(),clearAttachments:vi.fn()};
     const view=render(<Composer {...props}/>);fireEvent.change(screen.getByRole('textbox',{name:'Message'}),{target:{value:'Ordinary draft'}});
-    view.rerender(<Composer {...props} interventionTarget={{runId:'run-1',agent:'coder',active:true}} exitIntervention={exitIntervention}/>);
+    view.rerender(<Composer {...props} interventionTarget={{runId:'run-1',agent:'coder',mode:'active_redirect'}} exitIntervention={exitIntervention}/>);
     const editor=screen.getByRole('textbox',{name:'Instruction for coder'}),instructionButton=screen.getByRole('button',{name:'Send instruction'}),instructionFooter=instructionButton.closest('footer');expect(editor.getAttribute('maxlength')).toBe('2000');expect((editor as HTMLTextAreaElement).value).toBe('');expect(editor.getAttribute('placeholder')).toBe('Add an instruction for @coder…');expect(screen.queryByRole('button',{name:'Add to message'})).toBeNull();expect(instructionFooter?.children).toHaveLength(2);expect(instructionFooter?.firstElementChild?.textContent).toBe('0 / 2000');expect(instructionFooter?.parentElement?.className).toContain('compose-card-expanded');
     fireEvent.change(editor,{target:{value:'Focus on the API'}});fireEvent.click(screen.getByRole('button',{name:'Send instruction'}));
     await waitFor(()=>expect(intervene).toHaveBeenCalledWith('run-1','Focus on the API'));expect(exitIntervention).toHaveBeenCalledOnce();
     view.rerender(<Composer {...props}/>);expect((screen.getByRole('textbox',{name:'Message'}) as HTMLTextAreaElement).value).toBe('Ordinary draft');
   });
 
-  it('keeps the instruction draft when the run has already finished',async()=>{
-    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));const intervene=vi.fn(),instructionGateway={...gateway,intervene};
-    render(<Composer gateway={instructionGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} interventionTarget={{runId:'run-1',agent:'coder',active:false}}/>);
+  it('submits an instruction as a post-turn continuation',async()=>{
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));const intervene=vi.fn(async()=>undefined),instructionGateway={...gateway,intervene};
+    render(<Composer gateway={instructionGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} interventionTarget={{runId:'run-1',agent:'coder',mode:'post_turn_continuation'}}/>);
     const editor=screen.getByRole('textbox',{name:'Instruction for coder'});fireEvent.change(editor,{target:{value:'Still useful'}});fireEvent.click(screen.getByRole('button',{name:'Send instruction'}));
-    expect(intervene).not.toHaveBeenCalled();expect(await screen.findByText(/run has already finished/)).toBeTruthy();expect((editor as HTMLTextAreaElement).value).toBe('Still useful');
+    await waitFor(()=>expect(intervene).toHaveBeenCalledWith('run-1','Still useful'));
+  });
+
+  it('keeps the instruction draft when the run can no longer accept it',async()=>{
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));const intervene=vi.fn(),instructionGateway={...gateway,intervene};
+    render(<Composer gateway={instructionGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} interventionTarget={{runId:'run-1',agent:'coder',mode:'unavailable'}}/>);
+    const editor=screen.getByRole('textbox',{name:'Instruction for coder'});fireEvent.change(editor,{target:{value:'Still useful'}});fireEvent.click(screen.getByRole('button',{name:'Send instruction'}));
+    expect(intervene).not.toHaveBeenCalled();expect(await screen.findByText(/can no longer accept instructions/)).toBeTruthy();expect((editor as HTMLTextAreaElement).value).toBe('Still useful');
   });
   it('shows the model in mention suggestions',()=>{
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));

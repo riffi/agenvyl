@@ -28,7 +28,7 @@ function highlightMentions(text:string,personas:readonly Persona[]):ReactNode[] 
 }
 
 export type ComposerHandle={insertMention:(handle:string)=>void};
-export type ComposerInterventionTarget={runId:string;agent:string;active:boolean};
+export type ComposerInterventionTarget={runId:string;agent:string;mode:'active_redirect'|'post_turn_continuation'|'unavailable'};
 
 export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer({
   gateway,
@@ -117,7 +117,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   const send = async (retry=sendError) => {
     if(interventionTarget){
       const outgoing=text.trim();if(!outgoing||sending)return;
-      if(!interventionTarget.active){setInterventionError('This run has already finished. Your instruction draft is still here.');return;}
+      if(interventionTarget.mode==='unavailable'){setInterventionError('This run can no longer accept instructions. Your instruction draft is still here.');return;}
       setSending(true);setInterventionError(undefined);
       try{await gateway.intervene(interventionTarget.runId,outgoing);interventionDraftsRef.current.delete(interventionTarget.runId);previousInterventionRef.current=undefined;setText(ordinaryDraftRef.current);exitIntervention();}
       catch(error){setInterventionError(error instanceof ApiError?`${error.code}: ${error.message}`:error instanceof Error?error.message:String(error));}
