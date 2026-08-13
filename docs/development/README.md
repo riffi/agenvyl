@@ -56,6 +56,20 @@ running for the next development session. Stop it with:
 npm run dev:down
 ```
 
+## Run the production build locally
+
+To build the application and run the compiled Core and Connector without Vite
+or watch mode:
+
+```bash
+npm run serve:all
+```
+
+Open `http://127.0.0.1:8791`. The command prepares PostgreSQL and local config
+in the same way as `dev:all`, then serves the compiled frontend from Core. Press
+`Ctrl+C` to stop Core and Connector; PostgreSQL stays running and can be stopped
+with `npm run dev:down`.
+
 ## Configure a development harness
 
 Edit the ignored `connector.yaml` to enable the harness instances you need.
