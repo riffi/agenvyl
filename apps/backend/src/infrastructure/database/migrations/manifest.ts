@@ -32,4 +32,5 @@ export const migrations = [
   { version: 31, name: 'transparent_git_workspace', file: '031_transparent_git_workspace.sql' },
   { version: 32, name: 'remove_legacy_workspace_pipeline', file: '032_remove_legacy_workspace_pipeline.sql' },
   { version: 33, name: 'plan_default_for_new_rooms', file: '033_plan_default_for_new_rooms.sql' },
+  { version: 34, name: 'post_turn_continuations', file: '034_post_turn_continuations.sql' },
 ] as const;

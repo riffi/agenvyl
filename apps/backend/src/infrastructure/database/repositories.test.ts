@@ -31,7 +31,7 @@ describe("PostgreSQL repositories", () => {
         await p.database
           .sql`SELECT version FROM schema_migrations ORDER BY version`
       ).map((row) => row.version),
-    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33]);
+    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34]);
     expect(
       await p.database.sql`SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='personas' AND column_name='role'`,
     ).toEqual([]);
@@ -151,7 +151,7 @@ describe("PostgreSQL repositories", () => {
         await repositories.database
           .sql`SELECT version FROM schema_migrations ORDER BY version`
       ).map((row) => row.version),
-    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33]);
+    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34]);
     expect(
       await repositories.database.sql`SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='personas' AND column_name='role'`,
     ).toEqual([]);
@@ -432,6 +432,31 @@ describe("PostgreSQL repositories", () => {
     const timeline=await p.rooms.timeline('demo-room',undefined,10),run=timeline?.runs.find(item=>item.id===runId);
     expect(run).toMatchObject({text:'Continued answer',reasoning:'Earlier reasoning\n\n',interventions:[{text:'Change direction',status:'applied',precedingText:'Earlier answer',author:{displayName:'User'}},{text:'Try another path',status:'failed',precedingText:'Replacement answer',error:'Rejected'}]});
     expect((await p.database.sql`SELECT COUNT(*)::int count FROM room_messages WHERE room_id='demo-room'`)[0]?.count).toBe(1);
+    await p.database.close();
+  });
+  it('persists a linear native continuation chain without canonical history replay',async()=>{
+    const p=await createRepositories(testDatabaseUrl('post_turn_continuation')),persona=(await p.personas.find('persona-architect'))!,round=await p.messages.createRound('demo-room','original question',[persona],profiles([persona])),source=round.runs[0].id;
+    await p.runs.setSystemPromptSnapshot(source,'immutable prompt');
+    await p.runs.finishNonTerminal(source,'completed',undefined,undefined,{handle:'opaque-1',retention:'explicit_release'});
+    await p.runs.selectCompletedAttempt(source);
+    const[authorBefore]=await p.database.sql`SELECT id,display_name,handle FROM local_user_profiles WHERE id='local-user'`;
+    const interventionId='c226f522-d864-4f1c-a53f-25d22dc9109f',[left,right]=await Promise.all([p.runs.createContinuation(source,{interventionId,text:'Tighten the answer',retention:'explicit_release'}),p.runs.createContinuation(source,{interventionId,text:'Tighten the answer',retention:'explicit_release'})]),first=left.status==='created'?left:right;
+    expect(first).toMatchObject({status:'created',sourceRunId:source,history:[],text:'Tighten the answer',continuationHandle:'opaque-1',systemPrompt:'immutable prompt'});
+    if(first.status!=='created')throw new Error('Expected continuation child');
+    expect([left,right].find(item=>item.status==='duplicate')).toMatchObject({status:'duplicate',runId:first.runId});
+    await expect(p.runs.createContinuation(source,{interventionId,text:'Tighten the answer',retention:'explicit_release'})).resolves.toMatchObject({status:'duplicate',runId:first.runId});
+    await expect(p.runs.createContinuation(source,{interventionId:'777f7444-e6a9-4e85-818f-20d536876ff7',text:'Second',retention:'explicit_release'})).resolves.toMatchObject({status:'continuation_active'});
+    await p.runs.finishNonTerminal(first.runId,'completed',undefined,undefined,{handle:'opaque-2',retention:'explicit_release'});
+    await p.runs.selectCompletedAttempt(first.runId);
+    await p.database.sql`UPDATE local_user_profiles SET display_name='Renamed user' WHERE id='local-user'`;
+    const second=await p.runs.createContinuation(first.runId,{interventionId:'777f7444-e6a9-4e85-818f-20d536876ff7',text:'One more pass',retention:'explicit_release'});
+    expect(second).toMatchObject({status:'created',sourceRunId:first.runId,continuationHandle:'opaque-2',history:[]});
+    const timeline=await p.rooms.timeline('demo-room',undefined,10),chain=timeline?.runs.filter(run=>run.responseSlotId===source);
+    expect(chain).toMatchObject([{id:source},{id:first.runId,continuedFromRunId:source,continuationInstruction:'Tighten the answer',continuationAuthor:{profileId:authorBefore?.id,displayName:authorBefore?.display_name,handle:authorBefore?.handle},continuationRetention:'explicit_release'},{continuedFromRunId:first.runId,continuationInstruction:'One more pass',continuationAuthor:{displayName:'Renamed user'},continuationRetention:'explicit_release'}]);
+    expect((await p.database.sql`SELECT context FROM agent_runs WHERE id=${first.runId}`)[0]?.context).toEqual([]);
+    if(second.status!=='created')throw new Error('Expected second continuation child');
+    await p.runs.finishNonTerminal(second.runId,'cancelled');
+    await expect(p.runs.continuationRetry(second.runId)).resolves.toEqual({sourceRunId:first.runId,instruction:'One more pass',available:true});
     await p.database.close();
   });
   it("durably projects and replays transient upstream state across timeline reload", async () => {

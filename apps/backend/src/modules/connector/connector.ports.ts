@@ -1,4 +1,4 @@
-import type { ConnectorCatalog, ConnectorExecutionEvent, ConnectorHealth, ConnectorInstanceList, ConnectorInterventionCommandResult, ConnectorRequestAnswer, ConnectorRequestCommandResult, CreateExecutionInterventionRequest, ExecutionSnapshot, StartExecutionRequest } from '@agenvyl/connector-contract';
+import type { ConnectorCatalog, ConnectorExecutionEvent, ConnectorHealth, ConnectorInstanceList, ConnectorInterventionCommandResult, ConnectorRequestAnswer, ConnectorRequestCommandResult, ContinuationReleaseOutcome, CreateExecutionInterventionRequest, ExecutionSnapshot, StartExecutionRequest } from '@agenvyl/connector-contract';
 
 export interface ConnectorLifecycle {
   health(): Promise<ConnectorHealth>;
@@ -15,6 +15,7 @@ export interface ConnectorExecutionClient extends ConnectorDiscovery {
   stop(executionId:string):Promise<ExecutionSnapshot>;
   resolve(executionId:string,requestId:string,answer:ConnectorRequestAnswer|string):Promise<ConnectorRequestCommandResult>;
   intervene(executionId:string,input:CreateExecutionInterventionRequest):Promise<ConnectorInterventionCommandResult>;
+  releaseContinuation(instanceId:string,handle:string):Promise<ContinuationReleaseOutcome>;
   events(executionId:string,options:{after:number;connectorEpoch:string;signal:AbortSignal}):AsyncIterable<ConnectorExecutionEvent>;
 }
 

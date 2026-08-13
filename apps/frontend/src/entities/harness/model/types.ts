@@ -14,6 +14,7 @@ export type HarnessInstance = {
   status: 'healthy' | 'degraded' | 'unavailable';
   capabilities: string[];
   interventionMode?:'interrupt_then_continue';
+  postTurnContinuation?:{mode:'native_session';durability:'connector_restart';retention:'explicit_release'|'provider_managed'};
   models: HarnessCatalogModel[];
   controls:{nativeWorkflowModes:Array<'plan'|'work'>;permissionProfiles:HarnessCatalogItem[];agentVariants:HarnessCatalogItem[]};
   catalogCache:HarnessInstanceCatalogCache;

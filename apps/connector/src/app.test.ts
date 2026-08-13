@@ -455,6 +455,14 @@ describe('Connector shell', () => {
     expect(parseEvents(replay.body).filter(event=>event.type.startsWith('execution.intervention')).map(event=>event.type)).toEqual(['execution.intervention.accepted','execution.intervention.applied']);
     await app.close();
   });
+  it('advertises native continuation and releases it through the current adapter',async()=>{
+    const adapter=new NativeContinuationAdapter(),app=buildConnectorApp(config,{connectorEpoch:'epoch-test',adapters:new Map([['local-hermes',adapter]])});
+    expect((await app.inject({url:'/v2/instances',headers:auth})).json().instances[0]).toMatchObject({postTurnContinuation:{mode:'native_session',durability:'connector_restart',retention:'explicit_release'}});
+    const request={...structuredClone(connectorContractFixtures.startExecution),executionId:'continued',input:{systemPrompt:'snapshot',history:[],message:'continue'},continuation:{handle:'opaque'}} as StartExecutionRequest;
+    expect((await app.inject({method:'POST',url:'/v2/executions',headers:auth,payload:request})).statusCode).toBe(201);await waitForStatus(app,request.executionId,'running');expect(adapter.continuations).toEqual(['opaque']);
+    const released=await app.inject({method:'POST',url:'/v2/instances/local-hermes/continuations/release',headers:auth,payload:{handle:'opaque'}});expect(released.statusCode).toBe(200);expect(released.json()).toEqual({apiVersion:'v2',outcome:'released'});
+    await app.close();
+  });
 });
 
 class ControlledAdapter implements ConnectorAdapter {
@@ -547,6 +555,13 @@ class IntervenableControlledAdapter extends ControlledAdapter{
   readonly interventionMode='interrupt_then_continue' as const;
   readonly interventions:Array<{interventionId:string;text:string}>=[];
   async intervene(execution:AdapterExecution,input:{interventionId:string;text:string}){this.interventions.push({...input});this.emit(execution.upstreamId,{type:'execution.intervention.applied',payload:input});}
+}
+
+class NativeContinuationAdapter extends ControlledAdapter{
+  readonly postTurnContinuation={mode:'native_session',durability:'connector_restart',retention:'explicit_release'} as const;
+  readonly continuations:string[]=[];
+  async startContinuation(request:AdapterStartExecutionRequest,handle:string){this.continuations.push(handle);return this.start(request);}
+  async releaseContinuation(handle:string){this.continuations.push(`release:${handle}`);return'released' as const;}
 }
 
 async function waitFor(predicate:()=>boolean){for(let attempt=0;attempt<50;attempt+=1){if(predicate())return;await new Promise(resolve=>setTimeout(resolve,1));}throw new Error('Condition was not reached');}

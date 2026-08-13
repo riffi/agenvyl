@@ -70,6 +70,7 @@ export type RunIntervention = {
   /** @deprecated Read legacy persisted events through precedingText instead. */
   supersededText?: string;
   error?: string;
+  errorCode?:string;
 };
 
 export function upsertToolActivity(tools:ToolActivity[],incoming:ToolActivity):ToolActivity[]{
@@ -130,6 +131,10 @@ export type Run = {
   usage?:TokenUsage;
   tools: ToolActivity[];
   retryOfRunId?: string;
+  continuedFromRunId?:string;
+  continuationInstruction?:string;
+  continuationAuthor?:HumanAuthorSnapshot;
+  continuationRetention?:'explicit_release'|'provider_managed';
   responseSlotId?: string;
   attemptNumber?: number;
   requests?: RunRequest[];
@@ -272,7 +277,9 @@ export type McpElicitationAnswer={action:'accept';content:JsonValue}|{action:'de
 export type RunRequestResolution={resolution:string}|{answers:Record<string,string[]>}|{elicitation:McpElicitationAnswer};
 export type ResolveRunRequest = RunRequestResolution;
 export type CreateRunInterventionRequest = { intervention_id:string;text:string };
-export type CreateRunInterventionResult = { intervention_id:string;status:'pending' };
+export type CreateRunInterventionResult =
+  | {mode:'active_redirect';intervention_id:string;status:'pending'}
+  | {mode:'post_turn_continuation';intervention_id:string;run_id:string;continued_from_run_id:string};
 export type ApprovalRequest = ResolveRunRequest;
 export type PersonaInput = Pick<Persona, 'handle' | 'name' | 'color' | 'group_id'> & {
   requested_model?: string | null;

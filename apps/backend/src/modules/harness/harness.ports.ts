@@ -11,6 +11,7 @@ export type StartRunInput = {
   instructions: string;
   conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
   model: string;
+  continuationHandle?:string;
 };
 
 export type RunCheckpoint = { executionId: string; connectorEpoch: string; cursor: number };
@@ -24,7 +25,7 @@ export type MappedRunEvent = {
 
 export type RunEventMapping = {
   events: MappedRunEvent[];
-  terminal?: { status: 'completed' | 'failed' | 'cancelled'; error?: string;errorCode?:string };
+  terminal?: { status: 'completed' | 'failed' | 'cancelled'; error?: string;errorCode?:string;continuationHandle?:string };
   status?: 'streaming' | 'waiting_approval'|'waiting_clarification';
   checkpoint?: RunCheckpoint;
 };
@@ -36,6 +37,7 @@ export interface RunGateway {
   clarify?(runId: string, requestId:string, resolution: import('@agenvyl/contracts').RunRequestResolution|string): Promise<RunCheckpoint | undefined>;
   elicit?(runId:string,requestId:string,answer:import('@agenvyl/contracts').McpElicitationAnswer):Promise<RunCheckpoint|undefined>;
   intervene?(runId:string,intervention:{interventionId:string;text:string}):Promise<{checkpoint?:RunCheckpoint;status:'pending'|'applied'|'failed'}>;
+  releaseContinuation?(instanceId:string,handle:string):Promise<import('@agenvyl/connector-contract').ContinuationReleaseOutcome>;
 }
 
 export interface RunEventStream {

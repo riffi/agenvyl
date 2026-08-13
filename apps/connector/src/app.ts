@@ -8,6 +8,7 @@ import {
   isConfigureConnectorInstancesRequest,
   isTestConnectorInstanceRequest,
   isStartExecutionRequest,
+  isReleaseContinuationRequest,
   type ConnectorExecutionEvent,
   type ConnectorHealth,
   type ConnectorInstanceList,
@@ -64,12 +65,12 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
     app.log,
   );
   const instanceSnapshot=(instance:ConnectorConfig['instances'][number])=>{
-    const adapter=generations.current.adapters.get(instance.id),ownership=instance.type==='opencode'&&instance.managed!==undefined?{managed:instance.managed}:{},intervention=adapter?.interventionMode?{interventionMode:adapter.interventionMode}:{},activeExecutions=registry.activeCount(instance.id),runtimeError=runtimeErrors.get(instance.id);
+    const adapter=generations.current.adapters.get(instance.id),ownership=instance.type==='opencode'&&instance.managed!==undefined?{managed:instance.managed}:{},intervention=adapter?.interventionMode?{interventionMode:adapter.interventionMode}:{},continuation=adapter?.postTurnContinuation?{postTurnContinuation:adapter.postTurnContinuation}:{},activeExecutions=registry.activeCount(instance.id),runtimeError=runtimeErrors.get(instance.id);
     if(runtimeError)return{id:instance.id,type:instance.type,status:'unavailable' as const,capabilities:[],...ownership,activeExecutions,error:runtimeError};
     if(adapter?.type!==instance.type)return{id:instance.id,type:instance.type,status:'unavailable' as const,capabilities:[],...ownership,activeExecutions,error:{code:'adapter_not_loaded',message:'Adapter module is not loaded in this Connector build'}};
     return workspacePolicy.configured
-      ?{id:instance.id,type:instance.type,status:'healthy' as const,capabilities:adapter.capabilities,...intervention,...ownership,activeExecutions}
-      :{id:instance.id,type:instance.type,status:'degraded' as const,capabilities:adapter.capabilities,...intervention,...ownership,activeExecutions,error:{code:'workspace_not_configured',message:'Connector workspace roots are not configured'}};
+      ?{id:instance.id,type:instance.type,status:'healthy' as const,capabilities:adapter.capabilities,...intervention,...continuation,...ownership,activeExecutions}
+      :{id:instance.id,type:instance.type,status:'degraded' as const,capabilities:adapter.capabilities,...intervention,...continuation,...ownership,activeExecutions,error:{code:'workspace_not_configured',message:'Connector workspace roots are not configured'}};
   };
 
   app.addHook('onClose',async()=>{await configurationQueue;await generations.close();});
@@ -241,6 +242,12 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
   },async(request,reply)=>{
     if(!isCreateExecutionInterventionRequest(request.body))return error(reply,new RegistryError('invalid_request','Intervention does not match Connector v2 contract',400));
     try{return reply.code(202).send(registry.intervene(request.params.id,request.body));}
+    catch(caught){return error(reply,caught);}
+  });
+
+  app.post<{Params:{id:string}}>('/v2/instances/:id/continuations/release',async(request,reply)=>{
+    if(!isReleaseContinuationRequest(request.body))return error(reply,new RegistryError('invalid_request','Continuation release does not match Connector v2 contract',400));
+    try{return{apiVersion:CONNECTOR_API_VERSION,outcome:await registry.releaseContinuation(request.params.id,request.body.handle)};}
     catch(caught){return error(reply,caught);}
   });
 

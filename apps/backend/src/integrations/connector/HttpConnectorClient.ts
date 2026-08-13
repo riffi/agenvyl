@@ -1,4 +1,4 @@
-import { isConnectorCatalog, isConnectorCommandResult, isConnectorConfigurationResult, isConnectorDirectoryPickerResult, isConnectorDirectoryValidation, isConnectorDiscovery, isConnectorExecutionEvent, isConnectorHealth, isConnectorInstanceList, isConnectorInterventionCommandResult, isConnectorRequestCommandResult, isExecutionSnapshot, isRestartConnectorInstanceResult, isTestConnectorInstanceResult, type ConfigureConnectorInstancesRequest, type ConnectorCatalog, type ConnectorConfigurationResult, type ConnectorDirectoryPickerResult, type ConnectorDirectoryValidation, type ConnectorDiscovery, type ConnectorExecutionEvent, type ConnectorHealth, type ConnectorInstanceList, type ConnectorInterventionCommandResult, type ConnectorRequestAnswer, type ConnectorRequestCommandResult, type CreateExecutionInterventionRequest, type ExecutionSnapshot, type RestartConnectorInstanceResult, type StartExecutionRequest, type TestConnectorInstanceRequest, type TestConnectorInstanceResult } from '@agenvyl/connector-contract';
+import { isConnectorCatalog, isConnectorCommandResult, isConnectorConfigurationResult, isConnectorDirectoryPickerResult, isConnectorDirectoryValidation, isConnectorDiscovery, isConnectorExecutionEvent, isConnectorHealth, isConnectorInstanceList, isConnectorInterventionCommandResult, isConnectorRequestCommandResult, isExecutionSnapshot, isReleaseContinuationResult, isRestartConnectorInstanceResult, isTestConnectorInstanceResult, type ConfigureConnectorInstancesRequest, type ConnectorCatalog, type ConnectorConfigurationResult, type ConnectorDirectoryPickerResult, type ConnectorDirectoryValidation, type ConnectorDiscovery, type ConnectorExecutionEvent, type ConnectorHealth, type ConnectorInstanceList, type ConnectorInterventionCommandResult, type ConnectorRequestAnswer, type ConnectorRequestCommandResult, type ContinuationReleaseOutcome, type CreateExecutionInterventionRequest, type ExecutionSnapshot, type RestartConnectorInstanceResult, type StartExecutionRequest, type TestConnectorInstanceRequest, type TestConnectorInstanceResult } from '@agenvyl/connector-contract';
 import type { ConnectorExecutionClient, ConnectorLifecycleErrorCode } from '../../modules/connector/connector.ports.js';
 import {parseSse} from '../../infrastructure/http/parseSse.js';
 
@@ -123,6 +123,12 @@ export class HttpConnectorClient implements ConnectorExecutionClient {
     const value=await this.json(`/v2/executions/${encodeURIComponent(executionId)}/interventions`,'POST',input,'execution');
     if(!isConnectorInterventionCommandResult(value)||value.execution.executionId!==executionId||value.intervention.interventionId!==input.interventionId)throw invalidResponse('Connector returned an invalid intervention response');
     return value;
+  }
+
+  async releaseContinuation(instanceId:string,handle:string):Promise<ContinuationReleaseOutcome>{
+    const value=await this.json(`/v2/instances/${encodeURIComponent(instanceId)}/continuations/release`,'POST',{handle},'execution');
+    if(!isReleaseContinuationResult(value))throw invalidResponse('Connector returned an invalid continuation release response');
+    return value.outcome;
   }
 
   private async openEventStream(executionId:string,after:number,signal:AbortSignal){

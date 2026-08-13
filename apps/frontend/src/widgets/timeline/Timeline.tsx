@@ -15,7 +15,7 @@ import {ReasoningBlock} from './ReasoningBlock';
 import {RunActivity} from './RunActivity';
 import {RunFiles} from './RunFiles';
 import {RunRequest} from './RunRequest';
-import {answerHistoryText,RunAnswerHistory} from './RunAnswerHistory';
+import {continuationHistoryText,RunAnswerHistory} from './RunAnswerHistory';
 
 export { MarkdownAnswer } from './MarkdownAnswer';
 export {ReasoningBlock} from './ReasoningBlock';
@@ -93,6 +93,7 @@ export function UpstreamStatusNotice({status}:{status:UpstreamStatus}) {
 
 function RunCard({
   run,
+  chapters,
   persona,
   select,
   cancel,
@@ -115,6 +116,7 @@ function RunCard({
   author,
 }: {
   run: Run;
+  chapters:Run[];
   persona: Persona;
   select: () => void;
   cancel: () => void;
@@ -139,7 +141,7 @@ function RunCard({
   const [retrying,setRetrying]=useState(false);const [retryError,setRetryError]=useState<string>();
   const openRunWorkspace=useCallback((attachment:WorkspaceAttachment)=>openWorkspace({entryId:attachment.entry_id,versionId:attachment.version_id}),[openWorkspace]);
   const canCancel=['queued','streaming','waiting_approval','waiting_clarification'].includes(run.status);
-  const retryLabel=run.status==='completed'?'Create another response':'Run again';
+  const retryLabel=run.continuedFromRunId&&['failed','cancelled'].includes(run.status)?'Retry continuation':run.status==='completed'?'Create another response':'Run again';
   const retryRun=async()=>{setRetrying(true);setRetryError(undefined);try{await retry()}catch(error){setRetryError(error instanceof Error?error.message:String(error))}finally{setRetrying(false)}};
   const publishedFileCount=run.artifactSummary?.project_count??run.artifacts?.filter(item=>item.attribution==='exact').length??0;
   const changedFiles=run.artifacts?.filter(item=>item.attribution==='exact'&&!run.embeds?.some(embed=>embed.status==='resolved'&&embed.attachment?.version_id===item.version_id))??[];
@@ -180,8 +182,9 @@ function RunCard({
         {run.upstreamStatus&&<UpstreamStatusNotice status={run.upstreamStatus}/>}
         {run.status==='finalizing'&&<div className={`${styles['workspace-state']} ${styles['workspace-state-progress']}`} role="status" aria-live="polite"><LoaderCircle aria-hidden="true"/><span>Finalizing files…</span></div>}
         {run.reasoning&&<ReasoningBlock text={run.reasoning} harnessType={run.harnessType}/>}
-        <RunAnswerHistory run={run} fallbackAuthor={author} personas={personas} onMentionPersona={onMentionPersona} openWorkspace={openRunWorkspace} collapsed={collapsed}/>
-        {isLongAnswer(answerHistoryText(run))&&run.status==='completed'&&<button className={`${styles['answer-toggle']} ${collapsed?styles.expand:styles.collapse}`} type="button" onClick={toggleCollapsed} aria-expanded={!collapsed}>{collapsed?<><span>Expand response</span><ChevronDown/></>:<><span>Collapse response</span><ChevronUp/></>}</button>}
+        <RunAnswerHistory run={run} chapters={chapters} fallbackAuthor={author} personas={personas} onMentionPersona={onMentionPersona} openWorkspace={openRunWorkspace} collapsed={collapsed}/>
+        {isLongAnswer(continuationHistoryText(chapters))&&run.status==='completed'&&<button className={`${styles['answer-toggle']} ${collapsed?styles.expand:styles.collapse}`} type="button" onClick={toggleCollapsed} aria-expanded={!collapsed}>{collapsed?<><span>Expand response</span><ChevronDown/></>:<><span>Collapse response</span><ChevronUp/></>}</button>}
+        {(chapters.some(chapter=>chapter.continuationRetention==='provider_managed')||harnessCatalog?.instances.find(instance=>instance.id===run.harnessInstanceId)?.postTurnContinuation?.retention==='provider_managed')&&<small>Native session history is retained according to the harness provider’s policy.</small>}
         {run.status==='failed'&&<RunFailureNotice errorCode={run.errorCode} error={run.error}/>}
         {(run.requests??[]).some(request=>!request.resolved)&&<section className={styles['request-list']} aria-label="Pending agent requests"><strong>{(run.requests??[]).filter(request=>!request.resolved).length} pending {(run.requests??[]).filter(request=>!request.resolved).length===1?'request':'requests'}</strong>{(run.requests??[]).filter(request=>!request.resolved).map(request=><RunRequest key={request.id} request={request} resolve={value=>resolve(request.id,value)}/>)}</section>}
         <RunFiles files={changedFiles} summary={run.artifactSummary} openWorkspace={openWorkspace}/>
@@ -286,12 +289,15 @@ export function Timeline({
         </div>
       )}
       {state.messages.map((m,messageIndex) => {
-        const groups=Object.entries(m.runIds.reduce<Record<string,string[]>>((result,id)=>{const run=state.runs[id];if(!run)return result;const slot=slotOf(run);(result[slot]??=[]).push(id);return result},{}));
-        const visibleGroups=groups.map(([slot,attemptIds])=>{const activeAttempt=[...attemptIds].reverse().map(id=>state.runs[id]).find((run:Run)=>['queued','streaming','finalizing','stopping','waiting_approval','waiting_clarification'].includes(run.status));const shownId=activeAttempt?.id??attemptView[slot]??state.selectedRuns[slot]??attemptIds.at(-1)!;const shownIndex=Math.max(0,attemptIds.indexOf(shownId));return{slot,attemptIds,activeAttempt,shownIndex,id:attemptIds[shownIndex]}});
+        const messageRuns=m.runIds.map(id=>state.runs[id]).filter((run):run is Run=>Boolean(run));
+        const rootOf=(run:Run)=>{let current=run,guard=0;while(current.continuedFromRunId&&state.runs[current.continuedFromRunId]&&guard++<100)current=state.runs[current.continuedFromRunId];return current.id};
+        const chains=new Map<string,Run[]>();for(const run of messageRuns){const root=rootOf(run);chains.set(root,[...(chains.get(root)??[]),run]);}
+        const groups=Object.entries([...chains.keys()].reduce<Record<string,string[]>>((result,id)=>{const run=state.runs[id];if(!run)return result;const slot=slotOf(run);(result[slot]??=[]).push(id);return result},{}));
+        const visibleGroups=groups.map(([slot,attemptIds])=>{const activeAttempt=[...attemptIds].reverse().flatMap(id=>chains.get(id)??[]).reverse().find((run:Run)=>['queued','streaming','finalizing','stopping','waiting_approval','waiting_clarification'].includes(run.status));const selectedId=state.selectedRuns[slot],selectedRoot=selectedId&&state.runs[selectedId]?rootOf(state.runs[selectedId]):undefined,shownRootId=activeAttempt?rootOf(activeAttempt):attemptView[slot]??selectedRoot??attemptIds.at(-1)!;const chapters=chains.get(shownRootId)??[state.runs[shownRootId]],latestChapter=chapters.at(-1)!;const selectedChapter=selectedId?chapters.find(run=>run.id===selectedId):undefined,failedContinuation=latestChapter.continuedFromRunId&&['failed','cancelled'].includes(latestChapter.status)?latestChapter:undefined,shown=activeAttempt&&rootOf(activeAttempt)===shownRootId?activeAttempt:failedContinuation??selectedChapter??latestChapter;const shownIndex=Math.max(0,attemptIds.indexOf(shownRootId));return{slot,attemptIds,activeAttempt,shownIndex,id:shown.id,chapters}});
         const visibleRuns=visibleGroups.flatMap(group=>state.runs[group.id]?[state.runs[group.id]]:[]);
         visibleRuns.forEach(run=>{if(run.status==='streaming')streamedRunsRef.current.add(run.id)});
-        const isCollapsed=(run:Run)=>isLongAnswer(answerHistoryText(run))&&run.status==='completed'&&(collapsedAnswers.has(run.id)||(!run.interventions.length&&!expandedAnswers.has(run.id)&&!streamedRunsRef.current.has(run.id)));
-        const singleColumn=shouldUseSingleColumn(visibleRuns.map(answerHistoryText));
+        const isCollapsed=(run:Run,chapters:Run[])=>isLongAnswer(continuationHistoryText(chapters))&&run.status==='completed'&&(collapsedAnswers.has(run.id)||(!run.interventions.length&&!expandedAnswers.has(run.id)&&!streamedRunsRef.current.has(run.id)));
+        const singleColumn=shouldUseSingleColumn(visibleGroups.map(group=>continuationHistoryText(group.chapters)));
         const responseTabs=singleColumn&&visibleGroups.length>1;
         const focusedSlot=focusedResponseSlots[m.id]&&visibleGroups.some(group=>group.slot===focusedResponseSlots[m.id])
           ? focusedResponseSlots[m.id]
@@ -319,14 +325,15 @@ export function Timeline({
           {responseTabs&&<nav className={styles['answer-navigation']} aria-label="Agent responses in this round"><span>Responses</span>{visibleGroups.map(group=>{const response=state.runs[group.id];const responsePersona=byHandle.get(response.agent)??unknownPersona(response.agent);const selected=group.slot===focusedSlot;return <button type="button" key={group.slot} aria-pressed={selected} onClick={()=>setFocusedResponseSlots(current=>({...current,[m.id]:group.slot}))}><i style={{background:responsePersona.color}}/>{responsePersona.name}<StatusIcon status={response.status}/></button>})}</nav>}
           <div className={`${styles.runs} ${singleColumn?styles['runs-list']:styles['runs-grid']}`}>
             {displayedGroups.map(
-              ({slot,attemptIds,activeAttempt,shownIndex,id}) => {
-                const showAttempt=async(index:number)=>{const nextId=attemptIds[index];setAttemptView(current=>({...current,[slot]:nextId}));if(messageIndex===state.messages.length-1&&state.runs[nextId].status==='completed'&&gateway.mode==='real')await gateway.select(nextId)};
+              ({slot,attemptIds,activeAttempt,shownIndex,id,chapters}) => {
+                const showAttempt=async(index:number)=>{const nextId=attemptIds[index],nextChapters=chains.get(nextId)??[state.runs[nextId]],selectable=[...nextChapters].reverse().find(item=>item.status==='completed');setAttemptView(current=>({...current,[slot]:nextId}));if(messageIndex===state.messages.length-1&&selectable&&gateway.mode==='real')await gateway.select(selectable.id)};
                 const run=state.runs[id];
                 return run && (
                   <div id={`run-${id}`} className={styles['run-anchor']} key={slot}>
                   <RunCard
                     key={id}
                     run={run}
+                    chapters={chapters}
                     persona={
                       byHandle.get(state.runs[id].agent) ??
                       unknownPersona(state.runs[id].agent)
@@ -334,7 +341,7 @@ export function Timeline({
                     select={() => select(id)}
                     cancel={() => gateway.cancel(id)}
                     addInstruction={()=>addInstructionToRun?.(id)}
-                    canAddInstruction={Boolean(addInstructionToRun&&run.status==='streaming'&&harnessCatalog?.instances.find(instance=>instance.id===run.harnessInstanceId)?.interventionMode==='interrupt_then_continue'&&!(run.requests??[]).some(request=>!request.resolved)&&!run.interventions.some(intervention=>intervention.status==='pending'))}
+                    canAddInstruction={Boolean(addInstructionToRun&&((run.status==='streaming'&&harnessCatalog?.instances.find(instance=>instance.id===run.harnessInstanceId&&instance.status!=='unavailable')?.interventionMode==='interrupt_then_continue'&&!(run.requests??[]).some(request=>!request.resolved)&&!run.interventions.some(intervention=>intervention.status==='pending'))||(run.status==='completed'&&state.selectedRuns[slot]===run.id&&harnessCatalog?.instances.find(instance=>instance.id===run.harnessInstanceId&&instance.status!=='unavailable')?.postTurnContinuation?.mode==='native_session'&&!activeAttempt)))}
                     retry={async()=>{setAttemptView(current=>{const next={...current};delete next[slot];return next});await gateway.retry(id)}}
                     canRetry={messageIndex===state.messages.length-1&&['completed','failed','cancelled'].includes(state.runs[id].status)&&!activeAttempt&&gateway.mode==='real'}
                     attemptIndex={shownIndex}
@@ -342,8 +349,8 @@ export function Timeline({
                     previousAttempt={()=>void showAttempt(shownIndex-1)}
                     nextAttempt={()=>void showAttempt(shownIndex+1)}
                     resolve={(requestId,v) => gateway.resolve(id,requestId,v)}
-                    collapsed={isCollapsed(run)}
-                    toggleCollapsed={()=>{const collapse=!isCollapsed(run);setExpandedAnswers(current=>{const next=new Set(current);collapse?next.delete(id):next.add(id);return next});setCollapsedAnswers(current=>{const next=new Set(current);collapse?next.add(id):next.delete(id);return next});if(collapse)requestAnimationFrame(()=>document.getElementById(`run-${id}`)?.scrollIntoView({behavior:'smooth',block:'start'}))}}
+                    collapsed={isCollapsed(run,chapters)}
+                    toggleCollapsed={()=>{const collapse=!isCollapsed(run,chapters);setExpandedAnswers(current=>{const next=new Set(current);collapse?next.delete(id):next.add(id);return next});setCollapsedAnswers(current=>{const next=new Set(current);collapse?next.add(id):next.delete(id);return next});if(collapse)requestAnimationFrame(()=>document.getElementById(`run-${id}`)?.scrollIntoView({behavior:'smooth',block:'start'}))}}
                     harnessCatalog={harnessCatalog}
                     personas={personas}
                     onMentionPersona={onMentionPersona}

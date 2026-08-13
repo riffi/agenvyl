@@ -1,5 +1,6 @@
 import type { ConnectorError, ConnectorRequestSnapshot } from '@agenvyl/connector-contract';
 import type { AdapterExecutionEvent } from './adapter.js';
+import {AdapterContinuationError} from './adapter.js';
 
 const REDACTED = '[REDACTED]';
 const PATH_REDACTED = '[ABSOLUTE_PATH]';
@@ -27,7 +28,7 @@ export function redactConnectorText(value: string, maxLength = 2_000) {
 export function safeAdapterError(error: unknown, fallbackCode: string): ConnectorError {
   const fallbackMessage = fallbackCode === 'adapter_stop_failed' ? 'Adapter stop failed' : 'Adapter execution failed';
   if (!(error instanceof Error)) return { code: fallbackCode, message: fallbackMessage };
-  return { code: fallbackCode, message: redactConnectorText(error.message, 500) || fallbackMessage };
+  return { code: error instanceof AdapterContinuationError?error.code:fallbackCode, message: redactConnectorText(error.message, 500) || fallbackMessage };
 }
 
 export function sanitizeAdapterEvent(event: AdapterExecutionEvent): AdapterExecutionEvent {

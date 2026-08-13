@@ -51,6 +51,12 @@ export class HarnessCatalogService{
 
   invalidate(){this.cache.invalidate();}
 
+  async currentInstance(instanceId:string,harnessType:string){
+    if(!this.connector)throw new AppError('connector_unavailable',503,'Connector discovery is not configured');
+    try{return(await this.connector.instances()).instances.find(instance=>instance.id===instanceId&&instance.type===harnessType);}
+    catch{throw new AppError('connector_unavailable',503,'Connector instance metadata is unavailable');}
+  }
+
   private async refreshCatalog():Promise<CatalogValue>{
     const startedAt=this.now();
     try{

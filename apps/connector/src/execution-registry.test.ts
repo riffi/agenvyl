@@ -15,6 +15,16 @@ beforeAll(async () => {
 afterAll(async () => { await rm(workspaceRoot, { recursive: true, force: true }); });
 
 describe('ExecutionRegistry live subscriptions', () => {
+  it('enforces the harness-neutral native continuation contract',async()=>{
+    let received:StartExecutionRequest|undefined,released:string|undefined;
+    const adapter:ConnectorAdapter={type:'hermes',capabilities:['text_streaming'],postTurnContinuation:{mode:'native_session',durability:'connector_restart',retention:'explicit_release'},async start(){throw new Error('must not create a fresh session');},async startContinuation(request,handle){received=request;expect(handle).toBe('opaque-source');return{upstreamId:'continued'};},async inspect(){return{status:'running'};},async stop(){},async releaseContinuation(handle){released=handle;return'released';},async *events(){yield{type:'output.text.delta',payload:{text:'current turn only'}};yield{type:'execution.completed',payload:{continuation:{handle:'opaque-next'}}};}};
+    const registry=createRegistry(adapter),request={...structuredClone(connectorContractFixtures.startExecution),executionId:'continued-run',input:{systemPrompt:'snapshot',history:[],message:'continue'},continuation:{handle:'opaque-source'}} as StartExecutionRequest;
+    registry.start(request);await waitFor(()=>registry.inspect(request.executionId).status==='completed');
+    expect(received?.input).toEqual({systemPrompt:'snapshot',history:[],message:'continue'});
+    expect(registry.inspect(request.executionId).continuation).toEqual({handle:'opaque-next'});
+    await expect(registry.releaseContinuation('local-hermes','opaque-next')).resolves.toBe('released');expect(released).toBe('opaque-next');
+    expect(()=>registry.start({...request,executionId:'replayed',input:{...request.input,history:[{role:'assistant',content:'old output'}]}})).toThrow('must not replay');
+  });
   it('logs only safe tail-v1 counters when a run starts',async()=>{
     const adapter=new LiveAdapter(),logs:Array<Record<string,unknown>>=[];
     const registry=createRegistry(adapter,{info:details=>logs.push(details)}),request=structuredClone(connectorContractFixtures.startExecution) as StartExecutionRequest;

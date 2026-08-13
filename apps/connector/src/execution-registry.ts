@@ -9,6 +9,7 @@ import type {
   StartExecutionRequest,
   UpstreamStatus,
   TokenUsage,
+  ContinuationReleaseOutcome,
 } from '@agenvyl/connector-contract';
 import {createHash} from 'node:crypto';
 import { CONNECTOR_API_VERSION } from '@agenvyl/connector-contract';
@@ -59,6 +60,7 @@ type ExecutionRecord = {
   error?: { code: string; message: string };
   upstreamStatus?: UpstreamStatus;
   usage?: TokenUsage;
+  continuation?:{handle:string};
   listeners: Set<(event: ConnectorExecutionEvent | null) => void>;
 };
 
@@ -98,6 +100,10 @@ export class ExecutionRegistry {
       binding.release();
       throw error;
     }
+    if(request.continuation&&request.input.history.length){binding.release();throw new RegistryError('continuation_incompatible','Native continuation must not replay canonical history',409);}
+    if(request.continuation&&(binding.adapter.postTurnContinuation?.mode!=='native_session'||!binding.adapter.startContinuation)){
+      binding.release();throw new RegistryError('continuation_unavailable','This Connector instance does not support native continuation',409);
+    }
 
     const record: ExecutionRecord = {
       request: structuredClone(request),
@@ -128,6 +134,21 @@ export class ExecutionRegistry {
 
   activeCount(instanceId:string){
     return [...this.executions.values()].filter(record=>record.request.harnessInstanceId===instanceId&&!terminalStatuses.has(record.status)).length;
+  }
+
+  async releaseContinuation(instanceId:string,handle:string):Promise<ContinuationReleaseOutcome>{
+    let binding:AdapterGenerationBinding;
+    try{binding=this.acquireAdapter(instanceId);}catch(error){
+      if(error instanceof AdapterGenerationError)throw new RegistryError(error.code,error.message,error.statusCode);
+      throw error;
+    }
+    try{
+      if(binding.adapter.postTurnContinuation?.mode!=='native_session'||!binding.adapter.releaseContinuation)throw new RegistryError('continuation_unavailable','This Connector instance cannot release native continuations',409);
+      return await binding.adapter.releaseContinuation(handle,{instanceId});
+    }catch(error){
+      if(error instanceof RegistryError)throw error;
+      throw new RegistryError('release_failed','Connector could not release the native continuation',502);
+    }finally{binding.release();}
   }
 
   async stop(executionId: string): Promise<ExecutionSnapshot> {
@@ -220,10 +241,13 @@ export class ExecutionRegistry {
     try {
       const {history:_,...historyMetrics}=experimentalTailV1ConversationHistory(record.request.input.history);
       this.logger?.info({...historyMetrics,harnessType:record.harnessType},'Prepared conversation history');
-      record.upstream = await record.adapter.start({
+      const adapterRequest={
         ...record.request,
         workspace: { ...record.request.workspace, absolutePath: record.workspacePath },
-      });
+      };
+      record.upstream = record.request.continuation
+        ?await record.adapter.startContinuation!(adapterRequest,record.request.continuation.handle)
+        :await record.adapter.start(adapterRequest);
       if (record.status === 'stopping') return;
       record.status = 'running';
       this.append(record, 'execution.started', {});
@@ -320,6 +344,7 @@ export class ExecutionRegistry {
         this.append(record,event.type,event.payload);
         return;
       case 'execution.completed':
+        record.continuation=event.payload.continuation?structuredClone(event.payload.continuation):undefined;
       case 'execution.failed':
       case 'execution.cancelled':
         this.appendTerminal(record, event.type, event.payload);
@@ -342,7 +367,7 @@ export class ExecutionRegistry {
     });
   }
 
-  private appendTerminal(record: ExecutionRecord, type: 'execution.completed' | 'execution.failed' | 'execution.cancelled', payload: Record<string, never> | { error: { code: string; message: string } }) {
+  private appendTerminal(record: ExecutionRecord, type: 'execution.completed' | 'execution.failed' | 'execution.cancelled', payload: {continuation?:{handle:string}} | { error: { code: string; message: string } }) {
     if (terminalStatuses.has(record.status)) return;
     this.failActiveIntervention(record,{code:'execution_ended',message:'The instruction could not be applied before the run ended'});
     const requestOutcome = type === 'execution.completed' ? 'superseded' : 'cancelled';
@@ -407,6 +432,7 @@ export class ExecutionRegistry {
       ...(record.usage ? { usage: structuredClone(record.usage) } : {}),
       ...(record.upstreamStatus ? { upstreamStatus: structuredClone(record.upstreamStatus) } : {}),
       ...(record.error ? { error: { ...record.error } } : {}),
+      ...(record.continuation?{continuation:structuredClone(record.continuation)}:{}),
     };
   }
 

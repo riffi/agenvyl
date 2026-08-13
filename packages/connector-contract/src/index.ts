@@ -4,6 +4,13 @@ export type ConnectorApiVersion = typeof CONNECTOR_API_VERSION;
 export type ConnectorStatus = 'ready' | 'degraded';
 export type ConnectorInstanceStatus = 'healthy' | 'degraded' | 'unavailable';
 export type InterventionMode = 'interrupt_then_continue';
+export type PostTurnContinuation = {
+  mode: 'native_session';
+  durability: 'connector_restart';
+  retention: 'explicit_release' | 'provider_managed';
+};
+export type ContinuationReference = { handle: string };
+export type ContinuationReleaseOutcome = 'released' | 'provider_retained' | 'not_found';
 export type ConnectorCapability =
   | 'model_catalog'
   | 'execution_profiles'
@@ -50,6 +57,7 @@ export type ConnectorInstance = {
   status: ConnectorInstanceStatus;
   capabilities: ConnectorCapability[];
   interventionMode?: InterventionMode;
+  postTurnContinuation?: PostTurnContinuation;
   managed?: boolean;
   activeExecutions?: number;
   error?: ConnectorError;
@@ -153,6 +161,7 @@ export type StartExecutionRequest = {
   };
   workspace: { roomId: string; relativePath: string };
   input: { systemPrompt: string; history: CanonicalConversationItem[]; message: string };
+  continuation?: ContinuationReference;
 };
 
 export type ExecutionStatus =
@@ -219,6 +228,7 @@ export type ExecutionSnapshot = {
   usage?: TokenUsage;
   upstreamStatus?: UpstreamStatus;
   error?: ConnectorError;
+  continuation?: ContinuationReference;
 };
 
 export type ExecutionInterventionStatus = 'pending' | 'applied' | 'failed';
@@ -254,7 +264,8 @@ export type ConnectorExecutionEvent =
   | EventEnvelope<'execution.intervention.accepted', { interventionId: string; text: string }>
   | EventEnvelope<'execution.intervention.applied', { interventionId: string; text: string }>
   | EventEnvelope<'execution.intervention.failed', { interventionId: string; text: string; error: ConnectorError }>
-  | EventEnvelope<'execution.completed' | 'execution.cancelled', Record<string, never>>
+  | EventEnvelope<'execution.completed', { continuation?: ContinuationReference }>
+  | EventEnvelope<'execution.cancelled', Record<string, never>>
   | EventEnvelope<'execution.failed', { error: ConnectorError }>;
 
 export type ConnectorRequestAnswer = { resolution: string } | { answers: Record<string, string[]> } | { elicitation: ConnectorElicitationAnswer };
@@ -262,6 +273,11 @@ export type ResolveConnectorRequest = ConnectorRequestAnswer;
 export type ConnectorCommandResult = { execution: ExecutionSnapshot };
 export type ConnectorRequestCommandResult = ConnectorCommandResult & { request: ConnectorRequestSnapshot };
 export type ConnectorInterventionCommandResult = ConnectorCommandResult & { intervention: ExecutionIntervention };
+export type ReleaseContinuationRequest = ContinuationReference;
+export type ReleaseContinuationResult = {
+  apiVersion: ConnectorApiVersion;
+  outcome: ContinuationReleaseOutcome;
+};
 
 export const connectorContractFixtures = {
   health: {
@@ -310,6 +326,10 @@ export function isConnectorInstanceList(value: unknown): value is ConnectorInsta
     && value.instances.every(instance => isRecord(instance) && strings(instance, 'id', 'type', 'status') && ['healthy', 'degraded', 'unavailable'].includes(String(instance.status))
       && Array.isArray(instance.capabilities) && instance.capabilities.every(capability => typeof capability === 'string' && capabilities.has(capability))
       && (instance.interventionMode === undefined || instance.interventionMode === 'interrupt_then_continue')
+      && (instance.postTurnContinuation === undefined || (isRecord(instance.postTurnContinuation)
+        && instance.postTurnContinuation.mode === 'native_session'
+        && instance.postTurnContinuation.durability === 'connector_restart'
+        && (instance.postTurnContinuation.retention === 'explicit_release' || instance.postTurnContinuation.retention === 'provider_managed')))
       && (instance.managed === undefined || typeof instance.managed === 'boolean')
       && (instance.type === 'opencode' || instance.managed === undefined)
       && (instance.activeExecutions === undefined || (Number.isSafeInteger(instance.activeExecutions) && Number(instance.activeExecutions) >= 0))
@@ -385,6 +405,15 @@ export function isConnectorInterventionCommandResult(value:unknown):value is Con
   return isConnectorCommandResult(value);
 }
 
+export function isReleaseContinuationRequest(value:unknown):value is ReleaseContinuationRequest {
+  return isContinuationReference(value)&&Object.keys(value).length===1;
+}
+
+export function isReleaseContinuationResult(value:unknown):value is ReleaseContinuationResult {
+  return isRecord(value)&&value.apiVersion===CONNECTOR_API_VERSION
+    &&(value.outcome==='released'||value.outcome==='provider_retained'||value.outcome==='not_found');
+}
+
 export function isExecutionSnapshot(value: unknown): value is ExecutionSnapshot {
   if (!isRecord(value) || value.apiVersion !== CONNECTOR_API_VERSION || !strings(value, 'executionId', 'connectorEpoch', 'harnessInstanceId', 'harnessType', 'modelId', 'status')) return false;
   return executionStatuses.has(String(value.status)) && isExecutionProfile(value.executionProfile) && integers(value, 'cursor', 'earliestReplayableCursor', 'adapterGeneration')
@@ -392,14 +421,16 @@ export function isExecutionSnapshot(value: unknown): value is ExecutionSnapshot 
     && Number(value.earliestReplayableCursor) <= Number(value.cursor) + 1 && Array.isArray(value.pendingRequests) && value.pendingRequests.every(isRequest)
     && (value.usage === undefined || isTokenUsage(value.usage))
     && (value.upstreamStatus === undefined || isUpstreamStatus(value.upstreamStatus))
-    && (value.error === undefined || isError(value.error));
+    && (value.error === undefined || isError(value.error))
+    && (value.continuation === undefined || isContinuationReference(value.continuation));
 }
 
 export function isStartExecutionRequest(value: unknown): value is StartExecutionRequest {
   if (!isRecord(value) || !strings(value, 'executionId', 'harnessInstanceId', 'modelId') || !isExecutionProfile(value.executionProfile)) return false;
   if (!isRecord(value.workspace) || !strings(value.workspace, 'roomId', 'relativePath')) return false;
   if (!isRecord(value.input) || !strings(value.input, 'systemPrompt', 'message') || !Array.isArray(value.input.history)) return false;
-  return value.input.history.every(item => isRecord(item) && (item.role === 'user' || item.role === 'assistant') && typeof item.content === 'string');
+  return value.input.history.every(item => isRecord(item) && (item.role === 'user' || item.role === 'assistant') && typeof item.content === 'string')
+    && (value.continuation === undefined || isContinuationReference(value.continuation));
 }
 
 export function isResolveConnectorRequest(value: unknown): value is ResolveConnectorRequest {
@@ -416,7 +447,9 @@ export function isConnectorExecutionEvent(value: unknown): value is ConnectorExe
   if (!isRecord(value) || value.apiVersion !== CONNECTOR_API_VERSION || !strings(value, 'connectorEpoch', 'executionId', 'occurredAt', 'type') || !Number.isSafeInteger(value.cursor) || Number(value.cursor) < 1 || !isRecord(value.payload)) return false;
   if (!isIsoDate(value.occurredAt)) return false;
   switch (value.type) {
-    case 'execution.accepted': case 'execution.started': case 'execution.completed': case 'execution.cancelled': return Object.keys(value.payload).length === 0;
+    case 'execution.accepted': case 'execution.started': case 'execution.cancelled': return Object.keys(value.payload).length === 0;
+    case 'execution.completed': return Object.keys(value.payload).every(key=>key==='continuation')
+      && (value.payload.continuation===undefined||isContinuationReference(value.payload.continuation));
     case 'execution.status': return typeof value.payload.status === 'string' && executionStatuses.has(value.payload.status);
     case 'execution.upstream_status': return isUpstreamStatus(value.payload);
     case 'output.text.delta': case 'output.reasoning.delta': return typeof value.payload.text === 'string';
@@ -439,6 +472,7 @@ const requestResolutions = new Set<string>(['answered', 'declined', 'cancelled',
 const upstreamStatusStates = new Set<string>(['waiting_upstream', 'retrying', 'recovered']);
 const upstreamStatusReasons = new Set<string>(['awaiting_response', 'provider_unavailable', 'rate_limited', 'provider_timeout', 'model_unavailable', 'authentication_failed', 'harness_unavailable', 'connector_unreachable']);
 function isError(value: unknown): value is ConnectorError { return isRecord(value) && strings(value, 'code', 'message'); }
+function isContinuationReference(value:unknown):value is ContinuationReference{return isRecord(value)&&typeof value.handle==='string'&&value.handle.length>0&&value.handle.length<=16_000;}
 function isExecutionIntervention(value:unknown):value is ExecutionIntervention {
   return isRecord(value) && isInterventionPayload(value) && ['pending','applied','failed'].includes(String(value.status))
     && (value.error === undefined || isError(value.error)) && (value.status === 'failed' || value.error === undefined);

@@ -11,9 +11,10 @@ import type { PersistedNonTerminalRun, RunRepository } from './runs.repository.j
 import type {RoomWorkspaceService} from '../workspace/RoomWorkspaceService.js';
 import type {MessageRepository} from '../messages/messages.repository.js';
 import {formatHumanMessage} from '../messages/messages.repository.js';
-import {connectorLifecycleErrorCode,type ConnectorLifecycle,type ConnectorLifecycleErrorCode} from '../connector/connector.ports.js';
+import {connectorLifecycleErrorCode,type ConnectorDiscovery,type ConnectorLifecycle,type ConnectorLifecycleErrorCode} from '../connector/connector.ports.js';
 import type {ConnectorDirectoryValidation,ExecutionSnapshot} from '@agenvyl/connector-contract';
 import {extractExternalImageReferences} from '../workspace/workspaceEmbeds.js';
+import type {RunContinuationCleanupService} from './RunContinuationCleanupService.js';
 
 type RunExecutorDependencies = {
   personas: PersonaRepository;
@@ -28,7 +29,9 @@ type RunExecutorDependencies = {
   logger?:LifecycleLogger;
   roomWorkspace?:RoomWorkspaceService;
   messages?:MessageRepository;
-  connector?:ConnectorLifecycle&{validateDirectory?(path:string):Promise<ConnectorDirectoryValidation>};
+  connector?:ConnectorDiscovery&{validateDirectory?(path:string):Promise<ConnectorDirectoryValidation>};
+  continuationCleanup?:RunContinuationCleanupService;
+  postTurnFallback?:(runId:string,input:{intervention_id:string;text:string})=>Promise<unknown>;
   recoveryHealthAttempts?:number;
   recoveryHealthDelayMs?:number;
 };
@@ -119,7 +122,7 @@ export class RunExecutor {
       const restoredStatus=recoveredStatus(execution);
       if(restoredStatus&&run.status!==restoredStatus){await this.dependencies.events.emit(run.roomId,'run.status',{runId:run.id,status:restoredStatus});run.status=restoredStatus;}
       await this.consumeStream(run,transport,run.upstreamRunId!);
-      if(!run.terminal){const terminal=connectorTerminal(execution);if(terminal)await this.terminal(run,terminal.status,terminal.error);else await this.terminal(run,'failed','Connector event stream ended without a terminal lifecycle event');}
+      if(!run.terminal){const terminal=connectorTerminal(execution);if(terminal)await this.terminal(run,terminal.status,terminal.error,undefined,terminal.continuationHandle);else await this.terminal(run,'failed','Connector event stream ended without a terminal lifecycle event');}
     }catch(error){if(run.terminal)return;if(error instanceof Error&&error.name==='AbortError'&&(run.stopping||(this.closing&&run.connectorExecutionId)))return;const code=connectorLifecycleErrorCode(error);await this.terminal(run,'failed',connectorRecoveryMessage(code,error),code);}
   }
 
@@ -148,7 +151,9 @@ export class RunExecutor {
         }
       }
       try{await this.dependencies.roomWorkspace?.finalizeRun(persisted.room_id,persisted.id,'cancelled')}catch{/* cancellation remains durable even if capture fails */}
-      await events.emit(persisted.room_id, 'run.status', { runId: persisted.id, status: 'cancelled' });
+      const finished=await runs.finishNonTerminal(persisted.id,'cancelled');
+      if(finished)this.dependencies.events.publishPersisted(finished.roomId,finished.event);
+      await this.dependencies.continuationCleanup?.reconcile();
       return {
         status: 'cancelled',
         adapter: 'persisted_run_recovery',
@@ -268,7 +273,7 @@ export class RunExecutor {
       if (!persona) throw new Error(`Persona ${version.persona_id} not found`);
       if (!run.personaHandle) run.personaHandle = persona.handle;
       const currentMessage=this.dependencies.messages&&run.messageId?await this.dependencies.messages.find(run.roomId,run.messageId):undefined;
-      const input=currentMessage?`${formatHumanMessage(currentMessage)}${text.startsWith(currentMessage.text)?text.slice(currentMessage.text.length):''}`:text;
+      const input=run.continuedFromRunId?text:currentMessage?`${formatHumanMessage(currentMessage)}${text.startsWith(currentMessage.text)?text.slice(currentMessage.text.length):''}`:text;
       let immutableContextInstructions='';
       if(this.dependencies.messages&&run.messageId&&run.refreshContext!==false){
         const context=await this.dependencies.messages.conversationContextForRun(run.roomId,run.personaHandle,run.messageId);run.conversationHistory=context.history;await runs.setContext(run.id,context.history);
@@ -276,7 +281,7 @@ export class RunExecutor {
       }
       const roomPersonas = await personas.list(run.roomId);
       run.recommendedProject??=await runs.recommendedProject(run.id);
-      immutableContextInstructions=await this.projectInstructions(run)+immutableContextInstructions;
+      if(!run.systemPromptSnapshot)immutableContextInstructions=await this.projectInstructions(run)+immutableContextInstructions;
       const sessionId = run.sessionId ?? stableSessionId(run.roomId, run.id);
       run.sessionId = sessionId;
       const preparedWorkspace=await this.dependencies.roomWorkspace?.prepareRun(run.roomId,run.id);
@@ -284,7 +289,8 @@ export class RunExecutor {
       const identityInstructions=`\n\nPlatform entity identity (mandatory invariant):\n- You are the current agent: ${persona.name} (@${run.personaHandle}).\n- The human user is ${human?`${human.displayName} (@${human.handle})`:'the local user'}; this is a separate human entity, not a persona or agent.\n- The remaining personas below are other agents, not the human user.\nThe current message has already been routed to you according to its explicit recipient field. A mention of @${run.personaHandle} addresses you, not a third party.`;
       const participantInstructions=`\n\nOther active agents in the room:\n${roomPersonas.filter(item=>item.handle!==run.personaHandle).map(item=>`- @${item.handle} — ${item.name}`).join('\n')||'- none'}\n\nWhen mentioning an agent, always use the exact @handle from this list. Do not use a bare handle as a mention and do not invent new handles. Never identify the human user as an agent merely because of a mention or the message topic.`;
       const workflowInstructions=await this.workflowInstructions(run);
-      const instructions = `${version.system_prompt}${identityInstructions}${participantInstructions}${immutableContextInstructions}${workflowInstructions}\n\nRespond only as yourself. Do not impersonate other agents or add messages, sections, or signatures on their behalf.\n\nFormat the response as Markdown when it improves readability. Paragraphs, lists, headings, links, tables, and fenced code blocks are allowed. Do not wrap the entire response in one code block and do not use HTML.\n\nEvery image in the response must be stored in the room workspace. Never embed an external image with ![](http://...) or ![](https://...), even if the URL works in a browser. Download it directly to a temporary name inside the workspace; never use /tmp or another external directory. Verify a successful HTTP response, non-zero size, and the actual image format, then atomically rename the temporary file inside the workspace. Do not use sudo. To embed the stored image in the response, use ![Caption](workspace:path/to/file.png). The path is relative to the workspace root; encode spaces and special characters as URI components. PNG, JPEG, WebP, and GIF are allowed, with no more than 10 distinct images per response. Normal clickable links to external pages are allowed.`;
+      const instructions = run.systemPromptSnapshot??`${version.system_prompt}${identityInstructions}${participantInstructions}${immutableContextInstructions}${workflowInstructions}\n\nRespond only as yourself. Do not impersonate other agents or add messages, sections, or signatures on their behalf.\n\nFormat the response as Markdown when it improves readability. Paragraphs, lists, headings, links, tables, and fenced code blocks are allowed. Do not wrap the entire response in one code block and do not use HTML.\n\nEvery image in the response must be stored in the room workspace. Never embed an external image with ![](http://...) or ![](https://...), even if the URL works in a browser. Download it directly to a temporary name inside the workspace; never use /tmp or another external directory. Verify a successful HTTP response, non-zero size, and the actual image format, then atomically rename the temporary file inside the workspace. Do not use sudo. To embed the stored image in the response, use ![Caption](workspace:path/to/file.png). The path is relative to the workspace root; encode spaces and special characters as URI components. PNG, JPEG, WebP, and GIF are allowed, with no more than 10 distinct images per response. Normal clickable links to external pages are allowed.`;
+      if(!run.systemPromptSnapshot){run.systemPromptSnapshot=instructions;await runs.setSystemPromptSnapshot(run.id,instructions);}
       const handle = await runGateway.createRun({
         executionId:run.id,
         harnessInstanceId:run.harnessInstanceId,
@@ -296,6 +302,7 @@ export class RunExecutor {
         instructions,
         conversationHistory: run.conversationHistory,
         model: run.requestedModel,
+        ...(run.continuationHandle?{continuationHandle:run.continuationHandle}:{}),
       });
       const upstreamRunId=handle.id;
       run.upstreamRunId = upstreamRunId;
@@ -353,12 +360,13 @@ export class RunExecutor {
       }
       if(event.type==='request.resolved'&&typeof event.payload.requestId==='string')run.pendingRequests?.delete(event.payload.requestId);
       if(event.type==='run.intervention.updated'&&event.payload.intervention&&typeof event.payload.intervention==='object'){
-        const intervention=event.payload.intervention as {id?:unknown;text?:unknown;status?:unknown};
+        const intervention=event.payload.intervention as {id?:unknown;text?:unknown;status?:unknown;errorCode?:unknown};
         if(intervention.status==='pending'&&typeof intervention.id==='string'&&typeof intervention.text==='string'){run.pendingIntervention={id:intervention.id,text:intervention.text};run.responseText='';}
-        if((intervention.status==='applied'||intervention.status==='failed')&&run.pendingIntervention?.id===intervention.id)run.pendingIntervention=undefined;
+        const pending=run.pendingIntervention;
+        if((intervention.status==='applied'||intervention.status==='failed')&&pending&&pending.id===intervention.id){if(intervention.status==='failed'&&intervention.errorCode==='execution_ended')run.postTurnFallback={id:pending.id,text:pending.text};run.pendingIntervention=undefined;}
       }
     }
-    if(mapping.terminal)await this.terminal(run,mapping.terminal.status,mapping.terminal.error,mapping.terminal.errorCode);
+    if(mapping.terminal)await this.terminal(run,mapping.terminal.status,mapping.terminal.error,mapping.terminal.errorCode,mapping.terminal.continuationHandle);
   }
 
   private async terminal(
@@ -366,6 +374,7 @@ export class RunExecutor {
     status: Extract<RunStatus, 'completed' | 'failed' | 'cancelled'>,
     error?: string,
     errorCode?:string,
+    continuationHandle?:string,
   ) {
     if (run.terminal) return;
     const { activeRuns, events, runs } = this.dependencies;
@@ -393,15 +402,22 @@ export class RunExecutor {
     this.clearDeadline(run.id);
     run.pendingRequests?.clear();
     if(this.dependencies.roomWorkspace){try{const embeds=await this.dependencies.roomWorkspace.resolveRunEmbeds(run.roomId,run.id,responseText);await events.emit(run.roomId,'run.embeds',{runId:run.id,embeds})}catch{/* an embed rendering failure must not strand a durably finalized run */}}
-    if(run.connectorExecutionId){const finished=await runs.finishNonTerminal(run.id,status,error,errorCode);if(!finished){activeRuns.remove(run.id);this.stopTasks.delete(run.id);return;}events.publishPersisted(finished.roomId,finished.event);}
+    let continuation:Parameters<RunRepository['finishNonTerminal']>[4];
+    if(status==='completed'&&continuationHandle&&this.dependencies.connector){
+      try{const instances=await this.dependencies.connector.instances(),instance=instances.instances.find(item=>item.id===run.harnessInstanceId&&item.type===run.harnessType);if(instance&&instance.status!=='unavailable'&&instance.postTurnContinuation?.mode==='native_session')continuation={handle:continuationHandle,retention:instance.postTurnContinuation.retention};}catch{/* A completed run remains valid when continuation discovery is unavailable. */}
+    }
+    if(run.connectorExecutionId||run.continuedFromRunId){const finished=await runs.finishNonTerminal(run.id,status,error,errorCode,continuation);if(!finished){activeRuns.remove(run.id);this.stopTasks.delete(run.id);return;}events.publishPersisted(finished.roomId,finished.event);}
     else await events.emit(run.roomId,'run.status',{runId:run.id,status,...(error?{error}:{}),...(errorCode?{errorCode}:{})});
     if (status === 'completed') {
       const slotId = await runs.selectCompletedAttempt(run.id);
       if (slotId) {
         await events.emit(run.roomId, 'run.selected', { responseSlotId: slotId, runId: run.id });
+        await this.dependencies.continuationCleanup?.selected(run.roomId,run.id);
       }
     }
+    if(status==='completed'&&run.postTurnFallback&&this.dependencies.postTurnFallback){try{await this.dependencies.postTurnFallback(run.id,{intervention_id:run.postTurnFallback.id,text:run.postTurnFallback.text});}catch{/* The source completion remains authoritative if the race fallback is no longer eligible. */}}
     activeRuns.remove(run.id);this.stopTasks.delete(run.id);
+    await this.dependencies.continuationCleanup?.reconcile();
     this.logger.info({runId:run.id,roomId:run.roomId,correlationId:run.correlationId,upstreamRunId:run.upstreamRunId,transition:status,...(error?{error}: {})},'Run reached terminal state');
   }
 
@@ -437,6 +453,7 @@ export class RunExecutor {
     if(run.upstreamRunId){try{await this.stopUpstream(run);upstreamStopped=true;}catch{/* timeout remains durably terminal even if upstream stop fails */}}
     try{await this.dependencies.roomWorkspace?.finalizeRun(run.roomId,run.id,'failed');}catch{/* timeout remains durably terminal even if workspace capture fails */}
     this.dependencies.activeRuns.remove(run.id);this.stopTasks.delete(run.id);
+    await this.dependencies.continuationCleanup?.reconcile();
     this.logger.warn({runId:run.id,roomId:run.roomId,correlationId:run.correlationId,upstreamRunId:run.upstreamRunId,transition:'failed',errorCode,upstreamStopped},'Run execution deadline exceeded');
   }
 
@@ -464,7 +481,7 @@ function validElicitationAnswer(value:unknown):value is import('@agenvyl/contrac
 const isPlanRun=(run:RunContext)=>run.executionProfile.workflowMode==='plan';
 function jsonValue(value:unknown,depth:number):boolean{if(depth>12)return false;if(value===null||typeof value==='string'||typeof value==='boolean')return true;if(typeof value==='number')return Number.isFinite(value);if(Array.isArray(value))return value.length<=256&&value.every(item=>jsonValue(item,depth+1));if(!value||typeof value!=='object')return false;const values=Object.values(value);return values.length<=256&&values.every(item=>jsonValue(item,depth+1));}
 
-function connectorTerminal(execution:ExecutionSnapshot):{status:'completed'|'failed'|'cancelled';error?:string}|undefined{if(execution.status==='completed')return{status:'completed'};if(execution.status==='cancelled')return{status:'cancelled'};if(execution.status==='failed')return{status:'failed',...(execution.error?.message?{error:execution.error.message}:{})};return undefined;}
+function connectorTerminal(execution:ExecutionSnapshot):{status:'completed'|'failed'|'cancelled';error?:string;continuationHandle?:string}|undefined{if(execution.status==='completed')return{status:'completed',...(execution.continuation?{continuationHandle:execution.continuation.handle}:{})};if(execution.status==='cancelled')return{status:'cancelled'};if(execution.status==='failed')return{status:'failed',...(execution.error?.message?{error:execution.error.message}:{})};return undefined;}
 
 function connectorRecoveryMessage(code:ConnectorLifecycleErrorCode,error:unknown){if(code==='connector_replay_unavailable')return'Connector events are no longer replayable';if(code==='connector_execution_lost')return'Connector execution is no longer available';if(code==='connector_invalid_response')return'Connector returned an invalid recovery stream';if(code==='connector_command_rejected')return'Connector rejected the recovery command';return error instanceof Error?error.message:'Connector is unavailable during execution recovery';}
 function delay(ms:number){return new Promise<void>(resolve=>setTimeout(resolve,ms));}

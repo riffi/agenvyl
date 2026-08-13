@@ -81,7 +81,7 @@ export class RoomRepository {
             toMessage(row, attachmentMap.get(text(row.id)) ?? []),
           );
         const runRows = messageIds.length
-          ? await tx`SELECT r.id,r.message_id,r.persona_handle,r.requested_model,r.harness_instance_id,r.harness_type,r.adapter_generation,r.model_id,r.execution_profile,r.project_id_snapshot,r.project_name_snapshot,r.project_path_snapshot,r.project_availability,r.status,r.upstream_status,r.usage,r.text,r.reasoning,r.error,r.error_code,r.retry_of_run_id,r.response_slot_id,r.connector_execution_id,r.connector_epoch,r.connector_cursor,(ROW_NUMBER() OVER(PARTITION BY r.response_slot_id ORDER BY r.created_at,r.id))::int attempt_number,r.created_at,w.base_head,w.result_head,w.checkpoint_sha,w.capture_status workspace_capture_status,w.errors workspace_errors,w.updated_at workspace_updated_at FROM agent_runs r LEFT JOIN run_workspace_results w ON w.run_id=r.id WHERE r.message_id=ANY(${messageIds}) ORDER BY r.created_at,r.id`
+          ? await tx`SELECT r.id,r.message_id,r.persona_handle,r.requested_model,r.harness_instance_id,r.harness_type,r.adapter_generation,r.model_id,r.execution_profile,r.project_id_snapshot,r.project_name_snapshot,r.project_path_snapshot,r.project_availability,r.status,r.upstream_status,r.usage,r.text,r.reasoning,r.error,r.error_code,r.retry_of_run_id,r.continued_from_run_id,r.continuation_instruction,r.continuation_author,r.continuation_retention,r.response_slot_id,r.connector_execution_id,r.connector_epoch,r.connector_cursor,(ROW_NUMBER() OVER(PARTITION BY r.response_slot_id ORDER BY r.created_at,r.id))::int attempt_number,r.created_at,w.base_head,w.result_head,w.checkpoint_sha,w.capture_status workspace_capture_status,w.errors workspace_errors,w.updated_at workspace_updated_at FROM agent_runs r LEFT JOIN run_workspace_results w ON w.run_id=r.id WHERE r.message_id=ANY(${messageIds}) ORDER BY r.created_at,r.id`
           : [];
         const runIds = runRows.map((row) => text(row.id));
         const eventRows = runIds.length
@@ -140,7 +140,7 @@ export class RoomRepository {
             const intervention=payload.intervention as Record<string,unknown>;
             if(typeof intervention.id==='string'&&typeof intervention.text==='string'&&['pending','applied','failed'].includes(String(intervention.status))){
               const prior=extra.interventions.get(intervention.id),precedingText=typeof intervention.precedingText==='string'?intervention.precedingText:typeof intervention.supersededText==='string'?intervention.supersededText:undefined,author=isHumanAuthor(intervention.author)?intervention.author:undefined;
-              extra.interventions.set(intervention.id,{...prior,id:intervention.id,text:intervention.text,status:intervention.status as RunIntervention['status'],...(precedingText!==undefined?{precedingText}:{}),...(author?{author}:{}),...(typeof intervention.createdAt==='string'?{createdAt:intervention.createdAt}:{}),...(typeof intervention.error==='string'?{error:intervention.error}:{})});
+              extra.interventions.set(intervention.id,{...prior,id:intervention.id,text:intervention.text,status:intervention.status as RunIntervention['status'],...(precedingText!==undefined?{precedingText}:{}),...(author?{author}:{}),...(typeof intervention.createdAt==='string'?{createdAt:intervention.createdAt}:{}),...(typeof intervention.error==='string'?{error:intervention.error}:{}),...(typeof intervention.errorCode==='string'?{errorCode:intervention.errorCode}:{})});
             }
           }
           extras.set(runId, extra);

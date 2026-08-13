@@ -326,6 +326,15 @@ describe('RunExecutor', () => {
     await executor.shutdown();await database.close();
   });
 
+  it('moves an intervention completion race to post-turn with the same id',async()=>{
+    const interventionId='c226f522-d864-4f1c-a53f-25d22dc9109f',snapshot={...connectorContractFixtures.execution,cursor:2,pendingRequests:[]},streamed=[connectorEvent(3,'execution.intervention.accepted',{interventionId,text:'Focus'}),connectorEvent(4,'execution.intervention.failed',{interventionId,text:'Focus',error:{code:'execution_ended',message:'Turn ended'}}),connectorEvent(5,'execution.completed',{continuation:{handle:'opaque'}})],connector=executionClient(snapshot,async function*(){yield* streamed;}),transport=new ConnectorRunAdapter(connector),fallback=vi.fn(async()=>undefined);
+    vi.mocked(connector.instances).mockResolvedValue({...connectorContractFixtures.instances,instances:[{id:'local-hermes',type:'hermes',status:'healthy',capabilities:[],postTurnContinuation:{mode:'native_session',durability:'connector_restart',retention:'explicit_release'}}]});
+    const{executor,registry,database,personas,messages}=await fixture(vi.fn<typeof fetch>(),4,connector,transport,undefined,undefined,fallback),persona=(await personas.find('persona-architect'))!,round=await messages.createRound('demo-room','hello',[persona],profiles([persona])),runId=round.runs[0].id;
+    registry.add(run(runId,round.message.id));executor.start(runId,'hello');await vi.waitFor(()=>expect(registry.get(runId)).toBeUndefined());
+    expect(fallback).toHaveBeenCalledWith(runId,{intervention_id:interventionId,text:'Focus'});
+    await executor.shutdown();await database.close();
+  });
+
   it('persists a classified Connector terminal error in the database and run.status',async()=>{
     const snapshot={...connectorContractFixtures.execution,cursor:2,pendingRequests:[]};
     const streamed=[connectorEvent(3,'output.text.delta',{text:'Checking the requested file. '}),connectorEvent(4,'execution.failed',{error:{code:'external_directory_denied',message:'External directory access was denied'}})];
@@ -367,13 +376,13 @@ describe('RunExecutor', () => {
   });
 });
 
-async function fixture(fetchImplementation: typeof fetch,concurrency=4,connector?:ConnectorLifecycle,execution?:RunGateway&RunEventStream&Partial<RunRecovery>,runTimeoutMs?:number,recoveryHealthDelayMs?:number) {
+async function fixture(fetchImplementation: typeof fetch,concurrency=4,connector?:ConnectorLifecycle,execution?:RunGateway&RunEventStream&Partial<RunRecovery>,runTimeoutMs?:number,recoveryHealthDelayMs?:number,postTurnFallback?: (runId:string,input:{intervention_id:string;text:string})=>Promise<unknown>) {
   const {database,personas,runs,roomEvents,messages}=await createRepositories(testDatabaseUrl('run_executor'));
   const events = new RoomEventService(roomEvents,new RoomEventBus());
   const registry = new ActiveRunRegistry();
   const transport = new FetchRunTransport(fetchImplementation);
   const connectorExecution=execution&&'reattach'in execution?execution as RunGateway&RunEventStream&RunRecovery:undefined;
-  const executor = new RunExecutor({ personas,runs,events,runGateway:execution??transport,runEvents:execution??transport,connectorExecution,activeRuns:registry,concurrency,runTimeoutMs,messages,connector,recoveryHealthDelayMs });
+  const executor = new RunExecutor({ personas,runs,events,runGateway:execution??transport,runEvents:execution??transport,connectorExecution,activeRuns:registry,concurrency,runTimeoutMs,messages,connector:connector as never,recoveryHealthDelayMs,postTurnFallback });
   return { executor, events, registry, database,personas,messages,runs };
 }
 

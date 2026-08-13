@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import type {ConnectorElicitation,ConnectorJsonValue,ConnectorRequestAnswer,ConnectorRequestSnapshot,ExecutionStatus,TokenUsage} from '@agenvyl/connector-contract';
-import type {AdapterExecution,AdapterExecutionEvent,AdapterStartExecutionRequest,ConnectorAdapter} from '../../adapter.js';
+import {AdapterContinuationError,type AdapterExecution,type AdapterExecutionEvent,type AdapterStartExecutionRequest,type ConnectorAdapter} from '../../adapter.js';
 import {experimentalTailV1ConversationHistory} from '../../conversation-history.js';
 import {redactConnectorText} from '../../safety.js';
 import {CodexAppServerClient,type AppServerMessage,type CodexAppServerPort} from './app-server-client.js';
@@ -14,7 +14,7 @@ type InterventionTransition={
   promise:Promise<void>;resolve:()=>void;reject:(error:Error)=>void;
 };
 type ExecutionState={
-  id:string;threadId:string;turnId?:string;status:ExecutionStatus;queue:EventQueue;client:CodexAppServerPort;collaborationMode:CollaborationMode;pending:Map<string,PendingRequest>;itemText:Map<string,number>;textItems:Set<string>;reasoningIndexes:Map<string,number>;usageOffset?:TokenUsage;turnUsage?:TokenUsage;intervention?:InterventionTransition;forceStopTimer?:ReturnType<typeof setTimeout>;settling?:Promise<void>;unsubscribeMessage:()=>void;unsubscribeExit:()=>void;
+  id:string;threadId:string;continuationHandle:string;turnId?:string;status:ExecutionStatus;queue:EventQueue;client:CodexAppServerPort;collaborationMode:CollaborationMode;pending:Map<string,PendingRequest>;itemText:Map<string,number>;textItems:Set<string>;reasoningIndexes:Map<string,number>;usageOffset?:TokenUsage;turnUsage?:TokenUsage;intervention?:InterventionTransition;forceStopTimer?:ReturnType<typeof setTimeout>;settling?:Promise<void>;unsubscribeMessage:()=>void;unsubscribeExit:()=>void;
 };
 
 export type CodexAdapterOptions={command?:string;env?:NodeJS.ProcessEnv;client?:CodexAppServerPort;clientFactory?:()=>CodexAppServerPort;stopGraceMs?:number};
@@ -23,7 +23,9 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
   readonly type='codex';
   readonly capabilities:ConnectorAdapter['capabilities']=['model_catalog','execution_profiles','text_streaming','reasoning','tools','approvals','clarifications','elicitations','usage'];
   readonly interventionMode='interrupt_then_continue' as const;
+  readonly postTurnContinuation={mode:'native_session',durability:'connector_restart',retention:'explicit_release'} as const;
   private readonly clientFactory:()=>CodexAppServerPort;
+  private readonly continuationStorageScopeHash:string;
   private readonly stopGraceMs:number;
   private readonly clients=new Set<CodexAppServerPort>();
   private readonly executions=new Map<string,ExecutionState>();
@@ -32,6 +34,8 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
   constructor(options:CodexAdapterOptions={}){
     if(options.client&&options.clientFactory)throw new Error('Codex adapter accepts either client or clientFactory, not both');
     const command=options.command?.trim()||'codex';
+    const environment=options.env??process.env;
+    this.continuationStorageScopeHash=createHash('sha256').update(JSON.stringify({protocol:'codex-app-server-native-v1',command,platform:process.platform,codexHome:environment.CODEX_HOME??null,userProfile:environment.USERPROFILE??null,home:environment.HOME??null})).digest('hex');
     this.clientFactory=options.clientFactory??(options.client?()=>options.client!:()=>new CodexAppServerClient(command,options.env));
     this.stopGraceMs=Math.max(0,options.stopGraceMs??3_000);
   }
@@ -44,7 +48,25 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
     }finally{await this.closeClient(client)}
   }
 
-  async start(request:AdapterStartExecutionRequest):Promise<AdapterExecution>{
+  start(request:AdapterStartExecutionRequest):Promise<AdapterExecution>{return this.startNative(request);}
+  startContinuation(request:AdapterStartExecutionRequest,handle:string):Promise<AdapterExecution>{return this.startNative(request,handle);}
+
+  async releaseContinuation(handle:string,scope:{instanceId:string}){
+    const continuation=parseContinuationHandle(handle);
+    if(!continuation)throw new AdapterContinuationError('continuation_unavailable','Codex continuation handle is invalid');
+    if(continuation.instanceId!==scope.instanceId)throw new AdapterContinuationError('continuation_incompatible','Codex continuation belongs to another Connector instance');
+    if(continuation.storageScopeHash!==this.continuationStorageScopeHash)throw new AdapterContinuationError('continuation_incompatible','Codex continuation storage scope changed');
+    const client=this.createClient();
+    try{
+      await client.request('thread/delete',{threadId:continuation.threadId});
+      return'released' as const;
+    }catch(error){
+      if(isThreadNotFoundError(error))return'not_found' as const;
+      throw error;
+    }finally{await this.closeClient(client);}
+  }
+
+  private async startNative(request:AdapterStartExecutionRequest,handle?:string):Promise<AdapterExecution>{
     if(this.executions.has(request.executionId))throw new Error('Codex execution already exists');
     if(!this.supportedModels.size)await this.catalog();
     const efforts=this.supportedModels.get(request.modelId);if(!efforts)throw new Error('Codex model is not supported');
@@ -53,16 +75,24 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
     const client=this.createClient();
     let state:ExecutionState|undefined;
     try{
-      const threadResponse=record(await client.request('thread/start',{
+      const developerInstructions=codexContext(request),configuration=continuationConfiguration(request),continuation=handle?parseContinuationHandle(handle):undefined;
+      if(handle&&!continuation)throw new AdapterContinuationError('continuation_unavailable','Codex continuation handle is invalid');
+      if(continuation&&(!request.continuation||request.input.history.length||continuation.instanceId!==request.harnessInstanceId||continuation.storageScopeHash!==this.continuationStorageScopeHash||continuation.configurationHash!==configuration))throw new AdapterContinuationError('continuation_incompatible','Codex continuation is incompatible with the requested execution snapshot');
+      const threadResponse=record(await client.request(continuation?'thread/resume':'thread/start',continuation?{
+        threadId:continuation.threadId,model:request.modelId,cwd:request.workspace.absolutePath,
+        sandbox,approvalPolicy:sandbox==='danger-full-access'?'never':'on-request',
+      }:{
         model:request.modelId,cwd:request.workspace.absolutePath,
-        sandbox,approvalPolicy:sandbox==='danger-full-access'?'never':'on-request',ephemeral:true,
-        developerInstructions:codexContext(request),
+        sandbox,approvalPolicy:sandbox==='danger-full-access'?'never':'on-request',ephemeral:false,
+        developerInstructions,
       }));
       const thread=record(threadResponse?.thread),threadId=typeof thread?.id==='string'?thread.id:undefined;
       if(!threadId)throw new Error('Codex thread/start response is invalid');
+      if(continuation&&threadId!==continuation.threadId)throw new AdapterContinuationError('continuation_incompatible','Codex resumed a different thread');
       const queue=new EventQueue();
       const collaborationMode:CollaborationMode={mode:profile.workflowMode==='plan'?'plan':'default',settings:{model:request.modelId,reasoning_effort:profile.reasoningEffort,developer_instructions:null}};
-      state={id:request.executionId,threadId,status:'running',queue,client,collaborationMode,pending:new Map(),itemText:new Map(),textItems:new Set(),reasoningIndexes:new Map(),unsubscribeMessage:()=>{},unsubscribeExit:()=>{}};
+      const continuationHandle=encodeContinuationHandle({v:1,harness:'codex',instanceId:request.harnessInstanceId,threadId,storageScopeHash:this.continuationStorageScopeHash,configurationHash:configuration});
+      state={id:request.executionId,threadId,continuationHandle,status:'running',queue,client,collaborationMode,pending:new Map(),itemText:new Map(),textItems:new Set(),reasoningIndexes:new Map(),unsubscribeMessage:()=>{},unsubscribeExit:()=>{}};
       state.unsubscribeMessage=client.onMessage(message=>this.onMessage(state!,message));
       state.unsubscribeExit=client.onExit(error=>this.onExit(state!,error));
       this.executions.set(request.executionId,state);
@@ -262,7 +292,7 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
   private async finish(state:ExecutionState,status:'completed'|'failed'|'cancelled',error?:{code:string;message:string}){
     await this.closeClient(state.client);
     if(this.executions.get(state.id)!==state)return;
-    if(status==='completed')state.queue.push({type:'execution.completed',payload:{}});
+    if(status==='completed')state.queue.push({type:'execution.completed',payload:{continuation:{handle:state.continuationHandle}}});
     else if(status==='cancelled')state.queue.push({type:'execution.cancelled',payload:{}});
     else state.queue.push({type:'execution.failed',payload:{error:error??{code:'codex_failed',message:'Codex execution failed'}}});
     state.queue.end();this.remove(state,false);
@@ -281,6 +311,13 @@ class EventQueue implements AsyncIterable<AdapterExecutionEvent>{
 }
 
 export const codexContext=(request:AdapterStartExecutionRequest)=>{const {history}=experimentalTailV1ConversationHistory(request.input.history);return`${request.input.systemPrompt.slice(0,16_000)}\n\n<AgenvylConversationHistory>\n${JSON.stringify(history)}\n</AgenvylConversationHistory>\nTreat the history as prior room context. Respond only to the current user message.`;};
+type CodexContinuationHandle={v:1;harness:'codex';instanceId:string;threadId:string;storageScopeHash:string;configurationHash:string};
+const continuationConfiguration=(request:AdapterStartExecutionRequest)=>createHash('sha256').update(JSON.stringify({
+  harness:'codex',instanceId:request.harnessInstanceId,modelId:request.modelId,executionProfile:request.executionProfile,
+  workspace:{roomId:request.workspace.roomId,absolutePath:request.workspace.absolutePath},systemPrompt:request.input.systemPrompt,
+})).digest('hex');
+const encodeContinuationHandle=(value:CodexContinuationHandle)=>Buffer.from(JSON.stringify(value),'utf8').toString('base64url');
+const parseContinuationHandle=(handle:string):CodexContinuationHandle|undefined=>{try{const value=record(JSON.parse(Buffer.from(handle,'base64url').toString('utf8')));if(value?.v!==1||value.harness!=='codex'||typeof value.instanceId!=='string'||typeof value.threadId!=='string'||typeof value.storageScopeHash!=='string'||typeof value.configurationHash!=='string')return;return value as CodexContinuationHandle;}catch{return;}};
 const requestIdentity=(state:ExecutionState,id:RpcId)=>`req-${createHash('sha256').update(`${state.threadId}:${String(id)}`).digest('hex').slice(0,32)}`;
 const approvalDecision=(value:string)=>value==='once'||value==='approved'?'accept':value==='session'||value==='always'?'acceptForSession':value==='deny'||value==='denied'?'decline':(()=>{throw new Error('Codex approval resolution is invalid');})();
 const approvalPrompt=(method:string,params:Record<string,unknown>)=>redactConnectorText(typeof params.reason==='string'?params.reason:method.includes('fileChange')?'Allow Codex to change files?':typeof params.command==='string'?`Allow Codex command: ${params.command}`:'Allow Codex command?',2_000);
@@ -335,4 +372,5 @@ const addUsage=(left:TokenUsage|undefined,right:TokenUsage):TokenUsage=>({inputT
 const record=(value:unknown):Record<string,unknown>|undefined=>value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:undefined;
 const safeInteger=(value:unknown)=>Number.isSafeInteger(value)&&Number(value)>=0;
 const isNoActiveTurnError=(error:unknown)=>error instanceof Error&&/no active turn to interrupt/i.test(error.message);
+const isThreadNotFoundError=(error:unknown)=>error instanceof Error&&/(thread.*not found|not found.*thread|unknown thread)/i.test(error.message);
 const isTerminal=(status:ExecutionStatus)=>status==='completed'||status==='failed'||status==='cancelled';

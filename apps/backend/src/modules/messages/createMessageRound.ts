@@ -14,6 +14,7 @@ import type {
 } from "@agenvyl/connector-contract";
 import type {RunExecutionProfileSnapshot,WorkflowMode} from "@agenvyl/contracts";
 import { resolveExecutionProfile } from "./executionProfile.js";
+import type {RunContinuationCleanupService} from '../runs/RunContinuationCleanupService.js';
 
 export class CreateMessageRound {
   constructor(
@@ -36,6 +37,7 @@ export class CreateMessageRound {
       activeRuns: ActiveRunRegistry;
       runExecutor: RunExecutor;
       roomWorkspace?: RoomWorkspaceService;
+      continuationCleanup?:RunContinuationCleanupService;
     },
   ) {}
 
@@ -203,6 +205,7 @@ export class CreateMessageRound {
     await Promise.all(round.runs.map(item=>personas.setEffectiveModel(item.persona.id,effectiveModels.get(item.persona.id)??null)));
     for (const event of round.events)
       events.publishPersisted(command.roomId, event);
+    await this.dependencies.continuationCleanup?.invalidateRoom(command.roomId);
     for (const item of round.runs)
       activeRuns.add({
         id: item.id,

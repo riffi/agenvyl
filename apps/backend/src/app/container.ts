@@ -19,6 +19,7 @@ import {SetupService} from '../modules/setup/SetupService.js';
 import {ProjectsService} from '../modules/projects/projects.service.js';
 import {RunInterventionService} from '../modules/runs/RunInterventionService.js';
 import {PreviewBundleStore} from '../modules/workspace/PreviewBundleStore.js';
+import {RunContinuationCleanupService} from '../modules/runs/RunContinuationCleanupService.js';
 
 export async function createAppContainer(config: AppConfig, fetchImplementation?: typeof fetch,logger?:FastifyBaseLogger,legacySeed?:boolean) {
   const {database,personas,userProfile,personaGroups,projects,rooms,roomEvents,messages,runs,workspace,runWorkspaces}=await createRepositories(config.databaseUrl,{legacySeed:legacySeed??process.env.NODE_ENV==='test'});
@@ -37,9 +38,12 @@ export async function createAppContainer(config: AppConfig, fetchImplementation?
   const previewBundles=new PreviewBundleStore(config.artifactRoot,config.artifactMaxBytes);
   const roomWorkspace=new RoomWorkspaceService(rooms,workspace,runWorkspaces,events,activeRuns,workspaceRoot,workspaceAgentRoot,config.workspaceMaxFileBytes,logger,previewBundles);
 
-  const runExecutor=new RunExecutor({ personas, runs, events, runGateway:connectorRuns, runEvents:connectorRuns, connectorExecution:connectorRuns,activeRuns,concurrency:config.runConcurrency,runTimeoutMs:config.runTimeoutMs,logger,roomWorkspace,messages,connector });
-  const runInterventions=new RunInterventionService({runs,activeRuns,gateway:connectorRuns});
+  const continuationCleanup=new RunContinuationCleanupService({runs,gateway:connectorRuns});
+  let runInterventions:RunInterventionService;
+  const runExecutor=new RunExecutor({ personas, runs, events, runGateway:connectorRuns, runEvents:connectorRuns, connectorExecution:connectorRuns,activeRuns,concurrency:config.runConcurrency,runTimeoutMs:config.runTimeoutMs,logger,roomWorkspace,messages,connector,continuationCleanup,postTurnFallback:(runId,input)=>runInterventions.create(runId,input) });
+  runInterventions=new RunInterventionService({runs,activeRuns,gateway:connectorRuns,harnesses:harnessCatalogService,events,executor:runExecutor,cleanup:continuationCleanup});
   await runExecutor.reconcilePersistedRuns();
+  await continuationCleanup.reconcile();
   await roomWorkspace.recoverRuns();
   return {
     database,
@@ -55,8 +59,8 @@ export async function createAppContainer(config: AppConfig, fetchImplementation?
     personasService:new PersonasService(personas,rooms,harnessCatalogService),
     userProfileService:new UserProfileService(userProfile),
     personaGroupsService:new PersonaGroupsService(personaGroups),
-    createMessageRound:new CreateMessageRound({personas,rooms,messages,events,harnesses:harnessCatalogService,activeRuns,runExecutor,roomWorkspace}),
-    runsService:new RunsService({runs,events,activeRuns,executor:runExecutor,interventions:runInterventions}),
+    createMessageRound:new CreateMessageRound({personas,rooms,messages,events,harnesses:harnessCatalogService,activeRuns,runExecutor,roomWorkspace,continuationCleanup}),
+    runsService:new RunsService({runs,events,activeRuns,executor:runExecutor,interventions:runInterventions,continuationCleanup}),
     harnessCatalogService,
     roomWorkspace,
     setupService:new SetupService(database,connector,workspaceRoot,harnessCatalogService,{logger,roomWorkspace}),

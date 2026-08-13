@@ -25,6 +25,7 @@ export class ConnectorRunAdapter implements RunGateway,RunEventStream,RunRecover
       },
       workspace:{roomId:input.workspace.roomId,relativePath:input.workspace.relativePath},
       input:{systemPrompt:input.instructions,history:input.conversationHistory??[],message:input.input},
+      ...(input.continuationHandle?{continuation:{handle:input.continuationHandle}}:{}),
     });
     this.remember(execution);
     return{id:execution.executionId,checkpoint:checkpoint(execution),harnessType:execution.harnessType,adapterGeneration:execution.adapterGeneration};
@@ -67,6 +68,8 @@ export class ConnectorRunAdapter implements RunGateway,RunEventStream,RunRecover
     const result=await this.connector.intervene(executionId,intervention);
     return{checkpoint:this.controlCheckpoint(result.execution),status:result.intervention.status};
   }
+
+  releaseContinuation(instanceId:string,handle:string){return this.connector.releaseContinuation(instanceId,handle);}
 
   async *stream(executionId:string,localRunId:string,signal:AbortSignal):AsyncIterable<RunEventMapping>{
     const state=this.executions.get(executionId);
@@ -112,8 +115,8 @@ function mapConnectorEvent(localRunId:string,event:ConnectorExecutionEvent):RunE
     case'request.resolved':return{events:[{type:'request.resolved',payload:{runId:localRunId,requestId:event.payload.requestId,resolution:event.payload.outcome}}]};
     case'execution.intervention.accepted':return{events:[{type:'run.intervention.updated',payload:{runId:localRunId,intervention:{id:event.payload.interventionId,text:event.payload.text,status:'pending'}}}]};
     case'execution.intervention.applied':return{events:[{type:'run.intervention.updated',payload:{runId:localRunId,intervention:{id:event.payload.interventionId,text:event.payload.text,status:'applied'}}}]};
-    case'execution.intervention.failed':return{events:[{type:'run.intervention.updated',payload:{runId:localRunId,intervention:{id:event.payload.interventionId,text:event.payload.text,status:'failed',error:event.payload.error.message}}}]};
-    case'execution.completed':return{events:[],terminal:{status:'completed'}};
+    case'execution.intervention.failed':return{events:[{type:'run.intervention.updated',payload:{runId:localRunId,intervention:{id:event.payload.interventionId,text:event.payload.text,status:'failed',error:event.payload.error.message,errorCode:event.payload.error.code}}}]};
+    case'execution.completed':return{events:[],terminal:{status:'completed',...(event.payload.continuation?{continuationHandle:event.payload.continuation.handle}:{})}};
     case'execution.cancelled':return{events:[],terminal:{status:'cancelled'}};
     case'execution.failed':return{events:[],terminal:{status:'failed',error:event.payload.error.message,errorCode:event.payload.error.code}};
   }

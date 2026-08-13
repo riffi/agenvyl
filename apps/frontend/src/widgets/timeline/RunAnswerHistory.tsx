@@ -8,6 +8,7 @@ import styles from './Timeline.module.css';
 
 type Props={
   run:Run;
+  chapters?:Run[];
   fallbackAuthor:HumanAuthorSnapshot;
   personas:Persona[];
   onMentionPersona:(handle:string)=>void;
@@ -21,6 +22,7 @@ export const answerHistoryText=(run:Run)=>[
   ...run.interventions.flatMap(intervention=>precedingText(intervention)??''),
   run.text,
 ].join('\n\n');
+export const continuationHistoryText=(runs:Run[])=>runs.map(run=>`${run.continuationInstruction??''}\n\n${answerHistoryText(run)}`).join('\n\n');
 
 const statusView=(intervention:RunIntervention)=>intervention.status==='pending'
   ? {label:'Sending…',icon:<LoaderCircle aria-hidden="true"/>}
@@ -42,11 +44,11 @@ const InstructionMessage=({intervention,fallbackAuthor}:{intervention:RunInterve
   </section>;
 };
 
-export const RunAnswerHistory=({run,fallbackAuthor,personas,onMentionPersona,openWorkspace,collapsed}:Props)=>{
+const AnswerChapter=({run,fallbackAuthor,personas,onMentionPersona,openWorkspace}:{run:Run;fallbackAuthor:HumanAuthorSnapshot;personas:Persona[];onMentionPersona:(handle:string)=>void;openWorkspace:(attachment:WorkspaceAttachment)=>void})=>{
   const anchored=run.interventions.filter(intervention=>precedingText(intervention)!==undefined),legacyUnanchored=run.interventions.filter(intervention=>precedingText(intervention)===undefined);
   const currentText=run.text||(run.status==='queued'?'Waiting for an available slot…':run.status==='streaming'?'Analyzing…':'');
   const cursorAfterCurrent=run.status==='streaming'&&!legacyUnanchored.length;
-  return <div className={`${styles['answer-history']} ${collapsed?styles['answer-collapsed']:''}`}>
+  return <>
     {anchored.map(intervention=><div className={styles['answer-chapter']} key={intervention.id}>
       {precedingText(intervention)&&<div className={styles.answer}><MarkdownAnswer text={precedingText(intervention)!} run={run} personas={personas} onMentionPersona={onMentionPersona} openWorkspace={openWorkspace}/></div>}
       <InstructionMessage intervention={intervention} fallbackAuthor={fallbackAuthor}/>
@@ -57,5 +59,14 @@ export const RunAnswerHistory=({run,fallbackAuthor,personas,onMentionPersona,ope
     </div>}
     {legacyUnanchored.map(intervention=><InstructionMessage key={intervention.id} intervention={intervention} fallbackAuthor={fallbackAuthor}/>)}
     {run.status==='streaming'&&legacyUnanchored.length>0&&<div className={styles.answer}><i className={styles.cursor}/></div>}
+  </>;
+};
+
+export const RunAnswerHistory=({run,chapters=[run],fallbackAuthor,personas,onMentionPersona,openWorkspace,collapsed}:Props)=>{
+  return <div className={`${styles['answer-history']} ${collapsed?styles['answer-collapsed']:''}`}>
+    {chapters.map((chapter,index)=><div className={styles['answer-chapter']} key={chapter.id}>
+      {index>0&&chapter.continuationInstruction&&<InstructionMessage intervention={{id:`continuation-${chapter.id}`,text:chapter.continuationInstruction,status:['failed','cancelled'].includes(chapter.status)?'failed':['completed'].includes(chapter.status)?'applied':'pending',...(chapter.continuationAuthor?{author:chapter.continuationAuthor}:{}),...(chapter.error?{error:chapter.error}:{})}} fallbackAuthor={fallbackAuthor}/>}
+      <AnswerChapter run={chapter} fallbackAuthor={fallbackAuthor} personas={personas} onMentionPersona={onMentionPersona} openWorkspace={openWorkspace}/>
+    </div>)}
   </div>;
 };
