@@ -24,16 +24,16 @@ export const answerHistoryText=(run:Run)=>[
 ].join('\n\n');
 export const continuationHistoryText=(runs:Run[])=>runs.map(run=>`${run.continuationInstruction??''}\n\n${answerHistoryText(run)}`).join('\n\n');
 
-const statusView=(intervention:RunIntervention)=>intervention.status==='pending'
+const statusView=(intervention:RunIntervention,appliedLabel='Applied')=>intervention.status==='pending'
   ? {label:'Sending…',icon:<LoaderCircle aria-hidden="true"/>}
   : intervention.status==='applied'
-    ? {label:'Applied',icon:<Check aria-hidden="true"/>}
+    ? {label:appliedLabel,icon:<Check aria-hidden="true"/>}
     : {label:'Failed',icon:<CircleX aria-hidden="true"/>};
 
 const timeLabel=(createdAt:string|undefined)=>createdAt?new Date(createdAt).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'}):undefined;
 
-const InstructionMessage=({intervention,fallbackAuthor}:{intervention:RunIntervention;fallbackAuthor:HumanAuthorSnapshot})=>{
-  const author=intervention.author??fallbackAuthor,status=statusView(intervention),time=timeLabel(intervention.createdAt);
+const InstructionMessage=({intervention,fallbackAuthor,appliedLabel}:{intervention:RunIntervention;fallbackAuthor:HumanAuthorSnapshot;appliedLabel?:string})=>{
+  const author=intervention.author??fallbackAuthor,status=statusView(intervention,appliedLabel),time=timeLabel(intervention.createdAt);
   return <section className={`${styles['instruction-message']} ${styles[`instruction-${intervention.status}`]}`} aria-label={`Instruction from ${author.displayName}`}>
     <header>
       <Avatar className={styles['instruction-avatar']} label={author.displayName} color="#4f6ef7" size="sm" aria-hidden="true"/>
@@ -65,7 +65,7 @@ const AnswerChapter=({run,fallbackAuthor,personas,onMentionPersona,openWorkspace
 export const RunAnswerHistory=({run,chapters=[run],fallbackAuthor,personas,onMentionPersona,openWorkspace,collapsed}:Props)=>{
   return <div className={`${styles['answer-history']} ${collapsed?styles['answer-collapsed']:''}`}>
     {chapters.map((chapter,index)=><div className={styles['answer-chapter']} key={chapter.id}>
-      {index>0&&chapter.continuationInstruction&&<InstructionMessage intervention={{id:`continuation-${chapter.id}`,text:chapter.continuationInstruction,status:['failed','cancelled'].includes(chapter.status)?'failed':['completed'].includes(chapter.status)?'applied':'pending',...(chapter.continuationAuthor?{author:chapter.continuationAuthor}:{}),...(chapter.error?{error:chapter.error}:{})}} fallbackAuthor={fallbackAuthor}/>}
+      {index>0&&chapter.continuationInstruction&&<InstructionMessage intervention={{id:`continuation-${chapter.id}`,text:chapter.continuationInstruction,status:['failed','cancelled'].includes(chapter.status)?'failed':'applied',...(chapter.continuationAuthor?{author:chapter.continuationAuthor}:{}),...(chapter.error?{error:chapter.error}:{})}} fallbackAuthor={fallbackAuthor} appliedLabel="Sent"/>}
       <AnswerChapter run={chapter} fallbackAuthor={fallbackAuthor} personas={personas} onMentionPersona={onMentionPersona} openWorkspace={openWorkspace}/>
     </div>)}
   </div>;

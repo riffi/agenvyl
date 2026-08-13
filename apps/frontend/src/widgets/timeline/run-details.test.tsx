@@ -48,6 +48,13 @@ describe('Timeline run details', () => {
     render(<Timeline state={state} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()} harnessCatalog={catalog} addInstructionToRun={redirect}/>);
     fireEvent.click(screen.getByRole('button',{name:'Add instruction to Coder'}));expect(redirect).toHaveBeenCalledWith('run-1');
   });
+  it('marks a created post-turn instruction as sent while its response is streaming',()=>{
+    const source:Run={...run,id:'source',responseSlotId:'slot'},child:Run={...source,id:'child',status:'streaming',continuedFromRunId:'source',continuationInstruction:'Focus on the API'},message={id:'message-1',text:'@coder work',createdAt:'2026-07-20T12:00:00.000Z',targets:['coder' as const],runIds:['source','child'],author,addressedToAll:false},state={...initialState,hydrated:true,messages:[message],runs:{source,child},runOrder:['source','child'],selectedRuns:{slot:'source'}};
+    render(<Timeline state={state} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()}/>);
+    const instruction=screen.getByLabelText('Instruction from User');
+    expect(within(instruction).getByRole('status').textContent).toBe('Sent');
+    expect(within(instruction).queryByText('Sending…')).toBeNull();
+  });
   it('renders answer segments around an instruction and keeps only its state live',()=>{
     const instructionRun:Run={...run,reasoning:'Plan carefully',text:'After instruction',interventions:[{id:'instruction',text:'Focus on the API',status:'applied',precedingText:'Before instruction',author,createdAt:'2026-07-20T12:01:00.000Z'}]};
     const state={...initialState,hydrated:true,messages:[{id:'message-1',text:'@coder work',createdAt:'2026-07-20T12:00:00.000Z',targets:['coder' as const],runIds:['run-1'],author,addressedToAll:false}],runs:{'run-1':instructionRun},runOrder:['run-1']};
