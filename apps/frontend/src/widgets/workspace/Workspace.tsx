@@ -250,6 +250,7 @@ export function WorkspaceApp({
             title={currentRoom?.title??"Room"}
             project={currentRoom.project}
             personas={personas}
+            messageCount={state.messageCount}
             active={active}
             connection={state.connection}
             openMenu={() => setMenu(true)}

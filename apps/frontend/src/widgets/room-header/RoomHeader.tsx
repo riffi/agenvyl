@@ -1,4 +1,4 @@
-import { FolderOpen, Menu, Users } from 'lucide-react';
+import { FolderOpen, Menu, MessageCircle, Users } from 'lucide-react';
 import type { Persona } from '../../entities/persona';
 import type { Connection } from '../../entities/room';
 import type {ProjectSummary} from '@agenvyl/contracts';
@@ -9,6 +9,7 @@ export type RoomHeaderProps = {
   title: string;
   project?:ProjectSummary|null;
   personas: Persona[];
+  messageCount: number;
   active: number;
   connection: Connection;
   openMenu: () => void;
@@ -27,12 +28,14 @@ const connectionLabels:Record<Connection,string>={
   replaying:'Restoring history…',
 };
 
-export function RoomHeader({ title,project, personas, active, connection, openMenu, openArtifacts, manageAgents }: RoomHeaderProps) {
+export function RoomHeader({ title,project, personas, messageCount, active, connection, openMenu, openArtifacts, manageAgents }: RoomHeaderProps) {
   return <header className={styles['room-header']} ui-spec-block-id="room_header">
     <button className={styles['menu-button']} onClick={openMenu} aria-label="Open menu"><Menu /></button>
     <div className={styles.identity}>
+      <span className={`${styles.connection} ${connection==='connected'?'':styles.reconnecting}`} role="status" aria-label={connectionLabels[connection]} title={connectionLabels[connection]} />
       <h1>{title}</h1>
-      <small className={connection==='connected'?styles.connected:styles.reconnecting}><i /> {connectionLabels[connection]}{active>0&&<> · {activeRunsLabel(active)}</>}</small>
+      {active>0&&<small className={styles.active}>{activeRunsLabel(active)}</small>}
+      <small className={styles['message-count']} aria-label={`${messageCount} messages`} title={`${messageCount} messages`}><MessageCircle aria-hidden="true" />{messageCount}</small>
       {project&&<span className={styles.project} title={project.path}><FolderOpen/>{project.name}</span>}
     </div>
     <div className={styles.actions}>

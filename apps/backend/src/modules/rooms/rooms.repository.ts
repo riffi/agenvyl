@@ -58,7 +58,7 @@ export class RoomRepository {
       "read only isolation level repeatable read",
       async (tx) => {
         const room = (
-          await tx`SELECT event_sequence,workflow_mode FROM rooms WHERE id=${roomId}`
+          await tx`SELECT event_sequence,workflow_mode,(SELECT COUNT(*)::int FROM room_messages WHERE room_id=${roomId})+(SELECT COUNT(*)::int FROM response_slots s JOIN room_messages m ON m.id=s.message_id WHERE m.room_id=${roomId}) message_count FROM rooms WHERE id=${roomId}`
         )[0];
         if (!room) return undefined;
         const cursor = before
@@ -152,6 +152,7 @@ export class RoomRepository {
           embedMap = await this.workspace.runEmbeds(runIds, tx);
         return {
           messages,
+          messageCount: number(room.message_count),
           runs: runRows.map((row) => {
             const id = text(row.id),
               extra = extras.get(id);

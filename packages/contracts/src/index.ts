@@ -249,6 +249,7 @@ export type PersonaGroup = {
 
 export type TimelinePage = {
   messages: Message[];
+  messageCount: number;
   runs: Run[];
   selectedRuns: Record<string, string>;
   workflowMode: WorkflowMode;

@@ -1,48 +1,65 @@
 .room-header {
-  height: 68px;
+  height: 52px;
   flex: 0 0 auto;
   background: white;
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 9px 24px;
+  padding: 7px 20px;
   z-index: 5;
 }
 .identity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
   min-width: 0;
-  position: relative;
 }
-.project { position:absolute;left:calc(100% + 12px);top:3px;display:inline-flex;max-width:220px;align-items:center;gap:5px;padding:3px 7px;border:1px solid #dfe6dc;border-radius:6px;background:#f4f7f2;color:#54705d;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.project { display:inline-flex;max-width:220px;align-items:center;gap:5px;padding:3px 7px;border:1px solid #dfe6dc;border-radius:6px;background:#f4f7f2;color:#54705d;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .project svg { width:12px;height:12px;flex:none; }
 .room-header h1 {
-  font-size: 17px;
+  min-width: 0;
+  color: #334155;
+  font-size: 16px;
+  font-weight: 600;
   line-height: 1.3;
-  margin: 0 0 2px;
+  letter-spacing: -0.01em;
+  margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .identity small {
-  display: block;
+  flex: 0 0 auto;
   font-size: 11px;
   color: var(--muted);
   white-space: nowrap;
 }
-.identity i {
-  display: inline-block;
+.connection {
+  flex: 0 0 auto;
   width: 6px;
   height: 6px;
-  margin-right: 4px;
   border-radius: 50%;
   background: #22a061;
-  vertical-align: 1px;
 }
-.identity .reconnecting {
-  color: #8a6f42;
-}
-.identity .reconnecting i {
+.connection.reconnecting {
   background: #d49a3a;
+}
+.active::before {
+  content: '\00b7';
+  margin-right: 8px;
+}
+.message-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+}
+.message-count svg {
+  width: 13px;
+  height: 13px;
 }
 .actions {
   display: flex;
@@ -120,7 +137,7 @@
 }
 @media (max-width: 767px) {
   .room-header {
-    height: 56px;
+    height: 50px;
     gap: 8px;
     padding: 8px 10px;
   }
@@ -140,12 +157,13 @@
   }
   .identity {
     flex: 1;
+    gap: 6px;
   }
   .room-header h1 {
     margin: 0;
     font-size: 15px;
   }
-  .identity small,
+  .active,
   .project,
   .avatars,
   .roster-label,

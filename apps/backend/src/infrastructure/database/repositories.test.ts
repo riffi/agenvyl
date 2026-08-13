@@ -725,7 +725,7 @@ describe("PostgreSQL repositories", () => {
     expect(latest?.runs.every((run) => run.requestedModel === "sol")).toBe(
       true,
     );
-    expect(latest).toMatchObject({ hasMore: true, lastSequence: 12 });
+    expect(latest).toMatchObject({ hasMore: true, lastSequence: 12, messageCount: 6 });
     const older = await p.rooms.timeline("demo-room", latest?.nextCursor, 2);
     expect(older?.messages.map((message) => message.text)).toEqual(["one"]);
     expect(older?.hasMore).toBe(false);
