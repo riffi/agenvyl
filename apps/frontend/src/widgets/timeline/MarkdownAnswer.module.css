@@ -60,6 +60,60 @@
 .error { border-style: solid; border-color: #fecaca; background: #fef2f2; color: #b91c1c; }
 .error strong { font-size: 11px; }
 
+.codeBlock {
+  position: relative;
+  min-width: 0;
+  margin: 0.65em 0;
+}
+
+.codeBlock pre {
+  margin: 0;
+  padding-top: 39px;
+}
+
+.copyCode {
+  position: absolute;
+  z-index: 1;
+  top: 7px;
+  right: 7px;
+  display: inline-flex;
+  min-height: 27px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  border: 1px solid #d6dee8;
+  border-radius: 6px;
+  background: #fff;
+  color: #475569;
+  box-shadow: 0 1px 2px #0f172a0d;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.copyCode:hover {
+  border-color: #b8c4d3;
+  background: #f8fafc;
+  color: #1e293b;
+}
+
+.copyCode:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.copyCode svg {
+  width: 13px;
+  height: 13px;
+}
+
+.copyCodeFailed {
+  color: #b91c1c;
+}
+
 @media (max-width: 767px) {
   .image { border-radius: 6px; }
+  .copyCode { min-height: 32px; }
+  .codeBlock pre { padding-top: 44px; }
 }

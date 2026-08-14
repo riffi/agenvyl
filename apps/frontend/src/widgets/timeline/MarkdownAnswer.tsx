@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { FolderOpen, Image as ImageIcon, ImageOff } from 'lucide-react';
+import { Check, Copy, FolderOpen, Image as ImageIcon, ImageOff, TriangleAlert } from 'lucide-react';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { RunEmbedError, WorkspaceAttachment } from '@agenvyl/contracts';
@@ -91,6 +91,7 @@ export const MarkdownAnswer = memo(({
         ? url
         : defaultUrlTransform(url)}
       components={{
+        pre: ({ node: _node, children }) => <CopyableCodeBlock>{children}</CopyableCodeBlock>,
         p: ({ node, children, ...props }) => {
           const child = node?.children.length === 1 ? node.children[0] : undefined;
           if (child?.type === 'element' && child.tagName === 'img') return <>{children}</>;
@@ -150,6 +151,36 @@ export const MarkdownAnswer = memo(({
 });
 
 MarkdownAnswer.displayName = 'MarkdownAnswer';
+
+const CopyableCodeBlock = ({ children }: { children: React.ReactNode }) => {
+  const codeRef = useRef<HTMLPreElement>(null);
+  const resetRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
+
+  useEffect(() => () => clearTimeout(resetRef.current), []);
+
+  const copyCode = async () => {
+    const code = codeRef.current?.textContent?.replace(/\n$/, '') ?? '';
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
+      await navigator.clipboard.writeText(code);
+      setCopyState('copied');
+    } catch {
+      setCopyState('failed');
+    }
+    clearTimeout(resetRef.current);
+    resetRef.current = setTimeout(() => setCopyState('idle'), 1800);
+  };
+
+  const label = copyState === 'copied' ? 'Code copied' : copyState === 'failed' ? 'Copy failed, try again' : 'Copy code block';
+  return <div className={styles.codeBlock}>
+    <button className={`${styles.copyCode} ${copyState === 'failed' ? styles.copyCodeFailed : ''}`} type="button" onClick={() => void copyCode()} aria-label={label} title={label}>
+      {copyState === 'copied' ? <Check /> : copyState === 'failed' ? <TriangleAlert /> : <Copy />}
+      <span aria-live="polite">{copyState === 'copied' ? 'Copied' : copyState === 'failed' ? 'Retry' : 'Copy'}</span>
+    </button>
+    <pre ref={codeRef}>{children}</pre>
+  </div>;
+};
 
 const EmbedError = ({ title, detail }: { title: string; detail: string }) => <span className={styles.error}>
   <ImageOff />
