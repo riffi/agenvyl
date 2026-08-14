@@ -2,7 +2,7 @@
 
 ## Before you start
 
-Agenvyl requires a user-installed `agy` CLI `1.1.3` or newer. Use the
+Agenvyl requires a user-installed `agy` CLI `1.1.8` or newer. Use the
 [official Antigravity installer](https://antigravity.google/docs/cli-install).
 
 macOS and Linux:
@@ -42,7 +42,10 @@ agenvyl setup
 
 ## Permissions and output
 
-Each attempt starts a fresh `agy --print` process in the room workspace.
+Each turn starts a separate `agy --print` process in the room workspace. After
+the first turn, Agenvyl resumes the same native AGY conversation by its exact
+conversation ID. This preserves AGY's session context without relying on the
+workspace's most recently used conversation.
 
 - **Plan only** is the safe per-agent default for read-only analysis.
 - **Accept edits** is selected per agent and requires an explicit warning-dialog
@@ -54,9 +57,14 @@ The former connector-level `permissionMode` field is no longer supported. Remove
 it from existing `connector.yaml` files; the selected agent profile is persisted
 instead.
 
-AGY does not expose a documented structured streaming and approval protocol.
-Agenvyl therefore displays the final text and terminal state only. It does not
-invent partial output, tool activity, usage counters, or approval events.
+AGY exposes a structured final result, which Agenvyl uses to capture the native
+conversation ID. The connector currently displays only the final text and
+terminal state; it does not invent partial output, tool activity, usage counters,
+or approval events.
+
+AGY manages retained conversations. When an Agenvyl continuation chain is no
+longer active, the connector stops referencing it but does not delete it from
+AGY's conversation history.
 
 ## Verify and troubleshoot
 

@@ -97,7 +97,7 @@ export const conformanceBindings: readonly ConformanceBinding[] = [
       'late-duplicate-terminal-ignored': adapterTest('antigravity', 'runs one fresh process with exact routing, cwd, auto-update guard and deterministic flattened context'),
       'intervention-delivered': waiver('Antigravity print mode does not declare an intervention capability.'),
       'next-execution-after-stop': adapterTest('antigravity', 'terminates a stubborn process tree and reports cancellation'),
-      'replay-deduplicated': waiver('Antigravity is a fresh final-only process; durable replay is owned by ExecutionRegistry.'),
+      'replay-deduplicated': waiver('Antigravity resumes its native conversation without adapter replay; durable event replay is owned by ExecutionRegistry.'),
       'stable-tool-identity': waiver('Antigravity print mode exposes no tool lifecycle.'),
     },
   },

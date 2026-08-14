@@ -1,5 +1,5 @@
 import type {HarnessSettingsInstance} from '@agenvyl/contracts';
-import {ArrowLeft,RefreshCw,RotateCcw,Save,Trash2} from 'lucide-react';
+import {ArrowLeft,Info,RefreshCw,RotateCcw,Save,Trash2} from 'lucide-react';
 import {HarnessIcon} from '../../entities/harness';
 import {Alert,Button} from '../../shared/ui';
 import {HarnessInstanceFields} from './HarnessInstanceFields';
@@ -18,6 +18,7 @@ export const HarnessInstanceEditor=({saved,draft,saving,testing,restarting,testM
     </header>
     <div className={styles.editorScroll}>
       <HarnessInstanceFields instance={draft} newInstance={false} onChange={onChange}/>
+      {saved.type==='antigravity'&&<section className={styles.retentionNotice} aria-label="Session history"><Info aria-hidden="true"/><span><strong>Session history is managed by AGY</strong><small>AGY stores native conversations and controls their retention. Agenvyl can resume them by conversation ID, but cannot delete their history from AGY.</small></span></section>}
       {used&&<Alert tone="warning" className={styles.usage}><span><strong>Used by {saved.personas.length} agent{saved.personas.length===1?'':'s'}</strong><small>{saved.personas.map(persona=>`@${persona.handle}${persona.archived?' (archived)':''}`).join(', ')}</small></span></Alert>}
       {saved.error&&<Alert>{saved.error.message}</Alert>}
       {saved.type==='opencode'&&<Alert tone={saved.managed?'warning':undefined}>{saved.managed

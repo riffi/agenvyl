@@ -19,7 +19,7 @@ describe.sequential('Core -> Connector -> installed Antigravity live smoke', () 
   const cleanups: Array<() => Promise<void>> = [];
   afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 
-  it('covers catalog, plan text, accept-edits workspace mutation and cancel', async () => {
+  it('covers catalog, plan text, native continuation, accept-edits workspace mutation and cancel', async () => {
     const workspaceRoot = await mkdtemp(join(tmpdir(), 'agenvyl-antigravity-live-'));
     cleanups.push(() => rm(workspaceRoot, { recursive: true, force: true }));
     const database = liveDatabaseUrl();
@@ -41,7 +41,7 @@ describe.sequential('Core -> Connector -> installed Antigravity live smoke', () 
 
     const catalog = await getJson(`${coreUrl}/api/v1/harnesses`) as HarnessCatalog;
     const instance = catalog.instances.find(item => item.id === 'local-antigravity');
-    expect(instance).toMatchObject({ type: 'antigravity', status: 'healthy', capabilities: ['model_catalog', 'execution_profiles'] });
+    expect(instance).toMatchObject({ type: 'antigravity', status: 'healthy', capabilities: ['model_catalog', 'execution_profiles'],postTurnContinuation:{mode:'native_session',durability:'connector_restart',retention:'provider_managed'} });
     const modelId = process.env.AGENVYL_LIVE_AGY_MODEL?.trim() || instance?.models[0]?.id;
     if (!modelId) throw new Error('Antigravity live catalog returned no selectable model');
 
@@ -52,6 +52,12 @@ describe.sequential('Core -> Connector -> installed Antigravity live smoke', () 
     expect(textRun.status, safeFailure(textRun)).toBe('completed');
     expect(textRun.text).toContain('AGENVYL_AGY_OK');
     expect(textRun).toMatchObject({ harnessInstanceId: 'local-antigravity', harnessType: 'antigravity', modelId, executionProfile:{workflowMode:'plan'} });
+
+    const continuationRunId=await createRun(coreUrl,'Continue this conversation. Reply with exactly AGENVYL_AGY_CONTINUATION_OK and nothing else.');
+    const continuationRun=await waitForRun(coreUrl,continuationRunId,run=>terminalStatuses.has(run.status));
+    expect(continuationRun.status,safeFailure(continuationRun)).toBe('completed');
+    expect(continuationRun.text).toContain('AGENVYL_AGY_CONTINUATION_OK');
+    expect(continuationRun.continuedFromRunId).toBe(textRunId);
 
     await selectPersona(coreUrl, modelId, 'accept-edits');
     await setWorkflowMode(coreUrl,'work');
@@ -75,7 +81,7 @@ describe.sequential('Core -> Connector -> installed Antigravity live smoke', () 
 });
 
 type HarnessCatalog = { instances: Array<{ id: string; type: string; status: string; capabilities: string[]; models: Array<{ id: string }> }> };
-type TimelineRun = { id: string; status: string; text: string; harnessInstanceId?: string; harnessType?: string; modelId?: string; executionProfile?:{workflowMode:string}; error?: { code?: string; message?: string }; errorCode?: string };
+type TimelineRun = { id: string; status: string; text: string; harnessInstanceId?: string; harnessType?: string; modelId?: string; executionProfile?:{workflowMode:string};continuedFromRunId?:string; error?: { code?: string; message?: string }; errorCode?: string };
 const terminalStatuses = new Set(['completed', 'failed', 'cancelled']);
 
 async function selectPersona(coreUrl: string, modelId: string, permissionProfileId: string) {

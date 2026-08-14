@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { AdapterStartExecutionRequest } from '../../adapter.js';
+import type {AdapterExecutionEvent,AdapterStartExecutionRequest} from '../../adapter.js';
 import { AntigravityConnectorAdapter, antigravityPrompt, shouldDetachAntigravityProcess, windowsCommandLineLength } from './adapter.js';
 
 const directories: string[] = [];
@@ -17,7 +17,7 @@ describe('AntigravityConnectorAdapter', () => {
 
   it('discovers exact models and exposes per-agent permission profiles', async () => {
     const fixture = await fakeAgy();
-    const adapter = fixture.adapter({ env: { FAKE_AGY_VERSION: '1.1.3', FAKE_AGY_MODELS: 'gemini-3.6-flash-high\tGemini 3.6 Flash (High)\nClaude Sonnet 4.6 (Thinking)\ngemini-3.6-flash-high\tGemini 3.6 Flash (High)\n' } });
+    const adapter = fixture.adapter({ env: { FAKE_AGY_VERSION: '1.1.8', FAKE_AGY_MODELS: 'gemini-3.6-flash-high\tGemini 3.6 Flash (High)\nClaude Sonnet 4.6 (Thinking)\ngemini-3.6-flash-high\tGemini 3.6 Flash (High)\n' } });
     await expect(adapter.catalog()).resolves.toEqual({
       models: [
         { id: 'gemini-3.6-flash-high', label: 'Gemini 3.6 Flash (High)' },
@@ -25,8 +25,8 @@ describe('AntigravityConnectorAdapter', () => {
       ],
       controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[{id:'plan',label:'Plan only'},{id:'accept-edits',label:'Accept edits'}],agentVariants:[]},
     });
-    const old = fixture.adapter({ env: { FAKE_AGY_VERSION: '1.1.2' } });
-    await expect(old.catalog()).rejects.toThrow('1.1.3 or newer');
+    const old = fixture.adapter({ env: { FAKE_AGY_VERSION: '1.1.7' } });
+    await expect(old.catalog()).rejects.toThrow('1.1.8 or newer');
   });
 
   it('serializes version and model probes and shares concurrent catalog requests',async()=>{
@@ -41,20 +41,41 @@ describe('AntigravityConnectorAdapter', () => {
   it('runs one fresh process with exact routing, cwd, auto-update guard and deterministic flattened context', async () => {
     const fixture = await fakeAgy();
     const capturePath = join(fixture.directory, 'capture.json');
-    const adapter = fixture.adapter({ env: { FAKE_AGY_CAPTURE: capturePath, FAKE_AGY_OUTPUT: 'Final answer\n' }, printTimeoutMs: 42_000 });
+    const adapter = fixture.adapter({ env: { FAKE_AGY_CAPTURE: capturePath, FAKE_AGY_OUTPUT: 'Final answer\n',FAKE_AGY_CONVERSATION_ID:'conversation-1' }, printTimeoutMs: 42_000 });
+    expect(adapter.postTurnContinuation).toEqual({mode:'native_session',durability:'connector_restart',retention:'provider_managed'});
     const request = execution(fixture.directory);
     const handle = await adapter.start(request);
     expect(handle).toEqual({ upstreamId: request.executionId });
     await expect(collect(adapter.events(handle))).resolves.toEqual([
       { type: 'output.text.delta', payload: { text: 'Final answer' } },
-      { type: 'execution.completed', payload: {} },
+      { type: 'execution.completed', payload: {continuation:{handle:expect.any(String)}} },
     ]);
     const capture = JSON.parse(await readFile(capturePath, 'utf8')) as { args: string[]; cwd: string; disableAutoUpdate?: string };
     expect(capture.cwd).toBe(fixture.directory);
     expect(capture.disableAutoUpdate).toBe('true');
-    expect(capture.args.slice(0, 8)).toEqual(['--dangerously-skip-permissions', '--mode', 'accept-edits', '--model', 'Gemini 3.5 Flash (High)', '--print-timeout', '42000ms', '--print']);
-    expect(capture.args[8]).toBe(antigravityPrompt(request));
-    expect(JSON.parse(capture.args[8]!.split('\n')[1]!)).toMatchObject({ systemInstruction: 'Act as coder.', conversationHistory: [{ role: 'user', content: 'Earlier' }], currentUserMessage: 'Implement it.' });
+    expect(capture.args.slice(0, 10)).toEqual(['--dangerously-skip-permissions', '--mode', 'accept-edits', '--model', 'Gemini 3.5 Flash (High)', '--print-timeout', '42000ms','--output-format','json', '--print']);
+    expect(capture.args[10]).toBe(antigravityPrompt(request));
+    expect(JSON.parse(capture.args[10]!.split('\n')[1]!)).toMatchObject({ systemInstruction: 'Act as coder.', conversationHistory: [{ role: 'user', content: 'Earlier' }], currentUserMessage: 'Implement it.' });
+  });
+
+  it('resumes the exact AGY conversation across Connector instances',async()=>{
+    const fixture=await fakeAgy(),capturePath=join(fixture.directory,'continuation-capture.ndjson'),environment={FAKE_AGY_CAPTURE:capturePath,FAKE_AGY_CAPTURE_APPEND:'true',FAKE_AGY_CONVERSATION_ID:'conversation-native-1',USERPROFILE:fixture.directory};
+    const sourceAdapter=fixture.adapter({env:environment}),sourceRequest=execution(fixture.directory),source=await sourceAdapter.start(sourceRequest),handle=continuationHandle(await collect(sourceAdapter.events(source)));
+    const resumedAdapter=fixture.adapter({env:environment}),continued={...execution(fixture.directory),executionId:'run-agy-continued',input:{systemPrompt:'Act as coder.',history:[],message:'Continue natively.'},continuation:{handle}};
+    const resumed=await resumedAdapter.startContinuation(continued,handle);
+    await expect(collect(resumedAdapter.events(resumed))).resolves.toEqual([{type:'output.text.delta',payload:{text:'ok'}},{type:'execution.completed',payload:{continuation:{handle:expect.any(String)}}}]);
+    const captures=(await readFile(capturePath,'utf8')).trim().split(/\r?\n/).map(line=>JSON.parse(line) as{args:string[]});
+    expect(captures).toHaveLength(2);
+    expect(captures[1]!.args).toContain('--conversation');
+    expect(captures[1]!.args[captures[1]!.args.indexOf('--conversation')+1]).toBe('conversation-native-1');
+    expect(captures[1]!.args.at(-2)).toBe('--print');
+    expect(captures[1]!.args.at(-1)).toBe('Continue natively.');
+    await expect(resumedAdapter.releaseContinuation(handle,{instanceId:'local-antigravity'})).resolves.toBe('provider_retained');
+    await expect(resumedAdapter.releaseContinuation(handle,{instanceId:'other-antigravity'})).rejects.toMatchObject({code:'continuation_incompatible'});
+    await expect(resumedAdapter.releaseContinuation('broken',{instanceId:'local-antigravity'})).rejects.toMatchObject({code:'continuation_unavailable'});
+    const changedScope=fixture.adapter({env:{...environment,USERPROFILE:join(fixture.directory,'other-profile')}});
+    await expect(changedScope.releaseContinuation(handle,{instanceId:'local-antigravity'})).rejects.toMatchObject({code:'continuation_incompatible'});
+    await expect(resumedAdapter.startContinuation({...continued,executionId:'incompatible',modelId:'other-model'},handle)).rejects.toMatchObject({code:'continuation_incompatible'});
   });
 
   it('forces Plan workflow to read-only even for an Accept edits persona',async()=>{
@@ -75,6 +96,10 @@ describe('AntigravityConnectorAdapter', () => {
     const empty = fixture.adapter({ env: { FAKE_AGY_OUTPUT: '' } });
     const emptyHandle = await empty.start({ ...execution(fixture.directory), executionId: 'empty' });
     await expect(collect(empty.events(emptyHandle))).resolves.toEqual([{ type: 'execution.failed', payload: { error: { code: 'agy_empty_output', message: expect.any(String) } } }]);
+
+    const invalid = fixture.adapter({ env: { FAKE_AGY_RAW_OUTPUT: 'not-json' } });
+    const invalidHandle=await invalid.start({...execution(fixture.directory),executionId:'invalid-output'});
+    await expect(collect(invalid.events(invalidHandle))).resolves.toEqual([{type:'execution.failed',payload:{error:{code:'agy_invalid_output',message:expect.any(String)}}}]);
 
     const failed = fixture.adapter({ env: { FAKE_AGY_EXIT: '7', FAKE_AGY_STDERR: 'token=secret-value failed' } });
     const failedHandle = await failed.start({ ...execution(fixture.directory), executionId: 'failed' });
@@ -116,25 +141,26 @@ function execution(workspace: string): AdapterStartExecutionRequest {
   };
 }
 
-async function collect(source: AsyncIterable<unknown>) { const values: unknown[] = []; for await (const value of source) values.push(value); return values; }
+async function collect(source:AsyncIterable<AdapterExecutionEvent>){const values:AdapterExecutionEvent[]=[];for await(const value of source)values.push(value);return values;}
+function continuationHandle(events:AdapterExecutionEvent[]){const terminal=events.at(-1);if(terminal?.type!=='execution.completed'||!terminal.payload.continuation)throw new Error('Expected AGY continuation handle');return terminal.payload.continuation.handle;}
 
 async function fakeAgy() {
   const directory = await mkdtemp(join(tmpdir(), 'agenvyl-agy-'));
   directories.push(directory);
   const script = join(directory, 'agy.cjs');
   await writeFile(script, `
-const { closeSync, openSync, unlinkSync, writeFileSync } = require('node:fs');
+const { appendFileSync, closeSync, openSync, unlinkSync, writeFileSync } = require('node:fs');
 const args=process.argv.slice(2);
 if(process.env.FAKE_AGY_LOCK){
   try{closeSync(openSync(process.env.FAKE_AGY_LOCK,'wx'))}catch{process.stderr.write('concurrent agy invocation');process.exit(9)}
   process.on('exit',()=>{try{unlinkSync(process.env.FAKE_AGY_LOCK)}catch{}});
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,50);
 }
-if(args[0]==='--version'){console.log(process.env.FAKE_AGY_VERSION||'1.1.3');process.exit(0)}
+if(args[0]==='--version'){console.log(process.env.FAKE_AGY_VERSION||'1.1.8');process.exit(0)}
 if(args[0]==='models'){process.stdout.write(process.env.FAKE_AGY_MODELS||'Gemini 3.5 Flash (High)\\n');process.exit(0)}
-if(process.env.FAKE_AGY_CAPTURE)writeFileSync(process.env.FAKE_AGY_CAPTURE,JSON.stringify({args,cwd:process.cwd(),disableAutoUpdate:process.env.AGY_CLI_DISABLE_AUTO_UPDATE,pid:process.pid}));
+if(process.env.FAKE_AGY_CAPTURE){const captured=JSON.stringify({args,cwd:process.cwd(),disableAutoUpdate:process.env.AGY_CLI_DISABLE_AUTO_UPDATE,pid:process.pid});if(process.env.FAKE_AGY_CAPTURE_APPEND)appendFileSync(process.env.FAKE_AGY_CAPTURE,captured+'\\n');else writeFileSync(process.env.FAKE_AGY_CAPTURE,captured)}
 if(process.env.FAKE_AGY_BEHAVIOR==='hang'){process.on('SIGTERM',()=>{});setInterval(()=>{},1000)}
-else{if(process.env.FAKE_AGY_STDERR)process.stderr.write(process.env.FAKE_AGY_STDERR);process.stdout.write(process.env.FAKE_AGY_OUTPUT??'ok');process.exit(Number(process.env.FAKE_AGY_EXIT||0))}
+else{if(process.env.FAKE_AGY_STDERR)process.stderr.write(process.env.FAKE_AGY_STDERR);const response=process.env.FAKE_AGY_OUTPUT??'ok',output=process.env.FAKE_AGY_RAW_OUTPUT??JSON.stringify({conversation_id:process.env.FAKE_AGY_CONVERSATION_ID||'conversation-1',status:process.env.FAKE_AGY_STATUS||'SUCCESS',response});process.stdout.write(output);process.exit(Number(process.env.FAKE_AGY_EXIT||0))}
 `);
   return {
     directory,

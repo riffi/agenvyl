@@ -2,12 +2,13 @@ import { Buffer } from 'node:buffer';
 import { spawn, spawnSync, type ChildProcessByStdio } from 'node:child_process';
 import type { Readable } from 'node:stream';
 import type { ExecutionStatus } from '@agenvyl/connector-contract';
-import type { AdapterExecution, AdapterExecutionEvent, AdapterStartExecutionRequest, ConnectorAdapter } from '../../adapter.js';
+import {AdapterContinuationError,type AdapterExecution,type AdapterExecutionEvent,type AdapterStartExecutionRequest,type ConnectorAdapter} from '../../adapter.js';
 import {experimentalTailV1ConversationHistory} from '../../conversation-history.js';
 import { commandInvocation, resolveCommand } from '../../discovery.js';
 import { redactConnectorText } from '../../safety.js';
+import {antigravityContinuationConfiguration,antigravityStorageScopeHash,encodeAntigravityContinuationHandle,parseAntigravityContinuationHandle} from './native-continuation.js';
 
-const minimumVersion = [1, 1, 3] as const;
+const minimumVersion = [1, 1, 8] as const;
 
 export type AntigravityAdapterOptions = {
   command?: string;
@@ -35,9 +36,11 @@ type ActiveExecution = {
   completion: Promise<ProcessResult>;
   status: ExecutionStatus;
   stopRequested: boolean;
+  continuation:{instanceId:string;directory:string;configurationHash:string;expectedConversationId?:string};
 };
 
 type AntigravityCatalog = { models: Array<{ id: string; label: string }>; controls:{nativeWorkflowModes:Array<'plan'|'work'>;permissionProfiles:Array<{id:string;label:string}>;agentVariants:[]} };
+type AntigravityPrintResult={conversationId:string;status:string;response:string};
 
 const parseAntigravityModel = (value:string) => {
   const [id,label] = value.trim().split(/\t+/,2);
@@ -48,9 +51,11 @@ const parseAntigravityModel = (value:string) => {
 export class AntigravityConnectorAdapter implements ConnectorAdapter {
   readonly type = 'antigravity';
   readonly capabilities: ConnectorAdapter['capabilities'] = ['model_catalog', 'execution_profiles'];
+  readonly postTurnContinuation={mode:'native_session',durability:'connector_restart',retention:'provider_managed'} as const;
   private readonly command: string;
   private readonly commandArgsPrefix: string[];
   private readonly env: NodeJS.ProcessEnv;
+  private readonly storageScopeHash:string;
   private readonly printTimeoutMs: number;
   private readonly catalogTimeoutMs: number;
   private readonly stopGraceMs: number;
@@ -67,6 +72,7 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
     this.command = options.command?.trim() || 'agy';
     this.commandArgsPrefix = [...(options.commandArgsPrefix ?? [])];
     this.env = { ...(options.env ?? process.env), AGY_CLI_DISABLE_AUTO_UPDATE: 'true' };
+    this.storageScopeHash=antigravityStorageScopeHash({command:this.command,commandArgsPrefix:this.commandArgsPrefix,platform:process.platform,env:this.env});
     this.printTimeoutMs = positiveInteger(options.printTimeoutMs, 30 * 60_000, 'printTimeoutMs');
     this.catalogTimeoutMs = positiveInteger(options.catalogTimeoutMs, 10_000, 'catalogTimeoutMs');
     this.stopGraceMs = positiveInteger(options.stopGraceMs, 2_000, 'stopGraceMs');
@@ -95,8 +101,23 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
     return { models, controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[{id:'plan',label:'Plan only'},{id:'accept-edits',label:'Accept edits'}],agentVariants:[]} };
   }
 
-  async start(request: AdapterStartExecutionRequest): Promise<AdapterExecution> {
+  start(request:AdapterStartExecutionRequest):Promise<AdapterExecution>{return this.startNative(request);}
+  startContinuation(request:AdapterStartExecutionRequest,handle:string):Promise<AdapterExecution>{return this.startNative(request,handle);}
+
+  async releaseContinuation(handle:string,scope:{instanceId:string}){
+    const continuation=parseAntigravityContinuationHandle(handle);
+    if(!continuation)throw new AdapterContinuationError('continuation_unavailable','Antigravity continuation handle is invalid');
+    if(continuation.instanceId!==scope.instanceId)throw new AdapterContinuationError('continuation_incompatible','Antigravity continuation belongs to another Connector instance');
+    if(continuation.storageScopeHash!==this.storageScopeHash)throw new AdapterContinuationError('continuation_incompatible','Antigravity continuation storage scope changed');
+    return'provider_retained' as const;
+  }
+
+  private async startNative(request:AdapterStartExecutionRequest,handle?:string):Promise<AdapterExecution>{
     if (this.executions.has(request.executionId)) throw new Error('Antigravity execution already exists');
+    await this.ensureSupportedVersion();
+    const directory=request.workspace.absolutePath,configurationHash=antigravityContinuationConfiguration(request),continuation=handle?parseAntigravityContinuationHandle(handle):undefined;
+    if(handle&&!continuation)throw new AdapterContinuationError('continuation_unavailable','Antigravity continuation handle is invalid');
+    if(continuation&&(!request.continuation||request.input.history.length||continuation.instanceId!==request.harnessInstanceId||continuation.directory!==directory||continuation.storageScopeHash!==this.storageScopeHash||continuation.configurationHash!==configurationHash))throw new AdapterContinuationError('continuation_incompatible','Antigravity continuation is incompatible with the requested execution snapshot');
     const configuredMode=parseAntigravityPermission(request.executionProfile.permissionProfileId);
     const mode=request.executionProfile.workflowMode==='plan'?'plan':configuredMode;
     const executable = await this.resolveAgyCommand();
@@ -105,16 +126,20 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
       '--mode', mode,
       '--model', request.modelId,
       '--print-timeout', `${this.printTimeoutMs}ms`,
+      '--output-format', 'json',
+      ...(continuation?['--conversation',continuation.conversationId]:[]),
     ];
     const fits = (prompt:string) => Buffer.byteLength(prompt, 'utf8') <= this.maxPromptBytes
       && windowsCommandLineLength(executable, [...this.commandArgsPrefix, ...fixedArgs, '--print', prompt]) <= this.maxCommandChars;
-    const prompt = boundedAntigravityPrompt(request, fits);
-    const child = await this.spawnAgy([...fixedArgs, '--print', prompt], request.workspace.absolutePath, executable);
+    const prompt=continuation?request.input.message:boundedAntigravityPrompt(request,fits);
+    if(continuation&&!fits(prompt))throw new Error('Antigravity current request exceeds the configured CLI argv boundary');
+    const child = await this.spawnAgy([...fixedArgs, '--print', prompt], directory, executable);
     const active: ActiveExecution = {
       child,
       completion: collectProcess(child, this.maxOutputBytes),
       status: 'running',
       stopRequested: false,
+      continuation:{instanceId:request.harnessInstanceId,directory,configurationHash,...(continuation?{expectedConversationId:continuation.conversationId}:{})},
     };
     this.executions.set(request.executionId, active);
     void active.completion.then(result => {
@@ -149,13 +174,20 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
       yield failure('agy_execution_failed', detail || `Antigravity CLI exited with code ${result.code ?? 'unknown'}`);
       return;
     }
-    const output = result.stdout.trim();
-    if (!output) {
+    const output=result.stdout.trim();
+    if(!output){
       yield failure('agy_empty_output', 'Antigravity CLI completed without a response');
       return;
     }
-    yield { type: 'output.text.delta', payload: { text: output } };
-    yield { type: 'execution.completed', payload: {} };
+    const parsed=parseAntigravityPrintResult(output);
+    if(!parsed){yield failure('agy_invalid_output','Antigravity CLI returned invalid structured output');return;}
+    if(parsed.status!=='SUCCESS'){yield failure('agy_execution_failed',redactConnectorText(parsed.response,500)||`Antigravity CLI returned ${parsed.status}`);return;}
+    if(active.continuation.expectedConversationId&&parsed.conversationId!==active.continuation.expectedConversationId){yield failure('continuation_incompatible','Antigravity resumed a different conversation');return;}
+    const response=parsed.response.trim();
+    if(!response){yield failure('agy_empty_output','Antigravity CLI completed without a response');return;}
+    const continuationHandle=encodeAntigravityContinuationHandle({v:1,harness:'antigravity',instanceId:active.continuation.instanceId,conversationId:parsed.conversationId,directory:active.continuation.directory,storageScopeHash:this.storageScopeHash,configurationHash:active.continuation.configurationHash});
+    yield { type: 'output.text.delta', payload: { text: response } };
+    yield { type: 'execution.completed', payload: {continuation:{handle:continuationHandle}} };
   }
 
   async stop(execution: AdapterExecution): Promise<void> {
@@ -333,11 +365,19 @@ function assertSupportedVersion(value: string) {
   const version = match.slice(1).map(Number);
   for (let index = 0; index < minimumVersion.length; index += 1) {
     if (version[index]! > minimumVersion[index]) return;
-    if (version[index]! < minimumVersion[index]) throw new Error('Antigravity CLI 1.1.3 or newer is required');
+    if (version[index]! < minimumVersion[index]) throw new Error('Antigravity CLI 1.1.8 or newer is required');
   }
 }
 
 function processSucceeded(result: ProcessResult) { return !result.error && !result.outputTooLarge && result.code === 0 && Boolean(result.stdout.trim()); }
+
+function parseAntigravityPrintResult(value:string):AntigravityPrintResult|undefined{
+  try{
+    const parsed=JSON.parse(value) as Record<string,unknown>;
+    if(!parsed||typeof parsed!=='object'||Array.isArray(parsed)||typeof parsed.conversation_id!=='string'||!parsed.conversation_id||parsed.conversation_id.length>4_096||typeof parsed.status!=='string'||typeof parsed.response!=='string')return;
+    return{conversationId:parsed.conversation_id,status:parsed.status,response:parsed.response};
+  }catch{return;}
+}
 function failure(code: string, message: string): AdapterExecutionEvent { return { type: 'execution.failed', payload: { error: { code, message } } }; }
 function positiveInteger(value: number | undefined, fallback: number, label: string) {
   const resolved = value ?? fallback;

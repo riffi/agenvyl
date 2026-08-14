@@ -1,11 +1,13 @@
 import {renderToStaticMarkup} from 'react-dom/server';
 import {describe,expect,it,vi} from 'vitest';
+import type {HarnessCatalog} from '../../entities/harness';
 import type {Persona} from '../../entities/persona';
 import type {Run} from '../../entities/run';
 import {RunDrawer} from './RunDrawer';
 
 const persona:Persona={id:'persona-1',handle:'coder',name:'Coder',color:'#64748b',requested_model:'current/model',effective_model:null,harness_instance_id:'current-instance',harness_type:'other',model_id:'current/model',permission_profile_id:null,agent_variant_id:null,default_reasoning_effort:null,group_id:null,archived_at:null};
 const run:Run={id:'run-2',messageId:'message-1',agent:'coder',requestedModel:'provider/model-v1',harnessInstanceId:'local-opencode',harnessType:'opencode',modelId:'provider/model-v1',executionProfile:{workflowMode:'work',requestedReasoningEffort:null,reasoningEffort:null,reasoningEffortFallback:false,reasoningEffortSource:'auto',planEnforcement:null,permissionProfileId:null,agentVariantId:'build'},status:'streaming',connector:{state:'active',checkpointed:true},text:'answer',tools:[],interventions:[],attemptNumber:2};
+const providerManagedCatalog:HarnessCatalog={connectorEpoch:'epoch',cache:{state:'fresh',refreshedAt:'2026-08-14T00:00:00.000Z',expiresAt:'2026-08-14T00:05:00.000Z'},instances:[{id:'local-antigravity',type:'antigravity',status:'healthy',capabilities:[],postTurnContinuation:{mode:'native_session',durability:'connector_restart',retention:'provider_managed'},models:[],controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]},catalogCache:{state:'fresh',refreshedAt:'2026-08-14T00:00:00.000Z'}}]};
 
 describe('RunDrawer lifecycle snapshot',()=>{
   it('renders the persisted route and checkpoint when the current catalog has changed',()=>{
@@ -36,6 +38,14 @@ describe('RunDrawer lifecycle snapshot',()=>{
   it('shows only the normalized immutable token counters',()=>{
     const html=renderToStaticMarkup(<RunDrawer run={{...run,usage:{inputTokens:1234,outputTokens:56,reasoningTokens:7}}} persona={persona} close={vi.fn()}/>);
     expect(html).toContain('Input tokens');expect(html).toContain('1,234');expect(html).toContain('Output tokens');expect(html).toContain('56');expect(html).toContain('Total tokens');expect(html).toContain('not reported');expect(html).not.toContain('cost');
+  });
+
+  it('shows provider-managed session retention in run details',()=>{
+    const agyRun:Run={...run,harnessInstanceId:'local-antigravity',harnessType:'antigravity'};
+    const html=renderToStaticMarkup(<RunDrawer run={agyRun} persona={persona} harnessCatalog={providerManagedCatalog} close={vi.fn()}/>);
+    expect(html).toContain('Session history');
+    expect(html).toContain('Stored and retained by AGY under its policy');
+    expect(html).toContain('Agenvyl does not manage its deletion');
   });
 
   it('exposes long tool activity as a keyboard-scrollable region before technical information',()=>{

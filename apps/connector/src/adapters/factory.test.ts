@@ -37,7 +37,7 @@ describe('buildConfiguredAdapters', () => {
       AGENVYL_CONNECTOR_AGY_PRINT_TIMEOUT_MS: '1200000',
     });
     expect([...adapters.keys()]).toEqual(['local-antigravity']);
-    expect(adapters.get('local-antigravity')).toMatchObject({ type: 'antigravity', capabilities: ['model_catalog', 'execution_profiles'] });
+    expect(adapters.get('local-antigravity')).toMatchObject({ type: 'antigravity', capabilities: ['model_catalog', 'execution_profiles'],postTurnContinuation:{mode:'native_session',durability:'connector_restart',retention:'provider_managed'} });
     expect(() => buildConfiguredAdapters(value, { AGENVYL_CONNECTOR_AGY_PRINT_TIMEOUT_MS: 'invalid' })).toThrow('must be a positive integer');
   });
   it('loads enabled Cursor with its experimental capability ceiling',()=>{const value=config();value.instances=[{id:'local-cursor',type:'cursor',enabled:true}];const adapters=buildConfiguredAdapters(value,{AGENVYL_CONNECTOR_CURSOR_COMMAND:'/opt/agent'});expect(adapters.get('local-cursor')).toMatchObject({type:'cursor',capabilities:['model_catalog','execution_profiles','text_streaming','tools']});});

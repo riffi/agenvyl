@@ -77,6 +77,9 @@ export function RunDrawer({run,persona,harnessCatalog,close}:{run?:Run;persona?:
   useEffect(()=>setCopied(false),[run?.id]);
   const model=modelInfo(run,persona,harnessCatalog);
   const state=run?statusCopy[run.status]:undefined;
+  const harnessInstance=run?harnessCatalog?.instances.find(instance=>instance.id===run.harnessInstanceId):undefined;
+  const providerManagedHistory=run?.continuationRetention==='provider_managed'||harnessInstance?.postTurnContinuation?.retention==='provider_managed';
+  const historyProvider=run?.harnessType==='antigravity'?'AGY':'the harness provider';
   const copyId=async()=>{if(!run)return;try{await navigator.clipboard.writeText(run.id);setCopied(true)}catch{/* Clipboard may be unavailable outside a secure context. */}};
   const active=run&&['queued','streaming','finalizing','stopping','waiting_approval','waiting_clarification'].includes(run.status);
   return <div className={styles.root}>
@@ -122,6 +125,7 @@ export function RunDrawer({run,persona,harnessCatalog,close}:{run?:Run;persona?:
             <div><dt>Attempt</dt><dd><code>{run.attemptNumber??1}</code></dd></div>
             <div><dt>Model route</dt><dd><code>{model.route??'not specified'}</code></dd></div>
             <div><dt>System status</dt><dd><code>{run.status}</code></dd></div>
+            {providerManagedHistory&&<div><dt>Session history</dt><dd className={styles['retention-copy']}>Stored and retained by {historyProvider} under its policy. Agenvyl does not manage its deletion.</dd></div>}
             {run.usage&&<>
               <div><dt>Input tokens</dt><dd><code>{tokens(run.usage.inputTokens)}</code></dd></div>
               <div><dt>Output tokens</dt><dd><code>{tokens(run.usage.outputTokens)}</code></dd></div>

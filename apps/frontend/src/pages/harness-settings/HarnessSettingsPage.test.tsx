@@ -15,6 +15,7 @@ const settings:HarnessSettingsState={connectorEpoch:'epoch',discoveryCache:cache
 ],instances:[
   {id:'local-opencode',type:'opencode',enabled:true,endpoint:'http://127.0.0.1:4096',managed:true,externalDirectoryRoots:[],status:'healthy',capabilities:['model_catalog'],personas:[]},
   {id:'local-codex',type:'codex',enabled:false,status:'disabled',capabilities:[],personas:[{id:'agent',name:'Builder',handle:'builder',archived:false}]},
+  {id:'local-antigravity',type:'antigravity',enabled:true,status:'healthy',capabilities:['model_catalog'],personas:[]},
 ]};
 
 let requests:Array<{url:string;method:string;body?:unknown}>=[],testHealthy=true;
@@ -51,6 +52,12 @@ describe('HarnessSettingsPage',()=>{
     const endpoint=await screen.findByRole('textbox',{name:'Endpoint'});await user.clear(endpoint);await user.type(endpoint,'http://127.0.0.1:4999');await user.click(screen.getByRole('button',{name:'Test connection'}));
     expect(await screen.findByText('Connection is healthy.')).toBeTruthy();expect(requests.some(request=>request.method==='PUT')).toBe(false);
     expect(requests.find(request=>request.url.endsWith('/test'))?.body).toMatchObject({instance:{endpoint:'http://127.0.0.1:4999'}});
+  });
+
+  it('explains AGY session retention in connector settings',async()=>{
+    renderPage('/settings/harnesses/local-antigravity');
+    expect(await screen.findByText('Session history is managed by AGY')).toBeTruthy();
+    expect(screen.getByText(/cannot delete their history from AGY/)).toBeTruthy();
   });
 
   it('confirms managed OpenCode restart and refreshes settings and catalog',async()=>{
