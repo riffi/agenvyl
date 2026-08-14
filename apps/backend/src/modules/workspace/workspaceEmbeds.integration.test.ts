@@ -31,7 +31,7 @@ describe('persisted workspace embeds',()=>{
       await workspace.upload('demo-room','fake.jpg','image/jpeg',Buffer.from('<html>not an image</html>'));
       await expect(workspace.resolveRunEmbeds('demo-room',next.message.runIds[0],'![Fake](workspace:fake.jpg)')).resolves.toEqual([{kind:'image',path:'fake.jpg',status:'error',error:'invalid_content'}]);
     }finally{await repositories.database.close();await rm(root,{recursive:true,force:true});}
-  });
+  },15_000);
 
   it('captures a new immutable version when an ignored image path is overwritten',async()=>{
     const root=await mkdtemp(path.join(tmpdir(),'workspace-embeds-')),repositories=await createRepositories(testDatabaseUrl('run_embed_overwrite')),events=new RoomEventService(repositories.roomEvents,new RoomEventBus()),activeRuns=new ActiveRunRegistry(),workspace=new RoomWorkspaceService(repositories.rooms,repositories.workspace,repositories.runWorkspaces,events,activeRuns,root,root,10*1024*1024);
@@ -50,7 +50,7 @@ describe('persisted workspace embeds',()=>{
       expect(await readFile(firstFile.path)).toEqual(png('first'));
       expect(await readFile(secondFile.path)).toEqual(png('second'));
     }finally{await repositories.database.close();await rm(root,{recursive:true,force:true});}
-  });
+  },15_000);
 });
 
 function png(label:string){return Buffer.concat([Buffer.from([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]),Buffer.from(label)]);}

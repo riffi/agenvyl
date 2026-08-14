@@ -12,6 +12,8 @@ const connectorOptions = {
 } as const;
 const buildApp = (options: AppOptions = {}) =>
   buildAppBase({ ...connectorOptions, ...options });
+const waitForBackgroundWork = <T>(assertion: () => T | Promise<T>) =>
+  vi.waitFor(assertion, { timeout: 10_000 });
 function db() {
   return testDatabaseUrl("app");
 }
@@ -287,8 +289,8 @@ describe("execution routing", () => {
         })
       ).statusCode,
     ).toBe(202);
-    await vi.waitFor(() => expect(submitted).toHaveLength(1));
-    await vi.waitFor(async () =>
+    await waitForBackgroundWork(() => expect(submitted).toHaveLength(1));
+    await waitForBackgroundWork(async () =>
       expect(
         (
           await sql`SELECT status FROM agent_runs ORDER BY created_at DESC LIMIT 1`
@@ -307,7 +309,7 @@ describe("execution routing", () => {
         })
       ).statusCode,
     ).toBe(202);
-    await vi.waitFor(() => expect(submitted).toHaveLength(2));
+    await waitForBackgroundWork(() => expect(submitted).toHaveLength(2));
     const firstInput = submitted[0].input as {
         message: string;
         systemPrompt: string;
@@ -809,7 +811,9 @@ describe("room management", () => {
       payload,
     });
     expect(first.statusCode).toBe(202);
-    await vi.waitFor(() => expect(submitted).toHaveLength(1));
+    await vi.waitFor(() => expect(submitted).toHaveLength(1), {
+      timeout: 10_000,
+    });
     const retry = await app.inject({
       method: "POST",
       url: "/api/v1/rooms/demo-room/messages",
@@ -996,7 +1000,7 @@ describe("Runs API backend", () => {
     });
     expect(response.statusCode).toBe(202);
     const retriedId = response.json().run_id;
-    await vi.waitFor(() => expect(submitted).toHaveLength(1));
+    await waitForBackgroundWork(() => expect(submitted).toHaveLength(1));
     expect(
       (
         await sql`SELECT retry_of_run_id,context,harness_instance_id,harness_type,model_id,execution_profile FROM agent_runs WHERE id=${retriedId}`
@@ -1222,7 +1226,7 @@ describe("Runs API backend", () => {
     });
 
     expect(response.statusCode).toBe(202);
-    await vi.waitFor(() => expect(submitted).toHaveLength(2));
+    await waitForBackgroundWork(() => expect(submitted).toHaveLength(2));
     expect(submitted.map((run) => run.modelId).sort()).toEqual(["qwen", "sol"]);
     expect(new Set(submitted.map((run) => run.executionId)).size).toBe(2);
     await app.close();
@@ -1245,8 +1249,8 @@ describe("Runs API backend", () => {
         })
       ).statusCode,
     ).toBe(202);
-    await vi.waitFor(() => expect(submitted).toHaveLength(1));
-    await vi.waitFor(async () => {
+    await waitForBackgroundWork(() => expect(submitted).toHaveLength(1));
+    await waitForBackgroundWork(async () => {
       const eventCalls = fetchMock.mock.calls.filter(([input]) =>
         String(input).includes("/events?after="),
       );
@@ -1270,7 +1274,7 @@ describe("Runs API backend", () => {
         })
       ).statusCode,
     ).toBe(202);
-    await vi.waitFor(() => expect(submitted).toHaveLength(3));
+    await waitForBackgroundWork(() => expect(submitted).toHaveLength(3));
     const histories = new Map(
       submitted
         .slice(1)

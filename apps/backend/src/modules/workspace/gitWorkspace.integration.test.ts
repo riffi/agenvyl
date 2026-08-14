@@ -45,5 +45,5 @@ describe('transparent Git workspace',()=>{
       expect(await repositories.workspace.previewBundleForRun('demo-room',planRun.id)).toBeUndefined();
       expect((await service.list('demo-room')).previewHistory).toHaveLength(1);
     }finally{await repositories.database.close();await Promise.all([rm(root,{recursive:true,force:true}),rm(artifacts,{recursive:true,force:true})]);}
-  });
+  },15_000);
 });

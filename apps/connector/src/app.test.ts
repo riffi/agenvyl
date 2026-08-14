@@ -151,7 +151,12 @@ describe('Connector shell', () => {
     expect(isExecutionSnapshot(created.json().execution)).toBe(true);
     expect(created.json().execution).toMatchObject({ status: 'queued', cursor: 1 });
     await waitForStatus(app, request.executionId, 'running');
-    expect(adapter.lastRequest?.workspace).toEqual({ roomId: 'room-1', relativePath: '.', absolutePath: join(workspaceRoot, 'room-1') });
+    expect(adapter.lastRequest?.workspace).toEqual({
+      roomId: 'room-1',
+      relativePath: '.',
+      absolutePath: join(workspaceRoot, 'room-1'),
+      roomAbsolutePath: join(workspaceRoot, 'room-1'),
+    });
 
     const repeated = await app.inject({ method: 'POST', url: '/v2/executions', headers: auth, payload: request });
     expect(repeated.statusCode).toBe(200);

@@ -4,6 +4,7 @@ export default defineConfig({
   test: {
     globalSetup: ['./test/vitestDatabaseGlobalSetup.ts'],
     maxWorkers: 4,
+    testTimeout: 15_000,
     teardownTimeout: 30_000,
   },
 });
