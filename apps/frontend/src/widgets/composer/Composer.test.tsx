@@ -16,16 +16,17 @@ const sentMessage={id:'message-1',text:'',createdAt:'2026-07-22T00:00:00.000Z',t
 afterEach(()=>{cleanup();vi.unstubAllGlobals()});
 
 describe('Composer agent list',()=>{
-  it('sends a normal chat message with explicit agent-session routing',async()=>{
+  it('hides the legacy agent-session mode and safely restores Auto',async()=>{
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
-    const send=vi.fn<RoomGateway['send']>().mockResolvedValue(sentMessage),localGateway={...gateway,send};
-    render(<Composer gateway={localGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} conversationRouting conversationRoutingMode="agent_session" updateConversationRouting={vi.fn(async()=>undefined)}/>);
-    fireEvent.click(screen.getByRole('button',{name:/Agent session/i}));
-    fireEvent.change(screen.getByRole('combobox',{name:'Agent session recipient'}),{target:{value:'coder'}});
-    const applyNow=screen.getByRole('radio',{name:/Apply now/i});expect((applyNow as HTMLInputElement).disabled).toBe(true);
+    const send=vi.fn<RoomGateway['send']>().mockResolvedValue(sentMessage),updateConversationRouting=vi.fn(async()=>undefined),localGateway={...gateway,send};
+    render(<Composer gateway={localGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} conversationRouting conversationRoutingMode="agent_session" updateConversationRouting={updateConversationRouting}/>);
+    await waitFor(()=>expect(updateConversationRouting).toHaveBeenCalledWith('auto'));
+    fireEvent.click(screen.getByRole('button',{name:/Auto/i}));
+    expect(screen.queryByText('Agent session')).toBeNull();
+    expect(screen.queryByRole('combobox',{name:'Agent session recipient'})).toBeNull();
     const editor=screen.getByRole('textbox',{name:'Message'});fireEvent.change(editor,{target:{value:'Continue the review'}});fireEvent.keyDown(editor,{key:'Enter'});
     await waitFor(()=>expect(send).toHaveBeenCalled());
-    expect(send.mock.calls[0]?.[4]).toEqual({mode:'agent_session',target:'coder',delivery:'after_response'});
+    expect(send.mock.calls[0]?.[4]).toEqual({mode:'auto',delivery:'after_response'});
   });
   it('preserves the normal draft while submitting a text-only instruction',async()=>{
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));const intervene=vi.fn(async()=>undefined),exitIntervention=vi.fn(),instructionGateway={...gateway,intervene};

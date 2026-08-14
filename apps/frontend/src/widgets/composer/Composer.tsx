@@ -28,7 +28,7 @@ function highlightMentions(text:string,personas:readonly Persona[]):ReactNode[] 
   return parts;
 }
 
-export type ComposerHandle={insertMention:(handle:string)=>void;replyTo:(handle:string)=>void};
+export type ComposerHandle={insertMention:(handle:string)=>void};
 export type ComposerInterventionTarget={runId:string;agent:string;mode:'active_redirect'|'post_turn_continuation'|'unavailable'};
 
 export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer({
@@ -74,11 +74,16 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   const [sendError,setSendError]=useState<{message:string;messageId:string;text:string;targets:string[];attachmentVersionIds:string[];routing?:import('@agenvyl/contracts').MessageRouting} | undefined>();
   const [profileError,setProfileError]=useState<string>();
   const [interventionError,setInterventionError]=useState<string>();
-  const [routingTarget,setRoutingTarget]=useState<string>();
   const [routeDelivery,setRouteDelivery]=useState<RouteDelivery>('after_response');
   const [routeSaving,setRouteSaving]=useState(false);
   const [routeError,setRouteError]=useState<string>();
-  useImperativeHandle(ref,()=>({insertMention:(handle:string)=>{const editor=editorRef.current,{text:next,caret}=insertMentionAt(text,handle,editor?.selectionStart??text.length,editor?.selectionEnd??text.length);if(next.length>4000)return;setText(next);setMention(undefined);requestAnimationFrame(()=>{editorRef.current?.focus();editorRef.current?.setSelectionRange(caret,caret)});},replyTo:(handle:string)=>{setRoutingTarget(handle);setRouteDelivery('after_response');if(conversationRoutingMode!=='agent_session')void selectConversationRouting('agent_session');requestAnimationFrame(()=>editorRef.current?.focus());}}),[conversationRoutingMode,text]);
+  useImperativeHandle(ref,()=>({insertMention:(handle:string)=>{
+    const editor=editorRef.current,{text:next,caret}=insertMentionAt(text,handle,editor?.selectionStart??text.length,editor?.selectionEnd??text.length);
+    if(next.length>4000)return;
+    setText(next);
+    setMention(undefined);
+    requestAnimationFrame(()=>{editorRef.current?.focus();editorRef.current?.setSelectionRange(caret,caret)});
+  }}),[text]);
   const targets = useMemo(
     () => parseMentions(text, personas),
     [text, personas],
@@ -96,7 +101,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
     ...personas.map(persona=>({handle:persona.handle,name:persona.name,detail:personaModelName(persona,harnessCatalog),color:persona.color})),
   ].filter(candidate=>!mention||!mention.query||candidate.handle.toLowerCase().includes(mention.query)||candidate.name.toLowerCase().includes(mention.query)||candidate.detail.toLowerCase().includes(mention.query)).slice(0,8),[harnessCatalog,mention,personas]);
   useEffect(()=>setMentionIndex(0),[mention?.query]);
-  useEffect(()=>{setText('');setMention(undefined);setSendError(undefined);setProfileError(undefined);setModeError(undefined);setRoutingTarget(undefined);setRouteDelivery('after_response');setRouteError(undefined)},[roomId]);
+  useEffect(()=>{setText('');setMention(undefined);setSendError(undefined);setProfileError(undefined);setModeError(undefined);setRouteDelivery('after_response');setRouteError(undefined)},[roomId]);
   useEffect(()=>{
     const previous=previousInterventionRef.current,next=interventionTarget?.runId;
     if(previous===next)return;
@@ -112,6 +117,13 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   const chooseMention=(handle:string)=>{if(!mention)return;const next=`${text.slice(0,mention.start)}@${handle} ${text.slice(mention.end)}`,caret=mention.start+handle.length+2;setText(next);setMention(undefined);requestAnimationFrame(()=>{editorRef.current?.focus();editorRef.current?.setSelectionRange(caret,caret)});};
   const selectWorkflowMode=async(nextMode:WorkflowMode)=>{if(modeSaving||nextMode===workflowMode)return;setModeSaving(true);setModeError(undefined);try{await updateWorkflowMode(nextMode)}catch(error){setModeError(error instanceof Error?error.message:String(error))}finally{setModeSaving(false)}};
   const selectConversationRouting=async(nextMode:import('@agenvyl/contracts').ConversationRoutingMode)=>{if(routeSaving||nextMode===conversationRoutingMode)return;setRouteSaving(true);setRouteError(undefined);try{await updateConversationRouting(nextMode);if(nextMode==='room_context')setRouteDelivery('after_response')}catch(error){setRouteError(error instanceof Error?error.message:String(error))}finally{setRouteSaving(false)}};
+  const visibleConversationRoutingMode=conversationRoutingMode==='agent_session'?'auto':conversationRoutingMode;
+  const mentionedRoutingTarget=targets.length===1?targets[0]:undefined;
+  const streamingRoutingRuns=routingRuns.filter(run=>run.status==='streaming');
+  const applyRoutingRun=mentionedRoutingTarget?streamingRoutingRuns.find(run=>run.agent===mentionedRoutingTarget):streamingRoutingRuns.length===1?streamingRoutingRuns[0]:undefined;
+  const applyAvailable=Boolean(applyRoutingRun&&harnessCatalog?.instances.some(instance=>instance.id===applyRoutingRun.harnessInstanceId&&instance.status!=='unavailable'&&instance.interventionMode==='interrupt_then_continue'));
+  useEffect(()=>{if(conversationRouting&&conversationRoutingMode==='agent_session')void selectConversationRouting('auto')},[conversationRouting,conversationRoutingMode]);
+  useEffect(()=>{if(routeDelivery==='apply_now'&&!applyAvailable)setRouteDelivery('after_response')},[applyAvailable,routeDelivery]);
   const workflowModeLabel=workflowMode==='plan'?'Plan':'Work',nextWorkflowMode:WorkflowMode=workflowMode==='plan'?'work':'plan',nextWorkflowModeLabel=nextWorkflowMode==='plan'?'Plan':'Work';
   const workflowModeTitle=workflowMode==='plan'?'Plan mode: project changes are blocked; MCP actions require confirmation. Switch to Work':`Work mode. Switch to ${nextWorkflowModeLabel}`;
   const send = async (retry=sendError) => {
@@ -125,7 +137,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
     }
     const outgoing=retry?.text??text.trim();
     const outgoingTargets=retry?.targets??parseMentions(outgoing,personas), messageId=retry?.messageId??crypto.randomUUID(),attachmentVersionIds=retry?.attachmentVersionIds??attachments.flatMap(item=>item.attachment?[item.attachment.version_id]:[]);
-    const outgoingRouting=retry?.routing??(conversationRouting?(conversationRoutingMode==='room_context'?{mode:'room_context' as const}:conversationRoutingMode==='agent_session'?{mode:'agent_session' as const,...(routingTarget?{target:routingTarget}:{}),delivery:routeDelivery==='apply_now'?'apply_now' as const:'after_response' as const}:{mode:'auto' as const,...(routingTarget?{target:routingTarget}:{}),delivery:routeDelivery}):undefined);
+    const outgoingRouting=retry?.routing??(conversationRouting?(visibleConversationRoutingMode==='room_context'?{mode:'room_context' as const}:routeDelivery==='apply_now'&&applyRoutingRun?{mode:'agent_session' as const,target:applyRoutingRun.agent,delivery:'apply_now' as const}:{mode:'auto' as const,delivery:routeDelivery}):undefined);
     if ((!outgoing&&!attachmentVersionIds.length) || !catalogReady || sending || (!retry&&attachmentsBusy))return;
     setSending(true);setSendError(undefined);
     try{await gateway.send(outgoing,outgoingTargets,messageId,attachmentVersionIds,outgoingRouting);setText("");setMention(undefined);clearAttachments();await onSent();}
@@ -225,7 +237,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
         <footer className={interventionTarget?styles['instruction-footer']:undefined}>
           {!interventionTarget&&<ComposerAddMenu attachmentDisabled={attachments.length>=10||attachmentsBusy} onAttach={openAttachmentPicker} onOpenWorkspace={()=>openWorkspace()}/>}
           <span className={styles['footer-spacer']} aria-hidden="true"/>
-          {!interventionTarget&&conversationRouting&&<ConversationRouteControl mode={conversationRoutingMode} target={routingTarget} delivery={routeDelivery} personas={personas} saving={routeSaving} applyAvailable={Boolean(routingTarget&&routingRuns.some(run=>run.agent===routingTarget&&run.status==='streaming'&&harnessCatalog?.instances.some(instance=>instance.id===run.harnessInstanceId&&instance.status!=='unavailable'&&instance.interventionMode==='interrupt_then_continue')))} onModeChange={mode=>void selectConversationRouting(mode)} onTargetChange={setRoutingTarget} onDeliveryChange={setRouteDelivery}/>}
+          {!interventionTarget&&conversationRouting&&<ConversationRouteControl mode={visibleConversationRoutingMode} delivery={routeDelivery} saving={routeSaving} applyAvailable={applyAvailable} onModeChange={mode=>void selectConversationRouting(mode)} onDeliveryChange={setRouteDelivery}/>}
           {!interventionTarget&&<Button
             className={styles['plan-button']}
             size="sm"

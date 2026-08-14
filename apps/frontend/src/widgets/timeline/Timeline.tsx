@@ -231,7 +231,6 @@ export function Timeline({
   openArtifact=()=>{},
   roomId:_roomId='',
   addInstructionToRun,
-  instructionActionLabel,
 }: {
   state: RoomState;
   personas: Persona[];
@@ -246,7 +245,6 @@ export function Timeline({
   openArtifact?:OpenWorkspaceArtifact;
   roomId?:string;
   addInstructionToRun?:(runId:string)=>void;
-  instructionActionLabel?:string;
 }) {
   const byHandle = new Map(personas.map((p) => [p.handle, p]));
   const [attemptView,setAttemptView]=useState<Record<string,string>>({});
@@ -349,8 +347,7 @@ export function Timeline({
                     select={() => select(id)}
                     cancel={() => gateway.cancel(id)}
                     addInstruction={()=>addInstructionToRun?.(id)}
-                    canAddInstruction={Boolean(addInstructionToRun&&(instructionActionLabel==='Reply'?(['queued','streaming','finalizing','waiting_approval','waiting_clarification'].includes(run.status)||(run.status==='completed'&&state.selectedRuns[slot]===run.id&&!activeAttempt)):((run.status==='streaming'&&harnessCatalog?.instances.find(instance=>instance.id===run.harnessInstanceId&&instance.status!=='unavailable')?.interventionMode==='interrupt_then_continue'&&!(run.requests??[]).some(request=>!request.resolved)&&!run.interventions.some(intervention=>intervention.status==='pending'))||(run.status==='completed'&&state.selectedRuns[slot]===run.id&&harnessCatalog?.instances.find(instance=>instance.id===run.harnessInstanceId&&instance.status!=='unavailable')?.postTurnContinuation?.mode==='native_session'&&!activeAttempt))))}
-                    instructionActionLabel={instructionActionLabel}
+                    canAddInstruction={Boolean(addInstructionToRun&&((run.status==='streaming'&&harnessCatalog?.instances.find(instance=>instance.id===run.harnessInstanceId&&instance.status!=='unavailable')?.interventionMode==='interrupt_then_continue'&&!(run.requests??[]).some(request=>!request.resolved)&&!run.interventions.some(intervention=>intervention.status==='pending'))||(run.status==='completed'&&state.selectedRuns[slot]===run.id&&harnessCatalog?.instances.find(instance=>instance.id===run.harnessInstanceId&&instance.status!=='unavailable')?.postTurnContinuation?.mode==='native_session'&&!activeAttempt)))}
                     retry={async()=>{setAttemptView(current=>{const next={...current};delete next[slot];return next});await gateway.retry(id)}}
                     canRetry={messageIndex===state.messages.length-1&&['completed','failed','cancelled'].includes(state.runs[id].status)&&!activeAttempt&&gateway.mode==='real'}
                     attemptIndex={shownIndex}
