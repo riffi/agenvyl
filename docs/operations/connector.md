@@ -169,7 +169,9 @@ Hermes is attach-only. OpenCode with `managed: true` is started and stopped only
 by Connector; `managed: false` is attach-only and leaves its lifecycle to the
 operator. Codex owns one restartable app-server and multiplexes
 ephemeral threads. Claude, AGY, and Cursor CLI start a fresh process for each
-execution. Cursor runs headlessly and does not resume upstream sessions.
+execution. A linked AGY post-turn run resumes the retained native conversation
+by its exact ID despite using a new process. Claude and Cursor do not resume
+upstream sessions; Cursor runs headlessly.
 
 Do not put secrets into interpolated shell commands. Windows `.exe`, `.cmd`, and
 `.bat` overrides are supported for Codex and Claude; AGY normally resolves its

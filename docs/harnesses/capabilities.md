@@ -70,7 +70,7 @@ structured clarification.
 | --- | --- | --- | --- | --- | --- | --- |
 | Cancellation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Add instruction to active run | — | ✅ | ✅ | — | — | — |
-| Continue selected completed response | — | ✅ | ✅ | — | — | — |
+| Continue selected completed response | — | ✅ | ✅ | — | ✅ | — |
 | Concurrent runs | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Event replay and Core reattach | ✅ Same epoch | ✅ Same epoch | ✅ Same epoch | ✅ Same epoch | ✅ Same epoch | ✅ Same epoch |
 
@@ -83,12 +83,15 @@ Replay and Core reattach work only while the same Connector process epoch is
 alive and the requested events remain replayable. If Connector restarts, Core
 does not attach an old run to the new process: the run ends fail-closed.
 
-Add instruction is a cooperative interrupt for Codex and OpenCode. It
-interrupts the current turn and starts a new turn in the same native session,
-run, and workspace. On a selected completed response, it creates a linked run
-from that preserved session. It is not a pause or rollback: a command may
-finish before the interrupt is observed, and filesystem or external side
-effects that already happened remain in place.
+Adding an instruction to an active run is a cooperative interrupt supported by
+Codex and OpenCode. It interrupts the current turn and starts a new turn in the
+same native session, run, and workspace. Continuing a selected completed
+response is a separate post-turn action: Codex, OpenCode, and AGY create a
+linked run from the preserved native session. For AGY, the linked run starts a
+new `agy --print` process and resumes the exact native conversation ID. Neither
+action is a pause or rollback: a command may finish before an active interrupt
+is observed, and filesystem or external side effects that already happened
+remain in place.
 
 ## Important distinctions
 
@@ -135,7 +138,9 @@ Add instruction is lifecycle behavior too. A Connector instance advertises it wi
 optional `interventionMode: "interrupt_then_continue"` metadata field. Instances
 that omit the field are unsupported; Core and the UI do not emulate a fallback.
 Post-turn support is advertised separately with `postTurnContinuation`; Agenvyl
-currently uses native sessions with explicit release for Codex and OpenCode.
+uses native sessions with explicit release for Codex and OpenCode, and
+provider-managed retention for AGY. When an AGY continuation chain is no longer
+active, Agenvyl stops referencing it but cannot delete its history from AGY.
 
 ## Verification and maintenance
 
