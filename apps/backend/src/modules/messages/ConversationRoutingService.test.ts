@@ -23,7 +23,7 @@ describe('ConversationRoutingService',()=>{
 
   it('requires a target when Auto has multiple plausible agents',async()=>{
     const{service}=fixture([{runId:'run-1',roomId:'room',personaId:'p1',personaHandle:'coder',status:'streaming'},{runId:'run-2',roomId:'room',personaId:'p2',personaHandle:'reviewer',status:'streaming'}]);
-    await expect(service.execute({roomId:'room',body:{text:'Continue',message_id:message.id}})).rejects.toMatchObject({code:'routing_target_required',statusCode:409});
+    await expect(service.execute({roomId:'room',body:{text:'Continue',message_id:message.id}})).rejects.toMatchObject({code:'routing_target_required',statusCode:409,message:'Auto found several possible recipients. Mention one agent or use @all'});
   });
 
   it('keeps an explicit Room context request on the legacy tail path',async()=>{

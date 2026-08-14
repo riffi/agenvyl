@@ -5,7 +5,7 @@ import styles from './Composer.module.css';
 
 export type VisibleRoutingMode=Exclude<ConversationRoutingMode,'agent_session'>;
 export const conversationRouteOptions=[
-  ['auto','Auto','Follow the current agent when there is one clear recipient.'],
+  ['auto','Auto','Follow one available agent automatically. With several agents, add an @mention.'],
   ['room_context','Room context','Start a new request with the room’s trimmed history.'],
 ] as const;
 

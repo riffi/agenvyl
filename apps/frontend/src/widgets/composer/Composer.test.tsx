@@ -30,6 +30,34 @@ describe('Composer agent list',()=>{
     expect(send.mock.calls[0]?.[4]).toEqual({mode:'auto',delivery:'after_response'});
   });
 
+  it('explains ambiguous Auto routing and disables sending until a recipient is mentioned',async()=>{
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
+    const reviewer={...persona,id:'reviewer',handle:'reviewer',name:'Reviewer'},send=vi.fn<RoomGateway['send']>().mockResolvedValue(sentMessage),updateConversationRouting=vi.fn(async()=>undefined),localGateway={...gateway,send};
+    render(<Composer gateway={localGateway} active={0} personas={[persona,reviewer]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} conversationRouting conversationRoutingMode="auto" updateConversationRouting={updateConversationRouting} autoRoutingCandidates={['coder','reviewer']}/>);
+    const editor=screen.getByRole('textbox',{name:'Message'});
+    fireEvent.change(editor,{target:{value:'What should we do next?'}});
+    expect(screen.getByRole('status').textContent).toContain('Auto needs a recipient');
+    expect(screen.getByRole('status').textContent).toContain('@coder, @reviewer');
+    const sendButton=screen.getByRole('button',{name:'Choose a recipient before sending'});
+    expect(sendButton.hasAttribute('disabled')).toBe(true);
+    fireEvent.click(sendButton);
+    expect(send).not.toHaveBeenCalled();
+    expect(editor.getAttribute('aria-describedby')).toBe('auto-routing-guidance');
+    expect((editor as HTMLTextAreaElement).value).toBe('What should we do next?');
+    expect(screen.queryByRole('button',{name:'Use Room context'})).toBeNull();
+    fireEvent.keyDown(editor,{key:'Enter'});
+    expect(send).not.toHaveBeenCalled();
+    editor.focus();const caret=(editor as HTMLTextAreaElement).value.length;(editor as HTMLTextAreaElement).setSelectionRange(caret,caret);
+    expect(screen.getByRole('button',{name:'Add @all to message'})).toBeTruthy();
+    fireEvent.click(screen.getByRole('button',{name:'Add @coder to message'}));
+    expect((editor as HTMLTextAreaElement).value).toBe('What should we do next? @coder ');
+    await waitFor(()=>expect(document.activeElement).toBe(editor));
+    const enabledSend=screen.getByRole('button',{name:'Send to 1 agent'});
+    expect(enabledSend.hasAttribute('disabled')).toBe(false);
+    fireEvent.click(enabledSend);
+    await waitFor(()=>expect(send).toHaveBeenCalledWith('What should we do next? @coder',['coder'],expect.any(String),[],{mode:'auto',delivery:'after_response'}));
+  });
+
   it('shows a queued message above the composer and applies that message now',async()=>{
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
     const applyQueuedNow=vi.fn(async()=>undefined),localGateway={...gateway,applyQueuedNow},queuedMessage={...sentMessage,id:'queued-message',text:'Use the existing parser',targets:['coder'],delivery:{route:'agent_session' as const,status:'queued' as const,agent:'coder',anchorRunId:'run-1'}};

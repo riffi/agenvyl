@@ -12,6 +12,7 @@ import {WorkspaceArtifactActions,type OpenWorkspaceArtifact,type WorkspaceTarget
 import styles from './Composer.module.css';
 import {ReasoningEffortChip,roomPersonaModel,roomPersonaReasoning} from '../../features/reasoning-effort';
 import {ComposerAddMenu} from './ComposerAddMenu';
+import {AUTO_ROUTING_GUIDANCE_ID,AutoRoutingGuidance} from './AutoRoutingGuidance';
 import {ConversationRouteControl} from './ConversationRouteControl';
 import {PendingFollowUps} from './PendingFollowUps';
 
@@ -59,6 +60,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   conversationRouting=false,
   conversationRoutingMode='auto',
   updateConversationRouting=async()=>{},
+  autoRoutingCandidates=[],
   pendingFollowUps=[],
 }: ComposerProps,ref) {
   const [text, setText] = useState("");
@@ -79,13 +81,14 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   const [routeSaving,setRouteSaving]=useState(false);
   const [routeError,setRouteError]=useState<string>();
   const [mobileControls,setMobileControls]=useState(()=>typeof matchMedia==='function'&&matchMedia('(max-width: 767px)').matches);
-  useImperativeHandle(ref,()=>({insertMention:(handle:string)=>{
+  const insertMention=(handle:string)=>{
     const editor=editorRef.current,{text:next,caret}=insertMentionAt(text,handle,editor?.selectionStart??text.length,editor?.selectionEnd??text.length);
     if(next.length>4000)return;
     setText(next);
     setMention(undefined);
     requestAnimationFrame(()=>{editorRef.current?.focus();editorRef.current?.setSelectionRange(caret,caret)});
-  }}),[text]);
+  };
+  useImperativeHandle(ref,()=>({insertMention}),[text]);
   const targets = useMemo(
     () => parseMentions(text, personas),
     [text, personas],
@@ -121,6 +124,8 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   const selectWorkflowMode=async(nextMode:WorkflowMode)=>{if(modeSaving||nextMode===workflowMode)return;setModeSaving(true);setModeError(undefined);try{await updateWorkflowMode(nextMode)}catch(error){setModeError(error instanceof Error?error.message:String(error))}finally{setModeSaving(false)}};
   const selectConversationRouting=async(nextMode:import('@agenvyl/contracts').ConversationRoutingMode)=>{if(routeSaving||nextMode===conversationRoutingMode)return;setRouteSaving(true);setRouteError(undefined);try{await updateConversationRouting(nextMode)}catch(error){setRouteError(error instanceof Error?error.message:String(error))}finally{setRouteSaving(false)}};
   const visibleConversationRoutingMode=conversationRoutingMode==='agent_session'?'auto':conversationRoutingMode;
+  const ambiguousAutoRouting=conversationRouting&&visibleConversationRoutingMode==='auto'&&targets.length===0&&autoRoutingCandidates.length>1;
+  const showAutoRoutingGuidance=ambiguousAutoRouting&&Boolean(text.trim()||attachments.length);
   useEffect(()=>{if(conversationRouting&&conversationRoutingMode==='agent_session')void selectConversationRouting('auto')},[conversationRouting,conversationRoutingMode]);
   const workflowModeLabel=workflowMode==='plan'?'Plan':'Work',nextWorkflowMode:WorkflowMode=workflowMode==='plan'?'work':'plan',nextWorkflowModeLabel=nextWorkflowMode==='plan'?'Plan':'Work';
   const workflowModeTitle=workflowMode==='plan'?'Plan mode: project changes are blocked; MCP actions require confirmation. Switch to Work':`Work mode. Switch to ${nextWorkflowModeLabel}`;
@@ -137,6 +142,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
     const outgoingTargets=retry?.targets??parseMentions(outgoing,personas), messageId=retry?.messageId??crypto.randomUUID(),attachmentVersionIds=retry?.attachmentVersionIds??attachments.flatMap(item=>item.attachment?[item.attachment.version_id]:[]);
     const outgoingRouting=retry?.routing??(conversationRouting?(visibleConversationRoutingMode==='room_context'?{mode:'room_context' as const}:{mode:'auto' as const,delivery:'after_response' as const}):undefined);
     if ((!outgoing&&!attachmentVersionIds.length) || !catalogReady || sending || (!retry&&attachmentsBusy))return;
+    if(outgoingRouting?.mode==='auto'&&!outgoingTargets.length&&autoRoutingCandidates.length>1){editorRef.current?.focus();return;}
     setSending(true);setSendError(undefined);
     try{await gateway.send(outgoing,outgoingTargets,messageId,attachmentVersionIds,outgoingRouting);setText("");setMention(undefined);clearAttachments();await onSent();}
     catch(error){setText(outgoing);setSendError({message:error instanceof ApiError?`${error.code}: ${error.message}`:error instanceof Error?error.message:String(error),messageId,text:outgoing,targets:outgoingTargets,attachmentVersionIds,routing:outgoingRouting});}
@@ -185,6 +191,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
       {profileError&&<Alert className={styles['send-error']} tone="error">Could not apply execution settings: {profileError}</Alert>}
       {sendError&&<Alert className={styles['send-error']} tone="error">Failed to send: {sendError.message} <Button size="sm" variant="danger" onClick={()=>void send(sendError)} disabled={sending}>Retry</Button></Alert>}
       {interventionError&&<Alert className={styles['send-error']} tone="error">Unable to add instruction: {interventionError}</Alert>}
+      {autoRoutingCandidates.length>1&&<AutoRoutingGuidance candidates={autoRoutingCandidates} visible={showAutoRoutingGuidance} onMention={insertMention}/>}
       <div className={`${styles['compose-card']} ${composerExpanded?styles['compose-card-expanded']:styles['compose-card-compact']} ${interventionTarget?styles['instruction-card']:''}`}>
         {interventionTarget&&<header className={styles['instruction-header']}><span><MessageSquarePlus aria-hidden="true"/><strong>Add instruction to @{interventionTarget.agent}</strong></span><button type="button" onClick={exitIntervention} aria-label="Exit instruction mode" title="Back to message composer"><X/></button></header>}
         {!interventionTarget&&attachments.length>0&&<div className={styles.attachments}>{attachments.map(item=><span key={item.id} className={[item.status==='error'?styles['attachment-error']:'',item.mimeType.startsWith('image/')&&item.attachment?styles['image-attachment']:''].filter(Boolean).join(' ')}>{item.status==='uploading'?<LoaderCircle className={styles.spinning}/>:item.mimeType.startsWith('image/')&&item.attachment?<img src={item.attachment.preview_url} alt=""/>:<FileText/>}<button type="button" disabled={!item.attachment} onClick={event=>item.attachment&&openArtifact(item.attachment,readyAttachments,event.currentTarget)}>{item.name}</button><small>{item.status==='uploading'?`${item.progress}%`:item.status==='error'?item.error:formatBytes(item.size)}</small>{item.status==='uploading'&&<i style={{width:`${item.progress}%`}}/>}{item.attachment&&<WorkspaceArtifactActions attachment={item.attachment} openWorkspace={openWorkspace}/>} {item.status==='error'&&<button type="button" aria-label={`Retry upload ${item.name}`} onClick={()=>retryAttachment(item.id)}><RefreshCw/></button>}<button type="button" aria-label={`Remove ${item.name}`} onClick={()=>removeAttachment(item.id)}><X/></button></span>)}</div>}
@@ -230,6 +237,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
               }
             }}
             aria-label={interventionTarget?`Instruction for ${interventionTarget.agent}`:'Message'}
+            aria-describedby={showAutoRoutingGuidance?AUTO_ROUTING_GUIDANCE_ID:undefined}
             placeholder={composerPlaceholder}
           />
         </div>
@@ -251,10 +259,10 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
             className={styles.send}
             size="sm"
             variant="primary"
-            aria-label={interventionTarget?(sending?'Sending instruction':'Send instruction'):sending?'Sending message':targets.length?`Send to ${targets.length} ${targets.length===1?'agent':'agents'}`:'Post to room'}
-            disabled={interventionTarget?!text.trim()||sending:(!text.trim()&&!attachments.some(item=>item.status==='ready')) || !catalogReady || sending || attachmentsBusy}
+            aria-label={interventionTarget?(sending?'Sending instruction':'Send instruction'):sending?'Sending message':showAutoRoutingGuidance?'Choose a recipient before sending':targets.length?`Send to ${targets.length} ${targets.length===1?'agent':'agents'}`:'Post to room'}
+            disabled={interventionTarget?!text.trim()||sending:(!text.trim()&&!attachments.some(item=>item.status==='ready')) || !catalogReady || sending || attachmentsBusy || showAutoRoutingGuidance}
             onClick={()=>void send()}
-            title={interventionTarget?'Send instruction':targets.length?`Send to ${targets.length} ${targets.length===1?'agent':'agents'}`:'Post to room'}
+            title={interventionTarget?'Send instruction':showAutoRoutingGuidance?'Choose a recipient before sending':targets.length?`Send to ${targets.length} ${targets.length===1?'agent':'agents'}`:'Post to room'}
           >
             {interventionTarget?(sending?<><LoaderCircle className={styles.spinning}/><span>Sending…</span></>:<><MessageSquarePlus/><span>Send instruction</span></>):sending?<LoaderCircle className={styles.spinning}/>:<ArrowUp/>}
           </Button>
@@ -290,6 +298,7 @@ type ComposerProps={
   conversationRouting?:boolean;
   conversationRoutingMode?:import('@agenvyl/contracts').ConversationRoutingMode;
   updateConversationRouting?:(mode:import('@agenvyl/contracts').ConversationRoutingMode)=>Promise<unknown>;
+  autoRoutingCandidates?:string[];
   pendingFollowUps?:Message[];
 };
 

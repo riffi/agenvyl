@@ -33,7 +33,7 @@ export class ConversationRoutingService{
       }
       const current=await this.dependencies.followUps.anchors(command.roomId);
       if(current.length===0)return this.legacy(command,[],messageId);
-      if(current.length>1)throw new AppError('routing_target_required',409,'Choose an agent before sending this message');
+      if(current.length>1)throw new AppError('routing_target_required',409,'Auto found several possible recipients. Mention one agent or use @all');
       return this.agentSession(command,current[0],routing.delivery==='apply_now'?'apply_now':'after_response',messageId);
     }
     const requested=routing.target??(unique.length===1?unique[0]:undefined);
