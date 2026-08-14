@@ -10,7 +10,7 @@ import {Composer} from './Composer';
 const persona:Persona={id:'coder',handle:'coder',name:'Coder',color:'#64748b',requested_model:'anthropic/claude-sonnet',harness_instance_id:'local-opencode',harness_type:'opencode',model_id:'anthropic/claude-sonnet',permission_profile_id:null,agent_variant_id:null,default_reasoning_effort:null,group_id:null,archived_at:null};
 const cache={state:'fresh' as const,refreshedAt:'2026-07-24T00:00:00.000Z',expiresAt:'2026-07-24T00:05:00.000Z'};
 const catalog:HarnessCatalog={connectorEpoch:'epoch',cache,instances:[{id:'local-opencode',type:'opencode',status:'healthy',capabilities:[],models:[{id:'anthropic/claude-sonnet',label:'Claude Sonnet'}],controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[],agentVariants:[]},catalogCache:{state:'fresh',refreshedAt:cache.refreshedAt}}]};
-const gateway:RoomGateway={mode:'fake',subscribe:vi.fn(()=>vi.fn()),send:vi.fn(),resolve:vi.fn(),intervene:vi.fn(),cancel:vi.fn(),retry:vi.fn(),select:vi.fn(),dispose:vi.fn()};
+const gateway:RoomGateway={mode:'fake',subscribe:vi.fn(()=>vi.fn()),send:vi.fn(),applyQueuedNow:vi.fn(),resolve:vi.fn(),intervene:vi.fn(),cancel:vi.fn(),retry:vi.fn(),select:vi.fn(),dispose:vi.fn()};
 const sentMessage={id:'message-1',text:'',createdAt:'2026-07-22T00:00:00.000Z',targets:[],runIds:[],author:{profileId:'local-user',displayName:'User',handle:'user'},addressedToAll:false};
 
 afterEach(()=>{cleanup();vi.unstubAllGlobals()});
@@ -23,10 +23,20 @@ describe('Composer agent list',()=>{
     await waitFor(()=>expect(updateConversationRouting).toHaveBeenCalledWith('auto'));
     fireEvent.click(screen.getByRole('button',{name:/Auto/i}));
     expect(screen.queryByText('Agent session')).toBeNull();
+    expect(screen.queryByText('New request')).toBeNull();
     expect(screen.queryByRole('combobox',{name:'Agent session recipient'})).toBeNull();
     const editor=screen.getByRole('textbox',{name:'Message'});fireEvent.change(editor,{target:{value:'Continue the review'}});fireEvent.keyDown(editor,{key:'Enter'});
     await waitFor(()=>expect(send).toHaveBeenCalled());
     expect(send.mock.calls[0]?.[4]).toEqual({mode:'auto',delivery:'after_response'});
+  });
+
+  it('shows a queued message above the composer and applies that message now',async()=>{
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
+    const applyQueuedNow=vi.fn(async()=>undefined),localGateway={...gateway,applyQueuedNow},queuedMessage={...sentMessage,id:'queued-message',text:'Use the existing parser',targets:['coder'],delivery:{route:'agent_session' as const,status:'queued' as const,agent:'coder',anchorRunId:'run-1'}};
+    render(<Composer gateway={localGateway} active={1} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} conversationRouting pendingFollowUps={[queuedMessage]}/>);
+    expect(screen.getByRole('region',{name:'Queued messages'}).textContent).toContain('Use the existing parser');
+    fireEvent.click(screen.getByRole('button',{name:'Apply queued message to Coder now'}));
+    await waitFor(()=>expect(applyQueuedNow).toHaveBeenCalledWith('queued-message'));
   });
   it('preserves the normal draft while submitting a text-only instruction',async()=>{
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));const intervene=vi.fn(async()=>undefined),exitIntervention=vi.fn(),instructionGateway={...gateway,intervene};

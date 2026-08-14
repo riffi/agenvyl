@@ -11,7 +11,7 @@ export class FollowUpDispatcher{
   private readonly dispatching=new Set<string>();
   constructor(private readonly dependencies:{followUps:FollowUpRepository;runs:RunRepository;messages:MessageRepository;events:RoomEventService;harnesses:HarnessCatalogService;activeRuns:ActiveRunRegistry;executor:RunExecutor}){}
 
-  async recover(){for(const item of await this.dependencies.followUps.recoverable())await this.dispatch(item);}
+  async recover(){for(const item of await this.dependencies.followUps.recoverable()){if(item.deliveryKind==='apply_now'){const reset=await this.dependencies.followUps.requeueApplyNow(item.id);if(reset)this.dependencies.events.publishPersisted(reset.roomId,reset.event);if(reset)await this.dispatch(reset.item);continue}await this.dispatch(item);}}
   async onRunTerminal(runId:string){for(const item of await this.dependencies.followUps.pendingForAnchor(runId))await this.dispatch(item);}
   async dispatchById(id:string){const item=await this.dependencies.followUps.get(id);if(item)await this.dispatch(item);}
 

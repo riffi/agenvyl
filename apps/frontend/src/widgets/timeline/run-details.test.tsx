@@ -14,7 +14,7 @@ const persona: Persona = { id: 'persona-1', handle: 'coder', name: 'Coder', colo
 const author={profileId:'local-user',displayName:'User',handle:'user'};
 const run: Run = { id: 'run-1', messageId: 'message-1', agent: 'coder', harnessInstanceId: 'local-hermes', harnessType: 'hermes', modelId: 'sol', executionProfile:{workflowMode:'work',requestedReasoningEffort:null,reasoningEffort:null,reasoningEffortFallback:false,reasoningEffortSource:'auto',planEnforcement:null,permissionProfileId:null,agentVariantId:null}, status: 'completed', text: 'Готово', tools: [],interventions:[], usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 } };
 const workspaceResult={base_head:'base',result_head:'result',capture_status:'complete' as const,errors:[],updated_at:'2026-07-23T07:32:00.000Z'};
-const gateway: RoomGateway = { mode: 'fake', subscribe: vi.fn(() => vi.fn()), send: vi.fn(), resolve: vi.fn(), intervene:vi.fn(), cancel: vi.fn(), retry: vi.fn(), select: vi.fn(), dispose: vi.fn() };
+const gateway: RoomGateway = { mode: 'fake', subscribe: vi.fn(() => vi.fn()), send: vi.fn(), applyQueuedNow:vi.fn(), resolve: vi.fn(), intervene:vi.fn(), cancel: vi.fn(), retry: vi.fn(), select: vi.fn(), dispose: vi.fn() };
 afterEach(()=>{cleanup();vi.restoreAllMocks();vi.unstubAllGlobals();});
 
 describe('Timeline run details', () => {
@@ -67,6 +67,20 @@ describe('Timeline run details', () => {
     expect(instruction.getAttribute('role')).toBeNull();
     expect(screen.queryByText(/Earlier output before/)).toBeNull();
     expect(screen.queryByText('Redirect')).toBeNull();
+  });
+
+  it('embeds an applied routed message before the response that used it',()=>{
+    const routedMessage={id:'instruction',text:'если сможешь, прямо в описание задачи',createdAt:'2026-07-20T12:01:00.000Z',targets:['coder' as const],runIds:[],author,addressedToAll:false,delivery:{route:'active_intervention' as const,status:'applied' as const,agent:'coder',anchorRunId:'run-1'}};
+    const instructionRun:Run={...run,text:'Ответ с учетом дополнения',interventions:[{id:'instruction',text:routedMessage.text,status:'applied',precedingText:'',author,createdAt:routedMessage.createdAt}]};
+    const firstMessage={id:'message-1',text:'Добавь полный обновленный план',createdAt:'2026-07-20T12:00:00.000Z',targets:['coder' as const],runIds:['run-1'],author,addressedToAll:false};
+    const state={...initialState,hydrated:true,messages:[firstMessage,routedMessage],runs:{'run-1':instructionRun},runOrder:['run-1']};
+    const{container}=render(<Timeline state={state} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()}/>);
+    const first=screen.getByText(firstMessage.text),instruction=screen.getByLabelText('Instruction from User'),answer=screen.getByText('Ответ с учетом дополнения');
+    expect(container.querySelectorAll(`.${styles.round}`)).toHaveLength(1);
+    expect(container.querySelectorAll(`.${styles['user-message']}`)).toHaveLength(1);
+    expect(first.compareDocumentPosition(instruction)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(instruction.compareDocumentPosition(answer)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(instruction).getByRole('status').textContent).toBe('Applied now');
   });
 
   it('keeps failed and legacy instructions in the visible answer history',()=>{

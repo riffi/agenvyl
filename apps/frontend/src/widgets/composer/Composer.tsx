@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, u
 import { ArrowUp, FileText, Hammer, LoaderCircle, MessageSquarePlus, RefreshCw, Shield, Square, X } from 'lucide-react';
 import {personaModelName,type HarnessCatalog} from '../../entities/harness';
 import type { Persona } from '../../entities/persona';
+import type {Message} from '../../entities/message';
 import { FakeRoomGateway, type DemoKind, type RoomGateway } from '../../features/room-session';
 import { activeMentionQuery, insertMentionAt, parseMentions, removeMentionTarget, type ComposerAttachment } from '../../features/send-message';
 import { ApiError } from '../../shared/api';
@@ -11,7 +12,8 @@ import {WorkspaceArtifactActions,type OpenWorkspaceArtifact,type WorkspaceTarget
 import styles from './Composer.module.css';
 import {ReasoningEffortChip,roomPersonaModel,roomPersonaReasoning} from '../../features/reasoning-effort';
 import {ComposerAddMenu} from './ComposerAddMenu';
-import {ConversationRouteControl,type RouteDelivery} from './ConversationRouteControl';
+import {ConversationRouteControl} from './ConversationRouteControl';
+import {PendingFollowUps} from './PendingFollowUps';
 
 function highlightMentions(text:string,personas:readonly Persona[]):ReactNode[] {
   const known=new Map(personas.map(persona=>[persona.handle.toLowerCase(),persona]));
@@ -57,7 +59,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   conversationRouting=false,
   conversationRoutingMode='auto',
   updateConversationRouting=async()=>{},
-  routingRuns=[],
+  pendingFollowUps=[],
 }: ComposerProps,ref) {
   const [text, setText] = useState("");
   const ordinaryDraftRef=useRef('');
@@ -74,7 +76,6 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   const [sendError,setSendError]=useState<{message:string;messageId:string;text:string;targets:string[];attachmentVersionIds:string[];routing?:import('@agenvyl/contracts').MessageRouting} | undefined>();
   const [profileError,setProfileError]=useState<string>();
   const [interventionError,setInterventionError]=useState<string>();
-  const [routeDelivery,setRouteDelivery]=useState<RouteDelivery>('after_response');
   const [routeSaving,setRouteSaving]=useState(false);
   const [routeError,setRouteError]=useState<string>();
   useImperativeHandle(ref,()=>({insertMention:(handle:string)=>{
@@ -101,7 +102,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
     ...personas.map(persona=>({handle:persona.handle,name:persona.name,detail:personaModelName(persona,harnessCatalog),color:persona.color})),
   ].filter(candidate=>!mention||!mention.query||candidate.handle.toLowerCase().includes(mention.query)||candidate.name.toLowerCase().includes(mention.query)||candidate.detail.toLowerCase().includes(mention.query)).slice(0,8),[harnessCatalog,mention,personas]);
   useEffect(()=>setMentionIndex(0),[mention?.query]);
-  useEffect(()=>{setText('');setMention(undefined);setSendError(undefined);setProfileError(undefined);setModeError(undefined);setRouteDelivery('after_response');setRouteError(undefined)},[roomId]);
+  useEffect(()=>{setText('');setMention(undefined);setSendError(undefined);setProfileError(undefined);setModeError(undefined);setRouteError(undefined)},[roomId]);
   useEffect(()=>{
     const previous=previousInterventionRef.current,next=interventionTarget?.runId;
     if(previous===next)return;
@@ -116,14 +117,9 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   const updateMention=(value:string,caret:number)=>setMention(activeMentionQuery(value,caret));
   const chooseMention=(handle:string)=>{if(!mention)return;const next=`${text.slice(0,mention.start)}@${handle} ${text.slice(mention.end)}`,caret=mention.start+handle.length+2;setText(next);setMention(undefined);requestAnimationFrame(()=>{editorRef.current?.focus();editorRef.current?.setSelectionRange(caret,caret)});};
   const selectWorkflowMode=async(nextMode:WorkflowMode)=>{if(modeSaving||nextMode===workflowMode)return;setModeSaving(true);setModeError(undefined);try{await updateWorkflowMode(nextMode)}catch(error){setModeError(error instanceof Error?error.message:String(error))}finally{setModeSaving(false)}};
-  const selectConversationRouting=async(nextMode:import('@agenvyl/contracts').ConversationRoutingMode)=>{if(routeSaving||nextMode===conversationRoutingMode)return;setRouteSaving(true);setRouteError(undefined);try{await updateConversationRouting(nextMode);if(nextMode==='room_context')setRouteDelivery('after_response')}catch(error){setRouteError(error instanceof Error?error.message:String(error))}finally{setRouteSaving(false)}};
+  const selectConversationRouting=async(nextMode:import('@agenvyl/contracts').ConversationRoutingMode)=>{if(routeSaving||nextMode===conversationRoutingMode)return;setRouteSaving(true);setRouteError(undefined);try{await updateConversationRouting(nextMode)}catch(error){setRouteError(error instanceof Error?error.message:String(error))}finally{setRouteSaving(false)}};
   const visibleConversationRoutingMode=conversationRoutingMode==='agent_session'?'auto':conversationRoutingMode;
-  const mentionedRoutingTarget=targets.length===1?targets[0]:undefined;
-  const streamingRoutingRuns=routingRuns.filter(run=>run.status==='streaming');
-  const applyRoutingRun=mentionedRoutingTarget?streamingRoutingRuns.find(run=>run.agent===mentionedRoutingTarget):streamingRoutingRuns.length===1?streamingRoutingRuns[0]:undefined;
-  const applyAvailable=Boolean(applyRoutingRun&&harnessCatalog?.instances.some(instance=>instance.id===applyRoutingRun.harnessInstanceId&&instance.status!=='unavailable'&&instance.interventionMode==='interrupt_then_continue'));
   useEffect(()=>{if(conversationRouting&&conversationRoutingMode==='agent_session')void selectConversationRouting('auto')},[conversationRouting,conversationRoutingMode]);
-  useEffect(()=>{if(routeDelivery==='apply_now'&&!applyAvailable)setRouteDelivery('after_response')},[applyAvailable,routeDelivery]);
   const workflowModeLabel=workflowMode==='plan'?'Plan':'Work',nextWorkflowMode:WorkflowMode=workflowMode==='plan'?'work':'plan',nextWorkflowModeLabel=nextWorkflowMode==='plan'?'Plan':'Work';
   const workflowModeTitle=workflowMode==='plan'?'Plan mode: project changes are blocked; MCP actions require confirmation. Switch to Work':`Work mode. Switch to ${nextWorkflowModeLabel}`;
   const send = async (retry=sendError) => {
@@ -137,7 +133,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
     }
     const outgoing=retry?.text??text.trim();
     const outgoingTargets=retry?.targets??parseMentions(outgoing,personas), messageId=retry?.messageId??crypto.randomUUID(),attachmentVersionIds=retry?.attachmentVersionIds??attachments.flatMap(item=>item.attachment?[item.attachment.version_id]:[]);
-    const outgoingRouting=retry?.routing??(conversationRouting?(visibleConversationRoutingMode==='room_context'?{mode:'room_context' as const}:routeDelivery==='apply_now'&&applyRoutingRun?{mode:'agent_session' as const,target:applyRoutingRun.agent,delivery:'apply_now' as const}:{mode:'auto' as const,delivery:routeDelivery}):undefined);
+    const outgoingRouting=retry?.routing??(conversationRouting?(visibleConversationRoutingMode==='room_context'?{mode:'room_context' as const}:{mode:'auto' as const,delivery:'after_response' as const}):undefined);
     if ((!outgoing&&!attachmentVersionIds.length) || !catalogReady || sending || (!retry&&attachmentsBusy))return;
     setSending(true);setSendError(undefined);
     try{await gateway.send(outgoing,outgoingTargets,messageId,attachmentVersionIds,outgoingRouting);setText("");setMention(undefined);clearAttachments();await onSent();}
@@ -180,6 +176,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
         </div>
       )}
       {active > 0 && <div className={styles['active-runs']}><span><i />{active} {active===1?'agent is responding':'agents are responding'}</span><Button size="sm" variant="danger" onClick={() => void gateway.cancel()}><Square /> Stop all</Button></div>}
+      {!interventionTarget&&conversationRouting&&pendingFollowUps.length>0&&<PendingFollowUps messages={pendingFollowUps} personas={personas} onApplyNow={messageId=>gateway.applyQueuedNow(messageId)}/>}
       {modeError&&<Alert className={styles['send-error']} tone="error">Could not change room mode: {modeError}</Alert>}
       {routeError&&<Alert className={styles['send-error']} tone="error">Could not change message route: {routeError}</Alert>}
       {!interventionTarget&&instructionOnlyTargets.length>0&&<Alert className={styles['plan-warning']} tone="warning">Instruction-only for {instructionOnlyTargets.map(item=>`@${item.handle}`).join(', ')}: this mode does not technically block writes to the external project.</Alert>}
@@ -237,7 +234,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
         <footer className={interventionTarget?styles['instruction-footer']:undefined}>
           {!interventionTarget&&<ComposerAddMenu attachmentDisabled={attachments.length>=10||attachmentsBusy} onAttach={openAttachmentPicker} onOpenWorkspace={()=>openWorkspace()}/>}
           <span className={styles['footer-spacer']} aria-hidden="true"/>
-          {!interventionTarget&&conversationRouting&&<ConversationRouteControl mode={visibleConversationRoutingMode} delivery={routeDelivery} saving={routeSaving} applyAvailable={applyAvailable} onModeChange={mode=>void selectConversationRouting(mode)} onDeliveryChange={setRouteDelivery}/>}
+          {!interventionTarget&&conversationRouting&&<ConversationRouteControl mode={visibleConversationRoutingMode} saving={routeSaving} onModeChange={mode=>void selectConversationRouting(mode)}/>}
           {!interventionTarget&&<Button
             className={styles['plan-button']}
             size="sm"
@@ -291,7 +288,7 @@ type ComposerProps={
   conversationRouting?:boolean;
   conversationRoutingMode?:import('@agenvyl/contracts').ConversationRoutingMode;
   updateConversationRouting?:(mode:import('@agenvyl/contracts').ConversationRoutingMode)=>Promise<unknown>;
-  routingRuns?:Array<{agent:string;status:string;harnessInstanceId:string}>;
+  pendingFollowUps?:Message[];
 };
 
 function formatBytes(value:number){if(value<1024)return`${value} B`;if(value<1024*1024)return`${(value/1024).toFixed(1)} KB`;return`${(value/1024/1024).toFixed(1)} MB`;}

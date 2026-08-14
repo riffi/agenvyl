@@ -6,7 +6,7 @@ import {HarnessIcon,type HarnessCatalog} from '../../entities/harness';
 import type { Persona } from '../../entities/persona';
 import type { RoomState } from '../../entities/room';
 import {RunFailureNotice,type Run} from '../../entities/run';
-import type { RoomGateway } from '../../features/room-session';
+import type {RoomGateway} from '../../features/room-session';
 import { Alert, Avatar, EmptyState, IconButton } from '../../shared/ui';
 import styles from './Timeline.module.css';
 import { isLongAnswer, shouldUseSingleColumn } from './layout';
@@ -16,6 +16,7 @@ import {RunActivity} from './RunActivity';
 import {RunFiles} from './RunFiles';
 import {RunRequest} from './RunRequest';
 import {continuationHistoryText,RunAnswerHistory} from './RunAnswerHistory';
+import {conversationProjection} from './conversationProjection';
 
 export { MarkdownAnswer } from './MarkdownAnswer';
 export {ReasoningBlock} from './ReasoningBlock';
@@ -116,6 +117,7 @@ function RunCard({
   openArtifact,
   author,
   hiddenInterventionIds,
+  routedInterventionIds,
 }: {
   run: Run;
   chapters:Run[];
@@ -141,6 +143,7 @@ function RunCard({
   openArtifact:OpenWorkspaceArtifact;
   author:HumanAuthorSnapshot;
   hiddenInterventionIds:ReadonlySet<string>;
+  routedInterventionIds:ReadonlySet<string>;
 }) {
   const [retrying,setRetrying]=useState(false);const [retryError,setRetryError]=useState<string>();
   const openRunWorkspace=useCallback((attachment:WorkspaceAttachment)=>openWorkspace({entryId:attachment.entry_id,versionId:attachment.version_id}),[openWorkspace]);
@@ -186,7 +189,7 @@ function RunCard({
         {run.upstreamStatus&&<UpstreamStatusNotice status={run.upstreamStatus}/>}
         {run.status==='finalizing'&&<div className={`${styles['workspace-state']} ${styles['workspace-state-progress']}`} role="status" aria-live="polite"><LoaderCircle aria-hidden="true"/><span>Finalizing files…</span></div>}
         {run.reasoning&&<ReasoningBlock text={run.reasoning} harnessType={run.harnessType}/>}
-        <RunAnswerHistory run={run} chapters={chapters} fallbackAuthor={author} personas={personas} onMentionPersona={onMentionPersona} openWorkspace={openRunWorkspace} collapsed={collapsed} hiddenInterventionIds={hiddenInterventionIds}/>
+        <RunAnswerHistory run={run} chapters={chapters} fallbackAuthor={author} personas={personas} onMentionPersona={onMentionPersona} openWorkspace={openRunWorkspace} collapsed={collapsed} hiddenInterventionIds={hiddenInterventionIds} routedInterventionIds={routedInterventionIds}/>
         {isLongAnswer(continuationHistoryText(chapters))&&run.status==='completed'&&<button className={`${styles['answer-toggle']} ${collapsed?styles.expand:styles.collapse}`} type="button" onClick={toggleCollapsed} aria-expanded={!collapsed}>{collapsed?<><span>Expand response</span><ChevronDown/></>:<><span>Collapse response</span><ChevronUp/></>}</button>}
         {(chapters.some(chapter=>chapter.continuationRetention==='provider_managed')||harnessCatalog?.instances.find(instance=>instance.id===run.harnessInstanceId)?.postTurnContinuation?.retention==='provider_managed')&&<small>Native session history is retained according to the harness provider’s policy.</small>}
         {run.status==='failed'&&<RunFailureNotice errorCode={run.errorCode} error={run.error}/>}
@@ -257,7 +260,7 @@ export function Timeline({
   const settleScrollFrameRef=useRef<number|undefined>(undefined);
   const followLatestRef=useRef(true);
   const pointerScrollingRef=useRef(false);
-  const routedInterventionIds=new Set(state.messages.filter(message=>message.delivery?.route==='active_intervention').map(message=>message.id));
+  const{messages:timelineMessages,hiddenInterventionIds,routedInterventionIds}=conversationProjection(state.messages,state.runs);
   const slotOf=(run:Run):string=>{if(run.responseSlotId)return run.responseSlotId;let current=run;const seen=new Set<string>();while(current.retryOfRunId&&!seen.has(current.id)){seen.add(current.id);const parent=state.runs[current.retryOfRunId];if(!parent)break;current=parent}return current.id};
   useEffect(()=>{if(state.messages.length===0)followLatestRef.current=true},[state.messages.length]);
   useLayoutEffect(()=>{const timeline=timelineRef.current;if(!timeline)return;const anchor=prependAnchorRef.current;if(anchor){timeline.scrollTop=anchor.top+timeline.scrollHeight-anchor.height;prependAnchorRef.current=undefined;return}if(!followLatestRef.current)return;if(settleScrollFrameRef.current)cancelAnimationFrame(settleScrollFrameRef.current);let priorHeight=-1,stableFrames=0,frames=0;const settle=()=>{if(!followLatestRef.current)return;timeline.scrollTop=timeline.scrollHeight;const height=timeline.scrollHeight;stableFrames=height===priorHeight?stableFrames+1:0;priorHeight=height;frames++;if((frames<8||stableFrames<3)&&frames<60)settleScrollFrameRef.current=requestAnimationFrame(settle);else settleScrollFrameRef.current=undefined};settle()},[state.messages.length]);
@@ -293,7 +296,7 @@ export function Timeline({
               : "Restoring events…"}
         </div>
       )}
-      {state.messages.map((m,messageIndex) => {
+      {timelineMessages.map((m,messageIndex) => {
         const messageRuns=m.runIds.map(id=>state.runs[id]).filter((run):run is Run=>Boolean(run));
         const rootOf=(run:Run)=>{let current=run,guard=0;while(current.continuedFromRunId&&state.runs[current.continuedFromRunId]&&state.runs[current.continuedFromRunId].messageId===run.messageId&&guard++<100)current=state.runs[current.continuedFromRunId];return current.id};
         const chains=new Map<string,Run[]>();for(const run of messageRuns){const root=rootOf(run);chains.set(root,[...(chains.get(root)??[]),run]);}
@@ -332,7 +335,7 @@ export function Timeline({
           <div className={`${styles.runs} ${singleColumn?styles['runs-list']:styles['runs-grid']}`}>
             {displayedGroups.map(
               ({slot,attemptIds,activeAttempt,shownIndex,id,chapters}) => {
-                const showAttempt=async(index:number)=>{const nextId=attemptIds[index],nextChapters=chains.get(nextId)??[state.runs[nextId]],selectable=[...nextChapters].reverse().find(item=>item.status==='completed');setAttemptView(current=>({...current,[slot]:nextId}));if(messageIndex===state.messages.length-1&&selectable&&gateway.mode==='real')await gateway.select(selectable.id)};
+                const showAttempt=async(index:number)=>{const nextId=attemptIds[index],nextChapters=chains.get(nextId)??[state.runs[nextId]],selectable=[...nextChapters].reverse().find(item=>item.status==='completed');setAttemptView(current=>({...current,[slot]:nextId}));if(messageIndex===timelineMessages.length-1&&selectable&&gateway.mode==='real')await gateway.select(selectable.id)};
                 const run=state.runs[id];
                 return run && (
                   <div id={`run-${id}`} className={styles['run-anchor']} key={slot}>
@@ -349,7 +352,7 @@ export function Timeline({
                     addInstruction={()=>addInstructionToRun?.(id)}
                     canAddInstruction={Boolean(addInstructionToRun&&((run.status==='streaming'&&harnessCatalog?.instances.find(instance=>instance.id===run.harnessInstanceId&&instance.status!=='unavailable')?.interventionMode==='interrupt_then_continue'&&!(run.requests??[]).some(request=>!request.resolved)&&!run.interventions.some(intervention=>intervention.status==='pending'))||(run.status==='completed'&&state.selectedRuns[slot]===run.id&&harnessCatalog?.instances.find(instance=>instance.id===run.harnessInstanceId&&instance.status!=='unavailable')?.postTurnContinuation?.mode==='native_session'&&!activeAttempt)))}
                     retry={async()=>{setAttemptView(current=>{const next={...current};delete next[slot];return next});await gateway.retry(id)}}
-                    canRetry={messageIndex===state.messages.length-1&&['completed','failed','cancelled'].includes(state.runs[id].status)&&!activeAttempt&&gateway.mode==='real'}
+                    canRetry={messageIndex===timelineMessages.length-1&&['completed','failed','cancelled'].includes(state.runs[id].status)&&!activeAttempt&&gateway.mode==='real'}
                     attemptIndex={shownIndex}
                     attemptCount={attemptIds.length}
                     previousAttempt={()=>void showAttempt(shownIndex-1)}
@@ -363,7 +366,8 @@ export function Timeline({
                     openWorkspace={openWorkspace}
                     openArtifact={openArtifact}
                     author={m.author}
-                    hiddenInterventionIds={routedInterventionIds}
+                    hiddenInterventionIds={hiddenInterventionIds}
+                    routedInterventionIds={routedInterventionIds}
                   />
                   </div>
                 )},

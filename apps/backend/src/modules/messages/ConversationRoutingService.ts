@@ -10,6 +10,7 @@ import type {FollowUpAnchor,FollowUpRepository} from './FollowUpRepository.js';
 import type {MessageRepository} from './messages.repository.js';
 
 export class ConversationRoutingService{
+  private readonly applyingNow=new Set<string>();
   constructor(private readonly dependencies:{legacy:CreateMessageRound;followUps:FollowUpRepository;dispatcher:FollowUpDispatcher;personas:PersonaRepository;events:RoomEventService;interventions:RunInterventionService;messages:MessageRepository}){}
 
   async execute(command:{roomId:string;body:CreateMessageRequest;correlationId?:string}){
@@ -42,8 +43,45 @@ export class ConversationRoutingService{
     return this.agentSession(command,anchors[0],routing.delivery??'after_response',messageId);
   }
 
+  async applyQueuedNow(command:{roomId:string;messageId:string}){
+    if(this.applyingNow.has(command.messageId))return this.existingMessage(command.roomId,command.messageId,'duplicate');
+    this.applyingNow.add(command.messageId);
+    try{
+      const claim=await this.dependencies.followUps.claimApplyNow(command.roomId,command.messageId);
+      if(claim.status==='not_found')throw new AppError('queued_message_not_found',404,'Queued message not found');
+      if(claim.status==='unavailable')throw new AppError('queued_message_unavailable',409,'This message is no longer waiting for the agent');
+      if(claim.status==='anchor_not_streaming'){
+        await this.dependencies.dispatcher.dispatchById(claim.pendingId);
+        throw new AppError('run_not_intervenable',409,'The response ended before the message could be applied');
+      }
+      if(claim.status==='already_applied')return this.existingMessage(command.roomId,command.messageId,'duplicate');
+      if(claim.status==='claimed')this.dependencies.events.publishPersisted(command.roomId,claim.event);
+      let interventionAccepted=false;
+      try{
+        await this.dependencies.interventions.applyNow(claim.item.anchorRunId,{intervention_id:command.messageId,text:claim.item.text});
+        interventionAccepted=true;
+        const applied=await this.dependencies.followUps.markDelivery(claim.item.id,'applied',{route:'active_intervention',final:true});
+        if(applied)this.dependencies.events.publishPersisted(applied.roomId,applied.event);
+      }catch(error){
+        if(!interventionAccepted){
+          const reset=await this.dependencies.followUps.requeueApplyNow(claim.item.id);
+          if(reset)this.dependencies.events.publishPersisted(reset.roomId,reset.event);
+          await this.dependencies.dispatcher.dispatchById(claim.item.id);
+        }
+        throw error;
+      }
+      return this.existingMessage(command.roomId,command.messageId,'created');
+    }finally{this.applyingNow.delete(command.messageId);}
+  }
+
   private legacy(command:{roomId:string;body:CreateMessageRequest;correlationId?:string},targets:string[],messageId:string){
     return this.dependencies.legacy.execute({roomId:command.roomId,text:command.body.text,targets,attachmentVersionIds:command.body.attachment_version_ids,messageId,correlationId:command.correlationId,delivery:{route:'room_context',status:'delivered'}});
+  }
+
+  private async existingMessage(roomId:string,messageId:string,status:'created'|'duplicate'){
+    const message=await this.dependencies.messages.find(roomId,messageId);
+    if(!message)throw new AppError('queued_message_not_found',404,'Queued message not found');
+    return{status,message};
   }
 
   private async agentSession(command:{roomId:string;body:CreateMessageRequest},anchor:FollowUpAnchor,delivery:'after_response'|'apply_now',messageId:string){

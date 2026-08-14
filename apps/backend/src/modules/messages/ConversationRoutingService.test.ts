@@ -7,10 +7,10 @@ const message={id:'11111111-1111-4111-8111-111111111111',text:'Continue',created
 
 function fixture(anchors=[{runId:'run-1',roomId:'room',personaId:'persona-coder',personaHandle:'coder',status:'streaming'}]){
   const legacy={execute:vi.fn(async()=>({status:'created' as const,message:{...message,delivery:{route:'room_context' as const,status:'delivered' as const}}}))};
-  const followUps={roomMode:vi.fn(async()=> 'auto' as const),anchors:vi.fn(async()=>anchors),create:vi.fn(async()=>({status:'created' as const,pendingId:'pending-1',message,event:{id:'event-1',sequence:1,type:'message.created',payload:message},anchorStatus:anchors[0]?.status??'completed'})),markDelivery:vi.fn(),get:vi.fn()};
-  const dispatcher={dispatchById:vi.fn(async()=>undefined)},events={publishPersisted:vi.fn()},interventions={applyNow:vi.fn()},messages={find:vi.fn(async()=>undefined)};
+  const followUps={roomMode:vi.fn(async()=> 'auto' as const),anchors:vi.fn(async()=>anchors),create:vi.fn(async()=>({status:'created' as const,pendingId:'pending-1',message,event:{id:'event-1',sequence:1,type:'message.created',payload:message},anchorStatus:anchors[0]?.status??'completed'})),claimApplyNow:vi.fn(),requeueApplyNow:vi.fn(),markDelivery:vi.fn(),get:vi.fn()};
+  const dispatcher={dispatchById:vi.fn(async()=>undefined)},events={publishPersisted:vi.fn()},interventions={applyNow:vi.fn()},messages={find:vi.fn(async():Promise<typeof message|undefined>=>undefined)};
   const service=new ConversationRoutingService({legacy:legacy as never,followUps:followUps as never,dispatcher:dispatcher as never,personas:{list:vi.fn(async()=>[persona])} as never,events:events as never,interventions:interventions as never,messages:messages as never});
-  return{service,legacy,followUps,dispatcher,interventions};
+  return{service,legacy,followUps,dispatcher,interventions,messages};
 }
 
 describe('ConversationRoutingService',()=>{
@@ -37,5 +37,27 @@ describe('ConversationRoutingService',()=>{
     const{service,interventions}=fixture();
     await service.execute({roomId:'room',body:{text:'Continue',message_id:message.id,routing:{mode:'agent_session',target:'coder',delivery:'apply_now'}}});
     expect(interventions.applyNow).toHaveBeenCalledWith('run-1',{intervention_id:message.id,text:'Continue'});
+  });
+
+  it('promotes an existing queued message to an active intervention',async()=>{
+    const{service,followUps,interventions,dispatcher,messages}=fixture();
+    messages.find.mockResolvedValue(message);
+    followUps.claimApplyNow.mockResolvedValue({status:'claimed',item:{id:'pending-1',roomId:'room',messageId:message.id,personaId:'persona-coder',personaHandle:'coder',anchorRunId:'run-1',deliveryKind:'apply_now',status:'dispatching',text:'Continue'},event:{id:'event-claim',sequence:2,type:'message.delivery.updated',payload:{}},delivery:{route:'active_intervention',status:'dispatching'}});
+    followUps.markDelivery.mockResolvedValue({roomId:'room',event:{id:'event-applied',sequence:3,type:'message.delivery.updated',payload:{}}});
+    const result=await service.applyQueuedNow({roomId:'room',messageId:message.id});
+    expect(interventions.applyNow).toHaveBeenCalledWith('run-1',{intervention_id:message.id,text:'Continue'});
+    expect(followUps.markDelivery).toHaveBeenCalledWith('pending-1','applied',{route:'active_intervention',final:true});
+    expect(dispatcher.dispatchById).not.toHaveBeenCalled();
+    expect(result.status).toBe('created');
+  });
+
+  it('keeps the message queued when immediate application fails',async()=>{
+    const{service,followUps,interventions,dispatcher}=fixture();
+    followUps.claimApplyNow.mockResolvedValue({status:'claimed',item:{id:'pending-1',roomId:'room',messageId:message.id,personaId:'persona-coder',personaHandle:'coder',anchorRunId:'run-1',deliveryKind:'apply_now',status:'dispatching',text:'Continue'},event:{id:'event-claim',sequence:2,type:'message.delivery.updated',payload:{}},delivery:{route:'active_intervention',status:'dispatching'}});
+    followUps.requeueApplyNow.mockResolvedValue({roomId:'room',item:{id:'pending-1',roomId:'room',messageId:message.id,personaId:'persona-coder',personaHandle:'coder',anchorRunId:'run-1',deliveryKind:'after_response',status:'queued',text:'Continue'},event:{id:'event-reset',sequence:3,type:'message.delivery.updated',payload:{}}});
+    interventions.applyNow.mockRejectedValue(new Error('unsupported'));
+    await expect(service.applyQueuedNow({roomId:'room',messageId:message.id})).rejects.toThrow('unsupported');
+    expect(followUps.requeueApplyNow).toHaveBeenCalledWith('pending-1');
+    expect(dispatcher.dispatchById).toHaveBeenCalledWith('pending-1');
   });
 });

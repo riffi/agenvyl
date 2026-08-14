@@ -4,6 +4,7 @@ import { apiRequest } from '../../../shared/api';
 
 export const runsApi = {
   sendMessage: (roomId: string, text: string, targets?: AgentHandle[], messageId: string = crypto.randomUUID(),attachmentVersionIds:string[]=[],routing?:import('@agenvyl/contracts').MessageRouting) => apiRequest<Message>(`/api/v1/rooms/${encodeURIComponent(roomId)}/messages`, { method: 'POST', body: { text, message_id: messageId,...(attachmentVersionIds.length?{attachment_version_ids:attachmentVersionIds}:{}), ...(targets === undefined ? {} : { targets }),...(routing?{routing}:{}) } }),
+  applyQueuedMessageNow:(roomId:string,messageId:string)=>apiRequest<Message>(`/api/v1/rooms/${encodeURIComponent(roomId)}/messages/${encodeURIComponent(messageId)}/apply-now`,{method:'POST',body:{}}),
   resolve: (runId:string,requestId:string,resolution:import('@agenvyl/contracts').RunRequestResolution|string) => apiRequest(`/api/v1/runs/${encodeURIComponent(runId)}/requests/${encodeURIComponent(requestId)}/resolve`, { method: 'POST', body: typeof resolution==='string'?{resolution}:resolution }),
   cancel: (runId: string) => apiRequest(`/api/v1/runs/${encodeURIComponent(runId)}/cancel`, { method: 'POST', body: {} }),
   retry: (runId: string) => apiRequest(`/api/v1/runs/${encodeURIComponent(runId)}/retry`, { method: 'POST', body: {} }),

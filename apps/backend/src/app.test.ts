@@ -245,6 +245,9 @@ describe("runtime features", () => {
     const updated=await app.inject({method:'PUT',url:'/api/v1/rooms/demo-room/conversation-routing',payload:{conversation_routing_mode:'room_context'}});
     expect(updated.statusCode).toBe(200);
     expect(updated.json()).toEqual({conversation_routing_mode:'room_context'});
+    const missingQueuedMessage=await app.inject({method:'POST',url:'/api/v1/rooms/demo-room/messages/11111111-1111-4111-8111-111111111111/apply-now',payload:{}});
+    expect(missingQueuedMessage.statusCode).toBe(404);
+    expect(missingQueuedMessage.json().error).toBe('queued_message_not_found');
     await app.close();
   });
 });

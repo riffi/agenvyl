@@ -49,6 +49,34 @@ export class FollowUpRepository{
   async recoverable(){const rows=await this.database.sql`SELECT p.*,m.text FROM pending_agent_follow_ups p JOIN room_messages m ON m.id=p.message_id JOIN agent_runs r ON r.id=p.anchor_run_id WHERE p.status IN('queued','dispatching') AND r.status IN('completed','failed','cancelled') ORDER BY p.created_at`;return rows.map(pending);}
   async get(id:string){const[row]=await this.database.sql`SELECT p.*,m.text FROM pending_agent_follow_ups p JOIN room_messages m ON m.id=p.message_id WHERE p.id=${id}`;return row?pending(row):undefined;}
 
+  async claimApplyNow(roomId:string,messageId:string){
+    return this.database.transaction(async tx=>{
+      const[row]=await tx`SELECT p.*,m.text,m.delivery_status,r.status anchor_status FROM pending_agent_follow_ups p JOIN room_messages m ON m.id=p.message_id JOIN agent_runs r ON r.id=p.anchor_run_id WHERE p.room_id=${roomId} AND p.message_id=${messageId} FOR UPDATE OF p,m,r`;
+      if(!row)return{status:'not_found' as const};
+      if(row.status==='delivered'&&row.delivery_status==='applied')return{status:'already_applied' as const};
+      if(row.delivery_kind==='apply_now'&&row.status==='dispatching')return{status:'resume' as const,item:{...pending(row),deliveryKind:'apply_now' as const,status:'dispatching'}};
+      if(row.delivery_kind!=='after_response'||row.status!=='queued')return{status:'unavailable' as const};
+      if(row.anchor_status!=='streaming')return{status:'anchor_not_streaming' as const,pendingId:String(row.id)};
+      const now=new Date().toISOString(),delivery:MessageDelivery={route:'active_intervention',status:'dispatching',agent:String(row.persona_handle),anchorRunId:String(row.anchor_run_id)};
+      await tx`UPDATE pending_agent_follow_ups SET delivery_kind='apply_now',status='dispatching',claimed_at=COALESCE(claimed_at,${now}),updated_at=${now} WHERE id=${row.id as string}`;
+      await tx`UPDATE room_messages SET delivery_route='active_intervention',delivery_status='dispatching',delivery_error=NULL,delivery_updated_at=${now} WHERE id=${messageId}`;
+      const event=await this.events.appendInTransaction(tx,roomId,'message.delivery.updated',{messageId,delivery},now);
+      return{status:'claimed' as const,item:{...pending(row),deliveryKind:'apply_now' as const,status:'dispatching'},event,delivery};
+    });
+  }
+
+  async requeueApplyNow(id:string){
+    return this.database.transaction(async tx=>{
+      const[row]=await tx`SELECT p.*,m.text FROM pending_agent_follow_ups p JOIN room_messages m ON m.id=p.message_id WHERE p.id=${id} FOR UPDATE OF p,m`;
+      if(!row||row.delivery_kind!=='apply_now'||row.status!=='dispatching')return undefined;
+      const now=new Date().toISOString(),delivery:MessageDelivery={route:'agent_session',status:'queued',agent:String(row.persona_handle),anchorRunId:String(row.anchor_run_id)};
+      await tx`UPDATE pending_agent_follow_ups SET delivery_kind='after_response',status='queued',claimed_at=NULL,updated_at=${now} WHERE id=${id}`;
+      await tx`UPDATE room_messages SET delivery_route='agent_session',delivery_status='queued',delivery_error=NULL,delivery_updated_at=${now} WHERE id=${row.message_id as string}`;
+      const event=await this.events.appendInTransaction(tx,String(row.room_id),'message.delivery.updated',{messageId:String(row.message_id),delivery},now);
+      return{roomId:String(row.room_id),item:{...pending(row),deliveryKind:'after_response' as const,status:'queued'},event,delivery};
+    });
+  }
+
   async markDelivery(id:string,status:MessageDelivery['status'],options:{route?:MessageDelivery['route'];runId?:string;error?:string;final?:boolean}={}){
     return this.database.transaction(async tx=>{
       const[row]=await tx`SELECT p.*,m.delivery_route FROM pending_agent_follow_ups p JOIN room_messages m ON m.id=p.message_id WHERE p.id=${id} FOR UPDATE OF p,m`;

@@ -2,6 +2,7 @@ const nullableStringSchema={anyOf:[{type:'null'},{type:'string'}]} as const;
 
 export const idParamsSchema = objectSchema({ id: { type: 'string' } }, ['id']);
 export const roomParamsSchema = objectSchema({ roomId: { type: 'string' } }, ['roomId']);
+export const roomMessageParamsSchema=objectSchema({roomId:{type:'string'},messageId:{type:'string'}},['roomId','messageId']);
 export const runParamsSchema = objectSchema({ runId: { type: 'string' } }, ['runId']);
 export const runRequestParamsSchema=objectSchema({runId:{type:'string'},requestId:{type:'string'}},['runId','requestId']);
 export const runInterventionBodySchema=objectSchema({intervention_id:{type:'string',format:'uuid'},text:{type:'string',minLength:1,maxLength:2_000,pattern:'\\S'}},['intervention_id','text']);

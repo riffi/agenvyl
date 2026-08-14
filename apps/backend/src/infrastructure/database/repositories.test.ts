@@ -85,6 +85,14 @@ describe("PostgreSQL repositories", () => {
     const duplicateQueue=await repositories.followUps.create({roomId:'demo-room',text:'another',messageId:crypto.randomUUID(),anchor,deliveryKind:'after_response'});
     expect(duplicateQueue).toMatchObject({status:'already_queued',messageId:followUpMessage});
     if(queued.status!=='created')throw new Error('Expected queued follow-up');
+    await repositories.database.sql`UPDATE agent_runs SET status='streaming' WHERE id=${sourceRun}`;
+    const claimed=await repositories.followUps.claimApplyNow('demo-room',followUpMessage);
+    expect(claimed).toMatchObject({status:'claimed',item:{id:queued.pendingId,deliveryKind:'apply_now',status:'dispatching'}});
+    expect(await repositories.messages.find('demo-room',followUpMessage)).toMatchObject({delivery:{route:'active_intervention',status:'dispatching',agent:'architect'}});
+    const reset=await repositories.followUps.requeueApplyNow(queued.pendingId);
+    expect(reset).toMatchObject({item:{deliveryKind:'after_response',status:'queued'}});
+    expect(await repositories.messages.find('demo-room',followUpMessage)).toMatchObject({delivery:{route:'agent_session',status:'queued',agent:'architect'}});
+    await repositories.database.sql`UPDATE agent_runs SET status='completed' WHERE id=${sourceRun}`;
     const fallback=await repositories.followUps.createHistoryFallback(queued.pendingId,[]);
     expect(fallback.status).toBe('created');
     expect(await repositories.messages.find('demo-room',followUpMessage)).toMatchObject({delivery:{route:'room_context',status:'fallback',agent:'architect'},runIds:[expect.any(String)]});
