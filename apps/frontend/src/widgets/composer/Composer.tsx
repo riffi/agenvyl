@@ -114,6 +114,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   const chooseMention=(handle:string)=>{if(!mention)return;const next=`${text.slice(0,mention.start)}@${handle} ${text.slice(mention.end)}`,caret=mention.start+handle.length+2;setText(next);setMention(undefined);requestAnimationFrame(()=>{editorRef.current?.focus();editorRef.current?.setSelectionRange(caret,caret)});};
   const selectWorkflowMode=async(nextMode:WorkflowMode)=>{if(modeSaving||nextMode===workflowMode)return;setModeSaving(true);setModeError(undefined);try{await updateWorkflowMode(nextMode)}catch(error){setModeError(error instanceof Error?error.message:String(error))}finally{setModeSaving(false)}};
   const workflowModeLabel=workflowMode==='plan'?'Plan':'Work',nextWorkflowMode:WorkflowMode=workflowMode==='plan'?'work':'plan',nextWorkflowModeLabel=nextWorkflowMode==='plan'?'Plan':'Work';
+  const workflowModeTitle=workflowMode==='plan'?'Plan mode: project changes are blocked; MCP actions require confirmation. Switch to Work':`Work mode. Switch to ${nextWorkflowModeLabel}`;
   const send = async (retry=sendError) => {
     if(interventionTarget){
       const outgoing=text.trim();if(!outgoing||sending)return;
@@ -227,7 +228,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
             className={styles['plan-button']}
             size="sm"
             variant="ghost"
-            title={`${workflowModeLabel} mode. Switch to ${nextWorkflowModeLabel}`}
+            title={workflowModeTitle}
             aria-label={`${workflowModeLabel} mode. Switch to ${nextWorkflowModeLabel}`}
             disabled={modeSaving}
             onClick={()=>void selectWorkflowMode(nextWorkflowMode)}

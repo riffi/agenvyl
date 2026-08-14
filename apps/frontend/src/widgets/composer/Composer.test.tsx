@@ -64,6 +64,7 @@ describe('Composer agent list',()=>{
     const planButton=screen.getByRole('button',{name:'Plan mode. Switch to Work'});
     expect(planButton.textContent).toContain('Plan');
     expect(planButton.querySelector('.lucide-shield')).toBeTruthy();
+    expect(planButton.getAttribute('title')).toBe('Plan mode: project changes are blocked; MCP actions require confirmation. Switch to Work');
     fireEvent.click(planButton);
     await waitFor(()=>expect(updateWorkflowMode).toHaveBeenCalledWith('work'));
     expect(send).not.toHaveBeenCalled();

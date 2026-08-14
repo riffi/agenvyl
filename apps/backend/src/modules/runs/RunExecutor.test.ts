@@ -25,7 +25,7 @@ describe('RunExecutor', () => {
     },4,connector);
     registry.add({...run('project-run'),recommendedProject:{id:'project-1',name:'Main',path:'C:\\work\\project',availability:'unknown'}});
     executor.start('project-run','work there');await vi.waitFor(()=>expect(registry.get('project-run')).toBeUndefined());
-    expect(instructions).toContain('Selected project for this room');expect(instructions).toContain('Working directory: C:\\work\\project');expect(instructions).toContain('Changes affect the selected local project immediately');expect(workspace).toBeUndefined();
+    expect(instructions).toContain('Selected project for this room');expect(instructions).toContain('Working directory: C:\\work\\project');expect(instructions).toContain('Changes affect the selected local project immediately');expect(instructions).not.toContain('Before any operation through an MCP server');expect(workspace).toBeUndefined();
     await executor.shutdown();await database.close();
   });
 
@@ -85,6 +85,14 @@ describe('RunExecutor', () => {
     expect(instructions).toContain('do not implement the requested change while Plan is active');
     expect(instructions).toContain('Do not create, edit, move, or delete files in the recommended external project');
     expect(instructions).toContain('Do not install dependencies');
+    expect(instructions).toContain('Before any operation through an MCP server, including a read-only operation, obtain explicit confirmation');
+    expect(instructions).toContain("through the harness's structured clarification mechanism and wait for the answer");
+    expect(instructions).toContain('Built-in clarification and approval tools are not MCP operations for this rule');
+    expect(instructions).toContain('Imperative wording in the original task does not count as this confirmation');
+    expect(instructions).toContain('A positive answer authorizes only the described MCP batch in the current run');
+    expect(instructions).toContain('it does not switch the room or run to Work mode');
+    expect(instructions).toContain('obtain new confirmation before a materially different MCP operation or target');
+    expect(instructions).toContain('If structured clarification is unavailable, confirmation is declined, or the answer is ambiguous, do not call the MCP server');
     expect(instructions).toContain('Do not produce a formal implementation plan or create plan.md unless the human explicitly asks');
     expect(instructions).toContain('Managed artifacts may be created inside the Agenvyl run workspace');
     await executor.shutdown();

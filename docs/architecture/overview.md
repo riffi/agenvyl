@@ -220,6 +220,14 @@ enforce that invariant, so concurrent Plan harnesses can race in the shared
 Workspace or an external project. Finalization records the resulting live Git
 state but cannot reconstruct isolated per-agent changes.
 
+The Plan instruction contract treats MCP calls as a confirmation-gated
+exception to the external-system restriction. Before any MCP call, the harness
+must open structured clarification for a bounded batch identified by
+integration, target, operations, and side effects. A positive answer scopes the
+exception to that batch and run without changing the immutable workflow
+snapshot. Harnesses without structured clarification must stop before the MCP
+call and return analysis or a draft instead.
+
 Add instruction is supported by Codex and OpenCode. It interrupts the active
 native turn, preserves the preceding answer segment with author, timestamp, and
 status, then continues in the same native session and run. A selected completed

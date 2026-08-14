@@ -62,6 +62,14 @@ switch modes when you are ready for ordered implementation. The selected mode
 stays active for new messages until you switch it again; retry keeps the mode
 of the original run.
 
+Before using an MCP integration in Plan, an agent asks you to confirm a bounded
+set of operations, even when those operations only read data. The request names
+the integration, target, actions, and expected side effects. Confirming allows
+that set of MCP calls in the current run without switching to Work. A different
+target or materially different action requires another confirmation. If the
+agent cannot request structured confirmation, it provides analysis or a draft
+without calling the integration.
+
 Native Plan is the strongest read-only control offered by each harness. An
 **Instruction-only** badge means the harness receives a planning instruction
 but has no technical read-only control. Parallel instruction-only agents can

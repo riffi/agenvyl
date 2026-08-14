@@ -56,6 +56,15 @@ from writing to the Workspace or an external project. Because Plan runs can be
 parallel, those writes can race. Operators should use only native read-only Plan
 when shared paths cannot tolerate concurrent changes.
 
+Every MCP operation in Plan, including a read-only call, requires explicit
+human confirmation through structured clarification. The agent requests one
+bounded batch by naming the integration, target, planned operations, and known
+side effects. Confirmation applies only to that batch and run, does not switch the
+workflow mode, and may cover multiple calls needed to complete the batch. A
+materially different operation or target requires another confirmation. If the
+harness cannot pause for structured clarification, the agent must not perform
+the MCP operation.
+
 ## Restart recovery
 
 At startup Core reconciles persisted runs in `queued`, `streaming`, `stopping`,
