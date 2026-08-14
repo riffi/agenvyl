@@ -178,6 +178,20 @@ describe('Composer agent list',()=>{
     expect(openWorkspace).toHaveBeenCalledOnce();
   });
 
+  it('moves conversation routing into the add menu on mobile',async()=>{
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:true,addEventListener:vi.fn(),removeEventListener:vi.fn()})));
+    const updateConversationRouting=vi.fn(async()=>undefined);
+    render(<Composer gateway={gateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} conversationRouting conversationRoutingMode="auto" updateConversationRouting={updateConversationRouting}/>);
+    expect(screen.queryByRole('button',{name:/^Auto$/i})).toBeNull();
+    fireEvent.click(screen.getByRole('button',{name:'Add to message'}));
+    const auto=screen.getByRole('menuitemradio',{name:/Auto/}),roomContext=screen.getByRole('menuitemradio',{name:/Room context/});
+    expect(auto.getAttribute('aria-checked')).toBe('true');
+    auto.focus();fireEvent.keyDown(auto,{key:'ArrowDown'});expect(document.activeElement).toBe(roomContext);
+    fireEvent.click(roomContext);
+    await waitFor(()=>expect(updateConversationRouting).toHaveBeenCalledWith('room_context'));
+    expect(screen.queryByRole('menu',{name:'Add to message'})).toBeNull();
+  });
+
   it('supports keyboard navigation in the add menu',async()=>{
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
     render(<Composer gateway={gateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()}/>);

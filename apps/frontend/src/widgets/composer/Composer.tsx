@@ -78,6 +78,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   const [interventionError,setInterventionError]=useState<string>();
   const [routeSaving,setRouteSaving]=useState(false);
   const [routeError,setRouteError]=useState<string>();
+  const [mobileControls,setMobileControls]=useState(()=>typeof matchMedia==='function'&&matchMedia('(max-width: 767px)').matches);
   useImperativeHandle(ref,()=>({insertMention:(handle:string)=>{
     const editor=editorRef.current,{text:next,caret}=insertMentionAt(text,handle,editor?.selectionStart??text.length,editor?.selectionEnd??text.length);
     if(next.length>4000)return;
@@ -102,6 +103,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
     ...personas.map(persona=>({handle:persona.handle,name:persona.name,detail:personaModelName(persona,harnessCatalog),color:persona.color})),
   ].filter(candidate=>!mention||!mention.query||candidate.handle.toLowerCase().includes(mention.query)||candidate.name.toLowerCase().includes(mention.query)||candidate.detail.toLowerCase().includes(mention.query)).slice(0,8),[harnessCatalog,mention,personas]);
   useEffect(()=>setMentionIndex(0),[mention?.query]);
+  useEffect(()=>{if(typeof matchMedia!=='function')return;const query=matchMedia('(max-width: 767px)'),update=()=>setMobileControls(query.matches);update();query.addEventListener?.('change',update);return()=>query.removeEventListener?.('change',update)},[]);
   useEffect(()=>{setText('');setMention(undefined);setSendError(undefined);setProfileError(undefined);setModeError(undefined);setRouteError(undefined)},[roomId]);
   useEffect(()=>{
     const previous=previousInterventionRef.current,next=interventionTarget?.runId;
@@ -232,9 +234,9 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
           />
         </div>
         <footer className={interventionTarget?styles['instruction-footer']:undefined}>
-          {!interventionTarget&&<ComposerAddMenu attachmentDisabled={attachments.length>=10||attachmentsBusy} onAttach={openAttachmentPicker} onOpenWorkspace={()=>openWorkspace()}/>}
+          {!interventionTarget&&<ComposerAddMenu attachmentDisabled={attachments.length>=10||attachmentsBusy} onAttach={openAttachmentPicker} onOpenWorkspace={()=>openWorkspace()} routing={conversationRouting&&mobileControls?{mode:visibleConversationRoutingMode,saving:routeSaving,onModeChange:mode=>void selectConversationRouting(mode)}:undefined}/>}
           <span className={styles['footer-spacer']} aria-hidden="true"/>
-          {!interventionTarget&&conversationRouting&&<ConversationRouteControl mode={visibleConversationRoutingMode} saving={routeSaving} onModeChange={mode=>void selectConversationRouting(mode)}/>}
+          {!interventionTarget&&conversationRouting&&!mobileControls&&<ConversationRouteControl mode={visibleConversationRoutingMode} saving={routeSaving} onModeChange={mode=>void selectConversationRouting(mode)}/>}
           {!interventionTarget&&<Button
             className={styles['plan-button']}
             size="sm"
