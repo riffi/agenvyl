@@ -469,6 +469,37 @@ describe('OpenCodeConnectorAdapter', () => {
     await expect(iterator.next()).resolves.toMatchObject({value:{type:'execution.completed'}});
   });
 
+  it('auto-approves the selected Plan project for this run without persisting a global root',async()=>{
+    const client=fixtureClient(),grantExternalDirectoryRoot=vi.fn().mockResolvedValue(undefined);
+    client.agents=vi.fn().mockResolvedValue([{name:'build',mode:'primary'},{name:'plan',mode:'primary'}]);
+    client.subscribe=vi.fn().mockResolvedValue(events([
+      externalPermission('/srv/projects/main/src/app.ts','/srv/projects/main'),
+      ...completedTurn(),
+      {type:'session.idle',properties:{sessionID:'session-1'}},
+    ]));
+    const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client,externalDirectoryRoots:[],grantExternalDirectoryRoot});
+    const request={...startRequest(),executionProfile:{...startRequest().executionProfile,workflowMode:'plan' as const,agentVariantId:'plan',planEnforcement:'native' as const},workspace:{...startRequest().workspace,roomAbsolutePath:'/srv/workspaces/room-1/subdir',project:{absolutePath:'/srv/projects/main',access:'read' as const}}};
+
+    await expect(collect(adapter.events(await adapter.start(request)))).resolves.toEqual([completion()]);
+    expect(client.replyPermission).toHaveBeenCalledWith(expect.objectContaining({requestID:'native-external',reply:'once'}));
+    expect(grantExternalDirectoryRoot).not.toHaveBeenCalled();
+  });
+
+  it('auto-approves the room artifact directory when Work runs directly in the project',async()=>{
+    const client=fixtureClient(),grantExternalDirectoryRoot=vi.fn().mockResolvedValue(undefined);
+    client.subscribe=vi.fn().mockResolvedValue(events([
+      externalPermission('/srv/workspaces/room-1/result.png','/srv/workspaces/room-1'),
+      ...completedTurn(),
+      {type:'session.idle',properties:{sessionID:'session-1'}},
+    ]));
+    const adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client,externalDirectoryRoots:[],grantExternalDirectoryRoot});
+    const request={...startRequest(),workspace:{...startRequest().workspace,absolutePath:'/srv/projects/main',roomAbsolutePath:'/srv/workspaces/room-1',project:{absolutePath:'/srv/projects/main',access:'read_write' as const}}};
+
+    await expect(collect(adapter.events(await adapter.start(request)))).resolves.toEqual([completion()]);
+    expect(client.replyPermission).toHaveBeenCalledWith(expect.objectContaining({requestID:'native-external',reply:'once'}));
+    expect(grantExternalDirectoryRoot).not.toHaveBeenCalled();
+  });
+
   it.each(['standard','auto-approve'] as const)('rejects a near-miss managed run workspace in %s without offering or persisting it',async permissionProfileId=>{
     const client=fixtureClient(),grantExternalDirectoryRoot=vi.fn().mockResolvedValue(undefined);
     const active='C:\\Users\\Alice\\AppData\\Local\\Agenvyl\\workspaces\\room-1\\.agenvyl\\runs\\e3268baa-ecc3-4863-a760-528382e0bd6f\\workspace';

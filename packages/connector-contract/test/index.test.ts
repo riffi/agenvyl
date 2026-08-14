@@ -9,6 +9,8 @@ describe('Connector v1 contract fixtures', () => {
     expect(isConnectorCommandResult({execution:connectorContractFixtures.execution})).toBe(true);
     expect(isConnectorRequestCommandResult({execution:connectorContractFixtures.execution,request:{id:'request-1',kind:'approval',prompt:'Allow?'}})).toBe(true);
     expect(isStartExecutionRequest(connectorContractFixtures.startExecution)).toBe(true);
+    expect(isStartExecutionRequest({...connectorContractFixtures.startExecution,workspace:{...connectorContractFixtures.startExecution.workspace,project:{path:'C:\\work\\project',access:'read_write'}}})).toBe(true);
+    expect(isStartExecutionRequest({...connectorContractFixtures.startExecution,workspace:{...connectorContractFixtures.startExecution.workspace,project:{path:'C:\\work\\project',access:'owner'}}})).toBe(false);
     expect(isExecutionSnapshot(connectorContractFixtures.execution)).toBe(true);
     expect(isConnectorExecutionEvent(connectorContractFixtures.textEvent)).toBe(true);
     expect(isConnectorExecutionEvent({...connectorContractFixtures.textEvent,type:'output.reasoning.delta'})).toBe(true);

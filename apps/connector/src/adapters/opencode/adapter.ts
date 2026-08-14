@@ -56,6 +56,7 @@ export type OpenCodeAdapterOptions = {
 
 type ActiveSession = {
   directory:string;
+  trustedExternalRoots:string[];
   continuationHandle:string;
   promptConfiguration:PromptConfiguration;
   permissionProfile:OpenCodePermissionProfile;
@@ -166,6 +167,11 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
     const variant=profile.reasoningEffort??undefined;
     if(variant&&!this.supportedModelVariants.get(request.modelId)?.has(variant))throw new Error('OpenCode model variant is not supported');
     const directory=request.workspace.absolutePath,controller=new AbortController(),configurationHash=continuationConfiguration(request),continuation=handle?parseContinuationHandle(handle):undefined;
+    const roomDirectory=request.workspace.roomAbsolutePath??directory;
+    const trustedExternalRoots=[
+      ...(request.workspace.project&&request.workspace.project.absolutePath!==directory?[request.workspace.project.absolutePath]:[]),
+      ...(roomDirectory!==directory?[roomDirectory]:[]),
+    ];
     if(handle&&!continuation)throw new AdapterContinuationError('continuation_unavailable','OpenCode continuation handle is invalid');
     if(continuation&&(!request.continuation||request.input.history.length||continuation.instanceId!==request.harnessInstanceId||continuation.directory!==directory||continuation.storageScopeHash!==this.storageScopeHash||continuation.configurationHash!==configurationHash))throw new AdapterContinuationError('continuation_incompatible','OpenCode continuation is incompatible with the requested execution snapshot');
     await this.retainDirectory(directory);
@@ -183,6 +189,7 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
       const continuationHandle=encodeContinuationHandle({v:1,harness:'opencode',instanceId:request.harnessInstanceId,sessionId:session.id,directory,storageScopeHash:this.storageScopeHash,configurationHash,contextHash:contextHash(system)});
       active={
         directory,
+        trustedExternalRoots,
         continuationHandle,
         promptConfiguration,
         permissionProfile:profile.workflowMode==='plan'?'standard':permissionProfile,
@@ -283,6 +290,11 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
             return;
           }
           if (permission.externalDirectory) {
+            const scopedAssessment=assessExternalDirectoryRequest(asRecord(event.properties)??{},active.trustedExternalRoots);
+            if(scopedAssessment.status==='allowlisted'){
+              await this.client.replyPermission({sessionID:execution.upstreamId,requestID:permission.pending.nativeRequestId,directory:permission.pending.directory,reply:'once',version:permission.pending.version});
+              continue;
+            }
             const assessment=assessExternalDirectoryRequest(asRecord(event.properties)??{},this.externalDirectoryRoots,active.directory);
             if(assessment.status==='malformed'||assessment.status==='workspace_escape'){
               await this.client.replyPermission({
@@ -677,11 +689,14 @@ export function openCodeSystemContext(request: AdapterStartExecutionRequest) {
     'Include all currently required questions in one tool call, with no more than four focused questions, and wait for the human answers.',
     'Do not finish the Plan response until all required clarification answers have been received.',
   ].join(' '));
+  const roomDirectory=request.workspace.roomAbsolutePath??request.workspace.absolutePath;
+  const project=request.workspace.project;
   sections.push([
     `Use ${request.workspace.absolutePath} as the working directory for this execution.`,
     'The OpenCode session is already rooted in this directory. Use paths relative to the current working directory in every file-tool argument and shell command, for example `dashboard.html` or `src/app.ts`.',
     'Never copy, reconstruct, or pass the absolute working-directory path into a tool argument.',
-    'Do not access files outside this directory.',
+    project&&project.absolutePath!==request.workspace.absolutePath?`The selected project directory ${project.absolutePath} is an authorized read-only external directory. You may inspect it using absolute paths, but must not modify it.`:'Do not access files outside this directory except for the explicitly authorized room artifact directory described below.',
+    roomDirectory!==request.workspace.absolutePath?`Use ${roomDirectory} only for managed room attachments and response artifacts. It is an authorized external directory, not the project working directory.`:'Store managed room attachments and response artifacts in this working directory.',
     'Create, download, and move files directly within this directory; never stage them in /tmp or another external directory.',
     'Do not use sudo. If an operation would require an external path or elevated privileges, keep the operation inside the working directory instead.',
   ].join(' '));
@@ -702,7 +717,7 @@ function parseModel(value: string) {
 
 const continuationConfiguration=(request:AdapterStartExecutionRequest)=>createHash('sha256').update(JSON.stringify({
   harness:'opencode',instanceId:request.harnessInstanceId,modelId:request.modelId,executionProfile:request.executionProfile,
-  workspace:{roomId:request.workspace.roomId,absolutePath:request.workspace.absolutePath},systemPrompt:request.input.systemPrompt,
+  workspace:{roomId:request.workspace.roomId,absolutePath:request.workspace.absolutePath,roomAbsolutePath:request.workspace.roomAbsolutePath??request.workspace.absolutePath,project:request.workspace.project??null},systemPrompt:request.input.systemPrompt,
 })).digest('hex');
 const contextHash=(value:string)=>createHash('sha256').update(value).digest('hex');
 const encodeContinuationHandle=(value:OpenCodeContinuationHandle)=>Buffer.from(JSON.stringify(value),'utf8').toString('base64url');

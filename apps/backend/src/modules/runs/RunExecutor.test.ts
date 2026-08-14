@@ -16,7 +16,7 @@ const planProfile={...workProfile,workflowMode:'plan' as const,planEnforcement:'
 const profiles=(personas:Array<{id:string}>)=>new Map(personas.map(persona=>[persona.id,workProfile]));
 
 describe('RunExecutor', () => {
-  it('adds an available project as guidance without changing the run workspace',async()=>{
+  it('describes an available Work project as the direct working directory',async()=>{
     let instructions='',workspace:unknown;
     const connector={health:vi.fn().mockResolvedValue(connectorContractFixtures.health),inspect:vi.fn(),validateDirectory:vi.fn().mockResolvedValue({apiVersion:'v2',status:'available',path:'C:\\work\\project',pathKey:'c:\\work\\project'})};
     const{executor,registry,database}=await fixture(async(input,init)=>{
@@ -25,7 +25,7 @@ describe('RunExecutor', () => {
     },4,connector);
     registry.add({...run('project-run'),recommendedProject:{id:'project-1',name:'Main',path:'C:\\work\\project',availability:'unknown'}});
     executor.start('project-run','work there');await vi.waitFor(()=>expect(registry.get('project-run')).toBeUndefined());
-    expect(instructions).toContain('Recommended project context for this room');expect(instructions).toContain('C:\\work\\project');expect(instructions).toContain('not an access restriction');expect(workspace).toBeUndefined();
+    expect(instructions).toContain('Selected project for this room');expect(instructions).toContain('Working directory: C:\\work\\project');expect(instructions).toContain('Changes affect the selected local project immediately');expect(workspace).toBeUndefined();
     await executor.shutdown();await database.close();
   });
 

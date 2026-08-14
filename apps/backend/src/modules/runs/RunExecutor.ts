@@ -296,7 +296,12 @@ export class RunExecutor {
         harnessInstanceId:run.harnessInstanceId,
         modelId:run.modelId,
         executionProfile:run.executionProfile,
-        workspace:{roomId:run.roomId,relativePath:preparedWorkspace?.relativePath??'.',...(preparedWorkspace?.absolutePath?{absolutePath:preparedWorkspace.absolutePath}:{})},
+        workspace:{
+          roomId:run.roomId,
+          relativePath:preparedWorkspace?.relativePath??'.',
+          ...(preparedWorkspace?.absolutePath?{absolutePath:preparedWorkspace.absolutePath}:{}),
+          ...(run.recommendedProject?.availability==='available'?{project:{path:run.recommendedProject.path,access:run.executionProfile.workflowMode==='work'?'read_write' as const:'read' as const}}:{}),
+        },
         input,
         sessionId,
         instructions,
@@ -430,7 +435,8 @@ export class RunExecutor {
     await this.dependencies.runs.setProjectAvailability(run.id,availability);
     await this.dependencies.events.emit(run.roomId,'run.project.updated',{runId:run.id,project:run.recommendedProject});
     if(availability!=='available')return`\n\nRecommended project “${project.name}” is currently unavailable. Continue in the Agenvyl room workspace and do not assume that the configured project path can be accessed.`;
-    return`\n\nRecommended project context for this room:\n- Name: ${project.name}\n- Local directory: ${project.path}\nPrefer this directory for project-related work. This is contextual guidance, not an access restriction or permission grant. You may use other directories when the task and current harness permissions allow it. The Agenvyl room workspace remains the location for managed attachments and response artifacts.`;
+    if(run.executionProfile.workflowMode==='work')return`\n\nSelected project for this room:\n- Name: ${project.name}\n- Working directory: ${project.path}\nWork directly in this directory. Changes affect the selected local project immediately. The Agenvyl room workspace remains reserved for managed attachments and response artifacts.`;
+    return`\n\nSelected project context for this room:\n- Name: ${project.name}\n- Read-only directory: ${project.path}\nYou may inspect this directory without requesting additional external-directory access. Do not create, edit, move, or delete files in it while Plan mode is active. The Agenvyl room workspace remains the working directory and the location for managed attachments and response artifacts.`;
   }
 
   private armDeadline(run:RunContext){

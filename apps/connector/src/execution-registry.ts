@@ -44,6 +44,8 @@ type ExecutionRecord = {
   request: StartExecutionRequest;
   requestKey: string;
   workspacePath: string;
+  roomWorkspacePath:string;
+  projectScope?:{absolutePath:string;access:'read'|'read_write'};
   adapter: ConnectorAdapter;
   harnessType: string;
   adapterGeneration: number;
@@ -93,9 +95,15 @@ export class ExecutionRegistry {
       if (error instanceof AdapterGenerationError) throw new RegistryError(error.code, error.message, error.statusCode);
       throw error;
     }
-    let workspacePath: string;
+    let workspacePath: string,roomWorkspacePath:string,projectScope:{absolutePath:string;access:'read'|'read_write'}|undefined;
     try {
-      workspacePath = this.workspacePolicy.resolve(request.workspace.roomId, request.workspace.relativePath);
+      roomWorkspacePath = this.workspacePolicy.resolve(request.workspace.roomId, request.workspace.relativePath);
+      if(request.workspace.project){
+        const expectedAccess=request.executionProfile.workflowMode==='work'?'read_write':'read';
+        if(request.workspace.project.access!==expectedAccess)throw new RegistryError('project_access_invalid',`Selected project access must be ${expectedAccess} in ${request.executionProfile.workflowMode} mode`,400);
+        projectScope={absolutePath:this.workspacePolicy.resolveProject(request.workspace.project.path),access:request.workspace.project.access};
+      }
+      workspacePath=request.executionProfile.workflowMode==='work'&&projectScope?projectScope.absolutePath:roomWorkspacePath;
     } catch (error) {
       binding.release();
       throw error;
@@ -109,6 +117,8 @@ export class ExecutionRegistry {
       request: structuredClone(request),
       requestKey,
       workspacePath,
+      roomWorkspacePath,
+      projectScope,
       adapter: binding.adapter,
       harnessType: binding.harnessType,
       adapterGeneration: binding.adapterGeneration,
@@ -243,7 +253,13 @@ export class ExecutionRegistry {
       this.logger?.info({...historyMetrics,harnessType:record.harnessType},'Prepared conversation history');
       const adapterRequest={
         ...record.request,
-        workspace: { ...record.request.workspace, absolutePath: record.workspacePath },
+        workspace: {
+          roomId:record.request.workspace.roomId,
+          relativePath:record.request.workspace.relativePath,
+          absolutePath:record.workspacePath,
+          roomAbsolutePath:record.roomWorkspacePath,
+          ...(record.projectScope?{project:record.projectScope}:{}),
+        },
       };
       record.upstream = record.request.continuation
         ?await record.adapter.startContinuation!(adapterRequest,record.request.continuation.handle)
@@ -525,7 +541,7 @@ function stableRequestKey(request: StartExecutionRequest) {
     harnessInstanceId: request.harnessInstanceId,
     modelId: request.modelId,
     executionProfile: request.executionProfile,
-    workspace: { roomId: request.workspace.roomId, relativePath: request.workspace.relativePath },
+    workspace: {roomId:request.workspace.roomId,relativePath:request.workspace.relativePath,project:request.workspace.project??null},
     input: {
       systemPrompt: request.input.systemPrompt,
       history: request.input.history.map(item => ({ role: item.role, content: item.content })),

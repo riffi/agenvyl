@@ -15,7 +15,11 @@ import type {
 
 export type AdapterExecution = { upstreamId: string };
 export type AdapterStartExecutionRequest = Omit<StartExecutionRequest, 'workspace'> & {
-  workspace: StartExecutionRequest['workspace'] & { absolutePath: string };
+  workspace: Omit<StartExecutionRequest['workspace'],'project'> & {
+    absolutePath: string;
+    roomAbsolutePath?: string;
+    project?:{absolutePath:string;access:'read'|'read_write'};
+  };
 };
 
 export type AdapterExecutionEvent =

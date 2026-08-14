@@ -23,7 +23,7 @@ export class ConnectorRunAdapter implements RunGateway,RunEventStream,RunRecover
         agentVariantId:input.executionProfile.agentVariantId,
         planEnforcement:input.executionProfile.planEnforcement,
       },
-      workspace:{roomId:input.workspace.roomId,relativePath:input.workspace.relativePath},
+      workspace:{roomId:input.workspace.roomId,relativePath:input.workspace.relativePath,...(input.workspace.project?{project:input.workspace.project}:{})},
       input:{systemPrompt:input.instructions,history:input.conversationHistory??[],message:input.input},
       ...(input.continuationHandle?{continuation:{handle:input.continuationHandle}}:{}),
     });

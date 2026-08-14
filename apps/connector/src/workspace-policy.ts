@@ -63,6 +63,11 @@ export class WorkspacePolicy {
     if (!statSync(canonicalTarget).isDirectory()) throw new WorkspacePolicyError('workspace_invalid', 'Workspace target is not a directory', 400);
     return canonicalTarget;
   }
+
+  resolveProject(path:string){
+    try{return canonicalDirectory(path,'workspace.project.path');}
+    catch{throw new WorkspacePolicyError('project_unavailable','Selected project directory is unavailable',404);}
+  }
 }
 
 function canonicalDirectory(path: string, label: string) {

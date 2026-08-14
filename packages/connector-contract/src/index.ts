@@ -148,6 +148,7 @@ export type ConnectorDirectoryPickerResult = {
 };
 
 export type CanonicalConversationItem = { role: 'user' | 'assistant'; content: string };
+export type ExecutionProjectScope = { path: string; access: 'read' | 'read_write' };
 export type StartExecutionRequest = {
   executionId: string;
   harnessInstanceId: string;
@@ -159,7 +160,7 @@ export type StartExecutionRequest = {
     agentVariantId: string | null;
     planEnforcement: 'native' | 'instruction_only' | null;
   };
-  workspace: { roomId: string; relativePath: string };
+  workspace: { roomId: string; relativePath: string; project?: ExecutionProjectScope };
   input: { systemPrompt: string; history: CanonicalConversationItem[]; message: string };
   continuation?: ContinuationReference;
 };
@@ -428,6 +429,7 @@ export function isExecutionSnapshot(value: unknown): value is ExecutionSnapshot 
 export function isStartExecutionRequest(value: unknown): value is StartExecutionRequest {
   if (!isRecord(value) || !strings(value, 'executionId', 'harnessInstanceId', 'modelId') || !isExecutionProfile(value.executionProfile)) return false;
   if (!isRecord(value.workspace) || !strings(value.workspace, 'roomId', 'relativePath')) return false;
+  if (value.workspace.project !== undefined && (!isRecord(value.workspace.project) || !strings(value.workspace.project, 'path') || !['read','read_write'].includes(String(value.workspace.project.access)))) return false;
   if (!isRecord(value.input) || !strings(value.input, 'systemPrompt', 'message') || !Array.isArray(value.input.history)) return false;
   return value.input.history.every(item => isRecord(item) && (item.role === 'user' || item.role === 'assistant') && typeof item.content === 'string')
     && (value.continuation === undefined || isContinuationReference(value.continuation));

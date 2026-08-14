@@ -7,14 +7,31 @@ import type { AdapterExecution, AdapterExecutionEvent, ConnectorAdapter } from '
 import { ExecutionRegistry } from './execution-registry.js';
 import { WorkspacePolicy } from './workspace-policy.js';
 
-let workspaceRoot = '';
+let workspaceRoot = '',projectRoot='';
 beforeAll(async () => {
   workspaceRoot = await mkdtemp(join(tmpdir(), 'agenvyl-registry-'));
+  projectRoot = await mkdtemp(join(tmpdir(), 'agenvyl-project-'));
   await mkdir(join(workspaceRoot, 'room-1'));
 });
-afterAll(async () => { await rm(workspaceRoot, { recursive: true, force: true }); });
+afterAll(async () => { await Promise.all([rm(workspaceRoot,{recursive:true,force:true}),rm(projectRoot,{recursive:true,force:true})]); });
 
 describe('ExecutionRegistry live subscriptions', () => {
+  it('uses the selected project directly in Work and keeps the room workspace in Plan',async()=>{
+    const workAdapter=new LiveAdapter(),workRegistry=createRegistry(workAdapter);
+    const workRequest={...structuredClone(connectorContractFixtures.startExecution),executionId:'work-project',workspace:{roomId:'room-1',relativePath:'.',project:{path:projectRoot,access:'read_write' as const}}} as StartExecutionRequest;
+    workRegistry.start(workRequest);
+    await waitFor(()=>workAdapter.received!==undefined);
+    expect(workAdapter.received?.workspace).toEqual({roomId:'room-1',relativePath:'.',absolutePath:projectRoot,roomAbsolutePath:join(workspaceRoot,'room-1'),project:{absolutePath:projectRoot,access:'read_write'}});
+    expect(()=>workRegistry.start({...workRequest,workspace:{roomId:'room-1',relativePath:'.'}})).toThrow('different input');
+
+    const planAdapter=new LiveAdapter(),planRegistry=createRegistry(planAdapter);
+    const planRequest={...structuredClone(connectorContractFixtures.startExecution),executionId:'plan-project',executionProfile:{...connectorContractFixtures.startExecution.executionProfile,workflowMode:'plan' as const,planEnforcement:'instruction_only' as const},workspace:{roomId:'room-1',relativePath:'.',project:{path:projectRoot,access:'read' as const}}} as StartExecutionRequest;
+    planRegistry.start(planRequest);
+    await waitFor(()=>planAdapter.received!==undefined);
+    expect(planAdapter.received?.workspace).toEqual({roomId:'room-1',relativePath:'.',absolutePath:join(workspaceRoot,'room-1'),roomAbsolutePath:join(workspaceRoot,'room-1'),project:{absolutePath:projectRoot,access:'read'}});
+    expect(()=>planRegistry.start({...planRequest,executionId:'invalid-plan',workspace:{...planRequest.workspace,project:{path:projectRoot,access:'read_write'}}})).toThrow('Selected project access must be read in plan mode');
+  });
+
   it('enforces the harness-neutral native continuation contract',async()=>{
     let received:StartExecutionRequest|undefined,released:string|undefined;
     const adapter:ConnectorAdapter={type:'hermes',capabilities:['text_streaming'],postTurnContinuation:{mode:'native_session',durability:'connector_restart',retention:'explicit_release'},async start(){throw new Error('must not create a fresh session');},async startContinuation(request,handle){received=request;expect(handle).toBe('opaque-source');return{upstreamId:'continued'};},async inspect(){return{status:'running'};},async stop(){},async releaseContinuation(handle){released=handle;return'released';},async *events(){yield{type:'output.text.delta',payload:{text:'current turn only'}};yield{type:'execution.completed',payload:{continuation:{handle:'opaque-next'}}};}};
@@ -223,8 +240,9 @@ class LiveAdapter implements ConnectorAdapter {
   readonly capabilities = ['text_streaming'] satisfies ConnectorAdapter['capabilities'];
   private readonly queue: AdapterExecutionEvent[] = [];
   private waiter?: (result: IteratorResult<AdapterExecutionEvent>) => void;
+  received?: import('./adapter.js').AdapterStartExecutionRequest;
 
-  async start(): Promise<AdapterExecution> { return { upstreamId: 'upstream-1' }; }
+  async start(request:import('./adapter.js').AdapterStartExecutionRequest): Promise<AdapterExecution> { this.received=request;return { upstreamId: 'upstream-1' }; }
   async inspect() { return { status: 'running' as const }; }
   async stop() {}
 

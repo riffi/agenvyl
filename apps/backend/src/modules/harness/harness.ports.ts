@@ -5,7 +5,7 @@ export type StartRunInput = {
   harnessInstanceId: string;
   modelId: string;
   executionProfile: import('@agenvyl/contracts').RunExecutionProfileSnapshot;
-  workspace: { roomId: string; relativePath: string; absolutePath?: string };
+  workspace: { roomId: string; relativePath: string; absolutePath?: string; project?:import('@agenvyl/connector-contract').ExecutionProjectScope };
   input: string;
   sessionId: string;
   instructions: string;
