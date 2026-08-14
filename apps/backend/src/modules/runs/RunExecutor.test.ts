@@ -366,7 +366,11 @@ describe('RunExecutor', () => {
     await vi.waitFor(async()=>expect((await database.sql`SELECT connector_cursor,execution_deadline_at FROM agent_runs WHERE id=${runId}`)[0]).toMatchObject({connector_cursor:'2',execution_deadline_at:expect.any(Date)}));
     const initial=(await database.sql`SELECT execution_deadline_at FROM agent_runs WHERE id=${runId}`)[0]?.execution_deadline_at as Date;
     await new Promise(resolve=>setTimeout(resolve,20));releaseActivity();
-    await vi.waitFor(async()=>expect((await database.sql`SELECT connector_cursor FROM agent_runs WHERE id=${runId}`)[0]?.connector_cursor).toBe('3'),{timeout:5_000});
+    await vi.waitFor(async()=>{
+      const row=(await database.sql`SELECT connector_cursor,execution_deadline_at FROM agent_runs WHERE id=${runId}`)[0];
+      expect(row?.connector_cursor).toBe('3');
+      expect((row?.execution_deadline_at as Date).getTime()).toBeGreaterThan(initial.getTime());
+    },{timeout:5_000});
     const refreshed=(await database.sql`SELECT execution_deadline_at FROM agent_runs WHERE id=${runId}`)[0]?.execution_deadline_at as Date;
     expect(refreshed.getTime()).toBeGreaterThan(initial.getTime());
     releaseCompletion();await vi.waitFor(()=>expect(registry.get(runId)).toBeUndefined());
