@@ -14,6 +14,7 @@ class FakeProcess implements ClaudeProcessPort{
   onExit(listener:(error?:Error)=>void){this.exits.push(listener);}
   interrupt(){return Promise.resolve();}close(){return Promise.resolve();}
   emit(value:ClaudeMessage){for(const listener of this.messages)listener(value);}
+  fail(error:Error){for(const listener of this.exits)listener(error);}
 }
 
 class FakePermissionBridge implements ClaudePermissionBridgePort{
@@ -33,6 +34,27 @@ describe('Claude adapter',()=>{
   it('rejects subscription OAuth without persisted opt-in',async()=>{const adapter=new ClaudeConnectorAdapter({processFactory:()=>new FakeProcess({models:[{value:'sonnet'}],account:{authMethod:'oauth_token'}})});await expect(adapter.catalog()).rejects.toThrow('CLAUDE OAUTH');});
   it('handles duplicate and cancelled request IDs idempotently',async()=>{const processes:FakeProcess[]=[];const adapter=new ClaudeConnectorAdapter({processFactory:()=>{const value=new FakeProcess();processes.push(value);return value;}});await adapter.start(request);const iterator=adapter.events({upstreamId:'run-1'})[Symbol.asyncIterator](),active=processes[1]!,approval={type:'control_request',request_id:'same',request:{subtype:'can_use_tool',tool_name:'Bash',input:{command:'pwd'}}} as const;active.emit(approval);active.emit(approval);expect((await iterator.next()).value?.type).toBe('request.opened');active.emit({type:'control_cancel_request',request_id:'same'});expect(await iterator.next()).toMatchObject({value:{type:'request.resolved',payload:{outcome:'cancelled'}}});});
   it('reports an errored Claude tool result as failed',async()=>{const processes:FakeProcess[]=[];const adapter=new ClaudeConnectorAdapter({processFactory:()=>{const value=new FakeProcess();processes.push(value);return value;}});await adapter.start(request);const iterator=adapter.events({upstreamId:'run-1'})[Symbol.asyncIterator](),active=processes[1]!;active.emit({type:'assistant',message:{content:[{type:'tool_use',id:'tool-1',name:'Read'}]}});expect((await iterator.next()).value?.type).toBe('tool.started');active.emit({type:'user',message:{content:[{type:'tool_result',tool_use_id:'tool-1',is_error:true}]}});expect(await iterator.next()).toMatchObject({value:{type:'tool.failed',payload:{toolId:'tool-1',safeSummary:'Tool failed'}}});});
+  it('uses the terminal text as fallback and supports cancellation',async()=>{
+    const processes:FakeProcess[]=[],adapter=new ClaudeConnectorAdapter({processFactory:()=>{const value=new FakeProcess();processes.push(value);return value;}});
+    const textExecution=await adapter.start(request),textEvents=collect(adapter.events(textExecution));
+    processes[1]!.emit({type:'stream_event',event:{type:'content_block_delta',delta:{type:'text_delta',text:'partial'}}});
+    await adapter.stop(textExecution);await adapter.stop(textExecution);
+    expect(await textEvents).toEqual([{type:'output.text.delta',payload:{text:'partial'}},{type:'execution.cancelled',payload:{}}]);
+    const toolExecution=await adapter.start({...request,executionId:'run-tool'}),toolEvents=collect(adapter.events(toolExecution));
+    processes[2]!.emit({type:'assistant',message:{content:[{type:'tool_use',id:'tool-1',name:'Read'}]}});
+    await adapter.stop(toolExecution);
+    expect(await toolEvents).toEqual([{type:'tool.started',payload:expect.objectContaining({toolId:'tool-1',name:'Read'})},{type:'execution.cancelled',payload:{}}]);
+  });
+  it('isolates concurrent processes and normalizes process failures',async()=>{
+    const processes:FakeProcess[]=[],adapter=new ClaudeConnectorAdapter({processFactory:()=>{const value=new FakeProcess();processes.push(value);return value;}});
+    const first=await adapter.start(request),second=await adapter.start({...request,executionId:'run-2'});
+    const firstEvents=collect(adapter.events(first)),secondEvents=collect(adapter.events(second));
+    processes[1]!.emit({type:'result',subtype:'success'});processes[2]!.fail(new Error('transport unavailable'));
+    expect((await firstEvents).at(-1)?.type).toBe('execution.completed');
+    expect((await secondEvents).at(-1)).toMatchObject({type:'execution.failed',payload:{error:{code:'claude_process_exited'}}});
+    const third=await adapter.start({...request,executionId:'run-3'}),thirdEvents=collect(adapter.events(third));await adapter.stop(third);
+    expect((await thirdEvents).at(-1)?.type).toBe('execution.cancelled');
+  });
   it('injects the external MCP bridge and resolves its permission call through the room request',async()=>{
     const processes:FakeProcess[]=[],args:string[][]=[],bridge=new FakePermissionBridge();
     const adapter=new ClaudeConnectorAdapter({permissionBridge:bridge,processFactory:options=>{args.push(options.args);const value=new FakeProcess();processes.push(value);return value;}});

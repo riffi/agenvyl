@@ -20,6 +20,7 @@ export class ClaudeConnectorAdapter implements ConnectorAdapter{
   readonly type='claude';
   readonly capabilities:ConnectorAdapter['capabilities']=['model_catalog','execution_profiles','text_streaming','reasoning','tools','approvals','clarifications','usage'];
   private readonly states=new Map<string,State>();
+  private readonly settledExecutionIds=new Set<string>();
   private supportedEfforts=new Map<string,Set<string>>();
   private ownedPermissionBridge?:ClaudePermissionMcpBridge;
   constructor(private readonly options:ClaudeAdapterOptions={}){}
@@ -32,6 +33,7 @@ export class ClaudeConnectorAdapter implements ConnectorAdapter{
 
   async start(request:AdapterStartExecutionRequest):Promise<AdapterExecution>{
     if(this.states.has(request.executionId))throw new Error('Claude execution already exists');
+    this.settledExecutionIds.delete(request.executionId);
     if(!this.supportedEfforts.size)await this.catalog();else await this.checkAuth();
     const efforts=this.supportedEfforts.get(request.modelId);if(!efforts)throw new Error('Claude model is not supported');
     const profile=request.executionProfile;if(profile.reasoningEffort&&!efforts.has(profile.reasoningEffort))throw new Error('Claude reasoning effort is not supported');
@@ -66,7 +68,7 @@ export class ClaudeConnectorAdapter implements ConnectorAdapter{
     this.respond(state,pending,decision);state.pending.delete(request.id);return{outcome:'answered' as const};
   }
 
-  async stop(execution:AdapterExecution){const state=this.require(execution.upstreamId);if(state.terminal)return;state.status='stopping';for(const pending of state.pending.values())this.respond(state,pending,{behavior:'deny',message:'Execution cancelled'});state.pending.clear();await state.process.interrupt();if(!state.terminal)await this.finish(state,'cancelled');}
+  async stop(execution:AdapterExecution){const state=this.states.get(execution.upstreamId);if(!state){if(this.settledExecutionIds.has(execution.upstreamId))return;throw new Error('Claude execution is not active');}if(state.terminal)return;state.status='stopping';for(const pending of state.pending.values())this.respond(state,pending,{behavior:'deny',message:'Execution cancelled'});state.pending.clear();await state.process.interrupt();if(!state.terminal)await this.finish(state,'cancelled');}
   async close(){await Promise.all([...this.states.values()].map(state=>this.stop({upstreamId:state.id}).catch(()=>undefined)));await this.ownedPermissionBridge?.close();}
 
   private createProcess(cwd:string,args:string[]){return this.options.processFactory?.({cwd,args})??new ClaudeCliProcess({command:this.options.command,env:this.options.env,cwd,args});}
@@ -117,7 +119,8 @@ export class ClaudeConnectorAdapter implements ConnectorAdapter{
   private cancelControlRequest(state:State,value:unknown){if(typeof value!=='string')return;const entry=[...state.pending.entries()].find(([,pending])=>pending.requestId===value);if(!entry)return;state.pending.delete(entry[0]);state.queue.push({type:'request.resolved',payload:{requestId:entry[0],outcome:'cancelled'}});}
   private require(id:string){const state=this.states.get(id);if(!state)throw new Error('Claude execution is not active');return state;}
   private fail(state:State,code:string,message:string){if(!state.terminal)void this.finish(state,state.status==='stopping'?'cancelled':'failed',{code,message:redactConnectorText(message,500)});}
-  private async finish(state:State,status:'completed'|'failed'|'cancelled',error?:{code:string;message:string}){if(state.terminal)return;state.terminal=true;state.status=status;for(const[id,pending]of state.pending){this.respond(state,pending,{behavior:'deny',message:'Claude execution finished'});state.queue.push({type:'request.resolved',payload:{requestId:id,outcome:'cancelled'}});}state.pending.clear();state.queue.push(status==='completed'?{type:'execution.completed',payload:{}}:status==='cancelled'?{type:'execution.cancelled',payload:{}}:{type:'execution.failed',payload:{error:error??{code:'claude_failed',message:'Claude execution failed'}}});state.queue.end();this.states.delete(state.id);await state.process.close().catch(()=>undefined);await state.cleanup();}
+  private async finish(state:State,status:'completed'|'failed'|'cancelled',error?:{code:string;message:string}){if(state.terminal)return;state.terminal=true;state.status=status;for(const[id,pending]of state.pending){this.respond(state,pending,{behavior:'deny',message:'Claude execution finished'});state.queue.push({type:'request.resolved',payload:{requestId:id,outcome:'cancelled'}});}state.pending.clear();state.queue.push(status==='completed'?{type:'execution.completed',payload:{}}:status==='cancelled'?{type:'execution.cancelled',payload:{}}:{type:'execution.failed',payload:{error:error??{code:'claude_failed',message:'Claude execution failed'}}});state.queue.end();this.states.delete(state.id);this.rememberSettled(state.id);await state.process.close().catch(()=>undefined);await state.cleanup();}
+  private rememberSettled(id:string){this.settledExecutionIds.add(id);if(this.settledExecutionIds.size<=1_024)return;const oldest=this.settledExecutionIds.values().next().value;if(oldest)this.settledExecutionIds.delete(oldest);}
 }
 
 class EventQueue implements AsyncIterable<AdapterExecutionEvent>{private values:AdapterExecutionEvent[]=[];private waiters:Array<(value:IteratorResult<AdapterExecutionEvent>)=>void>=[];private ended=false;push(value:AdapterExecutionEvent){const waiter=this.waiters.shift();if(waiter)waiter({value,done:false});else this.values.push(value);}end(){this.ended=true;for(const waiter of this.waiters)waiter({value:undefined,done:true});this.waiters=[];}[Symbol.asyncIterator](){return{next:():Promise<IteratorResult<AdapterExecutionEvent>>=>{const value=this.values.shift();if(value)return Promise.resolve({value,done:false});if(this.ended)return Promise.resolve({value:undefined,done:true});return new Promise(resolve=>this.waiters.push(resolve));}};}}

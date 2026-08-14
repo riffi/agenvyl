@@ -59,6 +59,24 @@ They validate Agenvyl's adapter and protocol behavior against controlled
 fixtures. Passing a fixture suite does not prove that a newly released upstream
 CLI remains compatible.
 
+## Connector conformance contract
+
+Run the vendor-neutral contract manifest and runner self-tests with:
+
+```bash
+npm run test:conformance
+```
+
+The report lists every shipped harness and stable contract case as either
+`PASS` with its adapter fixture evidence or `WAIVER` with a required transport
+reason. A missing binding, unknown case, incomplete evidence, or empty waiver
+reason fails the suite. Ordinary `skip` is not a supported disposition.
+
+`npm test` includes both the conformance suite and the referenced deterministic
+adapter fixture tests. Consequently the existing `check:local` command and the
+Linux **Checks** workflow are the CI gate; do not add a second duplicate test
+invocation to a workflow.
+
 ## Live smoke tests
 
 Live tests are explicit opt-ins:
