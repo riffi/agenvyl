@@ -16,6 +16,7 @@ export type AppConfig = {
   artifactRoot:string;
   artifactMaxBytes:number;
   previewOrigin: string;
+  conversationRouting: boolean;
 };
 
 export type AppConfigOverrides = Partial<AppConfig>;
@@ -46,6 +47,7 @@ export function resolveAppConfig(overrides: AppConfigOverrides = {}): AppConfig 
     artifactRoot:overrides.artifactRoot??process.env.AGENVYL_ARTIFACT_ROOT??paths.artifacts,
     artifactMaxBytes:positiveInteger(overrides.artifactMaxBytes??process.env.AGENVYL_ARTIFACT_MAX_BYTES,250*1024*1024),
     previewOrigin: overrides.previewOrigin ?? process.env.AGENVYL_PREVIEW_ORIGIN ?? `http://127.0.0.1:${positiveInteger(process.env.AGENVYL_PREVIEW_PORT,8792)}`,
+    conversationRouting: overrides.conversationRouting ?? booleanSetting(process.env.AGENVYL_EXPERIMENT_CONVERSATION_ROUTING, false, 'AGENVYL_EXPERIMENT_CONVERSATION_ROUTING'),
   };
 }
 

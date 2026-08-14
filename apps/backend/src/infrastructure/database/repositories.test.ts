@@ -31,7 +31,7 @@ describe("PostgreSQL repositories", () => {
         await p.database
           .sql`SELECT version FROM schema_migrations ORDER BY version`
       ).map((row) => row.version),
-    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34]);
+    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35]);
     expect(
       await p.database.sql`SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='personas' AND column_name='role'`,
     ).toEqual([]);
@@ -68,6 +68,43 @@ describe("PostgreSQL repositories", () => {
       )[0]?.completed_at,
     ).toBeNull();
     await database.close();
+  });
+  it('persists one queued follow-up per agent and can fall back to room history',async()=>{
+    const repositories=await createRepositories(testDatabaseUrl('conversation_routing'),{legacySeed:true}),now=new Date().toISOString(),sourceMessage=crypto.randomUUID(),sourceRun=crypto.randomUUID(),sourceSlot=crypto.randomUUID(),followUpMessage=crypto.randomUUID();
+    await repositories.database.transaction(async tx=>{
+      await tx`INSERT INTO room_messages(id,room_id,text,targets,run_ids,created_at,author_profile_id,author_display_name,author_handle,addressed_to_all) VALUES(${sourceMessage},'demo-room','source',${tx.json(['architect'])},${tx.json([sourceRun])},${now},'local-user','User','user',false)`;
+      await tx`INSERT INTO response_slots(id,message_id,persona_id,created_at) VALUES(${sourceSlot},${sourceMessage},'persona-architect',${now})`;
+      await tx`INSERT INTO agent_runs(id,message_id,room_id,persona_id,persona_version_id,persona_handle,requested_model,harness_instance_id,harness_type,model_id,execution_profile,status,response_slot_id,context,system_prompt_snapshot,created_at,updated_at) VALUES(${sourceRun},${sourceMessage},'demo-room','persona-architect','persona-architect-v1','architect','sol','local-hermes','hermes','sol',${tx.json(workProfile)},'completed',${sourceSlot},${tx.json([])},'snapshot',${now},${now})`;
+      await tx`UPDATE response_slots SET selected_run_id=${sourceRun} WHERE id=${sourceSlot}`;
+    });
+    expect(await repositories.followUps.roomMode('demo-room')).toBe('auto');
+    const[anchor]=await repositories.followUps.anchors('demo-room');
+    expect(anchor).toMatchObject({runId:sourceRun,personaHandle:'architect',status:'completed'});
+    const queued=await repositories.followUps.create({roomId:'demo-room',text:'follow up',messageId:followUpMessage,anchor,deliveryKind:'after_response'});
+    expect(queued.status).toBe('created');
+    const duplicateQueue=await repositories.followUps.create({roomId:'demo-room',text:'another',messageId:crypto.randomUUID(),anchor,deliveryKind:'after_response'});
+    expect(duplicateQueue).toMatchObject({status:'already_queued',messageId:followUpMessage});
+    if(queued.status!=='created')throw new Error('Expected queued follow-up');
+    const fallback=await repositories.followUps.createHistoryFallback(queued.pendingId,[]);
+    expect(fallback.status).toBe('created');
+    expect(await repositories.messages.find('demo-room',followUpMessage)).toMatchObject({delivery:{route:'room_context',status:'fallback',agent:'architect'},runIds:[expect.any(String)]});
+    await repositories.database.close();
+  });
+  it('attaches a queued follow-up to the new message through a native continuation',async()=>{
+    const p=await createRepositories(testDatabaseUrl('conversation_routing_native'),{legacySeed:true}),persona=(await p.personas.find('persona-architect'))!,round=await p.messages.createRound('demo-room','source',[persona],profiles([persona])),source=round.runs[0].id,followUpMessage=crypto.randomUUID();
+    await p.runs.setSystemPromptSnapshot(source,'immutable prompt');
+    await p.runs.finishNonTerminal(source,'completed',undefined,undefined,{handle:'opaque-follow-up',retention:'explicit_release'});
+    await p.runs.selectCompletedAttempt(source);
+    const[anchor]=await p.followUps.anchors('demo-room','architect');
+    const queued=await p.followUps.create({roomId:'demo-room',text:'continue here',messageId:followUpMessage,anchor,deliveryKind:'after_response'});
+    if(queued.status!=='created')throw new Error('Expected queued follow-up');
+    const continuation=await p.runs.createFollowUpContinuation(queued.pendingId,'explicit_release');
+    expect(continuation).toMatchObject({status:'created',sourceRunId:source,messageId:followUpMessage,text:'continue here',continuationHandle:'opaque-follow-up',history:[]});
+    if(continuation.status!=='created')throw new Error('Expected native continuation');
+    expect(await p.messages.find('demo-room',followUpMessage)).toMatchObject({runIds:[continuation.runId],delivery:{route:'agent_session',status:'continued',agent:'architect',anchorRunId:source,runId:continuation.runId}});
+    expect((await p.rooms.timeline('demo-room',undefined,10))?.runs.find(run=>run.id===continuation.runId)).toMatchObject({messageId:followUpMessage,continuedFromRunId:source,continuationInstruction:'continue here'});
+    await expect(p.runs.createFollowUpContinuation(queued.pendingId,'explicit_release')).resolves.toMatchObject({status:'duplicate',runId:continuation.runId});
+    await p.database.close();
   });
   it.each([
     ['Пользователь','User'],
@@ -151,7 +188,7 @@ describe("PostgreSQL repositories", () => {
         await repositories.database
           .sql`SELECT version FROM schema_migrations ORDER BY version`
       ).map((row) => row.version),
-    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34]);
+    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35]);
     expect(
       await repositories.database.sql`SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='personas' AND column_name='role'`,
     ).toEqual([]);

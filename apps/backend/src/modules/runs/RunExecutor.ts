@@ -32,6 +32,7 @@ type RunExecutorDependencies = {
   connector?:ConnectorDiscovery&{validateDirectory?(path:string):Promise<ConnectorDirectoryValidation>};
   continuationCleanup?:RunContinuationCleanupService;
   postTurnFallback?:(runId:string,input:{intervention_id:string;text:string})=>Promise<unknown>;
+  followUps?:{onRunTerminal(runId:string,status:'completed'|'failed'|'cancelled'):Promise<void>};
   recoveryHealthAttempts?:number;
   recoveryHealthDelayMs?:number;
 };
@@ -126,7 +127,7 @@ export class RunExecutor {
     }catch(error){if(run.terminal)return;if(error instanceof Error&&error.name==='AbortError'&&(run.stopping||(this.closing&&run.connectorExecutionId)))return;const code=connectorLifecycleErrorCode(error);await this.terminal(run,'failed',connectorRecoveryMessage(code,error),code);}
   }
 
-  private async failPersisted(runId:string,error:string,errorCode?:string){const failed=await this.dependencies.runs.failNonTerminal(runId,error,errorCode);if(!failed)return false;this.dependencies.events.publishPersisted(failed.roomId,failed.event);try{await this.dependencies.roomWorkspace?.finalizeRun(failed.roomId,runId,'failed')}catch{/* durable terminal state is retained with capture diagnostics */}this.logger.warn({runId,roomId:failed.roomId,correlationId:'startup-recovery',transition:'failed',errorCode},'Reconciled persisted run as failed');return true;}
+  private async failPersisted(runId:string,error:string,errorCode?:string){const failed=await this.dependencies.runs.failNonTerminal(runId,error,errorCode);if(!failed)return false;this.dependencies.events.publishPersisted(failed.roomId,failed.event);try{await this.dependencies.roomWorkspace?.finalizeRun(failed.roomId,runId,'failed')}catch{/* durable terminal state is retained with capture diagnostics */}await this.dependencies.followUps?.onRunTerminal(runId,'failed');this.logger.warn({runId,roomId:failed.roomId,correlationId:'startup-recovery',transition:'failed',errorCode},'Reconciled persisted run as failed');return true;}
 
   async cancel(runId: string) {
     const { activeRuns, events, runs } = this.dependencies;
@@ -153,6 +154,7 @@ export class RunExecutor {
       try{await this.dependencies.roomWorkspace?.finalizeRun(persisted.room_id,persisted.id,'cancelled')}catch{/* cancellation remains durable even if capture fails */}
       const finished=await runs.finishNonTerminal(persisted.id,'cancelled');
       if(finished)this.dependencies.events.publishPersisted(finished.roomId,finished.event);
+      await this.dependencies.followUps?.onRunTerminal(persisted.id,'cancelled');
       await this.dependencies.continuationCleanup?.reconcile();
       return {
         status: 'cancelled',
@@ -423,6 +425,7 @@ export class RunExecutor {
     if(status==='completed'&&run.postTurnFallback&&this.dependencies.postTurnFallback){try{await this.dependencies.postTurnFallback(run.id,{intervention_id:run.postTurnFallback.id,text:run.postTurnFallback.text});}catch{/* The source completion remains authoritative if the race fallback is no longer eligible. */}}
     activeRuns.remove(run.id);this.stopTasks.delete(run.id);
     await this.dependencies.continuationCleanup?.reconcile();
+    await this.dependencies.followUps?.onRunTerminal(run.id,status);
     this.logger.info({runId:run.id,roomId:run.roomId,correlationId:run.correlationId,upstreamRunId:run.upstreamRunId,transition:status,...(error?{error}: {})},'Run reached terminal state');
   }
 
@@ -460,6 +463,7 @@ export class RunExecutor {
     try{await this.dependencies.roomWorkspace?.finalizeRun(run.roomId,run.id,'failed');}catch{/* timeout remains durably terminal even if workspace capture fails */}
     this.dependencies.activeRuns.remove(run.id);this.stopTasks.delete(run.id);
     await this.dependencies.continuationCleanup?.reconcile();
+    await this.dependencies.followUps?.onRunTerminal(run.id,'failed');
     this.logger.warn({runId:run.id,roomId:run.roomId,correlationId:run.correlationId,upstreamRunId:run.upstreamRunId,transition:'failed',errorCode,upstreamStopped},'Run execution deadline exceeded');
   }
 

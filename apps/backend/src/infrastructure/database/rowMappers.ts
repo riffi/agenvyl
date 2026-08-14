@@ -1,4 +1,4 @@
-import type { ConnectorRunState, Message, Room, Run, RunIntervention, RunRequest, ToolActivity,WorkspaceAttachment,RunArtifact,RunArtifactSummary,RunEmbed } from '@agenvyl/contracts';
+import type { ConnectorRunState, Message, MessageDelivery, Room, Run, RunIntervention, RunRequest, ToolActivity,WorkspaceAttachment,RunArtifact,RunArtifactSummary,RunEmbed } from '@agenvyl/contracts';
 import type { Persona, PersonaGroup, PersonaVersion, RoomEvent, RunStatus } from '../../types.js';
 
 export type DatabaseRow = Record<string, unknown>;
@@ -23,11 +23,12 @@ export function toPersonaGroup(row: DatabaseRow): PersonaGroup {
 
 export function toRoom(row: DatabaseRow): Room {
   const project=row.project_id==null?null:{id:text(row.project_id),name:text(row.project_name),path:text(row.project_path),availability:'unknown' as const};
-  return { id:text(row.id),title:text(row.title),created_at:timestamp(row.created_at),participant_count:number(row.participant_count),last_message_at:nullableTimestamp(row.last_message_at),last_message_text:nullableText(row.last_message_text),deleted_at:nullableTimestamp(row.deleted_at),project,workflow_mode:text(row.workflow_mode) as Room['workflow_mode'] };
+  return { id:text(row.id),title:text(row.title),created_at:timestamp(row.created_at),participant_count:number(row.participant_count),last_message_at:nullableTimestamp(row.last_message_at),last_message_text:nullableText(row.last_message_text),deleted_at:nullableTimestamp(row.deleted_at),project,workflow_mode:text(row.workflow_mode) as Room['workflow_mode'],...(row.conversation_routing_mode==null?{}:{conversation_routing_mode:text(row.conversation_routing_mode) as Room['conversation_routing_mode']}) };
 }
 
 export function toMessage(row: DatabaseRow,attachments:WorkspaceAttachment[]=[]): Message {
-  return { id:text(row.id),text:text(row.text),createdAt:timestamp(row.created_at),targets:stringArray(row.targets),runIds:stringArray(row.run_ids),attachments,author:{profileId:text(row.author_profile_id),displayName:text(row.author_display_name),handle:text(row.author_handle)},addressedToAll:Boolean(row.addressed_to_all) };
+  const delivery=row.delivery_route==null||row.delivery_status==null?undefined:{route:text(row.delivery_route) as MessageDelivery['route'],status:text(row.delivery_status) as MessageDelivery['status'],...(row.delivery_agent_handle==null?{}:{agent:text(row.delivery_agent_handle)}),...(row.delivery_anchor_run_id==null?{}:{anchorRunId:text(row.delivery_anchor_run_id)}),...(row.delivery_run_id==null?{}:{runId:text(row.delivery_run_id)}),...(row.delivery_error==null?{}:{error:text(row.delivery_error)})};
+  return { id:text(row.id),text:text(row.text),createdAt:timestamp(row.created_at),targets:stringArray(row.targets),runIds:stringArray(row.run_ids),attachments,author:{profileId:text(row.author_profile_id),displayName:text(row.author_display_name),handle:text(row.author_handle)},addressedToAll:Boolean(row.addressed_to_all),...(delivery?{delivery}:{}) };
 }
 
 export function toRoomEvent(row: DatabaseRow): RoomEvent {

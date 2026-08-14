@@ -6,7 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 
 const repositoryRoot = resolve(import.meta.dirname, '..');
 const connectorConfig = join(repositoryRoot, 'connector.yaml');
-const workspaceRoot = join(repositoryRoot, 'data', 'room-workspaces');
+const workspaceRoot = process.env.AGENVYL_WORKSPACE_ROOT?.trim() || join(repositoryRoot, 'data', 'room-workspaces');
 const token = process.env.AGENVYL_CONNECTOR_TOKEN?.trim() || randomBytes(32).toString('hex');
 const postgresPassword = process.env.POSTGRES_PASSWORD?.trim() || 'agenvyl';
 const postgresPort = process.env.AGENVYL_POSTGRES_PORT?.trim() || '55432';
@@ -95,7 +95,7 @@ const processes = [
   startProcess('backend', 'apps/backend/dist/index.js', {
     ...sharedEnvironment,
     AGENVYL_CONNECTOR_URL: 'http://127.0.0.1:4310',
-    AGENVYL_DATABASE_URL: `postgres://agenvyl:${encodeURIComponent(postgresPassword)}@127.0.0.1:${postgresPort}/agenvyl`,
+    AGENVYL_DATABASE_URL: process.env.AGENVYL_DATABASE_URL?.trim() || `postgres://agenvyl:${encodeURIComponent(postgresPassword)}@127.0.0.1:${postgresPort}/agenvyl`,
     AGENVYL_SERVE_STATIC_FRONTEND: 'true',
   }),
 ];

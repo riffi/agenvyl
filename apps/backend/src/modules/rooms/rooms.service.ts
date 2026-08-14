@@ -1,7 +1,7 @@
 import { AppError } from "../../shared/errors/AppError.js";
 import type { RoomRepository } from "./rooms.repository.js";
 import type { RoomEventService } from "../room-events/RoomEventService.js";
-import {DEFAULT_ROOM_TITLE,type WorkflowMode} from '@agenvyl/contracts';
+import {DEFAULT_ROOM_TITLE,type ConversationRoutingMode,type WorkflowMode} from '@agenvyl/contracts';
 
 export class RoomsService {
   constructor(
@@ -154,6 +154,12 @@ export class RoomsService {
     if(!result)throw new AppError('room_not_found',404,'Room not found');
     this.events?.publishPersisted(roomId,result.event);
     return{workflow_mode:result.workflowMode};
+  }
+  async updateConversationRoutingMode(roomId:string,mode:ConversationRoutingMode){
+    const result=await this.rooms.updateConversationRoutingMode(roomId,mode);
+    if(!result)throw new AppError('room_not_found',404,'Room not found');
+    this.events?.publishPersisted(roomId,result.event);
+    return{conversation_routing_mode:result.mode};
   }
 }
 

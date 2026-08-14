@@ -16,12 +16,23 @@ const sentMessage={id:'message-1',text:'',createdAt:'2026-07-22T00:00:00.000Z',t
 afterEach(()=>{cleanup();vi.unstubAllGlobals()});
 
 describe('Composer agent list',()=>{
+  it('sends a normal chat message with explicit agent-session routing',async()=>{
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
+    const send=vi.fn<RoomGateway['send']>().mockResolvedValue(sentMessage),localGateway={...gateway,send};
+    render(<Composer gateway={localGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} conversationRouting conversationRoutingMode="agent_session" updateConversationRouting={vi.fn(async()=>undefined)}/>);
+    fireEvent.click(screen.getByRole('button',{name:/Agent session/i}));
+    fireEvent.change(screen.getByRole('combobox',{name:'Agent session recipient'}),{target:{value:'coder'}});
+    const applyNow=screen.getByRole('radio',{name:/Apply now/i});expect((applyNow as HTMLInputElement).disabled).toBe(true);
+    const editor=screen.getByRole('textbox',{name:'Message'});fireEvent.change(editor,{target:{value:'Continue the review'}});fireEvent.keyDown(editor,{key:'Enter'});
+    await waitFor(()=>expect(send).toHaveBeenCalled());
+    expect(send.mock.calls[0]?.[4]).toEqual({mode:'agent_session',target:'coder',delivery:'after_response'});
+  });
   it('preserves the normal draft while submitting a text-only instruction',async()=>{
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));const intervene=vi.fn(async()=>undefined),exitIntervention=vi.fn(),instructionGateway={...gateway,intervene};
     const props={gateway:instructionGateway,active:1,personas:[persona],harnessCatalog:catalog,catalogReady:true,onSent:vi.fn(async()=>undefined),openWorkspace:vi.fn(),roomId:'room',attachments:[],attachmentsBusy:false,openAttachmentPicker:vi.fn(),uploadFiles:vi.fn(),removeAttachment:vi.fn(),retryAttachment:vi.fn(),clearAttachments:vi.fn()};
     const view=render(<Composer {...props}/>);fireEvent.change(screen.getByRole('textbox',{name:'Message'}),{target:{value:'Ordinary draft'}});
     view.rerender(<Composer {...props} interventionTarget={{runId:'run-1',agent:'coder',mode:'active_redirect'}} exitIntervention={exitIntervention}/>);
-    const editor=screen.getByRole('textbox',{name:'Instruction for coder'}),instructionButton=screen.getByRole('button',{name:'Send instruction'}),instructionFooter=instructionButton.closest('footer');expect(editor.getAttribute('maxlength')).toBe('2000');expect((editor as HTMLTextAreaElement).value).toBe('');expect(editor.getAttribute('placeholder')).toBe('Add an instruction for @coder…');expect(screen.queryByRole('button',{name:'Add to message'})).toBeNull();expect(instructionFooter?.children).toHaveLength(2);expect(instructionFooter?.firstElementChild?.textContent).toBe('0 / 2000');expect(instructionFooter?.parentElement?.className).toContain('compose-card-expanded');
+    const editor=screen.getByRole('textbox',{name:'Instruction for coder'}),instructionButton=screen.getByRole('button',{name:'Send instruction'}),instructionFooter=instructionButton.closest('footer');expect(editor.getAttribute('maxlength')).toBe('2000');expect((editor as HTMLTextAreaElement).value).toBe('');expect(editor.getAttribute('placeholder')).toBe('Add an instruction for @coder…');expect(screen.queryByRole('button',{name:'Add to message'})).toBeNull();expect(instructionFooter?.children).toHaveLength(2);expect(instructionFooter?.firstElementChild?.getAttribute('aria-hidden')).toBe('true');expect(screen.queryByRole('status')).toBeNull();expect(instructionFooter?.parentElement?.className).toContain('compose-card-expanded');
     fireEvent.change(editor,{target:{value:'Focus on the API'}});fireEvent.click(screen.getByRole('button',{name:'Send instruction'}));
     await waitFor(()=>expect(intervene).toHaveBeenCalledWith('run-1','Focus on the API'));expect(exitIntervention).toHaveBeenCalledOnce();
     view.rerender(<Composer {...props}/>);expect((screen.getByRole('textbox',{name:'Message'}) as HTMLTextAreaElement).value).toBe('Ordinary draft');
@@ -99,7 +110,7 @@ describe('Composer agent list',()=>{
     const editor=screen.getByRole('textbox',{name:'Message'});
     fireEvent.change(editor,{target:{value:'Status update'}});
     expect(screen.getByRole('button',{name:'Post to room'})).toBeTruthy();
-    expect(screen.getByText(/Posts to room — no agents invoked/)).toBeTruthy();
+    expect(screen.queryByRole('status')).toBeNull();
     fireEvent.change(editor,{target:{value:'@coder implement'}});
     expect(screen.getByRole('button',{name:'Send to 1 agent'})).toBeTruthy();
   });
@@ -109,11 +120,11 @@ describe('Composer agent list',()=>{
     render(<Composer gateway={gateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady={false} onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()}/>);
     const editor=screen.getByRole('textbox',{name:'Message'});
     expect(editor.getAttribute('placeholder')).toBe('Agent catalog unavailable');
-    expect(screen.getByRole('status').textContent).toBe('');
+    expect(screen.queryByRole('status')).toBeNull();
     expect(screen.getByRole('button',{name:'Post to room'}).hasAttribute('disabled')).toBe(true);
     fireEvent.change(editor,{target:{value:'Draft message'}});
     expect(editor.getAttribute('placeholder')).toBe('Message @handle or @all…');
-    expect(screen.getByRole('status').textContent).toBe('Agent catalog unavailable');
+    expect(screen.queryByRole('status')).toBeNull();
   });
 
   it('caps the expanded text area above the fixed controls row',async()=>{

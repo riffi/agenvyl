@@ -5,8 +5,24 @@ export type AgentHandle = string;
 
 export type WorkflowMode = 'plan' | 'work';
 export type PlanEnforcement = 'native' | 'instruction_only';
-export type RuntimeFeatures = { preview_origin: string };
+export type ConversationRoutingMode = 'auto' | 'room_context' | 'agent_session';
+export type MessageDeliveryRoute = 'room_context' | 'agent_session' | 'active_intervention';
+export type MessageDeliveryStatus = 'delivered' | 'queued' | 'dispatching' | 'continued' | 'fallback' | 'applied' | 'failed';
+export type MessageDelivery = {
+  route: MessageDeliveryRoute;
+  status: MessageDeliveryStatus;
+  agent?: AgentHandle;
+  anchorRunId?: string;
+  runId?: string;
+  error?: string;
+};
+export type MessageRouting =
+  | { mode: 'auto'; target?: AgentHandle; delivery?: 'after_response' | 'apply_now' | 'new_request' }
+  | { mode: 'room_context'; target?: AgentHandle }
+  | { mode: 'agent_session'; target?: AgentHandle; delivery?: 'after_response' | 'apply_now' };
+export type RuntimeFeatures = { preview_origin: string; conversation_routing?: boolean };
 export type RoomWorkflowState = { workflow_mode: WorkflowMode };
+export type RoomConversationRoutingState = { conversation_routing_mode: ConversationRoutingMode };
 export type ReasoningEffortSource = 'room_override' | 'persona_default' | 'model_default' | 'auto';
 export type RunExecutionProfileSnapshot = {
   workflowMode: WorkflowMode;
@@ -91,6 +107,7 @@ export type Message = {
   attachments?: WorkspaceAttachment[];
   author: HumanAuthorSnapshot;
   addressedToAll: boolean;
+  delivery?: MessageDelivery;
 };
 
 export type HumanAuthorSnapshot = { profileId: string; displayName: string; handle: string };
@@ -171,6 +188,7 @@ export type Room = {
   deleted_at?: string | null;
   project?: ProjectSummary | null;
   workflow_mode: WorkflowMode;
+  conversation_routing_mode?: ConversationRoutingMode;
 };
 
 export type WorkspaceSource='user'|'agent'|'external';
@@ -253,6 +271,7 @@ export type TimelinePage = {
   runs: Run[];
   selectedRuns: Record<string, string>;
   workflowMode: WorkflowMode;
+  conversationRoutingMode?: ConversationRoutingMode;
   lastSequence: number;
   hasMore: boolean;
   nextCursor?: string;
@@ -260,6 +279,7 @@ export type TimelinePage = {
 
 export type UpdateRoomPersonaRequest = { reasoning_effort_override: string | null };
 export type UpdateRoomWorkflowModeRequest = RoomWorkflowState;
+export type UpdateRoomConversationRoutingRequest = RoomConversationRoutingState;
 
 export type ErrorEnvelope = {
   error: string;
@@ -270,7 +290,7 @@ export type ErrorEnvelope = {
 export type CreateRoomRequest = { title?: string; persona_ids?: string[]; project_id?:string|null };
 export type RenameRoomRequest = { title?: string };
 export type AssignRoomProjectRequest = { project_id:string|null };
-export type CreateMessageRequest = { text?: string; targets?: AgentHandle[]; message_id?: string; attachment_version_ids?:string[] };
+export type CreateMessageRequest = { text?: string; targets?: AgentHandle[]; message_id?: string; attachment_version_ids?:string[]; routing?: MessageRouting };
 export type StructuredQuestion={id:string;header:string;question:string;options?:Array<{label:string;description?:string}>;isOther:boolean;isSecret:boolean;multiSelect?:boolean};
 export type JsonValue=null|boolean|number|string|JsonValue[]|{[key:string]:JsonValue};
 export type McpElicitation={mode:'form'|'openai/form';serverName:string;message:string;requestedSchema:JsonValue}|{mode:'url';serverName:string;message:string;url:string;elicitationId:string};
@@ -321,6 +341,8 @@ export type ServerRoomEvent =
   | Envelope<'room.participant.updated', RoomPersona>
   | Envelope<'room.title.updated', { title: string }>
   | Envelope<'room.workflow_mode.updated', { workflowMode: WorkflowMode }>
+  | Envelope<'room.conversation_routing.updated', { conversationRoutingMode: ConversationRoutingMode }>
+  | Envelope<'message.delivery.updated', { messageId: string; delivery: MessageDelivery }>
   | Envelope<'workspace.changed', { entry:WorkspaceEntry;change:'created'|'updated'|'deleted'|'restored'|'moved' }>
   | Envelope<'artifact.created', { runId:string;artifact:RunArtifact }>
   | Envelope<'run.embeds', { runId:string;embeds:RunEmbed[] }>
@@ -343,6 +365,8 @@ const eventTypes = new Set<ServerRoomEvent['type']>([
   'room.participant.updated',
   'room.title.updated',
   'room.workflow_mode.updated',
+  'room.conversation_routing.updated',
+  'message.delivery.updated',
   'workspace.changed',
   'artifact.created',
   'run.embeds',
@@ -356,7 +380,7 @@ export function isServerRoomEvent(value: unknown): value is ServerRoomEvent {
   if (typeof value.type !== 'string' || !eventTypes.has(value.type as ServerRoomEvent['type']) || !isRecord(value.payload)) return false;
   const payload = value.payload;
   switch (value.type) {
-    case 'message.created': return typeof payload.id === 'string' && typeof payload.text === 'string' && Array.isArray(payload.targets) && Array.isArray(payload.runIds) && (payload.attachments===undefined||Array.isArray(payload.attachments)) && isRecord(payload.author) && strings(payload.author,'profileId','displayName','handle') && typeof payload.addressedToAll==='boolean';
+    case 'message.created': return typeof payload.id === 'string' && typeof payload.text === 'string' && Array.isArray(payload.targets) && Array.isArray(payload.runIds) && (payload.attachments===undefined||Array.isArray(payload.attachments)) && isRecord(payload.author) && strings(payload.author,'profileId','displayName','handle') && typeof payload.addressedToAll==='boolean' && (payload.delivery===undefined||isMessageDelivery(payload.delivery));
     case 'run.created': return typeof payload.id === 'string' && typeof payload.messageId === 'string' && typeof payload.agent === 'string' && (payload.requestedModel === undefined || typeof payload.requestedModel === 'string') && strings(payload,'harnessInstanceId','harnessType','modelId') && (payload.adapterGeneration===undefined||(Number.isSafeInteger(payload.adapterGeneration)&&Number(payload.adapterGeneration)>0)) && isRunExecutionProfile(payload.executionProfile) && typeof payload.status === 'string' && runStatuses.has(payload.status as RunStatus) && (payload.upstreamStatus===undefined||(isRecord(payload.upstreamStatus)&&payload.upstreamStatus.state!=='recovered'&&isUpstreamStatusEvent(payload.upstreamStatus))) && (payload.usage===undefined||isTokenUsage(payload.usage)) && typeof payload.text === 'string' && (payload.reasoning===undefined||typeof payload.reasoning==='string') && Array.isArray(payload.tools) && Array.isArray(payload.interventions) && payload.interventions.every(isRunIntervention) && (payload.artifacts===undefined||Array.isArray(payload.artifacts)) && (payload.embeds===undefined||Array.isArray(payload.embeds)) && (payload.workspaceResult===undefined||isRunWorkspaceResult(payload.workspaceResult));
     case 'run.delta': case 'run.reasoning.delta': return strings(payload, 'runId', 'text');
     case 'run.status': return strings(payload, 'runId', 'status') && runStatuses.has(payload.status as RunStatus) && (payload.error===undefined||typeof payload.error==='string') && (payload.errorCode===undefined||typeof payload.errorCode==='string');
@@ -371,6 +395,8 @@ export function isServerRoomEvent(value: unknown): value is ServerRoomEvent {
     case 'room.participant.updated': return isRoomPersona(payload);
     case 'room.title.updated': return typeof payload.title === 'string';
     case 'room.workflow_mode.updated': return payload.workflowMode==='plan'||payload.workflowMode==='work';
+    case 'room.conversation_routing.updated': return ['auto','room_context','agent_session'].includes(String(payload.conversationRoutingMode));
+    case 'message.delivery.updated': return typeof payload.messageId==='string'&&isMessageDelivery(payload.delivery);
     case 'workspace.changed': return isRecord(payload.entry) && typeof payload.entry.id==='string' && typeof payload.change==='string';
     case 'artifact.created': return typeof payload.runId==='string' && isRecord(payload.artifact) && typeof payload.artifact.version_id==='string';
     case 'run.embeds': return typeof payload.runId==='string'&&Array.isArray(payload.embeds);
@@ -381,6 +407,10 @@ export function isServerRoomEvent(value: unknown): value is ServerRoomEvent {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+function isMessageDelivery(value:unknown):value is MessageDelivery{
+  if(!isRecord(value)||!['room_context','agent_session','active_intervention'].includes(String(value.route))||!['delivered','queued','dispatching','continued','fallback','applied','failed'].includes(String(value.status)))return false;
+  return ['agent','anchorRunId','runId','error'].every(key=>value[key]===undefined||typeof value[key]==='string');
 }
 function isTokenUsage(value:unknown):value is TokenUsage{if(!isRecord(value)||!tokenCount(value.inputTokens)||!tokenCount(value.outputTokens))return false;return['totalTokens','reasoningTokens','cacheReadTokens','cacheWriteTokens'].every(key=>value[key]===undefined||tokenCount(value[key]));}
 function isRunIntervention(value:unknown):value is RunIntervention{return isRecord(value)&&strings(value,'id','text','status')&&['pending','applied','failed'].includes(String(value.status))&&(value.precedingText===undefined||typeof value.precedingText==='string')&&(value.author===undefined||isHumanAuthorSnapshot(value.author))&&(value.createdAt===undefined||typeof value.createdAt==='string')&&(value.supersededText===undefined||typeof value.supersededText==='string')&&(value.error===undefined||typeof value.error==='string');}

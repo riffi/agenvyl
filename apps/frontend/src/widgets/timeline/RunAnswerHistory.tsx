@@ -14,6 +14,7 @@ type Props={
   onMentionPersona:(handle:string)=>void;
   openWorkspace:(attachment:WorkspaceAttachment)=>void;
   collapsed:boolean;
+  hiddenInterventionIds?:ReadonlySet<string>;
 };
 
 const precedingText=(intervention:RunIntervention)=>intervention.precedingText??intervention.supersededText;
@@ -44,29 +45,30 @@ const InstructionMessage=({intervention,fallbackAuthor,appliedLabel}:{interventi
   </section>;
 };
 
-const AnswerChapter=({run,fallbackAuthor,personas,onMentionPersona,openWorkspace}:{run:Run;fallbackAuthor:HumanAuthorSnapshot;personas:Persona[];onMentionPersona:(handle:string)=>void;openWorkspace:(attachment:WorkspaceAttachment)=>void})=>{
+const AnswerChapter=({run,fallbackAuthor,personas,onMentionPersona,openWorkspace,hiddenInterventionIds}:{run:Run;fallbackAuthor:HumanAuthorSnapshot;personas:Persona[];onMentionPersona:(handle:string)=>void;openWorkspace:(attachment:WorkspaceAttachment)=>void;hiddenInterventionIds:ReadonlySet<string>})=>{
   const anchored=run.interventions.filter(intervention=>precedingText(intervention)!==undefined),legacyUnanchored=run.interventions.filter(intervention=>precedingText(intervention)===undefined);
+  const visibleLegacyUnanchored=legacyUnanchored.filter(intervention=>!hiddenInterventionIds.has(intervention.id));
   const currentText=run.text||(run.status==='queued'?'Waiting for an available slot…':run.status==='streaming'?'Analyzing…':'');
-  const cursorAfterCurrent=run.status==='streaming'&&!legacyUnanchored.length;
+  const cursorAfterCurrent=run.status==='streaming'&&!visibleLegacyUnanchored.length;
   return <>
     {anchored.map(intervention=><div className={styles['answer-chapter']} key={intervention.id}>
       {precedingText(intervention)&&<div className={styles.answer}><MarkdownAnswer text={precedingText(intervention)!} run={run} personas={personas} onMentionPersona={onMentionPersona} openWorkspace={openWorkspace}/></div>}
-      <InstructionMessage intervention={intervention} fallbackAuthor={fallbackAuthor}/>
+      {!hiddenInterventionIds.has(intervention.id)&&<InstructionMessage intervention={intervention} fallbackAuthor={fallbackAuthor}/>}
     </div>)}
     {(currentText||run.status==='streaming')&&<div className={styles.answer}>
       {currentText&&<MarkdownAnswer text={currentText} run={run} personas={personas} onMentionPersona={onMentionPersona} openWorkspace={openWorkspace}/>} 
       {cursorAfterCurrent&&<i className={styles.cursor}/>} 
     </div>}
-    {legacyUnanchored.map(intervention=><InstructionMessage key={intervention.id} intervention={intervention} fallbackAuthor={fallbackAuthor}/>)}
-    {run.status==='streaming'&&legacyUnanchored.length>0&&<div className={styles.answer}><i className={styles.cursor}/></div>}
+    {visibleLegacyUnanchored.map(intervention=><InstructionMessage key={intervention.id} intervention={intervention} fallbackAuthor={fallbackAuthor}/>)}
+    {run.status==='streaming'&&visibleLegacyUnanchored.length>0&&<div className={styles.answer}><i className={styles.cursor}/></div>}
   </>;
 };
 
-export const RunAnswerHistory=({run,chapters=[run],fallbackAuthor,personas,onMentionPersona,openWorkspace,collapsed}:Props)=>{
+export const RunAnswerHistory=({run,chapters=[run],fallbackAuthor,personas,onMentionPersona,openWorkspace,collapsed,hiddenInterventionIds=new Set()}:Props)=>{
   return <div className={`${styles['answer-history']} ${collapsed?styles['answer-collapsed']:''}`}>
     {chapters.map((chapter,index)=><div className={styles['answer-chapter']} key={chapter.id}>
       {index>0&&chapter.continuationInstruction&&<InstructionMessage intervention={{id:`continuation-${chapter.id}`,text:chapter.continuationInstruction,status:['failed','cancelled'].includes(chapter.status)?'failed':'applied',...(chapter.continuationAuthor?{author:chapter.continuationAuthor}:{}),...(chapter.error?{error:chapter.error}:{})}} fallbackAuthor={fallbackAuthor} appliedLabel="Sent"/>}
-      <AnswerChapter run={chapter} fallbackAuthor={fallbackAuthor} personas={personas} onMentionPersona={onMentionPersona} openWorkspace={openWorkspace}/>
+      <AnswerChapter run={chapter} fallbackAuthor={fallbackAuthor} personas={personas} onMentionPersona={onMentionPersona} openWorkspace={openWorkspace} hiddenInterventionIds={hiddenInterventionIds}/>
     </div>)}
   </div>;
 };

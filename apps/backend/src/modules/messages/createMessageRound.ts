@@ -12,7 +12,7 @@ import type {
   ConnectorCatalogModel,
   ConnectorExecutionControls,
 } from "@agenvyl/connector-contract";
-import type {RunExecutionProfileSnapshot,WorkflowMode} from "@agenvyl/contracts";
+import type {MessageDelivery,RunExecutionProfileSnapshot,WorkflowMode} from "@agenvyl/contracts";
 import { resolveExecutionProfile } from "./executionProfile.js";
 import type {RunContinuationCleanupService} from '../runs/RunContinuationCleanupService.js';
 
@@ -48,6 +48,7 @@ export class CreateMessageRound {
     messageId?: string;
     attachmentVersionIds?: string[];
     correlationId?: string;
+    delivery?:MessageDelivery;
   }) {
     const text = command.text?.trim() ?? "";
     if (!text && !command.attachmentVersionIds?.length)
@@ -190,6 +191,7 @@ export class CreateMessageRound {
         command.messageId,
         attachmentVersionIds,
         addressedToAll,
+        command.delivery,
       );
     } catch (error) {
       if (error instanceof Error && error.message === "attachment_unavailable")

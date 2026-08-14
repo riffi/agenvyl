@@ -1,5 +1,5 @@
 import type { Room,TimelinePage } from '../model';
-import type {RoomPersona,RoomWorkflowState,RoomWorkspace,UpdateRoomPersonaRequest,WorkflowMode,WorkspaceEntry,WorkspaceVersion} from '@agenvyl/contracts';
+import type {ConversationRoutingMode,RoomConversationRoutingState,RoomPersona,RoomWorkflowState,RoomWorkspace,UpdateRoomPersonaRequest,WorkflowMode,WorkspaceEntry,WorkspaceVersion} from '@agenvyl/contracts';
 import { apiRequest } from '../../../shared/api';
 
 export const roomKeys = { all: ['rooms'] as const };
@@ -19,6 +19,7 @@ export const roomsApi = {
   participants:(roomId:string,signal?:AbortSignal)=>apiRequest<RoomPersona[]>(`/api/v1/rooms/${encodeURIComponent(roomId)}/participants`,{signal}),
   updateParticipant:(roomId:string,personaId:string,input:UpdateRoomPersonaRequest)=>apiRequest<RoomPersona>(`/api/v1/rooms/${encodeURIComponent(roomId)}/participants/${encodeURIComponent(personaId)}`,{method:'PATCH',body:input}),
   updateWorkflowMode:(roomId:string,workflowMode:WorkflowMode)=>apiRequest<RoomWorkflowState>(`/api/v1/rooms/${encodeURIComponent(roomId)}/workflow-mode`,{method:'PUT',body:{workflow_mode:workflowMode}}),
+  updateConversationRouting:(roomId:string,mode:ConversationRoutingMode)=>apiRequest<RoomConversationRoutingState>(`/api/v1/rooms/${encodeURIComponent(roomId)}/conversation-routing`,{method:'PUT',body:{conversation_routing_mode:mode}}),
   workspace:(roomId:string,signal?:AbortSignal)=>apiRequest<RoomWorkspace>(`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace`,{signal}),
   uploadFile:(roomId:string,file:File,filePath=file.name,conflict:'fail'|'replace'|'rename'='fail',options:{signal?:AbortSignal;onProgress?:(progress:number)=>void}={})=>new Promise<{entry:WorkspaceEntry;version?:WorkspaceVersion}>((resolve,reject)=>{
     const request=new XMLHttpRequest();

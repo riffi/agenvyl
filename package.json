@@ -27,6 +27,8 @@
     "dev": "npm run build:contracts && vite --config apps/frontend/vite.config.ts",
     "dev:all": "node scripts/run-local-development.mjs",
     "dev:down": "docker compose stop postgres",
+    "poc:routing:prepare": "node scripts/prepare-conversation-routing-poc.mjs",
+    "poc:routing:destroy": "node scripts/destroy-conversation-routing-poc.mjs",
     "serve:all": "node scripts/run-local-production.mjs",
     "dev:server": "tsx watch apps/backend/src/index.ts",
     "dev:connector": "npm run build:contracts && tsx watch apps/connector/src/index.ts",

@@ -99,6 +99,7 @@ function RunCard({
   cancel,
   addInstruction,
   canAddInstruction,
+  instructionActionLabel='Add instruction',
   retry,
   canRetry,
   attemptIndex,
@@ -114,6 +115,7 @@ function RunCard({
   openWorkspace,
   openArtifact,
   author,
+  hiddenInterventionIds,
 }: {
   run: Run;
   chapters:Run[];
@@ -122,6 +124,7 @@ function RunCard({
   cancel: () => void;
   addInstruction:()=>void;
   canAddInstruction:boolean;
+  instructionActionLabel?:string;
   retry: () => Promise<void>;
   canRetry:boolean;
   attemptIndex:number;
@@ -137,6 +140,7 @@ function RunCard({
   openWorkspace:(target:WorkspaceTarget)=>void;
   openArtifact:OpenWorkspaceArtifact;
   author:HumanAuthorSnapshot;
+  hiddenInterventionIds:ReadonlySet<string>;
 }) {
   const [retrying,setRetrying]=useState(false);const [retryError,setRetryError]=useState<string>();
   const openRunWorkspace=useCallback((attachment:WorkspaceAttachment)=>openWorkspace({entryId:attachment.entry_id,versionId:attachment.version_id}),[openWorkspace]);
@@ -173,7 +177,7 @@ function RunCard({
             <StatusIcon status={run.status}/>
             <span className={styles['run-actions']}>
               <IconButton className={styles['run-details']} onClick={select} title="Run details" aria-label={`Run details: ${persona.name}`}><Info/></IconButton>
-              {canAddInstruction&&<IconButton className={styles['instruction-run']} onClick={addInstruction} title="Add instruction" aria-label={`Add instruction to ${persona.name}`}><MessageSquarePlus/></IconButton>}
+              {canAddInstruction&&<IconButton className={styles['instruction-run']} onClick={addInstruction} title={instructionActionLabel} aria-label={`${instructionActionLabel} to ${persona.name}`}><MessageSquarePlus/></IconButton>}
               {canCancel&&<IconButton className={styles['stop-run']} onClick={cancel} title="Stop" aria-label={`Stop ${persona.name} response`}><Square/></IconButton>}
               {canRetry&&<IconButton className={styles['retry-run']} disabled={retrying} onClick={()=>void retryRun()} title={retrying?'Starting…':retryLabel} aria-label={`${retryLabel}: ${persona.name}`}>{retrying?<LoaderCircle className={styles['action-spinner']}/>:<RotateCcw/>}</IconButton>}
             </span>
@@ -182,7 +186,7 @@ function RunCard({
         {run.upstreamStatus&&<UpstreamStatusNotice status={run.upstreamStatus}/>}
         {run.status==='finalizing'&&<div className={`${styles['workspace-state']} ${styles['workspace-state-progress']}`} role="status" aria-live="polite"><LoaderCircle aria-hidden="true"/><span>Finalizing files…</span></div>}
         {run.reasoning&&<ReasoningBlock text={run.reasoning} harnessType={run.harnessType}/>}
-        <RunAnswerHistory run={run} chapters={chapters} fallbackAuthor={author} personas={personas} onMentionPersona={onMentionPersona} openWorkspace={openRunWorkspace} collapsed={collapsed}/>
+        <RunAnswerHistory run={run} chapters={chapters} fallbackAuthor={author} personas={personas} onMentionPersona={onMentionPersona} openWorkspace={openRunWorkspace} collapsed={collapsed} hiddenInterventionIds={hiddenInterventionIds}/>
         {isLongAnswer(continuationHistoryText(chapters))&&run.status==='completed'&&<button className={`${styles['answer-toggle']} ${collapsed?styles.expand:styles.collapse}`} type="button" onClick={toggleCollapsed} aria-expanded={!collapsed}>{collapsed?<><span>Expand response</span><ChevronDown/></>:<><span>Collapse response</span><ChevronUp/></>}</button>}
         {(chapters.some(chapter=>chapter.continuationRetention==='provider_managed')||harnessCatalog?.instances.find(instance=>instance.id===run.harnessInstanceId)?.postTurnContinuation?.retention==='provider_managed')&&<small>Native session history is retained according to the harness provider’s policy.</small>}
         {run.status==='failed'&&<RunFailureNotice errorCode={run.errorCode} error={run.error}/>}
@@ -227,6 +231,7 @@ export function Timeline({
   openArtifact=()=>{},
   roomId:_roomId='',
   addInstructionToRun,
+  instructionActionLabel,
 }: {
   state: RoomState;
   personas: Persona[];
@@ -241,6 +246,7 @@ export function Timeline({
   openArtifact?:OpenWorkspaceArtifact;
   roomId?:string;
   addInstructionToRun?:(runId:string)=>void;
+  instructionActionLabel?:string;
 }) {
   const byHandle = new Map(personas.map((p) => [p.handle, p]));
   const [attemptView,setAttemptView]=useState<Record<string,string>>({});
@@ -253,6 +259,7 @@ export function Timeline({
   const settleScrollFrameRef=useRef<number|undefined>(undefined);
   const followLatestRef=useRef(true);
   const pointerScrollingRef=useRef(false);
+  const routedInterventionIds=new Set(state.messages.filter(message=>message.delivery?.route==='active_intervention').map(message=>message.id));
   const slotOf=(run:Run):string=>{if(run.responseSlotId)return run.responseSlotId;let current=run;const seen=new Set<string>();while(current.retryOfRunId&&!seen.has(current.id)){seen.add(current.id);const parent=state.runs[current.retryOfRunId];if(!parent)break;current=parent}return current.id};
   useEffect(()=>{if(state.messages.length===0)followLatestRef.current=true},[state.messages.length]);
   useLayoutEffect(()=>{const timeline=timelineRef.current;if(!timeline)return;const anchor=prependAnchorRef.current;if(anchor){timeline.scrollTop=anchor.top+timeline.scrollHeight-anchor.height;prependAnchorRef.current=undefined;return}if(!followLatestRef.current)return;if(settleScrollFrameRef.current)cancelAnimationFrame(settleScrollFrameRef.current);let priorHeight=-1,stableFrames=0,frames=0;const settle=()=>{if(!followLatestRef.current)return;timeline.scrollTop=timeline.scrollHeight;const height=timeline.scrollHeight;stableFrames=height===priorHeight?stableFrames+1:0;priorHeight=height;frames++;if((frames<8||stableFrames<3)&&frames<60)settleScrollFrameRef.current=requestAnimationFrame(settle);else settleScrollFrameRef.current=undefined};settle()},[state.messages.length]);
@@ -290,7 +297,7 @@ export function Timeline({
       )}
       {state.messages.map((m,messageIndex) => {
         const messageRuns=m.runIds.map(id=>state.runs[id]).filter((run):run is Run=>Boolean(run));
-        const rootOf=(run:Run)=>{let current=run,guard=0;while(current.continuedFromRunId&&state.runs[current.continuedFromRunId]&&guard++<100)current=state.runs[current.continuedFromRunId];return current.id};
+        const rootOf=(run:Run)=>{let current=run,guard=0;while(current.continuedFromRunId&&state.runs[current.continuedFromRunId]&&state.runs[current.continuedFromRunId].messageId===run.messageId&&guard++<100)current=state.runs[current.continuedFromRunId];return current.id};
         const chains=new Map<string,Run[]>();for(const run of messageRuns){const root=rootOf(run);chains.set(root,[...(chains.get(root)??[]),run]);}
         const groups=Object.entries([...chains.keys()].reduce<Record<string,string[]>>((result,id)=>{const run=state.runs[id];if(!run)return result;const slot=slotOf(run);(result[slot]??=[]).push(id);return result},{}));
         const visibleGroups=groups.map(([slot,attemptIds])=>{const activeAttempt=[...attemptIds].reverse().flatMap(id=>chains.get(id)??[]).reverse().find((run:Run)=>['queued','streaming','finalizing','stopping','waiting_approval','waiting_clarification'].includes(run.status));const selectedId=state.selectedRuns[slot],selectedRoot=selectedId&&state.runs[selectedId]?rootOf(state.runs[selectedId]):undefined,shownRootId=activeAttempt?rootOf(activeAttempt):attemptView[slot]??selectedRoot??attemptIds.at(-1)!;const chapters=chains.get(shownRootId)??[state.runs[shownRootId]],latestChapter=chapters.at(-1)!;const selectedChapter=selectedId?chapters.find(run=>run.id===selectedId):undefined,failedContinuation=latestChapter.continuedFromRunId&&['failed','cancelled'].includes(latestChapter.status)?latestChapter:undefined,shown=activeAttempt&&rootOf(activeAttempt)===shownRootId?activeAttempt:failedContinuation??selectedChapter??latestChapter;const shownIndex=Math.max(0,attemptIds.indexOf(shownRootId));return{slot,attemptIds,activeAttempt,shownIndex,id:shown.id,chapters}});
@@ -321,6 +328,7 @@ export function Timeline({
                 ? <>Invoked: <MentionText text={m.targets.map((x) => "@" + x).join(", ")} personas={personas} onMentionPersona={onMentionPersona}/></>
                 : "No agents invoked"}
             </small>
+            {m.delivery&&m.delivery.route!=='room_context'&&<small className={styles['delivery-status']} role="status">{deliveryStatus(m.delivery)}</small>}
           </div>
           {responseTabs&&<nav className={styles['answer-navigation']} aria-label="Agent responses in this round"><span>Responses</span>{visibleGroups.map(group=>{const response=state.runs[group.id];const responsePersona=byHandle.get(response.agent)??unknownPersona(response.agent);const selected=group.slot===focusedSlot;return <button type="button" key={group.slot} aria-pressed={selected} onClick={()=>setFocusedResponseSlots(current=>({...current,[m.id]:group.slot}))}><i style={{background:responsePersona.color}}/>{responsePersona.name}<StatusIcon status={response.status}/></button>})}</nav>}
           <div className={`${styles.runs} ${singleColumn?styles['runs-list']:styles['runs-grid']}`}>
@@ -341,7 +349,8 @@ export function Timeline({
                     select={() => select(id)}
                     cancel={() => gateway.cancel(id)}
                     addInstruction={()=>addInstructionToRun?.(id)}
-                    canAddInstruction={Boolean(addInstructionToRun&&((run.status==='streaming'&&harnessCatalog?.instances.find(instance=>instance.id===run.harnessInstanceId&&instance.status!=='unavailable')?.interventionMode==='interrupt_then_continue'&&!(run.requests??[]).some(request=>!request.resolved)&&!run.interventions.some(intervention=>intervention.status==='pending'))||(run.status==='completed'&&state.selectedRuns[slot]===run.id&&harnessCatalog?.instances.find(instance=>instance.id===run.harnessInstanceId&&instance.status!=='unavailable')?.postTurnContinuation?.mode==='native_session'&&!activeAttempt)))}
+                    canAddInstruction={Boolean(addInstructionToRun&&(instructionActionLabel==='Reply'?(['queued','streaming','finalizing','waiting_approval','waiting_clarification'].includes(run.status)||(run.status==='completed'&&state.selectedRuns[slot]===run.id&&!activeAttempt)):((run.status==='streaming'&&harnessCatalog?.instances.find(instance=>instance.id===run.harnessInstanceId&&instance.status!=='unavailable')?.interventionMode==='interrupt_then_continue'&&!(run.requests??[]).some(request=>!request.resolved)&&!run.interventions.some(intervention=>intervention.status==='pending'))||(run.status==='completed'&&state.selectedRuns[slot]===run.id&&harnessCatalog?.instances.find(instance=>instance.id===run.harnessInstanceId&&instance.status!=='unavailable')?.postTurnContinuation?.mode==='native_session'&&!activeAttempt))))}
+                    instructionActionLabel={instructionActionLabel}
                     retry={async()=>{setAttemptView(current=>{const next={...current};delete next[slot];return next});await gateway.retry(id)}}
                     canRetry={messageIndex===state.messages.length-1&&['completed','failed','cancelled'].includes(state.runs[id].status)&&!activeAttempt&&gateway.mode==='real'}
                     attemptIndex={shownIndex}
@@ -357,6 +366,7 @@ export function Timeline({
                     openWorkspace={openWorkspace}
                     openArtifact={openArtifact}
                     author={m.author}
+                    hiddenInterventionIds={routedInterventionIds}
                   />
                   </div>
                 )},
@@ -367,6 +377,15 @@ export function Timeline({
     </main>;
 }
 function formatBytes(value:number){if(value<1024)return`${value} B`;if(value<1024*1024)return`${(value/1024).toFixed(1)} KB`;return`${(value/1024/1024).toFixed(1)} MB`;}
+
+function deliveryStatus(delivery:import('@agenvyl/contracts').MessageDelivery){
+  if(delivery.status==='queued'||delivery.status==='dispatching')return`Waiting for ${delivery.agent?`@${delivery.agent}`:'agent'}`;
+  if(delivery.status==='applied')return'Applied now';
+  if(delivery.status==='continued')return'Continued in agent session';
+  if(delivery.status==='fallback')return'Continued with room context';
+  if(delivery.status==='failed')return delivery.error?`Delivery failed · ${delivery.error}`:'Delivery failed';
+  return'Continued with room context';
+}
 
 function MessageAttachment({attachment,gallery,openArtifact,openWorkspace}:{attachment:WorkspaceAttachment;gallery?:WorkspaceAttachment[];openArtifact:OpenWorkspaceArtifact;openWorkspace:(target:WorkspaceTarget)=>void}){
   return <span className={styles.attachmentCard}>

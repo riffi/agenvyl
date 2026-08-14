@@ -235,6 +235,16 @@ describe("runtime features", () => {
     expect((await app.inject("/api/v1/features")).json()).toEqual({
       preview_origin: "http://127.0.0.1:8792",
     });
+    expect((await app.inject({method:'PUT',url:'/api/v1/rooms/demo-room/conversation-routing',payload:{conversation_routing_mode:'room_context'}})).statusCode).toBe(404);
+    await app.close();
+  });
+
+  it('exposes routing controls and persistence only when the experiment is enabled',async()=>{
+    const app=await buildApp({databaseUrl:db(),fetch:vi.fn<typeof fetch>(),distPath:'missing-dist',conversationRouting:true});
+    expect((await app.inject('/api/v1/features')).json()).toEqual({preview_origin:'http://127.0.0.1:8792',conversation_routing:true});
+    const updated=await app.inject({method:'PUT',url:'/api/v1/rooms/demo-room/conversation-routing',payload:{conversation_routing_mode:'room_context'}});
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json()).toEqual({conversation_routing_mode:'room_context'});
     await app.close();
   });
 });

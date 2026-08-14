@@ -23,6 +23,7 @@ import type { UserProfileRepository } from "../user-profile/userProfile.reposito
 import {
   deriveRoomTitle,
   type Message,
+  type MessageDelivery,
   type RunExecutionProfileSnapshot,
   type WorkflowMode,
 } from "@agenvyl/contracts";
@@ -38,7 +39,7 @@ export class MessageRepository {
   async find(roomId: string, id: string) {
     const row = (
       await this.database
-        .sql`SELECT id,text,created_at,targets,run_ids,author_profile_id,author_display_name,author_handle,addressed_to_all FROM room_messages WHERE room_id=${roomId} AND id=${id}`
+        .sql`SELECT id,text,created_at,targets,run_ids,author_profile_id,author_display_name,author_handle,addressed_to_all,delivery_route,delivery_status,delivery_agent_handle,delivery_anchor_run_id,delivery_run_id,delivery_error FROM room_messages WHERE room_id=${roomId} AND id=${id}`
     )[0];
     if (!row) return undefined;
     const attachments = await this.workspace.messageAttachments([id]);
@@ -59,6 +60,7 @@ export class MessageRepository {
     requestedId?: string,
     attachmentVersionIds: string[] = [],
     addressedToAll = false,
+    delivery?:MessageDelivery,
   ) {
     const messageId = requestedId ?? crypto.randomUUID(),
       now = new Date().toISOString();
@@ -67,7 +69,7 @@ export class MessageRepository {
         await tx`SELECT r.id,r.workflow_mode,r.title_source,p.id project_id,p.name project_name,p.path project_path FROM rooms r LEFT JOIN local_projects p ON p.id=r.project_id WHERE r.id=${roomId} AND r.deleted_at IS NULL FOR UPDATE OF r`
       )[0];
       const existing = (
-        await tx`SELECT id,text,created_at,targets,run_ids,author_profile_id,author_display_name,author_handle,addressed_to_all FROM room_messages WHERE room_id=${roomId} AND id=${messageId}`
+        await tx`SELECT id,text,created_at,targets,run_ids,author_profile_id,author_display_name,author_handle,addressed_to_all,delivery_route,delivery_status,delivery_agent_handle,delivery_anchor_run_id,delivery_run_id,delivery_error FROM room_messages WHERE room_id=${roomId} AND id=${messageId}`
       )[0];
       if (existing) {
         const attached = await this.workspace.messageAttachments(
@@ -166,6 +168,7 @@ export class MessageRepository {
         attachments,
         author,
         addressedToAll,
+        ...(delivery?{delivery}:{}),
       };
       const generatedTitle=room.title_source==='pending'
         ? deriveRoomTitle({text,attachmentNames:attachments.map(item=>item.name)})
@@ -175,7 +178,7 @@ export class MessageRepository {
         await tx`UPDATE rooms SET title=${generatedTitle},title_source='generated' WHERE id=${roomId} AND title_source='pending'`;
         persisted.push(await this.events.appendInTransaction(tx,roomId,'room.title.updated',{title:generatedTitle},now));
       }
-      await tx`INSERT INTO room_messages(id,room_id,text,targets,run_ids,created_at,author_profile_id,author_display_name,author_handle,addressed_to_all) VALUES(${messageId},${roomId},${text},${this.database.sql.json(message.targets)},${this.database.sql.json(message.runIds)},${now},${author.profileId},${author.displayName},${author.handle},${addressedToAll})`;
+      await tx`INSERT INTO room_messages(id,room_id,text,targets,run_ids,created_at,author_profile_id,author_display_name,author_handle,addressed_to_all,delivery_route,delivery_status,delivery_updated_at) VALUES(${messageId},${roomId},${text},${this.database.sql.json(message.targets)},${this.database.sql.json(message.runIds)},${now},${author.profileId},${author.displayName},${author.handle},${addressedToAll},${delivery?.route??null},${delivery?.status??null},${delivery?now:null})`;
       await this.workspace.attachMessage(messageId, attachmentVersionIds, tx);
       for (const x of snapshots) {
         await tx`INSERT INTO response_slots(id,message_id,persona_id,created_at) VALUES(${x.id},${messageId},${x.persona.id},${now})`;

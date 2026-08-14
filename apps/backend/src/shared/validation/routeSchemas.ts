@@ -34,8 +34,11 @@ export const createRoomBodySchema = objectSchema({
 export const renameRoomBodySchema = objectSchema({ title: { type: 'string' } });
 export const assignRoomProjectBodySchema=objectSchema({project_id:nullableStringSchema},['project_id']);
 const workflowModeSchema={type:'string',enum:['plan','work']} as const;
+const conversationRoutingModeSchema={type:'string',enum:['auto','room_context','agent_session']} as const;
 export const updateRoomWorkflowModeBodySchema=objectSchema({workflow_mode:workflowModeSchema},['workflow_mode']);
 export const roomWorkflowStateResponseSchema=objectSchema({workflow_mode:workflowModeSchema},['workflow_mode']);
+export const updateRoomConversationRoutingBodySchema=objectSchema({conversation_routing_mode:conversationRoutingModeSchema},['conversation_routing_mode']);
+export const roomConversationRoutingStateResponseSchema=objectSchema({conversation_routing_mode:conversationRoutingModeSchema},['conversation_routing_mode']);
 export const updateRoomPersonaBodySchema=objectSchema({reasoning_effort_override:nullableStringSchema},['reasoning_effort_override']);
 export const runPreviewParamsSchema=objectSchema({roomId:{type:'string'},runId:{type:'string'}},['roomId','runId']);
 export const runPreviewAssetParamsSchema=objectSchema({roomId:{type:'string'},runId:{type:'string'},'*':{type:'string'}},['roomId','runId','*']);
@@ -77,6 +80,11 @@ export const createMessageBodySchema = objectSchema({
   targets: { type: 'array', items: { type: 'string' } },
   message_id: { type: 'string' },
   attachment_version_ids:{type:'array',items:{type:'string'},maxItems:10},
+  routing:{oneOf:[
+    objectSchema({mode:{type:'string',const:'auto'},target:{type:'string'},delivery:{type:'string',enum:['after_response','apply_now','new_request']}},['mode']),
+    objectSchema({mode:{type:'string',const:'room_context'},target:{type:'string'}},['mode']),
+    objectSchema({mode:{type:'string',const:'agent_session'},target:{type:'string'},delivery:{type:'string',enum:['after_response','apply_now']}},['mode']),
+  ]},
 });
 
 export const userProfileBodySchema=objectSchema({display_name:{type:'string',maxLength:120},handle:{type:'string',maxLength:80}},['display_name','handle']);
@@ -96,7 +104,7 @@ export const roomResponseSchema = objectSchema({
   last_message_at:nullableStringSchema,last_message_text:nullableStringSchema,
   deleted_at:nullableStringSchema,
   project:{anyOf:[{type:'null'},objectSchema({id:{type:'string'},name:{type:'string'},path:{type:'string'},availability:{type:'string',enum:['available','unavailable','unknown']}},['id','name','path','availability'])]},
-  workflow_mode:workflowModeSchema,
+  workflow_mode:workflowModeSchema,conversation_routing_mode:conversationRoutingModeSchema,
 },['id','title','created_at','participant_count','last_message_at','last_message_text','deleted_at','project','workflow_mode']);
 
 export const personaGroupResponseSchema=objectSchema({
@@ -115,7 +123,7 @@ export const participantListResponseSchema={type:'array',items:roomPersonaRespon
 
 const humanAuthorSnapshotResponseSchema=objectSchema({profileId:{type:'string'},displayName:{type:'string'},handle:{type:'string'}},['profileId','displayName','handle']);
 export const messageResponseSchema=objectSchema({
-  id:{type:'string'},text:{type:'string'},createdAt:{type:'string'},targets:{type:'array',items:{type:'string'}},runIds:{type:'array',items:{type:'string'}},attachments:{type:'array'},author:humanAuthorSnapshotResponseSchema,addressedToAll:{type:'boolean'},
+  id:{type:'string'},text:{type:'string'},createdAt:{type:'string'},targets:{type:'array',items:{type:'string'}},runIds:{type:'array',items:{type:'string'}},attachments:{type:'array'},author:humanAuthorSnapshotResponseSchema,addressedToAll:{type:'boolean'},delivery:objectSchema({route:{type:'string',enum:['room_context','agent_session','active_intervention']},status:{type:'string',enum:['delivered','queued','dispatching','continued','fallback','applied','failed']},agent:{type:'string'},anchorRunId:{type:'string'},runId:{type:'string'},error:{type:'string'}},['route','status']),
 },['id','text','createdAt','targets','runIds','attachments','author','addressedToAll']);
 
 const toolActivityResponseSchema=objectSchema({id:{type:'string'},name:{type:'string'},detail:{type:'string'},input:{type:'string'},status:{type:'string',enum:['started','progress','completed','failed','cancelled']}},['id','name','detail','status']);
@@ -136,7 +144,7 @@ const timelineRunResponseSchema=objectSchema({
   id:{type:'string'},messageId:{type:'string'},agent:{type:'string'},requestedModel:{type:'string'},harnessInstanceId:{type:'string'},harnessType:{type:'string'},adapterGeneration:{type:'integer',minimum:1},modelId:{type:'string'},executionProfile:runExecutionProfileResponseSchema,recommendedProject:runProjectSchema,status:{type:'string'},upstreamStatus:upstreamStatusResponseSchema,connector:connectorRunStateResponseSchema,usage:{type:'object',additionalProperties:false,required:['inputTokens','outputTokens'],properties:{inputTokens:{type:'integer',minimum:0},outputTokens:{type:'integer',minimum:0},totalTokens:{type:'integer',minimum:0},reasoningTokens:{type:'integer',minimum:0},cacheReadTokens:{type:'integer',minimum:0},cacheWriteTokens:{type:'integer',minimum:0}}},text:{type:'string'},reasoning:{type:'string'},tools:{type:'array',items:toolActivityResponseSchema},retryOfRunId:{type:'string'},continuedFromRunId:{type:'string'},continuationInstruction:{type:'string'},continuationAuthor:humanAuthorSnapshotResponseSchema,continuationRetention:{type:'string',enum:['explicit_release','provider_managed']},responseSlotId:{type:'string'},attemptNumber:{type:'integer',minimum:1},requests:{type:'array',items:runRequestResponseSchema},interventions:{type:'array',items:runInterventionResponseItemSchema},error:{type:'string'},errorCode:{type:'string'},artifacts:{type:'array'},artifactSummary:runArtifactSummarySchema,staticPreview:workspaceAttachmentResponseSchema,staticPreviewStatus:{type:'string',enum:['ready','build_missing','capture_failed']},embeds:{type:'array'},workspaceResult:runWorkspaceResultSchema,
 },['id','messageId','agent','harnessInstanceId','harnessType','modelId','executionProfile','status','text','tools','interventions']);
 export const roomTimelineResponseSchema=objectSchema({
-  messages:{type:'array',items:messageResponseSchema},messageCount:{type:'integer',minimum:0},runs:{type:'array',items:timelineRunResponseSchema},selectedRuns:{type:'object',additionalProperties:{type:'string'}},workflowMode:workflowModeSchema,lastSequence:{type:'integer',minimum:0},hasMore:{type:'boolean'},nextCursor:{type:'string'},
+  messages:{type:'array',items:messageResponseSchema},messageCount:{type:'integer',minimum:0},runs:{type:'array',items:timelineRunResponseSchema},selectedRuns:{type:'object',additionalProperties:{type:'string'}},workflowMode:workflowModeSchema,conversationRoutingMode:conversationRoutingModeSchema,lastSequence:{type:'integer',minimum:0},hasMore:{type:'boolean'},nextCursor:{type:'string'},
 },['messages','messageCount','runs','selectedRuns','workflowMode','lastSequence','hasMore']);
 
 export const roomListResponseSchema={type:'array',items:roomResponseSchema} as const;

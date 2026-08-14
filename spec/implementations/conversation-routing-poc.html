@@ -1,0 +1,659 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agenvyl — Conversation routing POC</title>
+  <style>
+    :root {
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #1e293b;
+      background: #f0f2f5;
+      font-synthesis: none;
+      --primary: #4f6ef7;
+      --border: #e2e8f0;
+      --muted: #64748b;
+      --surface: #fff;
+      --sidebar: #1e293b;
+      --sidebar-width: 260px;
+      --blue: #3b82f6;
+      --purple: #8b5cf6;
+      --teal: #14b8a6;
+      --orange: #f97316;
+      --success: #22a061;
+      --warning: #b7791f;
+      --danger: #b91c1c;
+    }
+
+    * { box-sizing: border-box; }
+    html { min-width: 320px; }
+    body { min-width: 320px; margin: 0; overflow: hidden; }
+    button, input, textarea, select { font: inherit; }
+    button, select, label { cursor: pointer; }
+    button:disabled, input:disabled + span { cursor: not-allowed; }
+    button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: 2px;
+    }
+    svg { display: block; }
+    .lucide { width: 1em; height: 1em; flex: none; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
+    .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+    .skip-link { position: fixed; z-index: 100; inset-block-start: 8px; inset-inline-start: 8px; translate: 0 -160%; border-radius: 7px; background: white; padding: 8px 12px; color: #1e293b; box-shadow: 0 4px 16px #0f172a24; }
+    .skip-link:focus { translate: 0; }
+
+    .app { height: 100vh; height: 100dvh; min-height: 0; }
+
+    /* Mirrors the current Sidebar component. */
+    .sidebar {
+      position: fixed;
+      inset: 0 auto 0 0;
+      z-index: 20;
+      display: flex;
+      width: var(--sidebar-width);
+      min-height: 0;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--sidebar);
+      color: #cbd5e1;
+    }
+    .brand { display: flex; height: 60px; flex: 0 0 auto; align-items: center; gap: 10px; padding: 10px 12px 8px; }
+    .brand-identity { display: flex; min-width: 0; flex: 1; align-items: center; }
+    .brand-logo { display: block; width: 32px; height: 32px; flex: 0 0 auto; }
+    .brand-name { min-width: 0; color: #a2adbf; font-size: 15px; font-style: italic; font-weight: 500; line-height: 1; letter-spacing: -.01em; }
+    .sidebar-icon-button { display: grid; width: 34px; height: 34px; place-items: center; border: 0; border-radius: 7px; background: transparent; color: #cbd5e1; }
+    .sidebar-icon-button:hover { background: #ffffff12; }
+    .sidebar-icon-button .lucide { width: 17px; height: 17px; }
+    .main-nav { display: grid; flex: 0 0 auto; gap: 2px; padding: 2px 8px 10px; }
+    .main-nav button { display: flex; width: 100%; height: 38px; align-items: center; gap: 10px; border: 0; border-radius: 8px; padding: 0 10px; background: transparent; color: #e2e8f0; font-size: 13px; text-align: start; }
+    .main-nav button:hover, .main-nav button:focus-visible { background: #ffffff12; }
+    .main-nav .lucide { width: 17px; height: 17px; }
+    .history { display: flex; min-height: 0; flex: 1; flex-direction: column; padding: 0 8px; }
+    .group-label { display: flex; height: 29px; align-items: end; padding: 0 10px 5px; color: #94a3b8; font-size: 10px; font-weight: 650; }
+    .room-row { position: relative; display: flex; height: 36px; align-items: center; border-radius: 8px; }
+    .room-row:hover, .room-row.selected { background: #ffffff12; }
+    .room { min-width: 0; height: 34px; flex: 1; overflow: hidden; border: 0; padding: 0 34px 0 10px; background: transparent; color: #e2e8f0; font-size: 12.5px; line-height: 34px; text-align: start; text-overflow: ellipsis; white-space: nowrap; }
+    .room-more { position: absolute; inset-inline-end: 4px; display: grid; width: 27px; height: 27px; place-items: center; border: 0; border-radius: 6px; background: transparent; color: #cbd5e1; opacity: 0; }
+    .room-row:hover .room-more, .room-row:focus-within .room-more { opacity: 1; }
+    .profile { display: flex; width: auto; min-width: 0; height: 58px; flex: 0 0 auto; align-items: center; gap: 9px; margin: 6px 8px 8px; border: 0; border-radius: 9px; padding: 8px 9px; background: transparent; color: inherit; text-align: start; }
+    .profile:hover { background: #ffffff12; }
+    .profile > b { display: grid; width: 32px; height: 32px; flex: 0 0 auto; place-items: center; border-radius: 50%; background: #64748b; color: white; font-size: 11px; }
+    .profile > span { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+    .profile strong { color: #f1f5f9; font-size: 12px; }
+    .profile small { color: #94a3b8; font-size: 10px; }
+    .profile .lucide { width: 16px; height: 16px; }
+
+    .workspace-main { position: relative; display: flex; height: 100vh; height: 100dvh; min-height: 0; margin-inline-start: var(--sidebar-width); flex-direction: column; }
+
+    /* Mirrors the current RoomHeader component. */
+    .room-header { z-index: 5; display: flex; height: 52px; flex: 0 0 auto; align-items: center; gap: 12px; border-bottom: 1px solid var(--border); background: white; padding: 7px 20px; }
+    .mobile-menu { display: none; }
+    .identity { display: flex; min-width: 0; flex: 1; align-items: center; gap: 8px; }
+    .connection { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: var(--success); }
+    .room-header h1 { min-width: 0; overflow: hidden; margin: 0; color: #334155; font-size: 16px; font-weight: 600; line-height: 1.3; letter-spacing: -.01em; text-overflow: ellipsis; white-space: nowrap; }
+    .identity small { flex: 0 0 auto; color: var(--muted); font-size: 11px; white-space: nowrap; }
+    .active-count::before { margin-inline-end: 8px; content: "·"; }
+    .message-count { display: inline-flex; align-items: center; gap: 4px; color: #94a3b8; font-variant-numeric: tabular-nums; }
+    .message-count .lucide { width: 13px; height: 13px; }
+    .header-actions { display: flex; align-items: center; gap: 8px; margin-inline-start: auto; }
+    .header-button { display: inline-flex; height: 36px; align-items: center; gap: 7px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: #64748b; padding: 0 10px; font-size: 11px; }
+    .header-button:hover, .header-button[aria-expanded="true"] { border-color: var(--border); background: #f8fafc; color: #475569; }
+    .header-button .lucide { width: 17px; height: 17px; }
+    .roster { padding: 3px 9px 3px 7px; }
+    .avatars { display: flex; align-items: center; }
+    .avatar { display: inline-grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; border-radius: 8px; background: var(--avatar-color, #64748b); color: white; font-size: 11px; font-weight: 700; }
+    .avatars .avatar { width: 30px; height: 30px; margin-inline-start: -7px; border: 2px solid white; border-radius: 50%; font-size: 10px; }
+    .avatars .avatar:first-child { margin-inline-start: 0; }
+    .roster-label { margin-inline-start: 8px; white-space: nowrap; }
+    .poc-dot { display: inline-grid; width: 17px; height: 17px; place-items: center; border-radius: 50%; background: #eef2ff; color: var(--primary); font-size: 8px; font-weight: 700; }
+
+    /* Mirrors the current Timeline component. */
+    .timeline { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; padding: 0 max(24px, calc((100vw - var(--sidebar-width) - 940px) / 2)) 24px; scrollbar-gutter: stable; }
+    .timeline::before { display: block; height: 24px; content: ""; }
+    .round { position: relative; margin-block-end: 22px; }
+    .route-trace { display: flex; min-height: 22px; align-items: center; gap: 6px; margin: 0 0 6px 42px; color: #94a3b8; font-size: 9px; line-height: 1; }
+    .route-trace::before { width: 7px; height: 7px; flex: 0 0 auto; border: 1.5px solid currentColor; border-radius: 50%; background: white; content: ""; }
+    .route-trace.agent { color: #4f6ef7; }
+    .route-trace.waiting { color: #a56716; }
+    .route-trace.fallback { color: #b45309; }
+    .route-trace strong { color: #64748b; font-weight: 600; }
+    .route-trace .trace-line { width: 18px; height: 1px; background: currentColor; }
+    .route-trace .technical { margin-inline-start: auto; color: #94a3b8; letter-spacing: .035em; text-transform: uppercase; }
+    .user-message { max-width: 72%; margin-inline-start: auto; border: 1px solid #c7d2fe; border-radius: 13px 13px 3px 13px; background: #eef2ff; padding: 11px 14px; }
+    .user-message p { margin: 0; font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .user-message small { display: block; margin-block-start: 5px; color: #475569; font-size: 11px; line-height: 1.35; text-align: end; }
+    .delivery-status { font-weight: 600; }
+    .delivery-status.waiting { color: #9a5b09; }
+    .delivery-status.applied { color: #435fd1; }
+    .delivery-status.agent { color: #4f46e5; }
+    .delivery-status.room { color: #357455; }
+    .runs { display: grid; gap: 10px; margin-block-start: 12px; }
+    .runs-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    .runs-list { grid-template-columns: minmax(0,1fr); }
+    .run-card { display: grid; min-width: 0; grid-template-columns: 34px minmax(0,1fr); gap: 8px; align-items: start; }
+    .run-card > .avatar { border-radius: 50%; }
+    .run-surface { min-width: 0; border: 1px solid var(--border); border-radius: 11px; background: white; padding: 14px 18px; }
+    .run-header { display: flex; min-width: 0; min-height: 36px; align-items: center; justify-content: space-between; gap: 10px; }
+    .run-identity { display: flex; min-width: 0; flex: 1; flex-direction: column; align-items: flex-start; gap: 2px; }
+    .run-name { display: flex; min-width: 0; align-items: center; }
+    .run-name strong { overflow: hidden; color: var(--agent-color, #3b82f6); line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+    .model-meta { display: flex; min-width: 0; min-height: 14px; align-items: center; gap: 5px; color: #94a3b8; font-size: 10px; line-height: 1.2; }
+    .model-meta .lucide { width: 11px; height: 11px; }
+    .reasoning { display: inline-flex; align-items: center; gap: 3px; color: #64748b; font-size: 9px; font-weight: 600; }
+    .run-header-actions { display: flex; min-height: 36px; flex: 0 0 auto; align-items: center; gap: 3px; }
+    .status-icon { display: inline-grid; width: 18px; height: 18px; place-items: center; color: #78927f; }
+    .status-icon.streaming { color: #71839b; }
+    .status-icon .lucide { width: 16px; height: 16px; stroke-width: 2; }
+    .reply-button { display: inline-flex; min-height: 30px; align-items: center; gap: 4px; border: 1px solid #dbe2ea; border-radius: 7px; background: white; color: #64748b; padding: 0 8px; font-size: 10px; font-weight: 600; }
+    .reply-button:hover { border-color: #a5b4fc; background: #eef2ff; color: #4f46e5; }
+    .reply-button .lucide { width: 13px; height: 13px; }
+    .details-button { display: grid; width: 30px; height: 30px; place-items: center; border: 0; border-inline-start: 1px solid var(--border); background: transparent; color: #94a3b8; }
+    .details-button:hover { color: #64748b; }
+    .details-button .lucide { width: 16px; height: 16px; }
+    .answer { margin: 1px 0 0; color: #1e293b; font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+    .run-route-meta { display: flex; align-items: center; gap: 5px; margin-block-start: 8px; color: #94a3b8; font-size: 9px; text-transform: uppercase; }
+    .run-route-meta .lucide { width: 11px; height: 11px; }
+    .history-note { display: flex; align-items: center; gap: 8px; margin-block-end: 12px; border: 1px dashed #cbd5e1; border-radius: 9px; background: #f8fafc; padding: 10px 12px; color: #64748b; font-size: 11px; }
+    .history-note strong { color: #475569; }
+
+    /* Keeps the current Composer surface and adds one compact routing control. */
+    .composer { --timeline-inline-padding: max(24px, calc((100vw - var(--sidebar-width) - 940px) / 2)); width: 100%; min-width: 0; flex: 0 0 auto; z-index: 4; border-block-start: 1px solid var(--border); background: white; padding: 10px calc(var(--timeline-inline-padding) + 15px) 10px var(--timeline-inline-padding); }
+    .active-runs, .queue-banner { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-block-end: 7px; border: 1px solid #dbeafe; border-radius: 9px; background: #eff6ff; padding: 6px 8px 6px 11px; color: #1d4ed8; font-size: 11px; font-weight: 600; }
+    .active-runs > span, .queue-banner > span { display: flex; align-items: center; gap: 7px; }
+    .active-runs i { width: 7px; height: 7px; border-radius: 50%; background: #3b82f6; box-shadow: 0 0 0 3px #bfdbfe; }
+    .queue-banner { border-color: #fde68a; background: #fffbeb; color: #92400e; }
+    .queue-banner .lucide { width: 14px; height: 14px; }
+    .banner-button { min-height: 27px; border: 1px solid currentColor; border-radius: 6px; background: white; color: inherit; padding: 4px 8px; font-size: 10px; }
+    .compose-card { position: relative; width: 100%; min-height: 56px; overflow: visible; border: 1px solid #dbe2ea; border-radius: 18px; background: #f8fafc; box-shadow: 0 3px 12px #0f172a0a, 0 1px 2px #0f172a0d; transition: border-color .15s ease, box-shadow .15s ease; }
+    .compose-card:focus-within { border-color: #8da2fb; box-shadow: 0 0 0 3px #4f6ef71a, 0 3px 12px #0f172a0a; }
+    .reply-header { display: flex; min-height: 36px; align-items: center; justify-content: space-between; border-block-end: 1px solid #dfe3ff; padding: 6px 13px; color: #3730a3; }
+    .reply-header > span { display: flex; align-items: center; gap: 7px; font-size: 11px; }
+    .reply-header .lucide { width: 15px; height: 15px; }
+    .reply-header button { display: grid; width: 28px; height: 28px; place-items: center; border: 0; border-radius: 7px; background: transparent; color: #64748b; }
+    .reply-header button:hover { background: #e8eaff; color: #3730a3; }
+    .editor { display: block; width: 100%; min-height: 56px; max-height: 168px; resize: none; border: 0; outline: 0; background: transparent; padding: 17px 245px 17px 52px; color: #1e293b; font-size: 14px; line-height: 1.5; }
+    .compose-card.expanded .editor { min-height: 62px; padding: 12px 14px 8px; }
+    .editor::placeholder { color: #64748b; }
+    .compose-card footer { position: absolute; inset-inline: 8px; inset-block-end: 8px; z-index: 4; display: grid; grid-template-columns: 36px minmax(0,1fr) auto auto 36px; align-items: center; gap: 6px; pointer-events: none; }
+    .compose-card footer > * { pointer-events: auto; }
+    .compose-card.expanded footer { position: relative; inset: auto; padding: 8px; }
+    .add-button, .send-button { display: grid; width: 36px; height: 36px; place-items: center; border: 0; border-radius: 50%; background: transparent; color: #475569; transition: background-color .15s ease, color .15s ease, transform .12s ease; }
+    .add-button:hover { background: #eef2f7; color: #1e293b; }
+    .add-button:active, .send-button:active, .route-button:active, .work-button:active, .reply-button:active, .scenario-button:active, .mode-option:active { transform: scale(.96); }
+    .add-button .lucide { width: 19px; height: 19px; }
+    .send-button { background: var(--primary); color: white; box-shadow: 0 3px 8px #4f6ef733; }
+    .send-button:disabled { opacity: .6; }
+    .send-button .lucide { width: 18px; height: 18px; stroke-width: 2; }
+    .composer-status { min-width: 0; overflow: hidden; color: #64748b; font-size: 11px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; pointer-events: none !important; }
+    .route-button, .work-button { display: inline-flex; height: 36px; align-items: center; gap: 5px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: #475569; padding: 0 9px; font-size: 11px; transition: background-color .15s ease, color .15s ease, transform .12s ease; }
+    .route-button:hover, .route-button[aria-expanded="true"], .work-button:hover { background: #eef2f7; color: #1e293b; }
+    .route-button .lucide, .work-button .lucide { width: 15px; height: 15px; }
+    .route-button b { width: 6px; height: 6px; border-radius: 50%; background: var(--primary); }
+    .composer-error { margin: 7px 2px 0; color: var(--danger); font-size: 11px; }
+    .composer-error:empty { display: none; }
+
+    .route-menu { position: absolute; inset-block-end: calc(100% + 10px); inset-inline-end: 42px; z-index: 30; width: min(360px, calc(100vw - 36px)); overflow: hidden; border: 1px solid #dbe2ea; border-radius: 12px; background: white; box-shadow: 0 18px 48px #0f172a24, 0 4px 12px #0f172a12; }
+    .route-menu[hidden] { display: none; }
+    .route-menu header { padding: 13px 14px 8px; }
+    .route-menu header strong { display: block; font-size: 13px; }
+    .route-menu header small { display: block; margin-block-start: 2px; color: #64748b; font-size: 11px; line-height: 1.35; }
+    .mode-list { display: grid; gap: 3px; padding: 4px 6px 8px; }
+    .mode-option { display: grid; width: 100%; min-height: 49px; grid-template-columns: 22px minmax(0,1fr); gap: 8px; align-items: start; border: 0; border-radius: 8px; background: white; padding: 7px 9px; color: #1e293b; text-align: start; }
+    .mode-option:hover, .mode-option:focus-visible, .mode-option[aria-checked="true"] { outline: 0; background: #f1f5f9; }
+    .mode-option:focus-visible { box-shadow: inset 0 0 0 2px #a5b4fc; }
+    .mode-check { display: grid; width: 18px; height: 18px; margin-block-start: 1px; place-items: center; border: 1px solid #cbd5e1; border-radius: 50%; }
+    .mode-option[aria-checked="true"] .mode-check::after { width: 10px; height: 10px; border-radius: 50%; background: var(--primary); content: ""; }
+    .mode-option strong { display: block; font-size: 12px; }
+    .mode-option small { display: block; margin-block-start: 1px; color: #64748b; font-size: 10px; line-height: 1.3; }
+    .route-fields { display: grid; gap: 10px; border-block-start: 1px solid #eef2f7; padding: 11px 14px; }
+    .route-field { display: grid; gap: 5px; }
+    .route-field > span, .timing-field legend { color: #64748b; font-size: 9px; font-weight: 650; letter-spacing: .05em; text-transform: uppercase; }
+    .route-field select { height: 34px; border: 1px solid #dbe2ea; border-radius: 7px; background: #f8fafc; color: #334155; padding: 0 8px; font-size: 11px; }
+    .timing-field { border: 0; padding: 0; margin: 0; }
+    .timing-options { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 4px; margin-block-start: 5px; }
+    .timing-options label { position: relative; }
+    .timing-options input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+    .timing-options span { display: flex; min-height: 32px; align-items: center; justify-content: center; border: 1px solid #dbe2ea; border-radius: 7px; background: white; color: #64748b; padding: 4px 5px; font-size: 10px; line-height: 1.15; text-align: center; }
+    .timing-options input:checked + span { border-color: #a5b4fc; background: #eef2ff; color: #3730a3; font-weight: 600; }
+    .timing-options input:focus-visible + span { outline: 2px solid var(--primary); outline-offset: 2px; }
+    .timing-options input:disabled + span { border-style: dashed; opacity: .48; }
+    .decision-box { display: flex; gap: 7px; align-items: flex-start; border-block-start: 1px solid #eef2f7; background: #f8fafc; padding: 10px 14px; color: #475569; font-size: 10px; line-height: 1.4; }
+    .decision-box.warning { background: #fffbeb; color: #92400e; }
+    .decision-box .lucide { width: 14px; height: 14px; margin-block-start: 1px; }
+
+    /* Uses the current Drawer component visual language. */
+    .drawer-backdrop { position: fixed; z-index: 39; inset: 0; border: 0; background: #0f172a66; backdrop-filter: blur(1px); }
+    .drawer-backdrop[hidden] { display: none; }
+    .demo-drawer { position: fixed; z-index: 40; inset-block: 0; inset-inline-end: 0; display: flex; width: min(460px,100vw); flex-direction: column; background: white; box-shadow: -8px 0 30px #0002; }
+    .demo-drawer[hidden] { display: none; }
+    .demo-drawer > header { display: flex; height: 62px; flex: 0 0 auto; align-items: center; gap: 10px; border-block-end: 1px solid var(--border); padding: 14px 18px; }
+    .demo-drawer > header > span { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+    .demo-drawer > header strong { font-size: 14px; }
+    .demo-drawer > header small { color: #64748b; font-size: 10px; }
+    .drawer-close { display: grid; width: 34px; height: 34px; place-items: center; border: 1px solid transparent; border-radius: 7px; background: transparent; color: #64748b; font-size: 22px; }
+    .drawer-close:hover { background: #f1f5f9; }
+    .demo-content { overflow-y: auto; overscroll-behavior: contain; padding: 18px; }
+    .demo-content h2 { margin: 0 0 5px; color: #94a3b8; font-size: 11px; text-transform: uppercase; }
+    .demo-content > p { margin: 0 0 16px; color: #64748b; font-size: 11px; line-height: 1.45; }
+    .scenario-list { display: grid; gap: 7px; }
+    .scenario-button { display: grid; width: 100%; min-height: 54px; grid-template-columns: 28px minmax(0,1fr); gap: 9px; align-items: center; border: 1px solid var(--border); border-radius: 9px; background: white; padding: 8px 10px; color: #1e293b; text-align: start; }
+    .scenario-button:hover { background: #f8fafc; }
+    .scenario-button[aria-pressed="true"] { border-color: #a5b4fc; background: #eef2ff; }
+    .scenario-number { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 7px; background: #f1f5f9; color: #64748b; font-size: 9px; font-weight: 700; }
+    .scenario-button[aria-pressed="true"] .scenario-number { background: var(--primary); color: white; }
+    .scenario-copy strong { display: block; font-size: 12px; }
+    .scenario-copy small { display: block; margin-block-start: 2px; color: #64748b; font-size: 10px; line-height: 1.3; }
+    .demo-note { display: flex; gap: 10px; margin-block-start: 18px; border: 1px solid #bfdbfe; border-radius: 10px; background: #eff6ff; padding: 12px; color: #1d4ed8; font-size: 11px; line-height: 1.4; }
+    .demo-note .lucide { width: 18px; height: 18px; }
+    .reset-button { width: 100%; min-height: 36px; margin-block-start: 12px; border: 1px solid var(--border); border-radius: 7px; background: white; color: #1e293b; font-size: 11px; font-weight: 600; }
+    .reset-button:hover { background: #f8fafc; }
+
+    @media (max-width: 900px) {
+      .timeline { padding: 0 18px 18px; }
+      .timeline::before { height: 18px; }
+      .runs-grid { grid-template-columns: 1fr; }
+      .composer { --timeline-inline-padding: 18px; padding-block: 9px; }
+    }
+
+    @media (max-width: 767px) {
+      .sidebar { display: none; }
+      .workspace-main { margin: 0; }
+      .room-header { height: 50px; gap: 8px; padding: 8px 10px; }
+      .mobile-menu { display: grid; width: 36px; height: 36px; flex: 0 0 36px; place-items: center; border: 0; border-radius: 7px; background: transparent; color: #334155; }
+      .mobile-menu:hover { background: #f1f5f9; }
+      .identity { gap: 6px; }
+      .room-header h1 { font-size: 15px; }
+      .active-count, .avatars, .roster-label, .workspace-button span, .demo-button span { display: none; }
+      .demo-button .poc-dot { display: inline-grid; }
+      .header-actions { gap: 2px; }
+      .header-button { width: 36px; justify-content: center; padding: 0; }
+      .roster { position: relative; }
+      .roster::after { position: absolute; inset-block-start: 1px; inset-inline-end: 1px; min-width: 13px; height: 13px; border: 1px solid white; border-radius: 7px; background: #e2e8f0; color: #64748b; font-size: 8px; line-height: 11px; content: attr(data-count); }
+      .timeline { overflow-x: hidden; padding: 0 10px 12px; scrollbar-gutter: auto; }
+      .timeline::before { height: 12px; }
+      .round { margin-block-end: 16px; }
+      .route-trace { margin-inline-start: 41px; }
+      .route-trace .technical { display: none; }
+      .user-message { max-width: 91%; }
+      .runs { gap: 8px; }
+      .run-card { column-gap: 7px; }
+      .run-surface { padding: 11px 14px; }
+      .run-header { min-height: 34px; }
+      .reply-button { width: 30px; padding: 0; justify-content: center; }
+      .reply-button span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+      .composer { max-width: 100vw; border-block-start: 0; padding: 8px 0 max(8px,env(safe-area-inset-bottom,0px)); }
+      .active-runs, .queue-banner, .composer-error { margin-inline: 8px; }
+      .compose-card { min-height: 60px; border: 0; border-radius: 0; box-shadow: none; }
+      .compose-card:focus-within { border-color: transparent; box-shadow: inset 0 2px 0 #8da2fb; }
+      .editor { min-height: 60px; padding-block: 18px; padding-inline-start: 52px; padding-inline-end: 212px; font-size: 16px; white-space: nowrap; }
+      .compose-card.expanded .editor { min-height: 56px; padding: 12px; white-space: pre-wrap; }
+      .compose-card footer { grid-template-columns: 40px minmax(0,1fr) auto auto 40px; }
+      .add-button, .send-button { width: 40px; height: 40px; }
+      .route-button, .work-button { height: 40px; padding-inline: 7px; }
+      .route-button span, .work-button span { display: none; }
+      .route-menu { position: fixed; inset: auto 8px var(--route-menu-bottom,72px); width: auto; max-height: calc(100vh - 86px); overflow-y: auto; }
+      .demo-drawer { z-index: 50; }
+    }
+
+    @media (max-width: 390px) {
+      .message-count { display: none; }
+      .workspace-button { display: none; }
+      .header-button { width: 32px; }
+      .composer-status { font-size: 10px; }
+      .editor { padding-inline-end: 196px; }
+      .timing-options { grid-template-columns: 1fr; }
+      .timing-options span { justify-content: flex-start; min-height: 30px; padding-inline: 9px; text-align: start; }
+    }
+
+    @media (forced-colors: active) {
+      button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline-color: Highlight; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { scroll-behavior: auto !important; animation: none !important; transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#timeline">Skip to conversation</a>
+  <div class="app">
+    <aside class="sidebar" aria-label="Primary navigation">
+      <div class="brand">
+        <div class="brand-identity">
+          <svg class="brand-logo" viewBox="0 0 512 512" aria-hidden="true">
+            <defs><linearGradient id="leftBand" x1="88" y1="440" x2="269" y2="68" gradientUnits="userSpaceOnUse"><stop stop-color="#3F61E8"/><stop offset=".55" stop-color="#5873F2"/><stop offset="1" stop-color="#7D70FF"/></linearGradient><linearGradient id="rightBand" x1="252" y1="72" x2="424" y2="440" gradientUnits="userSpaceOnUse"><stop stop-color="#109F94"/><stop offset="1" stop-color="#48D3BB"/></linearGradient><linearGradient id="bridgeBand" x1="120" y1="350" x2="388" y2="314" gradientUnits="userSpaceOnUse"><stop stop-color="#109F94"/><stop offset="1" stop-color="#48D3BB"/></linearGradient></defs>
+            <path d="M45 440 206 101c10-21 27-33 50-33l37 78-158 294H45Z" fill="url(#leftBand)"/><path d="M467 440 306 101c-10-21-27-33-50-33l-37 78 158 294h90Z" fill="url(#rightBand)"/><path d="M145 286h222l49 104H96l49-104Z" fill="url(#bridgeBand)"/><path d="M145 286l50 104H96Z" fill="#087F79"/><path d="M367 286l49 104h-99Z" fill="#4f9b8c"/><path d="M45 440l73-154h100l-83 154Z" fill="url(#leftBand)"/><path d="M294 286l83 154h90l-73-154Z" fill="url(#rightBand)"/>
+          </svg>
+          <strong class="brand-name"><span class="sr-only">A</span>genvyl</strong>
+        </div>
+        <button class="sidebar-icon-button" type="button" aria-label="Search rooms"><svg class="lucide" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></button>
+        <button class="sidebar-icon-button" type="button" aria-label="Collapse sidebar"><svg class="lucide" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 3v18m5-6-3-3 3-3"/></svg></button>
+      </div>
+      <nav class="main-nav" aria-label="Main navigation">
+        <button type="button"><svg class="lucide" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>New room</span></button>
+        <button type="button"><svg class="lucide" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></svg><span>Agents</span></button>
+        <button type="button"><svg class="lucide" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h6l2 2h10v10H3z"/></svg><span>Projects</span></button>
+      </nav>
+      <section class="history" aria-label="Room history">
+        <div class="group-label">Today</div>
+        <div class="room-row selected"><button class="room" type="button">Conversation routing POC</button><button class="room-more" type="button" aria-label="Actions for room Conversation routing POC">···</button></div>
+        <div class="room-row"><button class="room" type="button">Adapter history tail</button><button class="room-more" type="button" aria-label="Actions for room Adapter history tail">···</button></div>
+        <div class="group-label">Previous 7 days</div>
+        <div class="room-row"><button class="room" type="button">Workspace isolation</button><button class="room-more" type="button" aria-label="Actions for room Workspace isolation">···</button></div>
+      </section>
+      <button class="profile" type="button" aria-label="User profile menu"><b>U</b><span><strong>User</strong><small>@user</small></span><svg class="lucide" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
+    </aside>
+
+    <div class="workspace-main">
+      <header class="room-header">
+        <button class="mobile-menu" type="button" aria-label="Open menu"><svg class="lucide" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+        <div class="identity"><span class="connection" role="status" aria-label="Connected"></span><h1>Conversation routing POC</h1><small class="active-count" id="activeCount"></small><small class="message-count" id="messageCount"><svg class="lucide" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"/></svg><span>0</span></small></div>
+        <div class="header-actions">
+          <button class="header-button roster" id="rosterButton" type="button" aria-label="Manage room agents" data-count="1"><span class="avatars" id="headerAvatars"></span><span class="roster-label" id="rosterLabel">1 agent</span><svg class="lucide" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></button>
+          <button class="header-button demo-button" id="demoButton" type="button" aria-label="Open demo scenarios" aria-expanded="false" aria-controls="demoDrawer"><span class="poc-dot" aria-hidden="true">P</span><span>Demo</span></button>
+          <button class="header-button workspace-button" type="button" aria-label="Open workspace"><svg class="lucide" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h6l2 2h10v10H3z"/></svg><span>Workspace</span></button>
+        </div>
+      </header>
+
+      <main class="timeline" id="timeline" tabindex="-1" aria-label="Conversation">
+        <div id="eventList"></div>
+      </main>
+
+      <section class="composer" aria-label="Write a message">
+        <div class="active-runs" id="activeBanner" hidden></div>
+        <div class="queue-banner" id="queueBanner" hidden></div>
+        <form id="composerForm" novalidate>
+          <div class="compose-card" id="composeCard">
+            <div class="reply-header" id="replyHeader" hidden></div>
+            <label class="sr-only" for="messageInput">Message</label>
+            <textarea class="editor" id="messageInput" rows="1" placeholder="Message @handle or @all…" aria-describedby="composerStatus composerError"></textarea>
+            <footer>
+              <button class="add-button" type="button" aria-label="Add to message"><svg class="lucide" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+              <small class="composer-status" id="composerStatus" role="status" aria-live="polite"></small>
+              <button class="route-button" id="routeButton" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="routeMenu"><b aria-hidden="true"></b><svg class="lucide" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="18" cy="18" r="2"/><path d="M8 6h4a6 6 0 0 1 6 6v4"/></svg><span id="routeButtonText">Auto</span></button>
+              <button class="work-button" id="workflowButton" type="button" aria-label="Work mode. Switch to Plan"><svg class="lucide" viewBox="0 0 24 24" aria-hidden="true"><path d="m14.7 6.3 3 3M5 21l3.5-1 10-10a2.1 2.1 0 0 0-3-3l-10 10L5 21Z"/></svg><span id="workflowText">Work</span></button>
+              <button class="send-button" id="sendButton" type="submit" aria-label="Post to room" disabled><svg class="lucide" viewBox="0 0 24 24" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></button>
+            </footer>
+
+            <div class="route-menu" id="routeMenu" role="menu" aria-label="Message routing" hidden>
+              <header><strong>Message routing</strong><small>Choose how this message continues. Auto is recommended.</small></header>
+              <div class="mode-list">
+                <button class="mode-option" type="button" role="menuitemradio" aria-checked="true" data-route="auto"><span class="mode-check" aria-hidden="true"></span><span><strong>Auto</strong><small>Continue one focused agent; otherwise use room context.</small></span></button>
+                <button class="mode-option" type="button" role="menuitemradio" aria-checked="false" data-route="room_context"><span class="mode-check" aria-hidden="true"></span><span><strong>Room context</strong><small>Start a new request with the room’s recent history.</small></span></button>
+                <button class="mode-option" type="button" role="menuitemradio" aria-checked="false" data-route="agent_session"><span class="mode-check" aria-hidden="true"></span><span><strong>Agent session</strong><small>Continue one agent’s native session.</small></span></button>
+              </div>
+              <div class="route-fields">
+                <label class="route-field"><span>To</span><select id="agentSelect" aria-label="Message recipient"></select></label>
+                <fieldset class="timing-field"><legend>When</legend><div class="timing-options"><label><input type="radio" name="timing" value="after_response" checked><span>After response</span></label><label><input id="applyNow" type="radio" name="timing" value="apply_now"><span>Apply now</span></label><label><input type="radio" name="timing" value="new_request"><span>New request</span></label></div></fieldset>
+              </div>
+              <div class="decision-box" id="decisionBox"><svg class="lucide" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg><span id="decisionText"></span></div>
+            </div>
+          </div>
+          <div class="composer-error" id="composerError" aria-live="polite"></div>
+        </form>
+      </section>
+    </div>
+
+    <button class="drawer-backdrop" id="drawerBackdrop" type="button" tabindex="-1" aria-label="Close demo panel" hidden></button>
+    <aside class="demo-drawer" id="demoDrawer" role="dialog" aria-modal="true" aria-labelledby="demoTitle" hidden>
+      <header><span><strong id="demoTitle">Demo scenarios</strong><small>POC only · no backend writes</small></span><button class="drawer-close" id="closeDemo" type="button" aria-label="Close">×</button></header>
+      <div class="demo-content">
+        <h2>Room state</h2>
+        <p>Switch the state, then use Reply, Routing, When, and Send in the unchanged room layout.</p>
+        <div class="scenario-list" id="scenarioList">
+          <button class="scenario-button" type="button" data-scenario="active" aria-pressed="true"><span class="scenario-number">01</span><span class="scenario-copy"><strong>Active agent</strong><small>Queue a follow-up or apply it now</small></span></button>
+          <button class="scenario-button" type="button" data-scenario="completed" aria-pressed="false"><span class="scenario-number">02</span><span class="scenario-copy"><strong>Completed response</strong><small>Continue the native agent session</small></span></button>
+          <button class="scenario-button" type="button" data-scenario="multi" aria-pressed="false"><span class="scenario-number">03</span><span class="scenario-copy"><strong>Multi-agent room</strong><small>Switch between one and several agents</small></span></button>
+          <button class="scenario-button" type="button" data-scenario="ambiguous" aria-pressed="false"><span class="scenario-number">04</span><span class="scenario-copy"><strong>Ambiguous recipient</strong><small>Auto asks you to choose an agent</small></span></button>
+          <button class="scenario-button" type="button" data-scenario="session_unavailable" aria-pressed="false"><span class="scenario-number">05</span><span class="scenario-copy"><strong>Session unavailable</strong><small>Continue safely with room history</small></span></button>
+          <button class="scenario-button" type="button" data-scenario="interrupt_unavailable" aria-pressed="false"><span class="scenario-number">06</span><span class="scenario-copy"><strong>Interruption unavailable</strong><small>Apply now explains why it is disabled</small></span></button>
+          <button class="scenario-button" type="button" data-scenario="long_room" aria-pressed="false"><span class="scenario-number">07</span><span class="scenario-copy"><strong>Long room</strong><small>Keep the existing tail-v1 flow</small></span></button>
+        </div>
+        <div class="demo-note"><svg class="lucide" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg><span>Plan/Work is intentionally independent. Switching it never changes the selected conversation route.</span></div>
+        <button class="reset-button" id="resetDemo" type="button">Reset</button>
+      </div>
+    </aside>
+  </div>
+
+  <div class="sr-only" id="liveStatus" role="status" aria-live="polite"></div>
+
+  <script>
+    (() => {
+      const icons = {
+        reply: '<svg class="lucide" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 17-5-5 5-5"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>',
+        info: '<svg class="lucide" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg>',
+        check: '<svg class="lucide" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>',
+        loader: '<svg class="lucide" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.2-8.6"/></svg>',
+        route: '<svg class="lucide" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="18" r="2"/><path d="M8 6h3a7 7 0 0 1 7 7v3"/></svg>',
+        clock: '<svg class="lucide" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+        close: '<svg class="lucide" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>'
+      };
+
+      const agents = {
+        sol: { id: 'sol', name: 'Sol', handle: 'sol', initial: 'S', color: '#3b82f6', model: 'codex · gpt-5.6' },
+        mara: { id: 'mara', name: 'Mara', handle: 'mara', initial: 'M', color: '#8b5cf6', model: 'claude · sonnet' }
+      };
+
+      const baseEvents = () => [
+        { kind: 'round', route: 'room', target: 'sol', technical: 'room context · tail-v1', user: { text: 'Разложи текущий механизм вмешательства по полочкам. Хочу просто отвечать в чат и заранее понимать, что произойдёт.', time: '10:04', status: 'Continued with room context' }, responses: [{ agent: 'sol', state: 'streaming', text: 'Собираю модель вокруг двух решений: кому адресован ответ и когда его применить. Технические сессии остаются под капотом.', technical: 'room context' }] },
+        { kind: 'round', route: 'waiting', target: 'sol', technical: 'queued follow-up', user: { text: 'И не потеряй бесконечную комнату — после работы с одним агентом я должен быстро вернуться к общему контексту.', time: '10:06', status: 'Waiting for Sol' }, responses: [] }
+      ];
+
+      const scenarios = {
+        active: { agents: ['sol'], active: 'sol', selected: 'sol', session: true, interrupt: true, events: baseEvents },
+        completed: { agents: ['sol'], active: null, selected: 'sol', session: true, interrupt: false, events: () => [{ kind: 'round', route: 'room', target: 'sol', technical: 'room context', user: { text: 'Предложи более прозрачную модель ответа одному агенту.', time: '09:42', status: 'Continued with room context' }, responses: [{ agent: 'sol', state: 'completed', text: 'Оставим одно поле ввода. Auto продолжит мою сессию, если адресат очевиден, а короткий статус покажет фактический путь.', technical: 'session ready' }] }] },
+        multi: { agents: ['sol','mara'], active: null, selected: '', session: true, interrupt: false, events: () => [{ kind: 'round', route: 'room', target: 'all', technical: 'room context · 2 agents', user: { text: 'Сравните автоматический выбор пути и явный переключатель.', time: '11:20', status: 'Continued with room context' }, responses: [{ agent: 'sol', state: 'completed', text: 'Auto снижает число решений в обычном диалоге.', technical: 'room response 1/2' }, { agent: 'mara', state: 'completed', text: 'Room context всё равно нужен как быстрый явный выход.', technical: 'room response 2/2' }] }] },
+        ambiguous: { agents: ['sol','mara'], active: null, selected: '', session: true, interrupt: false, events: () => [{ kind: 'round', route: 'room', target: 'all', technical: 'two sessions available', user: { text: 'Пусть оба агента независимо оценят архитектуру.', time: '12:08', status: 'Continued with room context' }, responses: [{ agent: 'sol', state: 'completed', text: 'У меня есть своя продолжимая сессия.', technical: 'session ready' }, { agent: 'mara', state: 'completed', text: 'У меня тоже есть отдельная сессия. Для ответа нужен адресат.', technical: 'session ready' }] }] },
+        session_unavailable: { agents: ['sol'], active: null, selected: 'sol', session: false, interrupt: false, events: () => [{ kind: 'round', route: 'agent', target: 'sol', technical: 'session handle expired', user: { text: 'Продолжи разбор с того же места.', time: '13:02', status: 'Continued in agent session' }, responses: [{ agent: 'sol', state: 'completed', text: 'Нативная сессия завершилась вне комнаты. Следующее сообщение продолжится через историю комнаты.', technical: 'session unavailable' }] }] },
+        interrupt_unavailable: { agents: ['sol'], active: 'sol', selected: 'sol', session: true, interrupt: false, events: () => [{ kind: 'round', route: 'room', target: 'sol', technical: 'connector · no intervention', user: { text: 'Проверь мобильный сценарий и подготовь вывод.', time: '13:31', status: 'Continued with room context' }, responses: [{ agent: 'sol', state: 'streaming', text: 'Проверяю reflow на 320 px. Этот коннектор не принимает срочную коррекцию во время ответа.', technical: 'interruption unavailable' }] }] },
+        long_room: { agents: ['sol','mara'], active: null, selected: 'sol', session: true, interrupt: false, events: () => [{ kind: 'history', text: '128 messages', detail: 'Older history is condensed. The existing tail-v1 policy remains active.' }, { kind: 'round', route: 'room', target: 'mara', technical: 'room context · tail-v1', user: { text: 'Мара, собери независимый обзор последних сообщений комнаты.', time: '15:06', status: 'Continued with room context' }, responses: [{ agent: 'mara', state: 'completed', text: 'Контекст получен из стабильного хвоста комнаты.', technical: 'tail-v1' }] }, { kind: 'round', route: 'agent', target: 'sol', technical: 'native continuation', user: { text: 'Sol, продолжи именно свой технический разбор.', time: '15:10', status: 'Continued in agent session' }, responses: [{ agent: 'sol', state: 'completed', text: 'Продолжаю свою сессию. Следующее сообщение можно одним переключением вернуть в Room context.', technical: 'native continuation' }] }] }
+      };
+
+      const state = { scenario: 'active', routing: 'auto', timing: 'after_response', workflow: 'work', agents: [], active: null, selected: '', replyTo: null, session: true, interrupt: true, events: [], demoOpen: false };
+
+      const el = {
+        eventList: document.getElementById('eventList'), activeCount: document.getElementById('activeCount'), messageCount: document.getElementById('messageCount').querySelector('span'), headerAvatars: document.getElementById('headerAvatars'), rosterLabel: document.getElementById('rosterLabel'), rosterButton: document.getElementById('rosterButton'),
+        activeBanner: document.getElementById('activeBanner'), queueBanner: document.getElementById('queueBanner'), composeCard: document.getElementById('composeCard'), replyHeader: document.getElementById('replyHeader'), form: document.getElementById('composerForm'), input: document.getElementById('messageInput'), status: document.getElementById('composerStatus'), error: document.getElementById('composerError'), send: document.getElementById('sendButton'), workflowButton: document.getElementById('workflowButton'), workflowText: document.getElementById('workflowText'),
+        routeButton: document.getElementById('routeButton'), routeButtonText: document.getElementById('routeButtonText'), routeMenu: document.getElementById('routeMenu'), agentSelect: document.getElementById('agentSelect'), applyNow: document.getElementById('applyNow'), decisionBox: document.getElementById('decisionBox'), decisionText: document.getElementById('decisionText'),
+        demoButton: document.getElementById('demoButton'), drawer: document.getElementById('demoDrawer'), backdrop: document.getElementById('drawerBackdrop'), closeDemo: document.getElementById('closeDemo'), scenarioList: document.getElementById('scenarioList'), reset: document.getElementById('resetDemo'), live: document.getElementById('liveStatus'), timeline: document.getElementById('timeline'), sidebar: document.querySelector('.sidebar'), workspace: document.querySelector('.workspace-main')
+      };
+
+      const escapeHtml = value => String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
+      const timeNow = () => new Intl.DateTimeFormat('en-GB',{hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date());
+
+      function loadScenario(name, resetControls = false) {
+        const config = scenarios[name];
+        state.scenario = name; state.agents = [...config.agents]; state.active = config.active; state.selected = config.selected; state.replyTo = null; state.session = config.session; state.interrupt = config.interrupt; state.events = config.events();
+        if (resetControls) { state.routing = 'auto'; state.timing = 'after_response'; state.workflow = 'work'; }
+        if (state.timing === 'apply_now' && !canApply()) state.timing = 'after_response';
+        clearError(); render(); announce(`${scenarioName(name)} scenario loaded.`);
+      }
+
+      const scenarioName = name => ({active:'Active agent',completed:'Completed response',multi:'Multi-agent room',ambiguous:'Ambiguous recipient',session_unavailable:'Session unavailable',interrupt_unavailable:'Interruption unavailable',long_room:'Long room'})[name];
+      const canApply = () => Boolean(state.active && state.interrupt && (!state.selected || state.selected === state.active));
+
+      function outcome() {
+        if (state.timing === 'apply_now') {
+          if (!canApply()) return { type:'blocked', summary: state.active ? 'Apply now is unavailable for this connector.' : 'There is no active response to update.' };
+          return { type:'applied', agent:state.active, route:'agent', status:'Applied now', summary:`Applies to ${agents[state.active].name}’s active response now.` };
+        }
+        if (state.timing === 'new_request' || state.routing === 'room_context') {
+          if (!state.selected && state.agents.length > 1) return { type:'ambiguous', summary:'Choose who should answer the new request.' };
+          return { type:'room', agent:state.selected === 'all' ? state.agents[0] : (state.selected || state.agents[0]), route:'room', status:'Continued with room context', summary:'Starts a new request with the room’s recent history.' };
+        }
+        if (!state.selected && state.agents.length > 1) return { type:'ambiguous', summary:'Choose an agent before sending.' };
+        if (state.selected === 'all') return { type:'room', agent:state.agents[0], route:'room', status:'Continued with room context', summary:'Starts a new request for all room agents.' };
+        const agent = state.selected || state.agents[0];
+        if (state.routing === 'auto' && state.agents.length > 1 && !state.replyTo) return { type:'room', agent, route:'room', status:'Continued with room context', summary:`Starts a new ${agents[agent].name} request with room history.` };
+        if (!state.session) return { type:'fallback', agent, route:'fallback', status:'Continued with room context', summary:`${agents[agent].name}’s session is unavailable. Uses room context instead.` };
+        if (state.active === agent) {
+          const alreadyQueued = state.events.some(item => item.kind === 'round' && item.route === 'waiting' && item.target === agent);
+          if (alreadyQueued) return { type:'blocked', agent, summary:`${agents[agent].name} already has one queued follow-up. Finish the response, use Apply now, or start a new request.` };
+          return { type:'waiting', agent, route:'waiting', status:`Waiting for ${agents[agent].name}`, summary:`Waits for ${agents[agent].name}, then continues the same agent session.` };
+        }
+        return { type:'continuation', agent, route:'agent', status:'Continued in agent session', summary:`Continues ${agents[agent].name} in the same agent session.` };
+      }
+
+      function render() { renderHeader(); renderTimeline(); renderComposer(); renderDemo(); }
+
+      function renderHeader() {
+        const messages = state.events.filter(item => item.kind === 'round').length;
+        el.messageCount.textContent = String(messages);
+        el.activeCount.textContent = state.active ? '1 active run' : '';
+        el.headerAvatars.innerHTML = state.agents.map(id => `<span class="avatar" style="--avatar-color:${agents[id].color}" title="${agents[id].name}" aria-label="${agents[id].name}">${agents[id].initial}</span>`).join('');
+        el.rosterLabel.textContent = `${state.agents.length} ${state.agents.length === 1 ? 'agent' : 'agents'}`;
+        el.rosterButton.dataset.count = String(state.agents.length);
+      }
+
+      function trace(event) {
+        const target = event.target === 'all' ? 'All agents' : agents[event.target]?.name || 'Room';
+        const source = event.route === 'agent' ? `${target} session` : event.route === 'waiting' ? `${target} responding` : event.route === 'fallback' ? 'Session unavailable' : 'Room context';
+        const destination = event.route === 'waiting' ? 'Queued' : target;
+        return `<div class="route-trace ${event.route}"><strong>${escapeHtml(source)}</strong><span class="trace-line" aria-hidden="true"></span><span>${escapeHtml(destination)}</span><span class="technical">${escapeHtml(event.technical || '')}</span></div>`;
+      }
+
+      function userBubble(user) {
+        const statusClass = user.status.startsWith('Waiting') ? 'waiting' : user.status === 'Applied now' ? 'applied' : user.status.includes('agent session') ? 'agent' : 'room';
+        return `<div class="user-message"><p>${escapeHtml(user.text)}</p><small>${escapeHtml(user.time)} · <span class="delivery-status ${statusClass}">${escapeHtml(user.status)}</span></small></div>`;
+      }
+
+      function runCard(response) {
+        const agent = agents[response.agent];
+        const streaming = response.state === 'streaming';
+        return `<article class="run-card" style="--agent-color:${agent.color}">
+          <span class="avatar" style="--avatar-color:${agent.color}" aria-hidden="true">${agent.initial}</span>
+          <div class="run-surface">
+            <div class="run-header">
+              <div class="run-identity"><span class="run-name"><strong>${agent.name}</strong></span><span class="model-meta">⌘ <span>${escapeHtml(agent.model)}</span><span class="reasoning">◉ Auto</span></span></div>
+              <div class="run-header-actions"><span class="status-icon ${streaming?'streaming':''}" aria-label="Status: ${streaming?'streaming':'completed'}">${streaming?icons.loader:icons.check}</span><button class="reply-button" type="button" data-reply="${agent.id}" aria-label="Reply to ${agent.name}">${icons.reply}<span>Reply</span></button><button class="details-button" type="button" aria-label="Run details: ${agent.name}">${icons.info}</button></div>
+            </div>
+            <p class="answer">${escapeHtml(response.text)}</p>
+            <div class="run-route-meta">${icons.route}<span>${escapeHtml(response.technical || 'agent response')}</span></div>
+          </div>
+        </article>`;
+      }
+
+      function renderTimeline() {
+        el.eventList.innerHTML = state.events.map(event => {
+          if (event.kind === 'history') return `<div class="history-note">${icons.info}<span><strong>${escapeHtml(event.text)}</strong> · ${escapeHtml(event.detail)}</span></div>`;
+          const runsClass = event.responses.length > 1 ? 'runs-grid' : 'runs-list';
+          return `<section class="round">${trace(event)}${userBubble(event.user)}${event.responses.length ? `<div class="runs ${runsClass}">${event.responses.map(runCard).join('')}</div>` : ''}</section>`;
+        }).join('');
+        el.eventList.querySelectorAll('[data-reply]').forEach(button => button.addEventListener('click', () => replyTo(button.dataset.reply)));
+      }
+
+      function renderComposer() {
+        const labels = { auto:'Auto', room_context:'Room context', agent_session:'Agent session' };
+        el.routeButtonText.textContent = labels[state.routing];
+        el.routeButton.setAttribute('aria-label', `Routing: ${labels[state.routing]}. Change routing`);
+        el.routeMenu.querySelectorAll('[data-route]').forEach(button => button.setAttribute('aria-checked', String(button.dataset.route === state.routing)));
+        el.agentSelect.innerHTML = `${state.agents.length > 1 ? '<option value="">Choose agent</option>' : ''}${state.agents.map(id => `<option value="${id}">${agents[id].name}</option>`).join('')}${state.agents.length > 1 ? '<option value="all">All agents</option>' : ''}`;
+        el.agentSelect.value = state.selected;
+        document.querySelectorAll('input[name="timing"]').forEach(input => { input.checked = input.value === state.timing; });
+        el.applyNow.disabled = !canApply();
+        el.applyNow.nextElementSibling.title = canApply() ? 'Update the active response immediately' : state.active ? 'This connector cannot update an active response' : 'No active response is running';
+        el.workflowText.textContent = state.workflow === 'work' ? 'Work' : 'Plan';
+        el.workflowButton.setAttribute('aria-label', `${state.workflow === 'work' ? 'Work' : 'Plan'} mode. Switch to ${state.workflow === 'work' ? 'Plan' : 'Work'}`);
+
+        const next = outcome();
+        el.decisionText.textContent = next.summary;
+        el.decisionBox.classList.toggle('warning', ['blocked','ambiguous'].includes(next.type));
+        el.status.textContent = el.input.value.trim() || state.replyTo ? next.summary : '';
+        el.send.disabled = !el.input.value.trim();
+        el.composeCard.classList.toggle('expanded', Boolean(el.input.value || state.replyTo));
+
+        el.replyHeader.hidden = !state.replyTo;
+        if (state.replyTo) el.replyHeader.innerHTML = `<span>${icons.reply}<strong>Reply to @${agents[state.replyTo].handle}</strong> · ${escapeHtml(next.summary)}</span><button type="button" id="exitReply" aria-label="Exit reply mode">${icons.close}</button>`;
+        document.getElementById('exitReply')?.addEventListener('click', exitReply);
+
+        const queued = state.events.some(item => item.kind === 'round' && item.route === 'waiting');
+        el.queueBanner.hidden = !queued;
+        if (queued) el.queueBanner.innerHTML = `<span>${icons.clock}<span>1 follow-up queued · waits for ${agents[state.active || 'sol'].name}</span></span><button class="banner-button" type="button" id="finishResponse">Finish mock response</button>`;
+        document.getElementById('finishResponse')?.addEventListener('click', finishResponse);
+        el.activeBanner.hidden = !state.active;
+        if (state.active) el.activeBanner.innerHTML = `<span><i aria-hidden="true"></i>1 agent is responding</span><button class="banner-button" type="button">Stop all</button>`;
+        positionRouteMenu();
+      }
+
+      function renderDemo() {
+        el.drawer.hidden = !state.demoOpen; el.backdrop.hidden = !state.demoOpen; el.demoButton.setAttribute('aria-expanded', String(state.demoOpen));
+        el.scenarioList.querySelectorAll('[data-scenario]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.scenario === state.scenario)));
+      }
+
+      function replyTo(agentId) {
+        state.selected = agentId; state.replyTo = agentId; state.routing = 'auto'; state.timing = 'after_response'; clearError(); renderComposer(); el.input.focus(); announce(`Replying to ${agents[agentId].name}. Auto routing selected.`);
+      }
+      function exitReply() { state.replyTo = null; renderComposer(); el.input.focus(); announce('Reply mode closed.'); }
+
+      function finishResponse() {
+        if (!state.active) return;
+        const id = state.active;
+        state.events.forEach(event => { if (event.kind !== 'round') return; event.responses.forEach(response => { if (response.agent === id && response.state === 'streaming') response.state = 'completed'; }); if (event.route === 'waiting') { event.route = 'agent'; event.technical = 'native continuation'; event.user.status = 'Continued in agent session'; event.responses.push({ agent:id, state:'completed', text:'Продолжаю ту же сессию после завершения предыдущего ответа. Рабочий контекст уже доступен.', technical:'native continuation' }); } });
+        state.active = null; render(); scrollLatest(); announce(`Queued follow-up continued in ${agents[id].name}’s agent session.`);
+      }
+
+      function sendMessage(event) {
+        event.preventDefault();
+        const text = el.input.value.trim();
+        if (!text) { showError('Write a message before sending.'); el.input.focus(); return; }
+        const next = outcome();
+        if (next.type === 'ambiguous') { showError('Choose an agent before sending this message.'); el.input.removeAttribute('aria-invalid'); el.agentSelect.setAttribute('aria-invalid','true'); openRouteMenu(); setTimeout(() => el.agentSelect.focus(), 0); return; }
+        if (next.type === 'blocked') { showError(next.summary); openRouteMenu(); return; }
+        clearError();
+        const agentId = next.agent || state.agents[0];
+        const round = { kind:'round', route:next.route, target:agentId, technical:next.type === 'fallback' ? 'history fallback' : next.type === 'continuation' ? 'native continuation' : next.type === 'waiting' ? 'queued follow-up' : next.type === 'applied' ? 'active intervention' : 'room context · tail-v1', user:{ text, time:timeNow(), status:next.status }, responses:[] };
+        if (next.type === 'applied') {
+          const activeRound = [...state.events].reverse().find(item => item.kind === 'round' && item.responses?.some(response => response.agent === agentId && response.state === 'streaming'));
+          if (activeRound) activeRound.responses.find(response => response.agent === agentId && response.state === 'streaming').text += ' Учёл срочную коррекцию в текущем ответе.';
+        } else if (next.type !== 'waiting') {
+          const copy = next.type === 'fallback' ? 'Нативная сессия недоступна, поэтому я восстановил ход разговора из истории комнаты.' : next.type === 'continuation' ? 'Продолжаю ту же сессию агента — рабочий контекст уже доступен.' : 'Начинаю новый запрос с актуальным контекстом комнаты; tail-v1 продолжает ограничивать длинную историю.';
+          round.responses.push({ agent:agentId, state:'completed', text:copy, technical:round.technical });
+        }
+        state.events.push(round); el.input.value = ''; state.replyTo = null; render(); scrollLatest(); announce(`${next.status}. Message sent to ${agents[agentId].name}.`);
+      }
+
+      function openRouteMenu() { el.routeMenu.hidden = false; el.routeButton.setAttribute('aria-expanded','true'); positionRouteMenu(); requestAnimationFrame(() => el.routeMenu.querySelector('[aria-checked="true"]').focus()); }
+      function closeRouteMenu(restore = true) { if (el.routeMenu.hidden) return; el.routeMenu.hidden = true; el.routeButton.setAttribute('aria-expanded','false'); if (restore) el.routeButton.focus(); }
+      function positionRouteMenu() { if (matchMedia('(max-width:767px)').matches) { const top = el.composeCard.getBoundingClientRect().top; el.routeMenu.style.setProperty('--route-menu-bottom', `${Math.max(70, innerHeight-top+8)}px`); } else el.routeMenu.style.removeProperty('--route-menu-bottom'); }
+
+      function openDemo() { state.demoOpen = true; renderDemo(); el.workspace.setAttribute('inert',''); el.sidebar.setAttribute('inert',''); requestAnimationFrame(() => el.closeDemo.focus()); }
+      function closeDemo() { state.demoOpen = false; renderDemo(); el.workspace.removeAttribute('inert'); el.sidebar.removeAttribute('inert'); el.demoButton.focus(); }
+      function showError(message) { el.error.textContent = message; el.input.setAttribute('aria-invalid','true'); }
+      function clearError() { el.error.textContent = ''; el.input.removeAttribute('aria-invalid'); el.agentSelect.removeAttribute('aria-invalid'); }
+      function announce(message) { el.live.textContent = ''; requestAnimationFrame(() => { el.live.textContent = message; }); }
+      function scrollLatest() { requestAnimationFrame(() => { el.timeline.scrollTop = el.timeline.scrollHeight; }); }
+
+      el.routeButton.addEventListener('click', () => el.routeMenu.hidden ? openRouteMenu() : closeRouteMenu());
+      el.routeMenu.addEventListener('click', event => { const option = event.target.closest('[data-route]'); if (!option) return; state.routing = option.dataset.route; state.replyTo = null; closeRouteMenu(); clearError(); renderComposer(); announce(`${option.querySelector('strong').textContent} routing selected.`); });
+      el.routeMenu.addEventListener('keydown', event => {
+        const options = [...el.routeMenu.querySelectorAll('[data-route]')], index = options.indexOf(document.activeElement); let next = null;
+        if (event.key === 'ArrowDown') next = (index + 1) % options.length; if (event.key === 'ArrowUp') next = (index - 1 + options.length) % options.length; if (event.key === 'Home') next = 0; if (event.key === 'End') next = options.length - 1;
+        if (next !== null) { event.preventDefault(); options[next].focus(); }
+        if (event.key === 'Escape') { event.preventDefault(); closeRouteMenu(); }
+        if (event.key === 'Tab') closeRouteMenu(false);
+      });
+      document.addEventListener('pointerdown', event => { if (!el.routeMenu.hidden && !el.routeMenu.contains(event.target) && !el.routeButton.contains(event.target)) closeRouteMenu(false); });
+      document.addEventListener('keydown', event => { if (event.key === 'Escape' && state.demoOpen) { event.preventDefault(); closeDemo(); } });
+      el.agentSelect.addEventListener('change', () => { state.selected = el.agentSelect.value; state.replyTo = null; clearError(); renderComposer(); });
+      document.querySelectorAll('input[name="timing"]').forEach(input => input.addEventListener('change', () => { state.timing = input.value; clearError(); renderComposer(); }));
+      el.workflowButton.addEventListener('click', () => { state.workflow = state.workflow === 'work' ? 'plan' : 'work'; renderComposer(); announce(`${state.workflow === 'work' ? 'Work' : 'Plan'} mode selected. Conversation routing is unchanged.`); });
+      el.input.addEventListener('input', () => { clearError(); renderComposer(); });
+      el.input.addEventListener('keydown', event => { if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') el.form.requestSubmit(); });
+      el.form.addEventListener('submit', sendMessage);
+      el.demoButton.addEventListener('click', openDemo); el.closeDemo.addEventListener('click', closeDemo); el.backdrop.addEventListener('click', closeDemo);
+      el.drawer.addEventListener('keydown', event => {
+        if (event.key !== 'Tab') return;
+        const focusable = [...el.drawer.querySelectorAll('button:not([disabled]),select:not([disabled]),input:not([disabled]),[tabindex]:not([tabindex="-1"])')];
+        if (!focusable.length) { event.preventDefault(); el.drawer.focus(); return; }
+        const first = focusable[0], last = focusable.at(-1);
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      });
+      el.scenarioList.addEventListener('click', event => { const button = event.target.closest('[data-scenario]'); if (button) { loadScenario(button.dataset.scenario); closeDemo(); } });
+      el.reset.addEventListener('click', () => { loadScenario('active',true); closeDemo(); });
+      window.addEventListener('resize', positionRouteMenu);
+
+      loadScenario('active', true);
+    })();
+  </script>
+</body>
+</html>

@@ -27,6 +27,15 @@ describe('resolveAppConfig Connector routing',()=>{
     expect(()=>resolveAppConfig(connector)).toThrow('AGENVYL_SERVE_STATIC_FRONTEND must be true or false');
   });
 
+  it('keeps conversation routing off unless the exact experiment flag is enabled',()=>{
+    const connector={connectorUrl:'http://connector.test',connectorToken:'x'.repeat(32)};
+    expect(resolveAppConfig(connector).conversationRouting).toBe(false);
+    vi.stubEnv('AGENVYL_EXPERIMENT_CONVERSATION_ROUTING','true');
+    expect(resolveAppConfig(connector).conversationRouting).toBe(true);
+    vi.stubEnv('AGENVYL_EXPERIMENT_CONVERSATION_ROUTING','yes');
+    expect(()=>resolveAppConfig(connector)).toThrow('AGENVYL_EXPERIMENT_CONVERSATION_ROUTING must be true or false');
+  });
+
   it('rejects the removed backend selector instead of silently accepting a rollback',()=>{
     vi.stubEnv('AGENVYL_EXECUTION_BACKEND','hermes');
     expect(()=>resolveAppConfig({connectorUrl:'http://connector.test',connectorToken:'x'.repeat(32)})).toThrow('no longer supported');

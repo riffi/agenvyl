@@ -1,15 +1,15 @@
 import type { Message } from '../../message';
 import type { Run } from '../../run';
-import { upsertToolActivity, type Room, type RoomPersona, type ServerRoomEvent, type TimelinePage, type UpstreamStatus, type WorkflowMode } from '@agenvyl/contracts';
+import { upsertToolActivity, type ConversationRoutingMode, type Room, type RoomPersona, type ServerRoomEvent, type TimelinePage, type UpstreamStatus, type WorkflowMode } from '@agenvyl/contracts';
 export type Connection = 'connecting' | 'connected' | 'reconnecting' | 'replaying';
 export type { TimelinePage } from '@agenvyl/contracts';
-export type RoomState = { messages: Message[]; messageCount:number; runs: Record<string, Run>; runOrder: string[]; selectedRuns:Record<string,string>; participantUpdates:Record<string,RoomPersona>; latestTitle?:string; workflowMode:WorkflowMode; connection: Connection; lastSequence: number; selectedRunId?: string; appliedPatch: boolean; hydrated:boolean; hasMore:boolean; nextCursor?:string };
+export type RoomState = { messages: Message[]; messageCount:number; runs: Record<string, Run>; runOrder: string[]; selectedRuns:Record<string,string>; participantUpdates:Record<string,RoomPersona>; latestTitle?:string; workflowMode:WorkflowMode; conversationRoutingMode:ConversationRoutingMode; connection: Connection; lastSequence: number; selectedRunId?: string; appliedPatch: boolean; hydrated:boolean; hasMore:boolean; nextCursor?:string };
 
 export type RoomEvent = ServerRoomEvent | { id: string; sequence: number; type: 'connection.changed'; payload: { status: Connection } };
 
-export const initialState: RoomState = { messages: [], messageCount:0, runs: {}, runOrder: [], selectedRuns:{}, participantUpdates:{}, workflowMode:'work', connection: 'connecting', lastSequence: 0, appliedPatch: false, hydrated:false, hasMore:false };
+export const initialState: RoomState = { messages: [], messageCount:0, runs: {}, runOrder: [], selectedRuns:{}, participantUpdates:{}, workflowMode:'work', conversationRoutingMode:'auto', connection: 'connecting', lastSequence: 0, appliedPatch: false, hydrated:false, hasMore:false };
 
-export function stateFromTimeline(page:TimelinePage):RoomState{return{...initialState,messages:page.messages,messageCount:page.messageCount,runs:Object.fromEntries(page.runs.map(run=>[run.id,run])),runOrder:page.runs.map(run=>run.id),selectedRuns:page.selectedRuns,workflowMode:page.workflowMode,lastSequence:page.lastSequence,hydrated:true,hasMore:page.hasMore,nextCursor:page.nextCursor};}
+export function stateFromTimeline(page:TimelinePage):RoomState{return{...initialState,messages:page.messages,messageCount:page.messageCount,runs:Object.fromEntries(page.runs.map(run=>[run.id,run])),runOrder:page.runs.map(run=>run.id),selectedRuns:page.selectedRuns,workflowMode:page.workflowMode,conversationRoutingMode:page.conversationRoutingMode??'auto',lastSequence:page.lastSequence,hydrated:true,hasMore:page.hasMore,nextCursor:page.nextCursor};}
 export function prependTimeline(state:RoomState,page:TimelinePage):RoomState{const known=new Set(state.messages.map(message=>message.id));const runs={...state.runs};for(const run of page.runs)runs[run.id]??=run;return{...state,messages:[...page.messages.filter(message=>!known.has(message.id)),...state.messages],runs,runOrder:[...page.runs.map(run=>run.id).filter(id=>!state.runs[id]),...state.runOrder],selectedRuns:{...page.selectedRuns,...state.selectedRuns},hasMore:page.hasMore,nextCursor:page.nextCursor};}
 export const applyRoomTitle=(rooms:Room[]|undefined,roomId:string,title:string)=>rooms?.map(room=>room.id===roomId?{...room,title}:room);
 
@@ -19,7 +19,7 @@ export function roomReducer(state: RoomState, event: RoomEvent): RoomState {
   const base = { ...state, lastSequence: event.sequence };
   switch (event.type) {
     case 'message.created': return { ...base, messages: [...state.messages, event.payload], messageCount:state.messageCount+1 };
-    case 'run.created': {const isRepeatedResponse=Boolean(event.payload.retryOfRunId||event.payload.continuedFromRunId);return { ...base, messages:state.messages.map(message=>message.id===event.payload.messageId&&!message.runIds.includes(event.payload.id)?{...message,runIds:[...message.runIds,event.payload.id]}:message), messageCount:state.messageCount+(isRepeatedResponse?0:1), runs: { ...state.runs, [event.payload.id]: {...event.payload,reasoning:event.payload.reasoning??''} }, runOrder: [...state.runOrder, event.payload.id] };}
+    case 'run.created': {const parent=event.payload.continuedFromRunId?state.runs[event.payload.continuedFromRunId]:undefined,isRepeatedResponse=Boolean(event.payload.retryOfRunId||(parent&&parent.messageId===event.payload.messageId));return { ...base, messages:state.messages.map(message=>message.id===event.payload.messageId&&!message.runIds.includes(event.payload.id)?{...message,runIds:[...message.runIds,event.payload.id]}:message), messageCount:state.messageCount+(isRepeatedResponse?0:1), runs: { ...state.runs, [event.payload.id]: {...event.payload,reasoning:event.payload.reasoning??''} }, runOrder: [...state.runOrder, event.payload.id] };}
     case 'run.selected':return {...base,selectedRuns:{...state.selectedRuns,[event.payload.responseSlotId]:event.payload.runId}};
     case 'run.delta': { const run = state.runs[event.payload.runId]; return run ? { ...base, runs: { ...state.runs, [run.id]: { ...run, text: run.text + event.payload.text } } } : base; }
     case 'run.reasoning.delta': { const run = state.runs[event.payload.runId]; return run ? { ...base, runs: { ...state.runs, [run.id]: { ...run, reasoning: (run.reasoning??'') + event.payload.text } } } : base; }
@@ -37,6 +37,8 @@ export function roomReducer(state: RoomState, event: RoomEvent): RoomState {
     case 'room.participant.updated':return{...base,participantUpdates:{...state.participantUpdates,[event.payload.persona.id]:event.payload}};
     case 'room.title.updated':return{...base,latestTitle:event.payload.title};
     case 'room.workflow_mode.updated':return{...base,workflowMode:event.payload.workflowMode};
+    case 'room.conversation_routing.updated':return{...base,conversationRoutingMode:event.payload.conversationRoutingMode};
+    case 'message.delivery.updated':return{...base,messages:state.messages.map(message=>message.id===event.payload.messageId?{...message,delivery:event.payload.delivery}:message)};
   }
   return base;
 }

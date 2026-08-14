@@ -43,9 +43,9 @@ export class RoomRepository {
   async list(includeDeleted = false): Promise<Room[]> {
     const rows = includeDeleted
       ? await this.database
-          .sql`SELECT r.id,r.title,r.created_at,r.deleted_at,r.workflow_mode,p.id project_id,p.name project_name,p.path project_path,COUNT(DISTINCT rp.persona_id)::int participant_count,(SELECT created_at FROM room_messages m WHERE m.room_id=r.id ORDER BY created_at DESC LIMIT 1) last_message_at,(SELECT text FROM room_messages m WHERE m.room_id=r.id ORDER BY created_at DESC LIMIT 1) last_message_text FROM rooms r LEFT JOIN local_projects p ON p.id=r.project_id LEFT JOIN room_participants rp ON rp.room_id=r.id GROUP BY r.id,p.id ORDER BY r.deleted_at NULLS FIRST,COALESCE((SELECT MAX(created_at) FROM room_messages m WHERE m.room_id=r.id),r.created_at) DESC`
+          .sql`SELECT r.id,r.title,r.created_at,r.deleted_at,r.workflow_mode,r.conversation_routing_mode,p.id project_id,p.name project_name,p.path project_path,COUNT(DISTINCT rp.persona_id)::int participant_count,(SELECT created_at FROM room_messages m WHERE m.room_id=r.id ORDER BY created_at DESC LIMIT 1) last_message_at,(SELECT text FROM room_messages m WHERE m.room_id=r.id ORDER BY created_at DESC LIMIT 1) last_message_text FROM rooms r LEFT JOIN local_projects p ON p.id=r.project_id LEFT JOIN room_participants rp ON rp.room_id=r.id GROUP BY r.id,p.id ORDER BY r.deleted_at NULLS FIRST,COALESCE((SELECT MAX(created_at) FROM room_messages m WHERE m.room_id=r.id),r.created_at) DESC`
       : await this.database
-          .sql`SELECT r.id,r.title,r.created_at,r.deleted_at,r.workflow_mode,p.id project_id,p.name project_name,p.path project_path,COUNT(DISTINCT rp.persona_id)::int participant_count,(SELECT created_at FROM room_messages m WHERE m.room_id=r.id ORDER BY created_at DESC LIMIT 1) last_message_at,(SELECT text FROM room_messages m WHERE m.room_id=r.id ORDER BY created_at DESC LIMIT 1) last_message_text FROM rooms r LEFT JOIN local_projects p ON p.id=r.project_id LEFT JOIN room_participants rp ON rp.room_id=r.id WHERE r.deleted_at IS NULL GROUP BY r.id,p.id ORDER BY COALESCE((SELECT MAX(created_at) FROM room_messages m WHERE m.room_id=r.id),r.created_at) DESC`;
+          .sql`SELECT r.id,r.title,r.created_at,r.deleted_at,r.workflow_mode,r.conversation_routing_mode,p.id project_id,p.name project_name,p.path project_path,COUNT(DISTINCT rp.persona_id)::int participant_count,(SELECT created_at FROM room_messages m WHERE m.room_id=r.id ORDER BY created_at DESC LIMIT 1) last_message_at,(SELECT text FROM room_messages m WHERE m.room_id=r.id ORDER BY created_at DESC LIMIT 1) last_message_text FROM rooms r LEFT JOIN local_projects p ON p.id=r.project_id LEFT JOIN room_participants rp ON rp.room_id=r.id WHERE r.deleted_at IS NULL GROUP BY r.id,p.id ORDER BY COALESCE((SELECT MAX(created_at) FROM room_messages m WHERE m.room_id=r.id),r.created_at) DESC`;
     return rows.map(toRoom);
   }
   async timeline(
@@ -58,7 +58,7 @@ export class RoomRepository {
       "read only isolation level repeatable read",
       async (tx) => {
         const room = (
-          await tx`SELECT event_sequence,workflow_mode,(SELECT COUNT(*)::int FROM room_messages WHERE room_id=${roomId})+(SELECT COUNT(*)::int FROM response_slots s JOIN room_messages m ON m.id=s.message_id WHERE m.room_id=${roomId}) message_count FROM rooms WHERE id=${roomId}`
+          await tx`SELECT event_sequence,workflow_mode,conversation_routing_mode,(SELECT COUNT(*)::int FROM room_messages WHERE room_id=${roomId})+(SELECT COUNT(*)::int FROM response_slots s JOIN room_messages m ON m.id=s.message_id WHERE m.room_id=${roomId}) message_count FROM rooms WHERE id=${roomId}`
         )[0];
         if (!room) return undefined;
         const cursor = before
@@ -68,8 +68,8 @@ export class RoomRepository {
           : undefined;
         if (before && !cursor) return undefined;
         const rows = cursor
-          ? await tx`SELECT id,text,created_at,targets,run_ids,author_profile_id,author_display_name,author_handle,addressed_to_all FROM room_messages WHERE room_id=${roomId} AND (created_at,id)<(${cursor.created_at as Date},${cursor.id as string}) ORDER BY created_at DESC,id DESC LIMIT ${limit + 1}`
-          : await tx`SELECT id,text,created_at,targets,run_ids,author_profile_id,author_display_name,author_handle,addressed_to_all FROM room_messages WHERE room_id=${roomId} ORDER BY created_at DESC,id DESC LIMIT ${limit + 1}`;
+          ? await tx`SELECT id,text,created_at,targets,run_ids,author_profile_id,author_display_name,author_handle,addressed_to_all,delivery_route,delivery_status,delivery_agent_handle,delivery_anchor_run_id,delivery_run_id,delivery_error FROM room_messages WHERE room_id=${roomId} AND (created_at,id)<(${cursor.created_at as Date},${cursor.id as string}) ORDER BY created_at DESC,id DESC LIMIT ${limit + 1}`
+          : await tx`SELECT id,text,created_at,targets,run_ids,author_profile_id,author_display_name,author_handle,addressed_to_all,delivery_route,delivery_status,delivery_agent_handle,delivery_anchor_run_id,delivery_run_id,delivery_error FROM room_messages WHERE room_id=${roomId} ORDER BY created_at DESC,id DESC LIMIT ${limit + 1}`;
         const hasMore = rows.length > limit,
           messageRows = rows.slice(0, limit).reverse(),
           messageIds = messageRows.map((row) => text(row.id)),
@@ -175,6 +175,7 @@ export class RoomRepository {
             ]),
           ),
           workflowMode: text(room.workflow_mode) as WorkflowMode,
+          conversationRoutingMode: text(room.conversation_routing_mode) as import('@agenvyl/contracts').ConversationRoutingMode,
           lastSequence: number(room.event_sequence),
           hasMore,
           nextCursor: hasMore ? messages[0]?.id : undefined,
@@ -246,6 +247,8 @@ export class RoomRepository {
       )
         return "not_found" as const;
       await tx`DELETE FROM room_events WHERE room_id=${id}`;
+      await tx`DELETE FROM pending_agent_follow_ups WHERE room_id=${id}`;
+      await tx`UPDATE room_messages SET delivery_anchor_run_id=NULL,delivery_run_id=NULL WHERE room_id=${id}`;
       await tx`UPDATE response_slots SET selected_run_id=NULL WHERE message_id IN(SELECT id FROM room_messages WHERE room_id=${id})`;
       await tx`UPDATE agent_runs SET response_slot_id=NULL WHERE room_id=${id}`;
       await tx`DELETE FROM agent_runs WHERE room_id=${id}`;
@@ -325,6 +328,14 @@ export class RoomRepository {
       if(!row)return undefined;
       const event=await this.events.appendInTransaction(tx,roomId,'room.workflow_mode.updated',{workflowMode},new Date().toISOString());
       return{workflowMode,event};
+    });
+  }
+  async updateConversationRoutingMode(roomId:string,mode:import('@agenvyl/contracts').ConversationRoutingMode){
+    return this.database.transaction(async tx=>{
+      const row=(await tx`UPDATE rooms SET conversation_routing_mode=${mode} WHERE id=${roomId} AND deleted_at IS NULL RETURNING conversation_routing_mode`)[0];
+      if(!row)return undefined;
+      const event=await this.events.appendInTransaction(tx,roomId,'room.conversation_routing.updated',{conversationRoutingMode:mode},new Date().toISOString());
+      return{mode,event};
     });
   }
 }

@@ -33,6 +33,15 @@ export class RunInterventionService{
     return this.continueCompleted(runId,input.intervention_id,text);
   }
 
+  async applyNow(runId:string,input:{intervention_id:string;text:string}){
+    const text=input.text.trim(),control=await this.dependencies.runs.control(runId),active=this.dependencies.activeRuns.get(runId);
+    if(!control||!active)throw new AppError('not_found',404,'Run not found');
+    if(active.terminal||control.status!=='streaming'||active.status!=='streaming')throw new AppError('run_not_intervenable',409,'Apply now is available only while the agent is actively responding');
+    const result=await this.redirectActive(active,input.intervention_id,text);
+    if(!result)throw new AppError('run_not_intervenable',409,'The response ended before the instruction could be applied');
+    return result;
+  }
+
   private async redirectActive(run:NonNullable<ReturnType<ActiveRunRegistry['get']>>,interventionId:string,text:string):Promise<CreateRunInterventionResult|undefined>{
     if(run.pendingRequests?.size)throw new AppError('run_waiting_for_user',409,'Resolve the pending agent request before adding an instruction');
     if(run.pendingIntervention){
