@@ -136,7 +136,10 @@ export const ReasoningBlock=memo(({text,harnessType,isStreaming=false}:Reasoning
     {open&&<div className={styles.reasoningPanel} data-streaming={isStreaming?'true':undefined} data-following={following?'true':undefined}>
       <div ref={bodyRef} className={styles.reasoningBody} role="region" aria-label="Reasoning output" tabIndex={0} onScroll={scroll} onPointerDown={cancelScrollAnimation} onTouchMove={interruptFollow} onWheel={event=>{cancelScrollAnimation();if(event.deltaY<0)interruptFollow()}} onKeyDown={event=>{cancelScrollAnimation();if(['ArrowUp','PageUp','Home'].includes(event.key))interruptFollow()}}>
         <ReasoningMarkdown text={renderedText} harnessType={harnessType}/>
-        {isStreaming&&following&&<span className={styles.reasoningTail} aria-hidden="true"/>}
+        {isStreaming&&following&&<span className={styles.reasoningTail} role="status" aria-label="Agent is thinking">
+          <span>Thinking</span>
+          <span className={styles.reasoningDots} aria-hidden="true"><span/><span/><span/></span>
+        </span>}
       </div>
       {!following&&<button className={styles.reasoningLatest} type="button" onClick={jumpToLatest}><ArrowDown aria-hidden="true"/><span>Jump to latest</span></button>}
     </div>}

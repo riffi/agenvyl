@@ -37,7 +37,8 @@ describe('ReasoningBlock', () => {
     const body=await openReasoning();
     expect(details.open).toBe(true);
     expect(details.dataset.streaming).toBe('true');
-    expect(body.querySelector('span[aria-hidden="true"]')).toBeTruthy();
+    expect(screen.getByRole('status',{name:'Agent is thinking'})).toBeTruthy();
+    expect(body.querySelectorAll('[aria-hidden="true"] > span')).toHaveLength(3);
   });
 
   it('does not load images embedded in reasoning markdown',async()=>{
