@@ -11,6 +11,7 @@ export type MessageDeliveryStatus = 'delivered' | 'queued' | 'dispatching' | 'co
 export type MessageDelivery = {
   route: MessageDeliveryRoute;
   status: MessageDeliveryStatus;
+  transitionReason?: 'workflow_mode_changed';
   agent?: AgentHandle;
   anchorRunId?: string;
   runId?: string;
@@ -300,7 +301,8 @@ export type ResolveRunRequest = RunRequestResolution;
 export type CreateRunInterventionRequest = { intervention_id:string;text:string };
 export type CreateRunInterventionResult =
   | {mode:'active_redirect';intervention_id:string;status:'pending'}
-  | {mode:'post_turn_continuation';intervention_id:string;run_id:string;continued_from_run_id:string};
+  | {mode:'post_turn_continuation';intervention_id:string;run_id:string;continued_from_run_id:string}
+  | {mode:'workflow_handoff';intervention_id:string;message_id:string;source_run_id:string;status:'queued'|'started';run_id?:string};
 export type ApprovalRequest = ResolveRunRequest;
 export type PersonaInput = Pick<Persona, 'handle' | 'name' | 'color' | 'group_id'> & {
   requested_model?: string | null;
@@ -410,7 +412,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 function isMessageDelivery(value:unknown):value is MessageDelivery{
   if(!isRecord(value)||!['room_context','agent_session','active_intervention'].includes(String(value.route))||!['delivered','queued','dispatching','continued','fallback','applied','failed'].includes(String(value.status)))return false;
-  return ['agent','anchorRunId','runId','error'].every(key=>value[key]===undefined||typeof value[key]==='string');
+  return ['agent','anchorRunId','runId','error'].every(key=>value[key]===undefined||typeof value[key]==='string')&&(value.transitionReason===undefined||value.transitionReason==='workflow_mode_changed');
 }
 function isTokenUsage(value:unknown):value is TokenUsage{if(!isRecord(value)||!tokenCount(value.inputTokens)||!tokenCount(value.outputTokens))return false;return['totalTokens','reasoningTokens','cacheReadTokens','cacheWriteTokens'].every(key=>value[key]===undefined||tokenCount(value[key]));}
 function isRunIntervention(value:unknown):value is RunIntervention{return isRecord(value)&&strings(value,'id','text','status')&&['pending','applied','failed'].includes(String(value.status))&&(value.precedingText===undefined||typeof value.precedingText==='string')&&(value.author===undefined||isHumanAuthorSnapshot(value.author))&&(value.createdAt===undefined||typeof value.createdAt==='string')&&(value.supersededText===undefined||typeof value.supersededText==='string')&&(value.error===undefined||typeof value.error==='string');}

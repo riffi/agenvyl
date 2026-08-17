@@ -34,6 +34,7 @@ describe('Codex connector adapter',()=>{
     expect(resumedClient.requests.find(request=>request.method==='thread/resume')).toEqual({method:'thread/resume',params:{threadId:'thread-1',model:'codex-model',cwd:'C:/workspace/room',sandbox:'workspace-write',approvalPolicy:'on-request'}});
     expect(resumedClient.requests.filter(request=>request.method==='turn/start').at(-1)).toMatchObject({params:{threadId:'thread-1',input:[{text:'Only summarize the API'}]}});
     await expect(adapter.startContinuation({...continued,executionId:'run-3',input:{...continued.input,systemPrompt:'Changed'}},handle)).rejects.toThrow('incompatible');
+    await expect(adapter.startContinuation({...continued,executionId:'run-plan',executionProfile:{...continued.executionProfile,workflowMode:'plan',planEnforcement:'native'}},handle)).rejects.toMatchObject({code:'continuation_incompatible'});
     resumedClient.emit({method:'turn/completed',params:{threadId:'thread-1',turn:{id:'turn-1',status:'completed'}}});expect(await secondIterator.next()).toMatchObject({value:{type:'execution.completed'}});
     await expect(adapter.releaseContinuation(handle,{instanceId:'local-codex'})).resolves.toBe('released');expect(resumedClient.requests.at(-1)).toEqual({method:'thread/delete',params:{threadId:'thread-1'}});
     await expect(adapter.releaseContinuation(handle,{instanceId:'other-codex'})).rejects.toMatchObject({code:'continuation_incompatible'});

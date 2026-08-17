@@ -8,8 +8,10 @@ import type {RoomEventService} from '../room-events/RoomEventService.js';
 import type {RunExecutor} from './RunExecutor.js';
 import {stableSessionId} from './stableSessionId.js';
 import type {RunContinuationCleanupService} from './RunContinuationCleanupService.js';
+import type {FollowUpRepository} from '../messages/FollowUpRepository.js';
+import {transitionExecutionProfile} from '../messages/workflowModeTransition.js';
 
-type Dependencies={runs:RunRepository;activeRuns:ActiveRunRegistry;gateway:RunGateway;harnesses:HarnessCatalogService;events:RoomEventService;executor:RunExecutor;cleanup:RunContinuationCleanupService};
+type Dependencies={runs:RunRepository;activeRuns:ActiveRunRegistry;gateway:RunGateway;harnesses:HarnessCatalogService;events:RoomEventService;executor:RunExecutor;cleanup:RunContinuationCleanupService;followUps?:FollowUpRepository;dispatchFollowUp?:(id:string)=>Promise<void>};
 
 export class RunInterventionService{
   constructor(private readonly dependencies:Dependencies){}
@@ -17,6 +19,8 @@ export class RunInterventionService{
   async create(runId:string,input:{intervention_id:string;text:string}):Promise<CreateRunInterventionResult>{
     const text=input.text.trim(),control=await this.dependencies.runs.control(runId);
     if(!control)throw new AppError('not_found',404,'Run not found');
+    const handoff=await this.workflowHandoff(control,input.intervention_id,text);
+    if(handoff)return handoff;
     const active=this.dependencies.activeRuns.get(runId);
     if(active&&!active.terminal&&control.status==='streaming'&&active.status==='streaming'){
       const redirected=await this.redirectActive(active,input.intervention_id,text);
@@ -40,6 +44,37 @@ export class RunInterventionService{
     const result=await this.redirectActive(active,input.intervention_id,text);
     if(!result)throw new AppError('run_not_intervenable',409,'The response ended before the instruction could be applied');
     return result;
+  }
+
+  cancelForHandoff(runId:string){return this.dependencies.executor.cancel(runId);}
+
+  private async workflowHandoff(control:NonNullable<Awaited<ReturnType<RunRepository['control']>>>,interventionId:string,text:string):Promise<CreateRunInterventionResult|undefined>{
+    if(!['streaming','completed'].includes(control.status)||!this.dependencies.followUps||!this.dependencies.dispatchFollowUp)return undefined;
+    const catalog=await this.dependencies.harnesses.catalog(),instance=catalog.instances.find(item=>item.id===control.harness_instance_id&&item.type===control.harness_type);
+    if(!instance||instance.status==='unavailable')throw new AppError('harness_unavailable',503,'Harness instance is unavailable',{harnessInstanceId:control.harness_instance_id,persona:control.persona_handle});
+    const anchor={runId:control.id,roomId:control.room_id,personaId:control.persona_id,personaHandle:control.persona_handle,status:control.status,harnessInstanceId:control.harness_instance_id,harnessType:control.harness_type};
+    const created=await this.dependencies.followUps.create({roomId:control.room_id,text,messageId:interventionId,anchor,deliveryKind:'after_response',requireTransition:true,resolveProfile:(source,workflowMode)=>transitionExecutionProfile(source,workflowMode,instance.controls)});
+    if(created.status==='mode_matches')return undefined;
+    if(created.status==='duplicate'){
+      if(created.message.delivery?.transitionReason!=='workflow_mode_changed'||created.message.delivery.anchorRunId!==control.id)throw new AppError('intervention_conflict',409,'Intervention ID is already used by another message');
+      const runId=created.message.delivery.runId;
+      return{mode:'workflow_handoff',intervention_id:interventionId,message_id:interventionId,source_run_id:control.id,status:runId?'started':'queued',...(runId?{run_id:runId}:{})};
+    }
+    if(created.status!=='created')throw new AppError(created.status,409,'Could not create workflow handoff');
+    this.dependencies.events.publishPersisted(control.room_id,created.event);
+    if(control.status==='streaming'){
+      const stopping=await this.dependencies.followUps.markDelivery(created.pendingId,'dispatching',{route:'agent_session'});
+      if(stopping)this.dependencies.events.publishPersisted(stopping.roomId,stopping.event);
+      try{await this.cancelForHandoff(control.id);}
+      catch(error){
+        const persisted=await this.dependencies.followUps.recordQueuedError(created.pendingId,error instanceof Error?error.message:String(error));
+        if(persisted)this.dependencies.events.publishPersisted(persisted.roomId,persisted.event);
+        throw error;
+      }
+      return{mode:'workflow_handoff',intervention_id:interventionId,message_id:interventionId,source_run_id:control.id,status:'queued'};
+    }
+    await this.dependencies.dispatchFollowUp(created.pendingId);
+    return{mode:'workflow_handoff',intervention_id:interventionId,message_id:interventionId,source_run_id:control.id,status:'started'};
   }
 
   private async redirectActive(run:NonNullable<ReturnType<ActiveRunRegistry['get']>>,interventionId:string,text:string):Promise<CreateRunInterventionResult|undefined>{

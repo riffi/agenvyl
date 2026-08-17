@@ -68,8 +68,8 @@ export class RoomRepository {
           : undefined;
         if (before && !cursor) return undefined;
         const rows = cursor
-          ? await tx`SELECT id,text,created_at,targets,run_ids,author_profile_id,author_display_name,author_handle,addressed_to_all,delivery_route,delivery_status,delivery_agent_handle,delivery_anchor_run_id,delivery_run_id,delivery_error FROM room_messages WHERE room_id=${roomId} AND (created_at,id)<(${cursor.created_at as Date},${cursor.id as string}) ORDER BY created_at DESC,id DESC LIMIT ${limit + 1}`
-          : await tx`SELECT id,text,created_at,targets,run_ids,author_profile_id,author_display_name,author_handle,addressed_to_all,delivery_route,delivery_status,delivery_agent_handle,delivery_anchor_run_id,delivery_run_id,delivery_error FROM room_messages WHERE room_id=${roomId} ORDER BY created_at DESC,id DESC LIMIT ${limit + 1}`;
+          ? await tx`SELECT id,text,created_at,targets,run_ids,author_profile_id,author_display_name,author_handle,addressed_to_all,delivery_route,delivery_status,delivery_transition_reason,delivery_agent_handle,delivery_anchor_run_id,delivery_run_id,delivery_error FROM room_messages WHERE room_id=${roomId} AND (created_at,id)<(${cursor.created_at as Date},${cursor.id as string}) ORDER BY created_at DESC,id DESC LIMIT ${limit + 1}`
+          : await tx`SELECT id,text,created_at,targets,run_ids,author_profile_id,author_display_name,author_handle,addressed_to_all,delivery_route,delivery_status,delivery_transition_reason,delivery_agent_handle,delivery_anchor_run_id,delivery_run_id,delivery_error FROM room_messages WHERE room_id=${roomId} ORDER BY created_at DESC,id DESC LIMIT ${limit + 1}`;
         const hasMore = rows.length > limit,
           messageRows = rows.slice(0, limit).reverse(),
           messageIds = messageRows.map((row) => text(row.id)),

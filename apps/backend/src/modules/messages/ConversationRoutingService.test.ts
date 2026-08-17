@@ -5,11 +5,11 @@ const persona={id:'persona-coder',handle:'coder',name:'Coder',color:'#64748b',re
 const author={profileId:'local-user',displayName:'User',handle:'user'};
 const message={id:'11111111-1111-4111-8111-111111111111',text:'Continue',createdAt:'2026-08-14T00:00:00.000Z',targets:['coder'],runIds:[],attachments:[],author,addressedToAll:false,delivery:{route:'agent_session' as const,status:'queued' as const,agent:'coder',anchorRunId:'run-1'}};
 
-function fixture(anchors=[{runId:'run-1',roomId:'room',personaId:'persona-coder',personaHandle:'coder',status:'streaming'}]){
+function fixture(anchors=[{runId:'run-1',roomId:'room',personaId:'persona-coder',personaHandle:'coder',status:'streaming',harnessInstanceId:'local-codex',harnessType:'codex'}]){
   const legacy={execute:vi.fn(async()=>({status:'created' as const,message:{...message,delivery:{route:'room_context' as const,status:'delivered' as const}}}))};
-  const followUps={roomMode:vi.fn(async()=> 'auto' as const),anchors:vi.fn(async()=>anchors),create:vi.fn(async()=>({status:'created' as const,pendingId:'pending-1',message,event:{id:'event-1',sequence:1,type:'message.created',payload:message},anchorStatus:anchors[0]?.status??'completed'})),claimApplyNow:vi.fn(),requeueApplyNow:vi.fn(),markDelivery:vi.fn(),get:vi.fn()};
-  const dispatcher={dispatchById:vi.fn(async()=>undefined)},events={publishPersisted:vi.fn()},interventions={applyNow:vi.fn()},messages={find:vi.fn(async():Promise<typeof message|undefined>=>undefined)};
-  const service=new ConversationRoutingService({legacy:legacy as never,followUps:followUps as never,dispatcher:dispatcher as never,personas:{list:vi.fn(async()=>[persona])} as never,events:events as never,interventions:interventions as never,messages:messages as never});
+  const followUps={roomMode:vi.fn(async()=> 'auto' as const),anchors:vi.fn(async()=>anchors),create:vi.fn(async()=>({status:'created' as const,pendingId:'pending-1',message,event:{id:'event-1',sequence:1,type:'message.created',payload:message},anchorStatus:anchors[0]?.status??'completed'})),claimApplyNow:vi.fn(),prepareHandoffCancellation:vi.fn(),recordQueuedError:vi.fn(),requeueApplyNow:vi.fn(),markDelivery:vi.fn(),get:vi.fn()};
+  const dispatcher={dispatchById:vi.fn(async()=>undefined)},events={publishPersisted:vi.fn()},interventions={applyNow:vi.fn(),cancelForHandoff:vi.fn()},messages={find:vi.fn(async():Promise<typeof message|undefined>=>undefined)},harnesses={catalog:vi.fn(async()=>({instances:[{id:'local-codex',type:'codex',status:'healthy',controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[],agentVariants:[]}}]}))};
+  const service=new ConversationRoutingService({legacy:legacy as never,followUps:followUps as never,dispatcher:dispatcher as never,personas:{list:vi.fn(async()=>[persona])} as never,events:events as never,interventions:interventions as never,messages:messages as never,harnesses:harnesses as never});
   return{service,legacy,followUps,dispatcher,interventions,messages};
 }
 
@@ -22,7 +22,7 @@ describe('ConversationRoutingService',()=>{
   });
 
   it('requires a target when Auto has multiple plausible agents',async()=>{
-    const{service}=fixture([{runId:'run-1',roomId:'room',personaId:'p1',personaHandle:'coder',status:'streaming'},{runId:'run-2',roomId:'room',personaId:'p2',personaHandle:'reviewer',status:'streaming'}]);
+    const{service}=fixture([{runId:'run-1',roomId:'room',personaId:'p1',personaHandle:'coder',status:'streaming',harnessInstanceId:'local-codex',harnessType:'codex'},{runId:'run-2',roomId:'room',personaId:'p2',personaHandle:'reviewer',status:'streaming',harnessInstanceId:'local-codex',harnessType:'codex'}]);
     await expect(service.execute({roomId:'room',body:{text:'Continue',message_id:message.id}})).rejects.toMatchObject({code:'routing_target_required',statusCode:409,message:'Auto found several possible recipients. Mention one agent or use @all'});
   });
 
@@ -49,6 +49,24 @@ describe('ConversationRoutingService',()=>{
     expect(followUps.markDelivery).toHaveBeenCalledWith('pending-1','applied',{route:'active_intervention',final:true});
     expect(dispatcher.dispatchById).not.toHaveBeenCalled();
     expect(result.status).toBe('created');
+  });
+
+  it('cancels the active run instead of applying a queued cross-mode message in place',async()=>{
+    const{service,followUps,interventions,messages}=fixture();
+    messages.find.mockResolvedValue(message);
+    followUps.claimApplyNow.mockResolvedValue({status:'claimed',item:{id:'pending-1',roomId:'room',messageId:message.id,personaId:'persona-coder',personaHandle:'coder',anchorRunId:'run-1',deliveryKind:'apply_now',status:'dispatching',text:'Continue',executionProfile:{workflowMode:'work'},transitionReason:'workflow_mode_changed'},event:{id:'event-claim',sequence:2,type:'message.delivery.updated',payload:{}},delivery:{route:'agent_session',status:'dispatching',transitionReason:'workflow_mode_changed'}});
+    await service.applyQueuedNow({roomId:'room',messageId:message.id});
+    expect(followUps.prepareHandoffCancellation).toHaveBeenCalledWith('pending-1');
+    expect(interventions.cancelForHandoff).toHaveBeenCalledWith('run-1');
+    expect(interventions.applyNow).not.toHaveBeenCalled();
+  });
+
+  it('starts a queued handoff without an error when the anchor just became terminal',async()=>{
+    const{service,followUps,dispatcher,messages}=fixture();
+    messages.find.mockResolvedValue(message);
+    followUps.claimApplyNow.mockResolvedValue({status:'anchor_not_streaming',pendingId:'pending-1',transitionReason:'workflow_mode_changed'});
+    await expect(service.applyQueuedNow({roomId:'room',messageId:message.id})).resolves.toMatchObject({status:'created'});
+    expect(dispatcher.dispatchById).toHaveBeenCalledWith('pending-1');
   });
 
   it('keeps the message queued when immediate application fails',async()=>{

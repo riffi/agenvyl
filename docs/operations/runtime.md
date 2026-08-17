@@ -65,6 +65,29 @@ materially different operation or target requires another confirmation. If the
 harness cannot pause for structured clarification, the agent must not perform
 the MCP operation.
 
+### Workflow-mode handoff
+
+`execution_profile` is an immutable run snapshot. Changing `rooms.workflow_mode`
+does not alter or stop an existing run. When a follow-up is created, Core locks
+the room and persists the target `execution_profile_snapshot` on the queued
+follow-up. Later room-mode changes cannot retarget that message.
+
+If the target workflow mode differs from the anchor run, Core never uses native
+continuation or active redirect. It waits for the anchor to become terminal,
+invalidates and releases its retained continuation handle, and creates a fresh
+run and response slot from canonical room history. The new profile retains the
+anchor's persona version, model, reasoning, permission, agent variant, and
+project snapshots; only `workflowMode` and derived `planEnforcement` change.
+Cancelled partial answers remain visible but are excluded from canonical prompt
+history because only selected completed responses are replayed.
+
+Auto queues a cross-mode follow-up behind an active run. Apply now and explicit
+Add instruction first persist the handoff, mark it dispatching, and request
+cancellation. The fresh run starts only from the durable terminal callback. If
+stop fails, the message returns to `queued` with its error and can be retried;
+Core does not start a parallel run. On restart, recovery uses the persisted
+execution-profile snapshot rather than the room's then-current mode.
+
 ## Restart recovery
 
 At startup Core reconciles persisted runs in `queued`, `streaming`, `stopping`,

@@ -6,10 +6,11 @@ import type {HarnessCatalogService} from '../connector/HarnessCatalogService.js'
 import type {MessageRepository} from './messages.repository.js';
 import type {FollowUpRepository,PendingFollowUp} from './FollowUpRepository.js';
 import {stableSessionId} from '../runs/stableSessionId.js';
+import type {RunContinuationCleanupService} from '../runs/RunContinuationCleanupService.js';
 
 export class FollowUpDispatcher{
   private readonly dispatching=new Set<string>();
-  constructor(private readonly dependencies:{followUps:FollowUpRepository;runs:RunRepository;messages:MessageRepository;events:RoomEventService;harnesses:HarnessCatalogService;activeRuns:ActiveRunRegistry;executor:RunExecutor}){}
+  constructor(private readonly dependencies:{followUps:FollowUpRepository;runs:RunRepository;messages:MessageRepository;events:RoomEventService;harnesses:HarnessCatalogService;activeRuns:ActiveRunRegistry;executor:RunExecutor;cleanup?:RunContinuationCleanupService}){}
 
   async recover(){for(const item of await this.dependencies.followUps.recoverable()){if(item.deliveryKind==='apply_now'){const reset=await this.dependencies.followUps.requeueApplyNow(item.id);if(reset)this.dependencies.events.publishPersisted(reset.roomId,reset.event);if(reset)await this.dispatch(reset.item);continue}await this.dispatch(item);}}
   async onRunTerminal(runId:string){for(const item of await this.dependencies.followUps.pendingForAnchor(runId))await this.dispatch(item);}
@@ -24,7 +25,7 @@ export class FollowUpDispatcher{
       const dispatching=await this.dependencies.followUps.markDelivery(item.id,'dispatching');
       if(dispatching)this.dependencies.events.publishPersisted(dispatching.roomId,dispatching.event);
       let native=false;
-      if(source.status==='completed'){
+      if(source.status==='completed'&&!item.transitionReason){
         try{
           const instance=await this.dependencies.harnesses.currentInstance(source.harness_instance_id,source.harness_type);
           const capability=instance?.status!=='unavailable'?instance?.postTurnContinuation:undefined;
@@ -49,6 +50,7 @@ export class FollowUpDispatcher{
   }
 
   private async startFallback(item:PendingFollowUp){
+    if(item.transitionReason==='workflow_mode_changed')await this.dependencies.cleanup?.invalidateRoom(item.roomId);
     const context=await this.dependencies.messages.conversationContextForRun(item.roomId,item.personaHandle,item.messageId);
     const created=await this.dependencies.followUps.createHistoryFallback(item.id,context.history);
     if(created.status!=='created')return;

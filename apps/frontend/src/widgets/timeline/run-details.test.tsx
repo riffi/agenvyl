@@ -36,6 +36,18 @@ describe('Timeline run details', () => {
     view.rerender(<Timeline state={{...state,runs:{'run-1':{...streamingRun,text:'',interventions:[{id:'instruction',text:'Change direction',status:'pending',precedingText:'Готово',author,createdAt:'2026-07-20T12:01:00.000Z'}]}}}} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()} harnessCatalog={catalog} addInstructionToRun={redirect}/>);
     expect(screen.queryByRole('button',{name:'Add instruction to Coder'})).toBeNull();expect(screen.getByText('Sending…')).toBeTruthy();
   });
+  it('offers a cross-mode instruction for a streaming run without native intervention support',()=>{
+    const redirect=vi.fn(),streamingRun:Run={...run,status:'streaming'},state={...initialState,workflowMode:'plan' as const,hydrated:true,messages:[{id:'message-1',text:'@coder work',createdAt:'2026-07-20T12:00:00.000Z',targets:['coder' as const],runIds:['run-1'],author,addressedToAll:false}],runs:{'run-1':streamingRun},runOrder:['run-1']};
+    render(<Timeline state={state} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()} addInstructionToRun={redirect}/>);
+    fireEvent.click(screen.getByRole('button',{name:'Add instruction to Coder'}));
+    expect(redirect).toHaveBeenCalledWith('run-1');
+  });
+  it('offers a cross-mode instruction for the selected completed run without native continuation support',()=>{
+    const redirect=vi.fn(),source:Run={...run,responseSlotId:'slot'},state={...initialState,workflowMode:'plan' as const,hydrated:true,messages:[{id:'message-1',text:'@coder work',createdAt:'2026-07-20T12:00:00.000Z',targets:['coder' as const],runIds:['run-1'],author,addressedToAll:false}],runs:{'run-1':source},runOrder:['run-1'],selectedRuns:{slot:'run-1'}};
+    render(<Timeline state={state} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()} addInstructionToRun={redirect}/>);
+    fireEvent.click(screen.getByRole('button',{name:'Add instruction to Coder'}));
+    expect(redirect).toHaveBeenCalledWith('run-1');
+  });
   it('renders post-turn chapters in one card and exposes an accessible continuation retry',async()=>{
     const retry=vi.fn(async()=>undefined),realGateway={...gateway,mode:'real' as const,retry},source:Run={...run,id:'source',harnessInstanceId:'local-codex',harnessType:'codex',responseSlotId:'slot',text:'Original answer'},child:Run={...source,id:'child',status:'failed',text:'Partial revision',continuedFromRunId:'source',continuationInstruction:'Focus on the API',continuationRetention:'provider_managed',error:'Provider failed'},message={id:'message-1',text:'@coder work',createdAt:'2026-07-20T12:00:00.000Z',targets:['coder' as const],runIds:['source','child'],author,addressedToAll:false},state={...initialState,hydrated:true,messages:[message],runs:{source,child},runOrder:['source','child'],selectedRuns:{slot:'source'}},catalog={connectorEpoch:'epoch',cache:{state:'fresh' as const,refreshedAt:'2026-07-20T00:00:00.000Z',expiresAt:'2026-07-20T01:00:00.000Z'},instances:[{id:'local-codex',type:'codex',status:'healthy' as const,capabilities:[],postTurnContinuation:{mode:'native_session' as const,durability:'connector_restart' as const,retention:'explicit_release' as const},models:[],controls:{nativeWorkflowModes:[],permissionProfiles:[],agentVariants:[]},catalogCache:{state:'fresh' as const,refreshedAt:'2026-07-20T00:00:00.000Z'}}]};
     const {container}=render(<Timeline state={state} personas={[persona]} select={vi.fn()} gateway={realGateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()} harnessCatalog={catalog}/>);
@@ -81,6 +93,13 @@ describe('Timeline run details', () => {
     expect(first.compareDocumentPosition(instruction)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(instruction.compareDocumentPosition(answer)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(instruction).getByRole('status').textContent).toBe('Applied now');
+  });
+
+  it('labels a delivered workflow handoff as a new session',()=>{
+    const handoffRun:Run={...run,id:'handoff-run',messageId:'handoff-message',executionProfile:{...run.executionProfile,workflowMode:'plan',planEnforcement:'native'}},message={id:'handoff-message',text:'Plan the refactor',createdAt:'2026-07-20T12:00:00.000Z',targets:['coder' as const],runIds:['handoff-run'],author,addressedToAll:false,delivery:{route:'room_context' as const,status:'fallback' as const,transitionReason:'workflow_mode_changed' as const,agent:'coder',anchorRunId:'source',runId:'handoff-run'}},state={...initialState,hydrated:true,messages:[message],runs:{'handoff-run':handoffRun},runOrder:['handoff-run']};
+    render(<Timeline state={state} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()}/>);
+    expect(screen.getByRole('status').textContent).toBe('New session · mode changed');
+    expect(screen.getByText('Готово')).toBeTruthy();
   });
 
   it('keeps failed and legacy instructions in the visible answer history',()=>{

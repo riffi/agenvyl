@@ -62,6 +62,19 @@ switch modes when you are ready for ordered implementation. The selected mode
 stays active for new messages until you switch it again; retry keeps the mode
 of the original run.
 
+Each response keeps the mode it started with. Switching the room between Plan
+and Work does not change or stop a response already in progress. Your next
+message snapshots the selected mode; switching again afterward does not change
+an already queued message.
+
+When that message targets a session created in the other mode, Agenvyl starts a
+new agent session with the room's completed conversation history. The message
+and answer use a separate timeline card labelled **New session · mode changed**.
+Auto waits for the current response to finish. **Switch now** or an explicit
+**Add instruction** stops the current response first; its partial answer remains
+visible, and the new session starts only after cancellation is confirmed. If
+stopping fails, the handoff remains queued with an error so you can retry it.
+
 Before using an MCP integration in Plan, an agent asks you to confirm a bounded
 set of operations, even when those operations only read data. The request names
 the integration, target, actions, and expected side effects. Confirming allows
@@ -101,6 +114,11 @@ The selected completed Codex or OpenCode response also offers **Add
 instruction** while its native continuation remains available. That action
 creates a linked run in the same timeline card and resumes the preserved native
 session without replaying the room conversation.
+
+If the room mode differs from that response's mode, **Add instruction** becomes
+a workflow handoff instead: it creates a normal message and a separate response
+card using the new mode. It never resumes the old native session across a
+Plan/Work boundary.
 
 ## Continue with files and builds
 

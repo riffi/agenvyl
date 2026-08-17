@@ -62,6 +62,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   updateConversationRouting=async()=>{},
   autoRoutingCandidates=[],
   pendingFollowUps=[],
+  pendingWorkflowModes={},
 }: ComposerProps,ref) {
   const [text, setText] = useState("");
   const ordinaryDraftRef=useRef('');
@@ -74,6 +75,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   const [mentionIndex,setMentionIndex]=useState(0);
   const [sending,setSending]=useState(false);
   const [modeSaving,setModeSaving]=useState(false);
+  const modeUpdateRef=useRef<Promise<unknown>|undefined>(undefined);
   const [modeError,setModeError]=useState<string>();
   const [sendError,setSendError]=useState<{message:string;messageId:string;text:string;targets:string[];attachmentVersionIds:string[];routing?:import('@agenvyl/contracts').MessageRouting} | undefined>();
   const [profileError,setProfileError]=useState<string>();
@@ -121,7 +123,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   useLayoutEffect(()=>{if(!mention||!matchMedia('(max-width: 767px)').matches)return;const position=()=>{const popover=mentionPopoverRef.current,editor=editorRef.current;if(!popover||!editor)return;popover.style.setProperty('--mention-bottom',`${Math.max(0,window.innerHeight-editor.getBoundingClientRect().top)}px`)};position();window.visualViewport?.addEventListener('resize',position);addEventListener('resize',position);return()=>{window.visualViewport?.removeEventListener('resize',position);removeEventListener('resize',position)}},[mention,text,targets.length]);
   const updateMention=(value:string,caret:number)=>setMention(activeMentionQuery(value,caret));
   const chooseMention=(handle:string)=>{if(!mention)return;const next=`${text.slice(0,mention.start)}@${handle} ${text.slice(mention.end)}`,caret=mention.start+handle.length+2;setText(next);setMention(undefined);requestAnimationFrame(()=>{editorRef.current?.focus();editorRef.current?.setSelectionRange(caret,caret)});};
-  const selectWorkflowMode=async(nextMode:WorkflowMode)=>{if(modeSaving||nextMode===workflowMode)return;setModeSaving(true);setModeError(undefined);try{await updateWorkflowMode(nextMode)}catch(error){setModeError(error instanceof Error?error.message:String(error))}finally{setModeSaving(false)}};
+  const selectWorkflowMode=async(nextMode:WorkflowMode)=>{if(modeSaving||nextMode===workflowMode)return;setModeSaving(true);setModeError(undefined);const update=Promise.resolve().then(()=>updateWorkflowMode(nextMode));modeUpdateRef.current=update;try{await update}catch(error){setModeError(error instanceof Error?error.message:String(error))}finally{if(modeUpdateRef.current===update)modeUpdateRef.current=undefined;setModeSaving(false)}};
   const selectConversationRouting=async(nextMode:import('@agenvyl/contracts').ConversationRoutingMode)=>{if(routeSaving||nextMode===conversationRoutingMode)return;setRouteSaving(true);setRouteError(undefined);try{await updateConversationRouting(nextMode)}catch(error){setRouteError(error instanceof Error?error.message:String(error))}finally{setRouteSaving(false)}};
   const visibleConversationRoutingMode=conversationRoutingMode==='agent_session'?'auto':conversationRoutingMode;
   const ambiguousAutoRouting=conversationRouting&&visibleConversationRoutingMode==='auto'&&targets.length===0&&autoRoutingCandidates.length>1;
@@ -130,6 +132,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   const workflowModeLabel=workflowMode==='plan'?'Plan':'Work',nextWorkflowMode:WorkflowMode=workflowMode==='plan'?'work':'plan',nextWorkflowModeLabel=nextWorkflowMode==='plan'?'Plan':'Work';
   const workflowModeTitle=workflowMode==='plan'?'Plan mode: project changes are blocked; MCP actions require confirmation. Switch to Work':`Work mode. Switch to ${nextWorkflowModeLabel}`;
   const send = async (retry=sendError) => {
+    try{await modeUpdateRef.current}catch{return}
     if(interventionTarget){
       const outgoing=text.trim();if(!outgoing||sending)return;
       if(interventionTarget.mode==='unavailable'){setInterventionError('This run can no longer accept instructions. Your instruction draft is still here.');return;}
@@ -184,7 +187,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
         </div>
       )}
       {active > 0 && <div className={styles['active-runs']}><span><i />{active} {active===1?'agent is responding':'agents are responding'}</span><Button size="sm" variant="danger" onClick={() => void gateway.cancel()}><Square /> Stop all</Button></div>}
-      {!interventionTarget&&conversationRouting&&pendingFollowUps.length>0&&<PendingFollowUps messages={pendingFollowUps} personas={personas} onApplyNow={messageId=>gateway.applyQueuedNow(messageId)}/>}
+      {!interventionTarget&&conversationRouting&&pendingFollowUps.length>0&&<PendingFollowUps messages={pendingFollowUps} personas={personas} workflowModes={pendingWorkflowModes} onApplyNow={messageId=>gateway.applyQueuedNow(messageId)}/>}
       {modeError&&<Alert className={styles['send-error']} tone="error">Could not change room mode: {modeError}</Alert>}
       {routeError&&<Alert className={styles['send-error']} tone="error">Could not change message route: {routeError}</Alert>}
       {!interventionTarget&&instructionOnlyTargets.length>0&&<Alert className={styles['plan-warning']} tone="warning">Instruction-only for {instructionOnlyTargets.map(item=>`@${item.handle}`).join(', ')}: this mode does not technically block writes to the external project.</Alert>}
@@ -260,7 +263,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
             size="sm"
             variant="primary"
             aria-label={interventionTarget?(sending?'Sending instruction':'Send instruction'):sending?'Sending message':showAutoRoutingGuidance?'Choose a recipient before sending':targets.length?`Send to ${targets.length} ${targets.length===1?'agent':'agents'}`:'Post to room'}
-            disabled={interventionTarget?!text.trim()||sending:(!text.trim()&&!attachments.some(item=>item.status==='ready')) || !catalogReady || sending || attachmentsBusy || showAutoRoutingGuidance}
+            disabled={interventionTarget?!text.trim()||sending||modeSaving:(!text.trim()&&!attachments.some(item=>item.status==='ready')) || !catalogReady || sending || modeSaving || attachmentsBusy || showAutoRoutingGuidance}
             onClick={()=>void send()}
             title={interventionTarget?'Send instruction':showAutoRoutingGuidance?'Choose a recipient before sending':targets.length?`Send to ${targets.length} ${targets.length===1?'agent':'agents'}`:'Post to room'}
           >
@@ -300,6 +303,7 @@ type ComposerProps={
   updateConversationRouting?:(mode:import('@agenvyl/contracts').ConversationRoutingMode)=>Promise<unknown>;
   autoRoutingCandidates?:string[];
   pendingFollowUps?:Message[];
+  pendingWorkflowModes?:Record<string,WorkflowMode>;
 };
 
 function formatBytes(value:number){if(value<1024)return`${value} B`;if(value<1024*1024)return`${(value/1024).toFixed(1)} KB`;return`${(value/1024/1024).toFixed(1)} MB`;}

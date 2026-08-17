@@ -76,6 +76,7 @@ describe('AntigravityConnectorAdapter', () => {
     const changedScope=fixture.adapter({env:{...environment,USERPROFILE:join(fixture.directory,'other-profile')}});
     await expect(changedScope.releaseContinuation(handle,{instanceId:'local-antigravity'})).rejects.toMatchObject({code:'continuation_incompatible'});
     await expect(resumedAdapter.startContinuation({...continued,executionId:'incompatible',modelId:'other-model'},handle)).rejects.toMatchObject({code:'continuation_incompatible'});
+    await expect(resumedAdapter.startContinuation({...continued,executionId:'plan-incompatible',executionProfile:{...continued.executionProfile,workflowMode:'plan',planEnforcement:'native'}},handle)).rejects.toMatchObject({code:'continuation_incompatible'});
   });
 
   it('forces Plan workflow to read-only even for an Accept edits persona',async()=>{

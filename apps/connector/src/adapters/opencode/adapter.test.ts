@@ -158,6 +158,7 @@ describe('OpenCodeConnectorAdapter', () => {
     await expect(adapter.releaseContinuation('broken',{instanceId:'local-opencode'})).rejects.toMatchObject({code:'continuation_unavailable'});
     const otherScope=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4097',client:fixtureClient()});
     await expect(otherScope.startContinuation(request,handle)).rejects.toMatchObject({code:'continuation_incompatible'});
+    await expect(adapter.startContinuation({...request,executionId:'execution-plan',executionProfile:{...request.executionProfile,workflowMode:'plan',planEnforcement:'native'}},handle)).rejects.toMatchObject({code:'continuation_incompatible'});
     const changedContextClient=fixtureClient();changedContextClient.sessionMessages=vi.fn().mockResolvedValue([{info:{role:'user',system:'changed'}}]);
     const changedContext=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client:changedContextClient});
     await expect(changedContext.startContinuation(request,handle)).rejects.toMatchObject({code:'continuation_incompatible'});

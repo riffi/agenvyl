@@ -24,6 +24,7 @@ describe('room event contract', () => {
     expect(isServerRoomEvent({id:'event-7',sequence:7,type:'room.workflow_mode.updated',payload:{workflowMode:'plan'}})).toBe(true);
     expect(isServerRoomEvent({id:'event-route',sequence:7,type:'room.conversation_routing.updated',payload:{conversationRoutingMode:'agent_session'}})).toBe(true);
     expect(isServerRoomEvent({id:'event-delivery',sequence:7,type:'message.delivery.updated',payload:{messageId:'message-1',delivery:{route:'agent_session',status:'queued',agent:'coder',anchorRunId:'run-1'}}})).toBe(true);
+    expect(isServerRoomEvent({id:'event-handoff',sequence:8,type:'message.delivery.updated',payload:{messageId:'message-2',delivery:{route:'room_context',status:'fallback',transitionReason:'workflow_mode_changed',agent:'coder',anchorRunId:'run-1',runId:'run-2'}}})).toBe(true);
     expect(isServerRoomEvent({id:'event-title',sequence:8,type:'room.title.updated',payload:{title:'Fix OAuth redirect'}})).toBe(true);
     expect(isServerRoomEvent({id:'event-8',sequence:8,type:'run.workspace.finalized',payload:{runId:'run-1',workspaceResult:{base_head:'base',result_head:'base',capture_status:'complete',errors:[],updated_at:'2026-08-10T10:00:00.000Z'}}})).toBe(true);
     expect(isServerRoomEvent({id:'event-9',sequence:9,type:'run.workspace.finalized',payload:{runId:'run-1',workspaceResult:{base_head:'base',result_head:'result',capture_status:'complete',errors:[],updated_at:'2026-08-10T10:00:00.000Z'},artifacts:[{version_id:'v1',path:'src/app.ts',name:'app.ts',size:10,mime_type:'text/typescript',url:'/v1',preview_url:'/v1/preview',change:'created',attribution:'exact'}],artifactSummary:{total_count:4,project_count:1,hidden_count:3},staticPreview:{version_id:'preview',path:'dist/index.html',name:'index.html',size:20,mime_type:'text/html',url:'/preview',preview_url:'/run-preview'},staticPreviewStatus:'ready'}})).toBe(true);
@@ -37,5 +38,6 @@ describe('room event contract', () => {
     expect(isServerRoomEvent({id:'event-3',sequence:3,type:'run.upstream_status',payload:{runId:'run-1',state:'retrying',reason:'raw_vendor_reason',retryable:true}})).toBe(false);
     expect(isServerRoomEvent({id:'event-request',sequence:4,type:'request.created',payload:{runId:'run-1',kind:'approval',prompt:'Allow command?'}})).toBe(false);
     expect(isServerRoomEvent({id:'event-title',sequence:5,type:'room.title.updated',payload:{title:42}})).toBe(false);
+    expect(isServerRoomEvent({id:'event-handoff',sequence:6,type:'message.delivery.updated',payload:{messageId:'message-1',delivery:{route:'agent_session',status:'queued',transitionReason:'unknown'}}})).toBe(false);
   });
 });

@@ -66,6 +66,15 @@ describe('Composer agent list',()=>{
     fireEvent.click(screen.getByRole('button',{name:'Apply queued message to Coder now'}));
     await waitFor(()=>expect(applyQueuedNow).toHaveBeenCalledWith('queued-message'));
   });
+
+  it('shows a cross-mode handoff and offers to switch the active agent now',async()=>{
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
+    const applyQueuedNow=vi.fn(async()=>undefined),localGateway={...gateway,applyQueuedNow},queuedMessage={...sentMessage,id:'queued-handoff',text:'Implement the agreed plan',targets:['coder'],delivery:{route:'agent_session' as const,status:'queued' as const,transitionReason:'workflow_mode_changed' as const,agent:'coder',anchorRunId:'run-1'}};
+    render(<Composer gateway={localGateway} active={1} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} conversationRouting pendingFollowUps={[queuedMessage]} pendingWorkflowModes={{'queued-handoff':'work'}}/>);
+    expect(screen.getByRole('status').textContent).toContain('New Work session queued');
+    fireEvent.click(screen.getByRole('button',{name:'Switch Coder to Work now'}));
+    await waitFor(()=>expect(applyQueuedNow).toHaveBeenCalledWith('queued-handoff'));
+  });
   it('preserves the normal draft while submitting a text-only instruction',async()=>{
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));const intervene=vi.fn(async()=>undefined),exitIntervention=vi.fn(),instructionGateway={...gateway,intervene};
     const props={gateway:instructionGateway,active:1,personas:[persona],harnessCatalog:catalog,catalogReady:true,onSent:vi.fn(async()=>undefined),openWorkspace:vi.fn(),roomId:'room',attachments:[],attachmentsBusy:false,openAttachmentPicker:vi.fn(),uploadFiles:vi.fn(),removeAttachment:vi.fn(),retryAttachment:vi.fn(),clearAttachments:vi.fn()};
@@ -118,6 +127,15 @@ describe('Composer agent list',()=>{
     fireEvent.click(planButton);
     await waitFor(()=>expect(updateWorkflowMode).toHaveBeenCalledWith('work'));
     expect(send).not.toHaveBeenCalled();
+  });
+
+  it('waits for a workflow mode update before sending on immediate Enter',async()=>{
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
+    let finish!:()=>void;const saving=new Promise<void>(resolve=>{finish=resolve}),updateWorkflowMode=vi.fn(()=>saving),send=vi.fn<RoomGateway['send']>().mockResolvedValue(sentMessage),localGateway={...gateway,send};
+    render(<Composer gateway={localGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} workflowMode="plan" updateWorkflowMode={updateWorkflowMode}/>);
+    const editor=screen.getByRole('textbox',{name:'Message'});fireEvent.change(editor,{target:{value:'Implement it'}});fireEvent.click(screen.getByRole('button',{name:'Plan mode. Switch to Work'}));fireEvent.keyDown(editor,{key:'Enter'});
+    expect(send).not.toHaveBeenCalled();finish();
+    await waitFor(()=>expect(send).toHaveBeenCalledWith('Implement it',[],expect.any(String),[],undefined));
   });
 
   it('keeps Plan active after sending to multiple responders',async()=>{

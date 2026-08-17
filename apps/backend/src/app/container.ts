@@ -43,10 +43,10 @@ export async function createAppContainer(config: AppConfig, fetchImplementation?
   const continuationCleanup=new RunContinuationCleanupService({runs,gateway:connectorRuns});
   let runInterventions:RunInterventionService,followUpDispatcher:FollowUpDispatcher;
   const runExecutor=new RunExecutor({ personas, runs, events, runGateway:connectorRuns, runEvents:connectorRuns, connectorExecution:connectorRuns,activeRuns,concurrency:config.runConcurrency,runTimeoutMs:config.runTimeoutMs,logger,roomWorkspace,messages,connector,continuationCleanup,postTurnFallback:(runId,input)=>runInterventions.create(runId,input),followUps:{onRunTerminal:runId=>followUpDispatcher.onRunTerminal(runId)} });
-  runInterventions=new RunInterventionService({runs,activeRuns,gateway:connectorRuns,harnesses:harnessCatalogService,events,executor:runExecutor,cleanup:continuationCleanup});
-  followUpDispatcher=new FollowUpDispatcher({followUps,runs,messages,events,harnesses:harnessCatalogService,activeRuns,executor:runExecutor});
+  runInterventions=new RunInterventionService({runs,activeRuns,gateway:connectorRuns,harnesses:harnessCatalogService,events,executor:runExecutor,cleanup:continuationCleanup,followUps,dispatchFollowUp:id=>followUpDispatcher.dispatchById(id)});
+  followUpDispatcher=new FollowUpDispatcher({followUps,runs,messages,events,harnesses:harnessCatalogService,activeRuns,executor:runExecutor,cleanup:continuationCleanup});
   const createMessageRound=new CreateMessageRound({personas,rooms,messages,events,harnesses:harnessCatalogService,activeRuns,runExecutor,roomWorkspace,continuationCleanup});
-  const conversationRoutingService=new ConversationRoutingService({legacy:createMessageRound,followUps,dispatcher:followUpDispatcher,personas,events,interventions:runInterventions,messages});
+  const conversationRoutingService=new ConversationRoutingService({legacy:createMessageRound,followUps,dispatcher:followUpDispatcher,personas,events,interventions:runInterventions,messages,harnesses:harnessCatalogService});
   await runExecutor.reconcilePersistedRuns();
   if(config.conversationRouting)await followUpDispatcher.recover();
   await continuationCleanup.reconcile();

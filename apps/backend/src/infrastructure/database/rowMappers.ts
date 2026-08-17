@@ -27,7 +27,7 @@ export function toRoom(row: DatabaseRow): Room {
 }
 
 export function toMessage(row: DatabaseRow,attachments:WorkspaceAttachment[]=[]): Message {
-  const delivery=row.delivery_route==null||row.delivery_status==null?undefined:{route:text(row.delivery_route) as MessageDelivery['route'],status:text(row.delivery_status) as MessageDelivery['status'],...(row.delivery_agent_handle==null?{}:{agent:text(row.delivery_agent_handle)}),...(row.delivery_anchor_run_id==null?{}:{anchorRunId:text(row.delivery_anchor_run_id)}),...(row.delivery_run_id==null?{}:{runId:text(row.delivery_run_id)}),...(row.delivery_error==null?{}:{error:text(row.delivery_error)})};
+  const delivery=row.delivery_route==null||row.delivery_status==null?undefined:{route:text(row.delivery_route) as MessageDelivery['route'],status:text(row.delivery_status) as MessageDelivery['status'],...(row.delivery_transition_reason==null?{}:{transitionReason:text(row.delivery_transition_reason) as NonNullable<MessageDelivery['transitionReason']>}),...(row.delivery_agent_handle==null?{}:{agent:text(row.delivery_agent_handle)}),...(row.delivery_anchor_run_id==null?{}:{anchorRunId:text(row.delivery_anchor_run_id)}),...(row.delivery_run_id==null?{}:{runId:text(row.delivery_run_id)}),...(row.delivery_error==null?{}:{error:text(row.delivery_error)})};
   return { id:text(row.id),text:text(row.text),createdAt:timestamp(row.created_at),targets:stringArray(row.targets),runIds:stringArray(row.run_ids),attachments,author:{profileId:text(row.author_profile_id),displayName:text(row.author_display_name),handle:text(row.author_handle)},addressedToAll:Boolean(row.addressed_to_all),...(delivery?{delivery}:{}) };
 }
 

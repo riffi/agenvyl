@@ -9,6 +9,7 @@ export const runInterventionBodySchema=objectSchema({intervention_id:{type:'stri
 export const runInterventionResponseSchema={oneOf:[
   objectSchema({mode:{type:'string',const:'active_redirect'},intervention_id:{type:'string',format:'uuid'},status:{type:'string',const:'pending'}},['mode','intervention_id','status']),
   objectSchema({mode:{type:'string',const:'post_turn_continuation'},intervention_id:{type:'string',format:'uuid'},run_id:{type:'string'},continued_from_run_id:{type:'string'}},['mode','intervention_id','run_id','continued_from_run_id']),
+  objectSchema({mode:{type:'string',const:'workflow_handoff'},intervention_id:{type:'string',format:'uuid'},message_id:{type:'string',format:'uuid'},source_run_id:{type:'string'},status:{type:'string',enum:['queued','started']},run_id:{type:'string'}},['mode','intervention_id','message_id','source_run_id','status']),
 ]} as const;
 export const participantParamsSchema = objectSchema(
   { roomId: { type: 'string' }, personaId: { type: 'string' } },
@@ -124,7 +125,7 @@ export const participantListResponseSchema={type:'array',items:roomPersonaRespon
 
 const humanAuthorSnapshotResponseSchema=objectSchema({profileId:{type:'string'},displayName:{type:'string'},handle:{type:'string'}},['profileId','displayName','handle']);
 export const messageResponseSchema=objectSchema({
-  id:{type:'string'},text:{type:'string'},createdAt:{type:'string'},targets:{type:'array',items:{type:'string'}},runIds:{type:'array',items:{type:'string'}},attachments:{type:'array'},author:humanAuthorSnapshotResponseSchema,addressedToAll:{type:'boolean'},delivery:objectSchema({route:{type:'string',enum:['room_context','agent_session','active_intervention']},status:{type:'string',enum:['delivered','queued','dispatching','continued','fallback','applied','failed']},agent:{type:'string'},anchorRunId:{type:'string'},runId:{type:'string'},error:{type:'string'}},['route','status']),
+  id:{type:'string'},text:{type:'string'},createdAt:{type:'string'},targets:{type:'array',items:{type:'string'}},runIds:{type:'array',items:{type:'string'}},attachments:{type:'array'},author:humanAuthorSnapshotResponseSchema,addressedToAll:{type:'boolean'},delivery:objectSchema({route:{type:'string',enum:['room_context','agent_session','active_intervention']},status:{type:'string',enum:['delivered','queued','dispatching','continued','fallback','applied','failed']},transitionReason:{type:'string',enum:['workflow_mode_changed']},agent:{type:'string'},anchorRunId:{type:'string'},runId:{type:'string'},error:{type:'string'}},['route','status']),
 },['id','text','createdAt','targets','runIds','attachments','author','addressedToAll']);
 
 const toolActivityResponseSchema=objectSchema({id:{type:'string'},name:{type:'string'},detail:{type:'string'},input:{type:'string'},status:{type:'string',enum:['started','progress','completed','failed','cancelled']}},['id','name','detail','status']);
