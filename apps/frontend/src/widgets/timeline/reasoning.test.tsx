@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import {afterEach, describe, expect, it,vi } from 'vitest';
 import { ReasoningBlock, UpstreamStatusNotice } from './Timeline';
 
-afterEach(()=>{cleanup();vi.useRealTimers()});
+afterEach(()=>{cleanup();vi.useRealTimers();vi.unstubAllGlobals()});
 
 const openReasoning=async()=>{
   fireEvent.click(screen.getByText('Reasoning').closest('summary')!);
@@ -34,9 +34,10 @@ describe('ReasoningBlock', () => {
     const {container}=render(<ReasoningBlock text="Waiting for a result" isStreaming />);
     const details=container.querySelector('details') as HTMLDetailsElement;
     expect(details.dataset.streaming).toBe('true');
-    await openReasoning();
+    const body=await openReasoning();
     expect(details.open).toBe(true);
     expect(details.dataset.streaming).toBe('true');
+    expect(body.querySelector('span[aria-hidden="true"]')).toBeTruthy();
   });
 
   it('does not load images embedded in reasoning markdown',async()=>{
@@ -99,7 +100,7 @@ describe('ReasoningBlock', () => {
     expect(screen.queryByText('Final reasoning')).toBeNull();
     fireEvent.click(screen.getByRole('button',{name:'Jump to latest'}));
     expect(screen.getByText('Final reasoning')).toBeTruthy();
-    expect(body.scrollTop).toBe(500);
+    expect(body.scrollTop).toBe(400);
     expect(screen.queryByRole('button',{name:'Jump to latest'})).toBeNull();
   });
 
@@ -113,8 +114,40 @@ describe('ReasoningBlock', () => {
     body.scrollTop=376;
     fireEvent.scroll(body);
     expect(screen.getByText('Current reasoning')).toBeTruthy();
-    expect(body.scrollTop).toBe(500);
+    expect(body.scrollTop).toBe(400);
     expect(screen.queryByRole('button',{name:'Jump to latest'})).toBeNull();
+  });
+
+  it('smoothly follows a new snapshot when motion is allowed',async()=>{
+    const frames:FrameRequestCallback[]=[];
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:true})));
+    vi.stubGlobal('requestAnimationFrame',vi.fn((callback:FrameRequestCallback)=>{frames.push(callback);return frames.length}));
+    vi.stubGlobal('cancelAnimationFrame',vi.fn());
+    const view=render(<ReasoningBlock text="Initial reasoning" isStreaming/>);
+    const body=await openReasoning();
+    setScrollMetrics(body,{height:500,clientHeight:100,top:400});
+    Object.defineProperty(body,'scrollHeight',{configurable:true,value:600});
+    view.rerender(<ReasoningBlock text="Final reasoning" isStreaming={false}/>);
+    expect(frames).toHaveLength(1);
+    const now=performance.now();
+    act(()=>frames.shift()!(now+75));
+    expect(body.scrollTop).toBeGreaterThan(400);
+    expect(body.scrollTop).toBeLessThan(500);
+    act(()=>frames.shift()!(now+200));
+    expect(body.scrollTop).toBe(500);
+  });
+
+  it('follows immediately when motion is not allowed',async()=>{
+    const requestFrame=vi.fn();
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
+    vi.stubGlobal('requestAnimationFrame',requestFrame);
+    const view=render(<ReasoningBlock text="Initial reasoning" isStreaming/>);
+    const body=await openReasoning();
+    setScrollMetrics(body,{height:500,clientHeight:100,top:400});
+    Object.defineProperty(body,'scrollHeight',{configurable:true,value:600});
+    view.rerender(<ReasoningBlock text="Final reasoning" isStreaming={false}/>);
+    expect(body.scrollTop).toBe(500);
+    expect(requestFrame).not.toHaveBeenCalled();
   });
 
   it('cancels pending work, then shows the latest snapshot and resumes follow when reopened',()=>{
