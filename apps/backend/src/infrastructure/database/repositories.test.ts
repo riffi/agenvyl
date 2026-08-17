@@ -721,6 +721,169 @@ describe("PostgreSQL repositories", () => {
     ]);
     await p.database.close();
   });
+  it("retries an intervened turn with only its applied instructions", async () => {
+    const p = await createRepositories(testDatabaseUrl("retry_interventions"));
+    const persona = (await p.personas.find("persona-architect"))!;
+    const round = await p.messages.createRound(
+        "demo-room",
+        "Build the scene",
+        [persona],
+        profiles([persona]),
+      ),
+      source = round.runs[0],
+      [{ created_at: sourceCreatedAt }] =
+        await p.database.sql`SELECT created_at FROM room_messages WHERE id=${round.message.id}`;
+    const addIntervention = async (
+      text: string,
+      status: "pending" | "applied" | "failed",
+      offset: number,
+    ) => {
+      const id = crypto.randomUUID(),
+        createdAt = new Date(
+          (sourceCreatedAt as Date).getTime() + offset,
+        ).toISOString();
+      await p.database.sql`INSERT INTO room_messages(id,room_id,text,targets,run_ids,created_at,author_profile_id,author_display_name,author_handle,addressed_to_all,delivery_route,delivery_status,delivery_agent_handle,delivery_anchor_run_id,delivery_updated_at) VALUES(${id},'demo-room',${text},${p.database.sql.json([persona.handle])},${p.database.sql.json([])},${createdAt},'local-user','User','user',false,'active_intervention',${status === "pending" ? "queued" : status},${persona.handle},${source.id},${createdAt})`;
+      const pendingEvent = await p.roomEvents.append("demo-room", "run.intervention.updated", {
+        runId: source.id,
+        intervention: {
+          id,
+          text,
+          status: "pending",
+          precedingText: "Previous partial answer",
+          author: {
+            profileId: "local-user",
+            displayName: "User",
+            handle: "user",
+          },
+          createdAt,
+        },
+      });
+      if (status !== "pending")
+        await p.roomEvents.append("demo-room", "run.intervention.updated", {
+          runId: source.id,
+          intervention: {
+            id,
+            text,
+            status,
+            ...(status === "failed" ? { error: "Rejected" } : {}),
+          },
+        });
+      return {
+        id,
+        createdAt: String(
+          (pendingEvent.payload as { intervention: { createdAt: string } })
+            .intervention.createdAt,
+        ),
+      };
+    };
+    const first = await addIntervention("Use a night sky", "applied", 1);
+    await addIntervention("Discard the scene", "failed", 2);
+    await addIntervention("Keep unresolved detail", "pending", 3);
+    const second = await addIntervention(
+      "Add a moon\nwith soft light",
+      "applied",
+      4,
+    );
+    await p.database.sql`UPDATE agent_runs SET status='failed' WHERE id=${source.id}`;
+
+    const retry = await p.runs.retry(source.id);
+    expect(retry).toMatchObject({ status: "created" });
+    if (retry.status !== "created") throw new Error("Expected retry");
+    expect(retry.text).toBe(
+      "Build the scene\n\nInstructions applied during the previous attempt and included in this retry from the start:\n1. Use a night sky\n2. Add a moon\n   with soft light",
+    );
+    expect(retry.events.map((event) => event.type)).toEqual([
+      "run.created",
+      "run.intervention.updated",
+      "run.intervention.updated",
+    ]);
+    expect(
+      retry.events.slice(1).map((event) => event.payload),
+    ).toEqual([
+      expect.objectContaining({
+        runId: retry.runId,
+        intervention: expect.objectContaining({
+          id: first.id,
+          text: "Use a night sky",
+          status: "applied",
+          origin: "retry_input",
+          author: {
+            profileId: "local-user",
+            displayName: "User",
+            handle: "user",
+          },
+          createdAt: first.createdAt,
+        }),
+      }),
+      expect.objectContaining({
+        runId: retry.runId,
+        intervention: expect.objectContaining({
+          id: second.id,
+          text: "Add a moon\nwith soft light",
+          status: "applied",
+          origin: "retry_input",
+          createdAt: second.createdAt,
+        }),
+      }),
+    ]);
+    expect(retry.events[1]?.payload.intervention).not.toHaveProperty(
+      "precedingText",
+    );
+    expect(
+      (await p.rooms.timeline("demo-room", undefined, 10))?.runs.find(
+        (run) => run.id === retry.runId,
+      )?.interventions,
+    ).toEqual([
+      expect.objectContaining({ id: first.id, origin: "retry_input" }),
+      expect.objectContaining({ id: second.id, origin: "retry_input" }),
+    ]);
+
+    await p.database.sql`UPDATE agent_runs SET status='failed' WHERE id=${retry.runId}`;
+    const repeated = await p.runs.retry(retry.runId);
+    expect(repeated).toMatchObject({ status: "created", text: retry.text });
+    if (repeated.status !== "created") throw new Error("Expected repeated retry");
+    expect(repeated.events).toHaveLength(3);
+    expect(repeated.text.match(/Use a night sky/g)).toHaveLength(1);
+    expect(repeated.text.match(/Add a moon/g)).toHaveLength(1);
+    await p.database.close();
+  });
+  it("treats an intervention from another response slot as conversation advancement", async () => {
+    const p = await createRepositories(testDatabaseUrl("retry_other_slot"));
+    const architect = (await p.personas.find("persona-architect"))!,
+      reviewer = (await p.personas.find("persona-reviewer"))!,
+      round = await p.messages.createRound(
+        "demo-room",
+        "Review the scene",
+        [architect, reviewer],
+        profiles([architect, reviewer]),
+      ),
+      architectRun = round.runs.find(
+        (run) => run.persona.handle === architect.handle,
+      )!,
+      reviewerRun = round.runs.find(
+        (run) => run.persona.handle === reviewer.handle,
+      )!,
+      [{ created_at: sourceCreatedAt }] =
+        await p.database.sql`SELECT created_at FROM room_messages WHERE id=${round.message.id}`,
+      interventionId = crypto.randomUUID(),
+      interventionCreatedAt = new Date(
+        (sourceCreatedAt as Date).getTime() + 1,
+      ).toISOString();
+    await p.database.sql`INSERT INTO room_messages(id,room_id,text,targets,run_ids,created_at,author_profile_id,author_display_name,author_handle,addressed_to_all,delivery_route,delivery_status,delivery_agent_handle,delivery_anchor_run_id,delivery_updated_at) VALUES(${interventionId},'demo-room','Focus on lighting',${p.database.sql.json([reviewer.handle])},${p.database.sql.json([])},${interventionCreatedAt},'local-user','User','user',false,'active_intervention','applied',${reviewer.handle},${reviewerRun.id},${interventionCreatedAt})`;
+    await p.roomEvents.append("demo-room", "run.intervention.updated", {
+      runId: reviewerRun.id,
+      intervention: {
+        id: interventionId,
+        text: "Focus on lighting",
+        status: "applied",
+      },
+    });
+    await p.database.sql`UPDATE agent_runs SET status='failed' WHERE id=${architectRun.id}`;
+    await expect(p.runs.retry(architectRun.id)).resolves.toEqual({
+      status: "conversation_advanced",
+    });
+    await p.database.close();
+  });
   it("keeps the original execution profile when retrying after a persona route change", async () => {
     const p = await createRepositories(testDatabaseUrl("agy_retry_snapshot"));
     const persona = (await p.personas.create({

@@ -230,7 +230,7 @@ describe("application services", () => {
             modelId: "sol",
             executionProfile: workProfile,
             history: [],
-            event: {},
+            events: [{ id: "created" }, { id: "included-in-retry" }],
             text: "again",
           }),
       };
@@ -252,6 +252,12 @@ describe("application services", () => {
         executionProfile: workProfile,
       }),
     );
+    expect(events.publishPersisted).toHaveBeenNthCalledWith(1, "room", {
+      id: "created",
+    });
+    expect(events.publishPersisted).toHaveBeenNthCalledWith(2, "room", {
+      id: "included-in-retry",
+    });
     expect(executor.start).toHaveBeenCalledWith("retry", "again");
   });
 });

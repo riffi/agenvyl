@@ -95,6 +95,28 @@ describe('Timeline run details', () => {
     expect(within(instruction).getByRole('status').textContent).toBe('Applied now');
   });
 
+  it('shows replayed instructions before the retry response without relabeling the original attempt',()=>{
+    const routedMessage={id:'instruction',text:'Use a night sky',createdAt:'2026-07-20T12:01:00.000Z',targets:['coder' as const],runIds:[],author,addressedToAll:false,delivery:{route:'active_intervention' as const,status:'applied' as const,agent:'coder',anchorRunId:'source'}};
+    const source:Run={...run,id:'source',responseSlotId:'slot',text:'Original answer',interventions:[{id:'instruction',text:routedMessage.text,status:'applied',precedingText:'Original partial answer',author,createdAt:routedMessage.createdAt}]};
+    const retry:Run={...run,id:'retry',responseSlotId:'slot',retryOfRunId:'source',attemptNumber:2,text:'Retried answer',interventions:[{id:'instruction',text:routedMessage.text,status:'applied',origin:'retry_input',author,createdAt:routedMessage.createdAt}]};
+    const message={id:'message-1',text:'Build the scene',createdAt:'2026-07-20T12:00:00.000Z',targets:['coder' as const],runIds:['source','retry'],author,addressedToAll:false};
+    const state={...initialState,hydrated:true,messages:[message,routedMessage],runs:{source,retry},runOrder:['source','retry'],selectedRuns:{slot:'retry'}};
+    const{container}=render(<Timeline state={state} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()}/>);
+
+    let instruction=screen.getByLabelText('Instruction from User'),answer=screen.getByText('Retried answer');
+    expect(container.querySelectorAll(`.${styles.round}`)).toHaveLength(1);
+    expect(instruction.compareDocumentPosition(answer)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(instruction).getByRole('status').textContent).toBe('Included in retry');
+    expect(screen.queryByText('Original partial answer')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button',{name:'Previous attempt'}));
+    instruction=screen.getByLabelText('Instruction from User');
+    answer=screen.getByText('Original answer');
+    expect(screen.getByText('Original partial answer').compareDocumentPosition(instruction)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(instruction.compareDocumentPosition(answer)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(instruction).getByRole('status').textContent).toBe('Applied now');
+  });
+
   it('labels a delivered workflow handoff as a new session',()=>{
     const handoffRun:Run={...run,id:'handoff-run',messageId:'handoff-message',executionProfile:{...run.executionProfile,workflowMode:'plan',planEnforcement:'native'}},message={id:'handoff-message',text:'Plan the refactor',createdAt:'2026-07-20T12:00:00.000Z',targets:['coder' as const],runIds:['handoff-run'],author,addressedToAll:false,delivery:{route:'room_context' as const,status:'fallback' as const,transitionReason:'workflow_mode_changed' as const,agent:'coder',anchorRunId:'source',runId:'handoff-run'}},state={...initialState,hydrated:true,messages:[message],runs:{'handoff-run':handoffRun},runOrder:['handoff-run']};
     render(<Timeline state={state} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()}/>);

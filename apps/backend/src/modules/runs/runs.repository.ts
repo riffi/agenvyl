@@ -3,7 +3,7 @@ import type { ConversationItem } from '../../types.js';
 import type { RoomEventRepository } from '../room-events/roomEvents.repository.js';
 import type { RunCheckpoint } from '../harness/harness.ports.js';
 import type { MappedRunEvent } from '../harness/harness.ports.js';
-import type {RunExecutionProfileSnapshot,RunProjectSnapshot} from '@agenvyl/contracts';
+import type {HumanAuthorSnapshot,RunExecutionProfileSnapshot,RunIntervention,RunProjectSnapshot} from '@agenvyl/contracts';
 
 const nonTerminalStatuses=['queued','streaming','finalizing','stopping','waiting_approval','waiting_clarification'];
 export type PersistedNonTerminalRun={id:string;messageId:string;roomId:string;personaVersionId:string;personaHandle:string;requestedModel:string;harnessInstanceId:string;harnessType:string;modelId:string;executionProfile:RunExecutionProfileSnapshot;recommendedProject?:RunProjectSnapshot;status:string;text:string;context:ConversationItem[];upstreamRunId:string|null;connectorExecutionId:string|null;connectorEpoch:string|null;connectorCursor:number|null;executionDeadlineAt:string|null};
@@ -118,20 +118,48 @@ export class RunRepository{
     if(!s)return{status:'not_found' as const};
     await tx`SELECT id FROM rooms WHERE id=${s.room_id as string} FOR UPDATE`;
     if(!['completed','failed','cancelled'].includes(s.status as string))return{status:'not_retryable' as const};
-    if((await tx`SELECT 1 FROM room_messages WHERE room_id=${s.room_id as string} AND created_at>${s.message_created_at as Date} LIMIT 1`).length)return{status:'conversation_advanced' as const};
     const slotId=(s.response_slot_id??s.id) as string;
+    const advanced=await tx`SELECT 1 FROM room_messages later WHERE later.room_id=${s.room_id as string} AND (later.created_at,later.id)>(${s.message_created_at as Date},${s.message_id as string}) AND NOT (
+      later.delivery_route='active_intervention'
+      AND EXISTS(SELECT 1 FROM agent_runs anchor WHERE anchor.id=later.delivery_anchor_run_id AND COALESCE(anchor.response_slot_id,anchor.id)=${slotId})
+      AND EXISTS(SELECT 1 FROM room_events event WHERE event.room_id=${s.room_id as string} AND event.type='run.intervention.updated' AND event.payload->>'runId'=later.delivery_anchor_run_id AND event.payload->'intervention'->>'id'=later.id)
+    ) LIMIT 1`;
+    if(advanced.length)return{status:'conversation_advanced' as const};
     if((await tx`SELECT 1 FROM agent_runs WHERE response_slot_id=${slotId} AND status=ANY(${nonTerminalStatuses}) LIMIT 1`).length)return{status:'retry_active' as const};
+    const interventionRows=await tx`SELECT sequence,payload FROM room_events WHERE room_id=${s.room_id as string} AND type='run.intervention.updated' AND payload->>'runId'=${id} ORDER BY sequence`;
+    const replayedInterventions=retryInputInterventions(interventionRows);
     const route={personaVersionId:s.persona_version_id as string,requestedModel:s.requested_model as string,harnessInstanceId:s.harness_instance_id as string,harnessType:s.harness_type as string,modelId:s.model_id as string,executionProfile:s.execution_profile as RunExecutionProfileSnapshot};
     const runId=crypto.randomUUID(),now=new Date().toISOString(),history=(s.context as ConversationItem[])??[];
     const[{count}]=await tx`SELECT COUNT(*)::int+1 count FROM agent_runs WHERE response_slot_id=${slotId}`;
     const snapshot=projectSnapshot(s).recommendedProject;
     await tx`INSERT INTO agent_runs(id,message_id,room_id,persona_id,persona_version_id,persona_handle,requested_model,harness_instance_id,harness_type,model_id,execution_profile,project_id_snapshot,project_name_snapshot,project_path_snapshot,project_availability,status,retry_of_run_id,response_slot_id,context,created_at,updated_at) VALUES(${runId},${s.message_id as string},${s.room_id as string},${s.persona_id as string},${route.personaVersionId},${s.persona_handle as string},${route.requestedModel},${route.harnessInstanceId},${route.harnessType},${route.modelId},${this.database.sql.json(route.executionProfile)},${snapshot?.id??null},${snapshot?.name??null},${snapshot?.path??null},${snapshot?.availability??null},'queued',${id},${slotId},${this.database.sql.json(history)},${now},${now})`;
     await tx`UPDATE room_messages SET run_ids=${this.database.sql.json([...(s.run_ids as string[]),runId])} WHERE id=${s.message_id as string}`;
-    const event=await this.events.appendInTransaction(tx,s.room_id as string,'run.created',{id:runId,messageId:s.message_id,agent:s.persona_handle,requestedModel:route.requestedModel,harnessInstanceId:route.harnessInstanceId,harnessType:route.harnessType,modelId:route.modelId,executionProfile:route.executionProfile,status:'queued',text:'',tools:[],interventions:[],artifacts:[],retryOfRunId:id,responseSlotId:slotId,attemptNumber:Number(count),...(snapshot?{recommendedProject:snapshot}:{})},now);
-    return{status:'created' as const,runId,roomId:s.room_id as string,messageId:s.message_id as string,responseSlotId:slotId,personaVersionId:route.personaVersionId,requestedModel:route.requestedModel,harnessInstanceId:route.harnessInstanceId,harnessType:route.harnessType,modelId:route.modelId,executionProfile:route.executionProfile,recommendedProject:snapshot,history,text:s.message_text as string,event};
+    const events=[await this.events.appendInTransaction(tx,s.room_id as string,'run.created',{id:runId,messageId:s.message_id,agent:s.persona_handle,requestedModel:route.requestedModel,harnessInstanceId:route.harnessInstanceId,harnessType:route.harnessType,modelId:route.modelId,executionProfile:route.executionProfile,status:'queued',text:'',tools:[],interventions:[],artifacts:[],retryOfRunId:id,responseSlotId:slotId,attemptNumber:Number(count),...(snapshot?{recommendedProject:snapshot}:{})},now)];
+    for(const intervention of replayedInterventions)events.push(await this.events.appendInTransaction(tx,s.room_id as string,'run.intervention.updated',{runId,intervention},now));
+    return{status:'created' as const,runId,roomId:s.room_id as string,messageId:s.message_id as string,responseSlotId:slotId,personaVersionId:route.personaVersionId,requestedModel:route.requestedModel,harnessInstanceId:route.harnessInstanceId,harnessType:route.harnessType,modelId:route.modelId,executionProfile:route.executionProfile,recommendedProject:snapshot,history,text:retryInput(String(s.message_text),replayedInterventions),events};
   });}
 }
 
 function isTerminal(status:unknown){return status==='completed'||status==='failed'||status==='cancelled';}
 function projectSnapshot(row:Record<string,unknown>){return row.project_id_snapshot?{recommendedProject:{id:String(row.project_id_snapshot),name:String(row.project_name_snapshot),path:String(row.project_path_snapshot),availability:String(row.project_availability) as RunProjectSnapshot['availability']}}:{};}
 function sameExecutionProfile(left:RunExecutionProfileSnapshot,right:unknown){const candidate=right as Partial<RunExecutionProfileSnapshot>|undefined;return Boolean(candidate&&left.workflowMode===candidate.workflowMode&&left.requestedReasoningEffort===candidate.requestedReasoningEffort&&left.reasoningEffort===candidate.reasoningEffort&&left.reasoningEffortFallback===candidate.reasoningEffortFallback&&left.reasoningEffortSource===candidate.reasoningEffortSource&&left.planEnforcement===candidate.planEnforcement&&left.permissionProfileId===candidate.permissionProfileId&&left.agentVariantId===candidate.agentVariantId);}
+
+type RetryInputIntervention=Pick<RunIntervention,'id'|'text'|'status'|'origin'|'author'|'createdAt'>;
+function retryInputInterventions(rows:Record<string,unknown>[]):RetryInputIntervention[]{
+  const states=new Map<string,{firstSequence:number;intervention:RunIntervention}>();
+  for(const row of rows){
+    const payload=row.payload as {intervention?:unknown}|undefined,raw=payload?.intervention;
+    if(!raw||typeof raw!=='object')continue;
+    const incoming=raw as Record<string,unknown>;
+    if(typeof incoming.id!=='string'||typeof incoming.text!=='string'||!['pending','applied','failed'].includes(String(incoming.status)))continue;
+    const prior=states.get(incoming.id),author=prior?.intervention.author??(isHumanAuthor(incoming.author)?incoming.author:undefined),createdAt=prior?.intervention.createdAt??(typeof incoming.createdAt==='string'?incoming.createdAt:undefined);
+    states.set(incoming.id,{firstSequence:prior?.firstSequence??Number(row.sequence),intervention:{...prior?.intervention,id:incoming.id,text:incoming.text,status:incoming.status as RunIntervention['status'],...(author?{author}:{}),...(createdAt?{createdAt}:{}),...(incoming.origin==='retry_input'?{origin:'retry_input' as const}:{})}});
+  }
+  return[...states.values()].filter(item=>item.intervention.status==='applied').sort((left,right)=>left.firstSequence-right.firstSequence).map(({intervention})=>({id:intervention.id,text:intervention.text,status:'applied',origin:'retry_input',...(intervention.author?{author:intervention.author}:{}),...(intervention.createdAt?{createdAt:intervention.createdAt}:{})}));
+}
+function retryInput(message:string,interventions:RetryInputIntervention[]){
+  if(!interventions.length)return message;
+  const instructions=interventions.map((item,index)=>item.text.split('\n').map((line,lineIndex)=>lineIndex?`   ${line}`:`${index+1}. ${line}`).join('\n')).join('\n');
+  return`${message}\n\nInstructions applied during the previous attempt and included in this retry from the start:\n${instructions}`;
+}
+function isHumanAuthor(value:unknown):value is HumanAuthorSnapshot{return Boolean(value&&typeof value==='object'&&typeof(value as HumanAuthorSnapshot).profileId==='string'&&typeof(value as HumanAuthorSnapshot).displayName==='string'&&typeof(value as HumanAuthorSnapshot).handle==='string');}

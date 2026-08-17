@@ -97,7 +97,17 @@ not rolled back.
 
 After a run reaches Completed, Failed, or Cancelled, use its retry action to
 create another attempt when retry is available. The original attempt remains
-in the timeline.
+in the timeline. If the attempted turn accepted one or more **Apply now**
+instructions, the retry includes every instruction that reached **Applied** in
+its starting input and shows it as **Included in retry**. Pending or failed
+instructions are not repeated.
+
+An embedded Apply now instruction is part of its response turn, so it does not
+by itself make that turn too old to retry. A later standalone room message or
+agent-session continuation still advances the conversation and prevents an
+in-place retry of the earlier turn. Retry continues from the current live
+Workspace; it does not restore the run's earlier Git state or undo file and
+external-system side effects.
 
 ## Add an instruction to a run
 

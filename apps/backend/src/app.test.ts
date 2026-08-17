@@ -1023,6 +1023,73 @@ describe("Runs API backend", () => {
     await app.close();
   });
 
+  it("submits applied interventions as part of the retry input", async () => {
+    const file = db(),
+      submitted: Array<Record<string, unknown>> = [],
+      app = await buildApp({
+        databaseUrl: file,
+        fetch: personaCatalogFetch(
+          [{ id: "sol", root: "model" }],
+          false,
+          submitted,
+        ),
+        distPath: "missing-dist",
+      }),
+      sql = connectTestDatabase(file),
+      now = new Date(),
+      messageId = crypto.randomUUID(),
+      runId = crypto.randomUUID(),
+      interventionId = crypto.randomUUID(),
+      interventionAt = new Date(now.getTime() + 1),
+      pendingEventId = crypto.randomUUID(),
+      appliedEventId = crypto.randomUUID();
+    await sql`INSERT INTO room_messages(id,room_id,text,targets,run_ids,created_at,author_profile_id,author_display_name,author_handle,addressed_to_all) VALUES(${messageId},'demo-room','Build the scene',${sql.json(["architect"])},${sql.json([runId])},${now},'local-user','User','user',false)`;
+    await sql`INSERT INTO response_slots(id,message_id,persona_id,created_at) VALUES(${runId},${messageId},'persona-architect',${now})`;
+    await sql`INSERT INTO agent_runs(id,message_id,room_id,persona_id,persona_version_id,persona_handle,requested_model,harness_instance_id,harness_type,model_id,execution_profile,status,response_slot_id,context,created_at,updated_at) VALUES(${runId},${messageId},'demo-room','persona-architect','persona-architect-v1','architect','sol','local-hermes','hermes','sol',${sql.json(workProfile)},'failed',${runId},${sql.json([])},${now},${now})`;
+    await sql`INSERT INTO room_messages(id,room_id,text,targets,run_ids,created_at,author_profile_id,author_display_name,author_handle,addressed_to_all,delivery_route,delivery_status,delivery_agent_handle,delivery_anchor_run_id,delivery_updated_at) VALUES(${interventionId},'demo-room','Use a night sky',${sql.json(["architect"])},${sql.json([])},${interventionAt},'local-user','User','user',false,'active_intervention','applied','architect',${runId},${interventionAt})`;
+    const [{ event_sequence: lastSequence }] =
+      await sql`UPDATE rooms SET event_sequence=event_sequence+2 WHERE id='demo-room' RETURNING event_sequence`;
+    const pendingPayload = {
+        runId,
+        intervention: {
+          id: interventionId,
+          text: "Use a night sky",
+          status: "pending",
+          precedingText: "Partial answer",
+          author: {
+            profileId: "local-user",
+            displayName: "User",
+            handle: "user",
+          },
+          createdAt: interventionAt.toISOString(),
+        },
+      },
+      appliedPayload = {
+        runId,
+        intervention: {
+          id: interventionId,
+          text: "Use a night sky",
+          status: "applied",
+        },
+      };
+    await sql`INSERT INTO room_events(id,event_id,room_id,sequence,type,payload,created_at) VALUES(${pendingEventId},${pendingEventId},'demo-room',${Number(lastSequence) - 1},'run.intervention.updated',${sql.json(pendingPayload)},${interventionAt}),(${appliedEventId},${appliedEventId},'demo-room',${Number(lastSequence)},'run.intervention.updated',${sql.json(appliedPayload)},${interventionAt})`;
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/v1/runs/${runId}/retry`,
+      payload: {},
+    });
+    expect(response.statusCode).toBe(202);
+    await waitForBackgroundWork(() => expect(submitted).toHaveLength(1));
+    expect(
+      (submitted[0]?.input as { message?: string } | undefined)?.message,
+    ).toBe(
+      "[Human user: User (@user); recipient: @architect]\nBuild the scene\n\nInstructions applied during the previous attempt and included in this retry from the start:\n1. Use a night sky",
+    );
+    await sql.end();
+    await app.close();
+  });
+
   it("rejects retry after the conversation has advanced", async () => {
     const file = db();
     const app = await buildApp({

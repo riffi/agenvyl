@@ -140,7 +140,7 @@ export class RoomRepository {
             const intervention=payload.intervention as Record<string,unknown>;
             if(typeof intervention.id==='string'&&typeof intervention.text==='string'&&['pending','applied','failed'].includes(String(intervention.status))){
               const prior=extra.interventions.get(intervention.id),precedingText=typeof intervention.precedingText==='string'?intervention.precedingText:typeof intervention.supersededText==='string'?intervention.supersededText:undefined,author=isHumanAuthor(intervention.author)?intervention.author:undefined;
-              extra.interventions.set(intervention.id,{...prior,id:intervention.id,text:intervention.text,status:intervention.status as RunIntervention['status'],...(precedingText!==undefined?{precedingText}:{}),...(author?{author}:{}),...(typeof intervention.createdAt==='string'?{createdAt:intervention.createdAt}:{}),...(typeof intervention.error==='string'?{error:intervention.error}:{}),...(typeof intervention.errorCode==='string'?{errorCode:intervention.errorCode}:{})});
+              extra.interventions.set(intervention.id,{...prior,id:intervention.id,text:intervention.text,status:intervention.status as RunIntervention['status'],...(intervention.origin==='retry_input'?{origin:'retry_input' as const}:{}),...(precedingText!==undefined?{precedingText}:{}),...(author?{author}:{}),...(typeof intervention.createdAt==='string'?{createdAt:intervention.createdAt}:{}),...(typeof intervention.error==='string'?{error:intervention.error}:{}),...(typeof intervention.errorCode==='string'?{errorCode:intervention.errorCode}:{})});
             }
           }
           extras.set(runId, extra);

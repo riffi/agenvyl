@@ -81,6 +81,7 @@ export type RunIntervention = {
   id: string;
   text: string;
   status: 'pending' | 'applied' | 'failed';
+  origin?: 'retry_input';
   precedingText?: string;
   author?: HumanAuthorSnapshot;
   createdAt?: string;

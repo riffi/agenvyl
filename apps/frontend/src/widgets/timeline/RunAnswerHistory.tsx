@@ -47,11 +47,13 @@ const InstructionMessage=({intervention,fallbackAuthor,appliedLabel}:{interventi
 };
 
 const AnswerChapter=({run,fallbackAuthor,personas,onMentionPersona,openWorkspace,hiddenInterventionIds,routedInterventionIds}:{run:Run;fallbackAuthor:HumanAuthorSnapshot;personas:Persona[];onMentionPersona:(handle:string)=>void;openWorkspace:(attachment:WorkspaceAttachment)=>void;hiddenInterventionIds:ReadonlySet<string>;routedInterventionIds:ReadonlySet<string>})=>{
-  const anchored=run.interventions.filter(intervention=>precedingText(intervention)!==undefined),legacyUnanchored=run.interventions.filter(intervention=>precedingText(intervention)===undefined);
+  const retryInput=run.interventions.filter(intervention=>intervention.origin==='retry_input');
+  const live=run.interventions.filter(intervention=>intervention.origin!=='retry_input'),anchored=live.filter(intervention=>precedingText(intervention)!==undefined),legacyUnanchored=live.filter(intervention=>precedingText(intervention)===undefined);
   const visibleLegacyUnanchored=legacyUnanchored.filter(intervention=>!hiddenInterventionIds.has(intervention.id));
   const currentText=run.text||(run.status==='queued'?'Waiting for an available slot…':run.status==='streaming'?'Analyzing…':'');
   const cursorAfterCurrent=run.status==='streaming'&&!visibleLegacyUnanchored.length;
   return <>
+    {retryInput.map(intervention=><InstructionMessage key={intervention.id} intervention={intervention} fallbackAuthor={fallbackAuthor} appliedLabel="Included in retry"/>)}
     {anchored.map(intervention=><div className={styles['answer-chapter']} key={intervention.id}>
       {precedingText(intervention)&&<div className={styles.answer}><MarkdownAnswer text={precedingText(intervention)!} run={run} personas={personas} onMentionPersona={onMentionPersona} openWorkspace={openWorkspace}/></div>}
       {!hiddenInterventionIds.has(intervention.id)&&<InstructionMessage intervention={intervention} fallbackAuthor={fallbackAuthor} appliedLabel={routedInterventionIds.has(intervention.id)?'Applied now':undefined}/>}
