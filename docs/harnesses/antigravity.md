@@ -57,10 +57,11 @@ The former connector-level `permissionMode` field is no longer supported. Remove
 it from existing `connector.yaml` files; the selected agent profile is persisted
 instead.
 
-AGY exposes a structured final result, which Agenvyl uses to capture the native
-conversation ID. The connector currently displays only the final text and
-terminal state; it does not invent partial output, tool activity, usage counters,
-or approval events.
+AGY exposes a documented `stream-json` print protocol. Agenvyl publishes
+assistant text and tool lifecycle as they arrive, records terminal usage, and
+uses the final result to capture the native conversation ID. Headless AGY does
+not expose an approval, clarification, or elicitation round-trip, so the
+connector does not synthesize those events.
 
 AGY manages retained conversations. When an Agenvyl continuation chain is no
 longer active, the connector stops referencing it but does not delete it from

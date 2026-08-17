@@ -42,6 +42,7 @@ describe('AntigravityConnectorAdapter', () => {
     const fixture = await fakeAgy();
     const capturePath = join(fixture.directory, 'capture.json');
     const adapter = fixture.adapter({ env: { FAKE_AGY_CAPTURE: capturePath, FAKE_AGY_OUTPUT: 'Final answer\n',FAKE_AGY_CONVERSATION_ID:'conversation-1' }, printTimeoutMs: 42_000 });
+    expect(adapter.capabilities).toEqual(['model_catalog','execution_profiles','text_streaming','tools','usage']);
     expect(adapter.postTurnContinuation).toEqual({mode:'native_session',durability:'connector_restart',retention:'provider_managed'});
     const request = execution(fixture.directory);
     const handle = await adapter.start(request);
@@ -53,7 +54,7 @@ describe('AntigravityConnectorAdapter', () => {
     const capture = JSON.parse(await readFile(capturePath, 'utf8')) as { args: string[]; cwd: string; disableAutoUpdate?: string };
     expect(capture.cwd).toBe(fixture.directory);
     expect(capture.disableAutoUpdate).toBe('true');
-    expect(capture.args.slice(0, 10)).toEqual(['--dangerously-skip-permissions', '--mode', 'accept-edits', '--model', 'Gemini 3.5 Flash (High)', '--print-timeout', '42000ms','--output-format','json', '--print']);
+    expect(capture.args.slice(0, 10)).toEqual(['--dangerously-skip-permissions', '--mode', 'accept-edits', '--model', 'Gemini 3.5 Flash (High)', '--print-timeout', '42000ms','--output-format','stream-json', '--print']);
     expect(capture.args[10]).toBe(antigravityPrompt(request));
     expect(JSON.parse(capture.args[10]!.split('\n')[1]!)).toMatchObject({ systemInstruction: 'Act as coder.', conversationHistory: [{ role: 'user', content: 'Earlier' }], currentUserMessage: 'Implement it.' });
   });
@@ -86,6 +87,27 @@ describe('AntigravityConnectorAdapter', () => {
     const handle=await adapter.start(request);await collect(adapter.events(handle));
     const capture=JSON.parse(await readFile(capturePath,'utf8')) as {args:string[]};
     expect(capture.args.slice(0,3)).toEqual(['--dangerously-skip-permissions','--mode','plan']);
+  });
+
+  it('streams assistant text, tool lifecycle and terminal usage before completion',async()=>{
+    const fixture=await fakeAgy();
+    const messages=[
+      {event:'init',conversation_id:'conversation-stream'},
+      {event:'step_update',step_update:{step_index:2,state:'ACTIVE',step_type:'agent_response',text_delta:'Working '}},
+      {event:'step_update',step_update:{step_index:3,state:'ACTIVE',step_type:'tool',tool_name:'run_command',tool_info:{name:'run_command',parameters:{CommandLine:'npm test'}}}},
+      {event:'step_update',step_update:{step_index:3,state:'DONE',step_type:'tool',tool_name:'run_command',tool_info:{name:'run_command',parameters:{CommandLine:'npm test'},output:'passed'}}},
+      {event:'step_update',step_update:{step_index:4,state:'DONE',step_type:'agent_response',text_delta:'done'}},
+      {event:'result',result:{conversation_id:'conversation-stream',status:'SUCCESS',response:'Working done',usage:{input_tokens:20,output_tokens:4,total_tokens:24,thinking_tokens:2,cache_read_tokens:8}}},
+    ];
+    const adapter=fixture.adapter({env:{FAKE_AGY_RAW_OUTPUT:messages.map(value=>JSON.stringify(value)).join('\n')}}),handle=await adapter.start(execution(fixture.directory));
+    await expect(collect(adapter.events(handle))).resolves.toEqual([
+      {type:'output.text.delta',payload:{text:'Working '}},
+      {type:'tool.started',payload:{toolId:'agy-step-3',name:'run_command',safeSummary:'run_command running',safeInput:'{"CommandLine":"npm test"}'}},
+      {type:'tool.completed',payload:{toolId:'agy-step-3',name:'run_command',safeSummary:'run_command completed',safeInput:'{"CommandLine":"npm test"}'}},
+      {type:'output.text.delta',payload:{text:'done'}},
+      {type:'usage.updated',payload:{usage:{inputTokens:20,outputTokens:4,totalTokens:24,reasoningTokens:2,cacheReadTokens:8}}},
+      {type:'execution.completed',payload:{continuation:{handle:expect.any(String)}}},
+    ]);
   });
 
   it('fails closed for unsupported modes, oversized prompts, empty output and non-zero exits', async () => {
@@ -132,6 +154,21 @@ describe('AntigravityConnectorAdapter', () => {
     await expect(eventsPromise).resolves.toEqual([{ type: 'execution.cancelled', payload: {} }]);
     await expect(adapter.inspect(handle)).rejects.toThrow('not active');
   });
+
+  it('streams active text and tool progress before cancellation',async()=>{
+    const fixture=await fakeAgy(),capturePath=join(fixture.directory,'stream-hang.json'),messages=[
+      {event:'step_update',step_update:{step_index:1,state:'ACTIVE',step_type:'agent_response',text_delta:'Still working'}},
+      {event:'step_update',step_update:{step_index:2,state:'ACTIVE',step_type:'tool',tool_name:'run_command',tool_info:{parameters:{CommandLine:'node server.mjs'}}}},
+    ];
+    const adapter=fixture.adapter({env:{FAKE_AGY_CAPTURE:capturePath,FAKE_AGY_BEHAVIOR:'stream-hang',FAKE_AGY_RAW_OUTPUT:messages.map(value=>JSON.stringify(value)).join('\n')},stopGraceMs:25}),handle=await adapter.start({...execution(fixture.directory),executionId:'stream-cancelled'});
+    await waitForFile(capturePath);const eventsPromise=collect(adapter.events(handle));
+    await new Promise(resolve=>setTimeout(resolve,25));await adapter.stop(handle);
+    await expect(eventsPromise).resolves.toEqual([
+      {type:'output.text.delta',payload:{text:'Still working'}},
+      {type:'tool.started',payload:{toolId:'agy-step-2',name:'run_command',safeSummary:'run_command running',safeInput:'{"CommandLine":"node server.mjs"}'}},
+      {type:'execution.cancelled',payload:{}},
+    ]);
+  });
 });
 
 function execution(workspace: string): AdapterStartExecutionRequest {
@@ -161,7 +198,8 @@ if(args[0]==='--version'){console.log(process.env.FAKE_AGY_VERSION||'1.1.8');pro
 if(args[0]==='models'){process.stdout.write(process.env.FAKE_AGY_MODELS||'Gemini 3.5 Flash (High)\\n');process.exit(0)}
 if(process.env.FAKE_AGY_CAPTURE){const captured=JSON.stringify({args,cwd:process.cwd(),disableAutoUpdate:process.env.AGY_CLI_DISABLE_AUTO_UPDATE,pid:process.pid});if(process.env.FAKE_AGY_CAPTURE_APPEND)appendFileSync(process.env.FAKE_AGY_CAPTURE,captured+'\\n');else writeFileSync(process.env.FAKE_AGY_CAPTURE,captured)}
 if(process.env.FAKE_AGY_BEHAVIOR==='hang'){process.on('SIGTERM',()=>{});setInterval(()=>{},1000)}
-else{if(process.env.FAKE_AGY_STDERR)process.stderr.write(process.env.FAKE_AGY_STDERR);const response=process.env.FAKE_AGY_OUTPUT??'ok',output=process.env.FAKE_AGY_RAW_OUTPUT??JSON.stringify({conversation_id:process.env.FAKE_AGY_CONVERSATION_ID||'conversation-1',status:process.env.FAKE_AGY_STATUS||'SUCCESS',response});process.stdout.write(output);process.exit(Number(process.env.FAKE_AGY_EXIT||0))}
+else if(process.env.FAKE_AGY_BEHAVIOR==='stream-hang'){process.stdout.write(process.env.FAKE_AGY_RAW_OUTPUT+'\\n');process.on('SIGTERM',()=>{});setInterval(()=>{},1000)}
+else{if(process.env.FAKE_AGY_STDERR)process.stderr.write(process.env.FAKE_AGY_STDERR);const response=process.env.FAKE_AGY_OUTPUT??'ok',conversationId=process.env.FAKE_AGY_CONVERSATION_ID||'conversation-1',output=process.env.FAKE_AGY_RAW_OUTPUT??[JSON.stringify({event:'init',conversation_id:conversationId}),JSON.stringify({event:'result',result:{conversation_id:conversationId,status:process.env.FAKE_AGY_STATUS||'SUCCESS',response}})].join('\\n');process.stdout.write(output);process.exit(Number(process.env.FAKE_AGY_EXIT||0))}
 `);
   return {
     directory,

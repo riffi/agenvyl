@@ -41,7 +41,7 @@ describe.sequential('Core -> Connector -> installed Antigravity live smoke', () 
 
     const catalog = await getJson(`${coreUrl}/api/v1/harnesses`) as HarnessCatalog;
     const instance = catalog.instances.find(item => item.id === 'local-antigravity');
-    expect(instance).toMatchObject({ type: 'antigravity', status: 'healthy', capabilities: ['model_catalog', 'execution_profiles'],postTurnContinuation:{mode:'native_session',durability:'connector_restart',retention:'provider_managed'} });
+    expect(instance).toMatchObject({ type: 'antigravity', status: 'healthy', capabilities: ['model_catalog','execution_profiles','text_streaming','tools','usage'],postTurnContinuation:{mode:'native_session',durability:'connector_restart',retention:'provider_managed'} });
     const modelId = process.env.AGENVYL_LIVE_AGY_MODEL?.trim() || instance?.models[0]?.id;
     if (!modelId) throw new Error('Antigravity live catalog returned no selectable model');
 

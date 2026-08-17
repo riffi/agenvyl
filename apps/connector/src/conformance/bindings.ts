@@ -7,7 +7,7 @@ export type ConformanceDisposition =
   | { status: 'waiver'; reason: string };
 export type ConformanceBinding = {
   harness: HarnessType;
-  family: 'app-server' | 'process' | 'http-sse' | 'server-sdk' | 'final-only-process';
+  family: 'app-server' | 'process' | 'http-sse' | 'server-sdk';
   cases: Record<ConformanceCaseId, ConformanceDisposition>;
 };
 
@@ -86,19 +86,19 @@ export const conformanceBindings: readonly ConformanceBinding[] = [
     },
   },
   {
-    harness: 'antigravity', family: 'final-only-process', cases: {
-      'first-visible-event': adapterTest('antigravity', 'runs one fresh process with exact routing, cwd, auto-update guard and deterministic flattened context'),
-      'coherent-text-exactly-one-terminal': adapterTest('antigravity', 'runs one fresh process with exact routing, cwd, auto-update guard and deterministic flattened context'),
-      'stop-during-text': waiver('Antigravity is a final-only print transport and exposes no active text stream.'),
-      'stop-during-tool': waiver('Antigravity is a final-only print transport and exposes no tool lifecycle.'),
+    harness: 'antigravity', family: 'process', cases: {
+      'first-visible-event': adapterTest('antigravity', 'streams assistant text, tool lifecycle and terminal usage before completion'),
+      'coherent-text-exactly-one-terminal': adapterTest('antigravity', 'streams assistant text, tool lifecycle and terminal usage before completion'),
+      'stop-during-text': adapterTest('antigravity', 'streams active text and tool progress before cancellation'),
+      'stop-during-tool': adapterTest('antigravity', 'streams active text and tool progress before cancellation'),
       'stop-with-pending-request': waiver('Antigravity print mode exposes no approval, clarification, or elicitation requests.'),
       'repeated-stop': adapterTest('antigravity', 'terminates a stubborn process tree and reports cancellation'),
       'transport-death-typed-failure': adapterTest('antigravity', 'fails closed for unsupported modes, oversized prompts, empty output and non-zero exits'),
-      'late-duplicate-terminal-ignored': adapterTest('antigravity', 'runs one fresh process with exact routing, cwd, auto-update guard and deterministic flattened context'),
+      'late-duplicate-terminal-ignored': adapterTest('antigravity', 'streams assistant text, tool lifecycle and terminal usage before completion'),
       'intervention-delivered': waiver('Antigravity print mode does not declare an intervention capability.'),
       'next-execution-after-stop': adapterTest('antigravity', 'terminates a stubborn process tree and reports cancellation'),
       'replay-deduplicated': waiver('Antigravity resumes its native conversation without adapter replay; durable event replay is owned by ExecutionRegistry.'),
-      'stable-tool-identity': waiver('Antigravity print mode exposes no tool lifecycle.'),
+      'stable-tool-identity': adapterTest('antigravity', 'streams assistant text, tool lifecycle and terminal usage before completion'),
     },
   },
 ] as const;

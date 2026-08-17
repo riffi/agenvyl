@@ -264,11 +264,12 @@ Same-epoch Core restarts can inspect an execution and resume from the last
 durable Connector cursor. Adapter diagnostics, tool summaries, and request text
 pass through common redaction and size limits before persistence or transport.
 
-AGY has no documented structured event or approval protocol, so its adapter
-publishes final text and terminal state only. OpenCode supports multi-select
-questions and validates external-directory permission requests against its
-instance allowlist; malformed or unsupported payloads fail closed. Other
-adapter-specific limits are documented in the
+AGY publishes assistant text, tool lifecycle, usage, and its terminal result
+through the documented `stream-json` print protocol. It still has no headless
+approval, clarification, or elicitation round-trip. OpenCode supports
+multi-select questions and validates external-directory permission requests
+against its instance allowlist; malformed or unsupported payloads fail closed.
+Other adapter-specific limits are documented in the
 [harness overview](../harnesses/README.md).
 
 Cursor CLI publishes assistant text and tool activity from `stream-json`.

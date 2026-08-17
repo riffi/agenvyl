@@ -7,6 +7,7 @@ import {experimentalTailV1ConversationHistory} from '../../conversation-history.
 import { commandInvocation, resolveCommand } from '../../discovery.js';
 import { redactConnectorText } from '../../safety.js';
 import {antigravityContinuationConfiguration,antigravityStorageScopeHash,encodeAntigravityContinuationHandle,parseAntigravityContinuationHandle} from './native-continuation.js';
+import {AntigravityNdjsonDecoder,AntigravityProtocolError,antigravityResult,antigravityText,antigravityTool,type AntigravityMessage,type AntigravityResult} from './protocol.js';
 
 const minimumVersion = [1, 1, 8] as const;
 
@@ -34,14 +35,18 @@ type ProcessResult = {
 type ActiveExecution = {
   child: RunningChild;
   completion: Promise<ProcessResult>;
+  queue:EventQueue;
   status: ExecutionStatus;
   stopRequested: boolean;
+  terminal:boolean;
+  sawMessage:boolean;
+  streamedText:string;
+  tools:Map<string,string>;
+  result?:AntigravityResult;
   continuation:{instanceId:string;directory:string;configurationHash:string;expectedConversationId?:string};
 };
 
 type AntigravityCatalog = { models: Array<{ id: string; label: string }>; controls:{nativeWorkflowModes:Array<'plan'|'work'>;permissionProfiles:Array<{id:string;label:string}>;agentVariants:[]} };
-type AntigravityPrintResult={conversationId:string;status:string;response:string};
-
 const parseAntigravityModel = (value:string) => {
   const [id,label] = value.trim().split(/\t+/,2);
   if(!id)return null;
@@ -50,7 +55,7 @@ const parseAntigravityModel = (value:string) => {
 
 export class AntigravityConnectorAdapter implements ConnectorAdapter {
   readonly type = 'antigravity';
-  readonly capabilities: ConnectorAdapter['capabilities'] = ['model_catalog', 'execution_profiles'];
+  readonly capabilities: ConnectorAdapter['capabilities'] = ['model_catalog', 'execution_profiles','text_streaming','tools','usage'];
   readonly postTurnContinuation={mode:'native_session',durability:'connector_restart',retention:'provider_managed'} as const;
   private readonly command: string;
   private readonly commandArgsPrefix: string[];
@@ -126,7 +131,7 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
       '--mode', mode,
       '--model', request.modelId,
       '--print-timeout', `${this.printTimeoutMs}ms`,
-      '--output-format', 'json',
+      '--output-format', 'stream-json',
       ...(continuation?['--conversation',continuation.conversationId]:[]),
     ];
     const fits = (prompt:string) => Buffer.byteLength(prompt, 'utf8') <= this.maxPromptBytes
@@ -134,17 +139,22 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
     const prompt=continuation?request.input.message:boundedAntigravityPrompt(request,fits);
     if(continuation&&!fits(prompt))throw new Error('Antigravity current request exceeds the configured CLI argv boundary');
     const child = await this.spawnAgy([...fixedArgs, '--print', prompt], directory, executable);
+    const queue=new EventQueue();
     const active: ActiveExecution = {
       child,
-      completion: collectProcess(child, this.maxOutputBytes),
+      completion:Promise.resolve(emptyProcessResult),
+      queue,
       status: 'running',
       stopRequested: false,
+      terminal:false,
+      sawMessage:false,
+      streamedText:'',
+      tools:new Map(),
       continuation:{instanceId:request.harnessInstanceId,directory,configurationHash,...(continuation?{expectedConversationId:continuation.conversationId}:{})},
     };
+    active.completion=collectStreamProcess(child,this.maxOutputBytes,message=>this.message(active,message));
     this.executions.set(request.executionId, active);
-    void active.completion.then(result => {
-      active.status = active.stopRequested ? 'cancelled' : processSucceeded(result) ? 'completed' : 'failed';
-    });
+    void active.completion.then(result=>this.exit(active,result));
     return { upstreamId: request.executionId };
   }
 
@@ -155,39 +165,8 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
 
   async *events(execution: AdapterExecution): AsyncIterable<AdapterExecutionEvent> {
     const active = this.require(execution.upstreamId);
-    const result = await active.completion;
-    this.executions.delete(execution.upstreamId);
-    if (active.stopRequested) {
-      yield { type: 'execution.cancelled', payload: {} };
-      return;
-    }
-    if (result.outputTooLarge) {
-      yield failure('agy_output_too_large', 'Antigravity output exceeded the Connector limit');
-      return;
-    }
-    if (result.error) {
-      yield failure('agy_spawn_failed', result.error.message || 'Unable to start Antigravity CLI');
-      return;
-    }
-    if (result.code !== 0) {
-      const detail = redactConnectorText(result.stderr, 500);
-      yield failure('agy_execution_failed', detail || `Antigravity CLI exited with code ${result.code ?? 'unknown'}`);
-      return;
-    }
-    const output=result.stdout.trim();
-    if(!output){
-      yield failure('agy_empty_output', 'Antigravity CLI completed without a response');
-      return;
-    }
-    const parsed=parseAntigravityPrintResult(output);
-    if(!parsed){yield failure('agy_invalid_output','Antigravity CLI returned invalid structured output');return;}
-    if(parsed.status!=='SUCCESS'){yield failure('agy_execution_failed',redactConnectorText(parsed.response,500)||`Antigravity CLI returned ${parsed.status}`);return;}
-    if(active.continuation.expectedConversationId&&parsed.conversationId!==active.continuation.expectedConversationId){yield failure('continuation_incompatible','Antigravity resumed a different conversation');return;}
-    const response=parsed.response.trim();
-    if(!response){yield failure('agy_empty_output','Antigravity CLI completed without a response');return;}
-    const continuationHandle=encodeAntigravityContinuationHandle({v:1,harness:'antigravity',instanceId:active.continuation.instanceId,conversationId:parsed.conversationId,directory:active.continuation.directory,storageScopeHash:this.storageScopeHash,configurationHash:active.continuation.configurationHash});
-    yield { type: 'output.text.delta', payload: { text: response } };
-    yield { type: 'execution.completed', payload: {continuation:{handle:continuationHandle}} };
+    try{yield*active.queue;}
+    finally{if(active.terminal&&this.executions.get(execution.upstreamId)===active)this.executions.delete(execution.upstreamId);}
   }
 
   async stop(execution: AdapterExecution): Promise<void> {
@@ -201,7 +180,44 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
       signalProcessGroup(active.child, 'SIGKILL');
       await active.completion;
     }
-    active.status = 'cancelled';
+  }
+
+  private message(active:ActiveExecution,message:AntigravityMessage){
+    if(active.terminal)return;
+    active.sawMessage=true;
+    const text=antigravityText(message);
+    if(text){active.streamedText+=text;active.queue.push({type:'output.text.delta',payload:{text}});}
+    const tool=antigravityTool(message);
+    if(tool){
+      const seen=active.tools.has(tool.id),name=tool.name??active.tools.get(tool.id)??'Antigravity tool';active.tools.set(tool.id,name);
+      const type=tool.state==='failed'?'tool.failed':tool.state==='completed'?'tool.completed':seen?'tool.updated':'tool.started';
+      active.queue.push({type,payload:{toolId:tool.id,name,safeSummary:`${name} ${tool.state==='failed'?'failed':tool.state==='completed'?'completed':'running'}`,...(tool.parameters===undefined?{}:{safeInput:safeJson(tool.parameters)})}});
+    }
+    const result=antigravityResult(message);if(result)active.result=result;
+  }
+
+  private exit(active:ActiveExecution,result:ProcessResult){
+    if(active.terminal)return;
+    if(active.stopRequested){this.finish(active,{type:'execution.cancelled',payload:{}});return;}
+    if(result.error instanceof AntigravityProtocolError){this.finish(active,failure(result.error.code,result.error.message));return;}
+    if(result.outputTooLarge){this.finish(active,failure('agy_output_too_large','Antigravity output exceeded the Connector limit'));return;}
+    if(result.error){this.finish(active,failure('agy_spawn_failed',result.error.message||'Unable to start Antigravity CLI'));return;}
+    if(result.code!==0){const detail=redactConnectorText(result.stderr,500);this.finish(active,failure('agy_execution_failed',detail||`Antigravity CLI exited with code ${result.code??'unknown'}`));return;}
+    const parsed=active.result;
+    if(!parsed){this.finish(active,failure(active.sawMessage?'agy_invalid_output':'agy_empty_output',active.sawMessage?'Antigravity CLI exited without a terminal result event':'Antigravity CLI completed without a response'));return;}
+    if(parsed.status!=='SUCCESS'){this.finish(active,failure('agy_execution_failed',redactConnectorText(parsed.error||parsed.response,500)||`Antigravity CLI returned ${parsed.status}`));return;}
+    if(active.continuation.expectedConversationId&&parsed.conversationId!==active.continuation.expectedConversationId){this.finish(active,failure('continuation_incompatible','Antigravity resumed a different conversation'));return;}
+    const response=parsed.response.trim();
+    if(!active.streamedText&&!response){this.finish(active,failure('agy_empty_output','Antigravity CLI completed without a response'));return;}
+    if(!active.streamedText&&response)active.queue.push({type:'output.text.delta',payload:{text:response}});
+    else if(parsed.response.startsWith(active.streamedText)){const remainder=parsed.response.slice(active.streamedText.length);if(remainder)active.queue.push({type:'output.text.delta',payload:{text:remainder}});}
+    if(parsed.usage)active.queue.push({type:'usage.updated',payload:{usage:parsed.usage}});
+    const handle=encodeAntigravityContinuationHandle({v:1,harness:'antigravity',instanceId:active.continuation.instanceId,conversationId:parsed.conversationId,directory:active.continuation.directory,storageScopeHash:this.storageScopeHash,configurationHash:active.continuation.configurationHash});
+    this.finish(active,{type:'execution.completed',payload:{continuation:{handle}}});
+  }
+
+  private finish(active:ActiveExecution,event:AdapterExecutionEvent){
+    if(active.terminal)return;active.terminal=true;active.status=event.type==='execution.completed'?'completed':event.type==='execution.cancelled'?'cancelled':'failed';active.queue.push(event);active.queue.end();
   }
 
   private async runProbe(args: string[]) {
@@ -309,6 +325,31 @@ function windowsArgumentLength(value:string){
 }
 
 type RunningChild = ChildProcessByStdio<null, Readable, Readable>;
+const emptyProcessResult:ProcessResult={code:null,signal:null,stdout:'',stderr:'',outputTooLarge:false};
+
+function collectStreamProcess(child:RunningChild,maxOutputBytes:number,onMessage:(message:AntigravityMessage)=>void):Promise<ProcessResult>{
+  return new Promise(resolve=>{
+    const decoder=new AntigravityNdjsonDecoder(undefined,maxOutputBytes),stderr:Buffer[]=[];
+    let stderrBytes=0,settled=false,spawnError:Error|undefined,protocolError:Error|undefined;
+    child.stdout.on('data',(chunk:Buffer|string)=>{
+      if(protocolError)return;
+      try{for(const message of decoder.push(chunk))onMessage(message);}
+      catch(error){protocolError=asError(error);signalProcessGroup(child,'SIGKILL');}
+    });
+    child.stderr.on('data',(chunk:Buffer|string)=>{
+      if(stderrBytes>=64*1_024)return;
+      const value=Buffer.isBuffer(chunk)?chunk:Buffer.from(chunk),remaining=64*1_024-stderrBytes;
+      stderr.push(value.subarray(0,remaining));stderrBytes+=Math.min(value.length,remaining);
+    });
+    child.once('error',error=>{spawnError=error;});
+    child.once('close',(code,signal)=>{
+      if(settled)return;settled=true;
+      if(!protocolError){try{for(const message of decoder.finish())onMessage(message);}catch(error){protocolError=asError(error);}}
+      const error=protocolError??spawnError;
+      resolve({code,signal,stdout:'',stderr:Buffer.concat(stderr).toString('utf8'),...(error?{error}:{}),outputTooLarge:protocolError instanceof AntigravityProtocolError&&protocolError.code==='agy_output_too_large'});
+    });
+  });
+}
 
 function collectProcess(child: RunningChild, maxOutputBytes: number): Promise<ProcessResult> {
   return new Promise(resolve => {
@@ -369,15 +410,6 @@ function assertSupportedVersion(value: string) {
   }
 }
 
-function processSucceeded(result: ProcessResult) { return !result.error && !result.outputTooLarge && result.code === 0 && Boolean(result.stdout.trim()); }
-
-function parseAntigravityPrintResult(value:string):AntigravityPrintResult|undefined{
-  try{
-    const parsed=JSON.parse(value) as Record<string,unknown>;
-    if(!parsed||typeof parsed!=='object'||Array.isArray(parsed)||typeof parsed.conversation_id!=='string'||!parsed.conversation_id||parsed.conversation_id.length>4_096||typeof parsed.status!=='string'||typeof parsed.response!=='string')return;
-    return{conversationId:parsed.conversation_id,status:parsed.status,response:parsed.response};
-  }catch{return;}
-}
 function failure(code: string, message: string): AdapterExecutionEvent { return { type: 'execution.failed', payload: { error: { code, message } } }; }
 function positiveInteger(value: number | undefined, fallback: number, label: string) {
   const resolved = value ?? fallback;
@@ -385,3 +417,12 @@ function positiveInteger(value: number | undefined, fallback: number, label: str
   return resolved;
 }
 function isMissingProcess(error: unknown) { return error instanceof Error && 'code' in error && error.code === 'ESRCH'; }
+function safeJson(value:unknown){let serialized:string;try{serialized=JSON.stringify(value);}catch{serialized=String(value);}return redactConnectorText(serialized.slice(0,1_000),1_000);}
+function asError(error:unknown){return error instanceof Error?error:new Error(String(error));}
+
+class EventQueue implements AsyncIterable<AdapterExecutionEvent>{
+  private values:AdapterExecutionEvent[]=[];private waiters:Array<(value:IteratorResult<AdapterExecutionEvent>)=>void>=[];private ended=false;
+  push(value:AdapterExecutionEvent){const waiter=this.waiters.shift();if(waiter)waiter({value,done:false});else this.values.push(value);}
+  end(){this.ended=true;for(const waiter of this.waiters)waiter({value:undefined,done:true});this.waiters=[];}
+  [Symbol.asyncIterator](){return{next:():Promise<IteratorResult<AdapterExecutionEvent>>=>{const value=this.values.shift();if(value)return Promise.resolve({value,done:false});if(this.ended)return Promise.resolve({value:undefined,done:true});return new Promise(resolve=>this.waiters.push(resolve));}};}
+}
