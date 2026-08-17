@@ -45,6 +45,10 @@ export class MessageRepository {
     const attachments = await this.workspace.messageAttachments([id]);
     return toMessage(row, attachments.get(id) ?? []);
   }
+  async hasMessages(roomId:string){
+    const[row]=await this.database.sql`SELECT EXISTS(SELECT 1 FROM room_messages WHERE room_id=${roomId}) has_messages`;
+    return Boolean(row?.has_messages);
+  }
   async createRound(
     roomId: string,
     text: string,

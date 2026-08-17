@@ -34,7 +34,10 @@ export class ConversationRoutingService{
         return this.agentSession(command,current[0],routing.delivery==='apply_now'?'apply_now':'after_response',messageId);
       }
       const current=await this.dependencies.followUps.anchors(command.roomId);
-      if(current.length===0)return this.legacy(command,[],messageId);
+      if(current.length===0){
+        const firstMessageTarget=handles.length===1&&!await this.dependencies.messages.hasMessages(command.roomId)?handles:[];
+        return this.legacy(command,firstMessageTarget,messageId);
+      }
       if(current.length>1)throw new AppError('routing_target_required',409,'Auto found several possible recipients. Mention one agent or use @all');
       return this.agentSession(command,current[0],routing.delivery==='apply_now'?'apply_now':'after_response',messageId);
     }

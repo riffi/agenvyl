@@ -225,6 +225,15 @@ describe("backend smoke", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     await app.close();
   });
+
+  it('routes the first unmentioned Auto message to the only agent in a room',async()=>{
+    const app=await buildApp({databaseUrl:db(),fetch:personaCatalogFetch([{id:'sol'}]),distPath:'missing-dist'});
+    const room=(await app.inject({method:'POST',url:'/api/v1/rooms',payload:{persona_ids:['persona-architect']}})).json();
+    const response=await app.inject({method:'POST',url:`/api/v1/rooms/${room.id}/messages`,payload:{text:'Start the task'}});
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toMatchObject({targets:['architect'],runIds:[expect.any(String)]});
+    await app.close();
+  });
 });
 
 describe("runtime features", () => {
@@ -734,7 +743,7 @@ describe("room management", () => {
         await app.inject({
           method: "POST",
           url: `/api/v1/rooms/${created.id}/messages`,
-          payload: { text: "local note" },
+          payload: { text: "local note", routing:{mode:'room_context'} },
         })
       ).statusCode,
     ).toBe(202);

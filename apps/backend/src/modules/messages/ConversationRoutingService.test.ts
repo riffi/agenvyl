@@ -8,12 +8,26 @@ const message={id:'11111111-1111-4111-8111-111111111111',text:'Continue',created
 function fixture(anchors=[{runId:'run-1',roomId:'room',personaId:'persona-coder',personaHandle:'coder',status:'streaming',harnessInstanceId:'local-codex',harnessType:'codex'}]){
   const legacy={execute:vi.fn(async()=>({status:'created' as const,message:{...message,delivery:{route:'room_context' as const,status:'delivered' as const}}}))};
   const followUps={roomMode:vi.fn(async()=> 'auto' as const),anchors:vi.fn(async()=>anchors),create:vi.fn(async()=>({status:'created' as const,pendingId:'pending-1',message,event:{id:'event-1',sequence:1,type:'message.created',payload:message},anchorStatus:anchors[0]?.status??'completed'})),claimApplyNow:vi.fn(),prepareHandoffCancellation:vi.fn(),recordQueuedError:vi.fn(),requeueApplyNow:vi.fn(),markDelivery:vi.fn(),get:vi.fn()};
-  const dispatcher={dispatchById:vi.fn(async()=>undefined)},events={publishPersisted:vi.fn()},interventions={applyNow:vi.fn(),cancelForHandoff:vi.fn()},messages={find:vi.fn(async():Promise<typeof message|undefined>=>undefined)},harnesses={catalog:vi.fn(async()=>({instances:[{id:'local-codex',type:'codex',status:'healthy',controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[],agentVariants:[]}}]}))};
+  const dispatcher={dispatchById:vi.fn(async()=>undefined)},events={publishPersisted:vi.fn()},interventions={applyNow:vi.fn(),cancelForHandoff:vi.fn()},messages={find:vi.fn(async():Promise<typeof message|undefined>=>undefined),hasMessages:vi.fn(async()=>false)},harnesses={catalog:vi.fn(async()=>({instances:[{id:'local-codex',type:'codex',status:'healthy',controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[],agentVariants:[]}}]}))};
   const service=new ConversationRoutingService({legacy:legacy as never,followUps:followUps as never,dispatcher:dispatcher as never,personas:{list:vi.fn(async()=>[persona])} as never,events:events as never,interventions:interventions as never,messages:messages as never,harnesses:harnesses as never});
   return{service,legacy,followUps,dispatcher,interventions,messages};
 }
 
 describe('ConversationRoutingService',()=>{
+  it('addresses the first unmentioned Auto message to the room\'s only agent',async()=>{
+    const{service,legacy,messages}=fixture([]);
+    await service.execute({roomId:'room',body:{text:'Start',message_id:message.id}});
+    expect(messages.hasMessages).toHaveBeenCalledWith('room');
+    expect(legacy.execute).toHaveBeenCalledWith(expect.objectContaining({targets:['coder']}));
+  });
+
+  it('keeps a later unmentioned Auto message without an agent when no session is available',async()=>{
+    const{service,legacy,messages}=fixture([]);
+    messages.hasMessages.mockResolvedValue(true);
+    await service.execute({roomId:'room',body:{text:'Room note',message_id:message.id}});
+    expect(legacy.execute).toHaveBeenCalledWith(expect.objectContaining({targets:[]}));
+  });
+
   it('queues an unmentioned Auto message behind the one clear active agent',async()=>{
     const{service,followUps}=fixture();
     const result=await service.execute({roomId:'room',body:{text:'Continue',message_id:message.id}});
