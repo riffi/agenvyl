@@ -310,6 +310,14 @@
   list-style: none;
 }
 .reasoning summary::-webkit-details-marker { display: none; }
+.reasoning[data-streaming='true'] summary > span { background: linear-gradient(90deg,#64748b 0%,#cbd5e1 40%,#64748b 60%,#cbd5e1 100%); background-size: 240% 100%; background-clip: text; -webkit-background-clip: text; color: transparent; }
+.reasoning[data-streaming='true'] summary .reasoning-icon { color: #64748b; }
+@media (prefers-reduced-motion: no-preference) {
+  .reasoning[data-streaming='true'] summary > span { animation: reasoning-text-wave 2.4s linear infinite; }
+  .reasoning[data-streaming='true'] summary .reasoning-icon { animation: reasoning-icon-wave 2.4s linear infinite; }
+}
+@keyframes reasoning-text-wave { from { background-position: 160% 0; } to { background-position: -80% 0; } }
+@keyframes reasoning-icon-wave { 0%,100% { color: #64748b; } 50% { color: #cbd5e1; } }
 .reasoning summary .reasoning-icon {
   width: 13px;
   height: 13px;

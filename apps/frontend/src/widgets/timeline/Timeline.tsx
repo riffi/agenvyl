@@ -188,7 +188,7 @@ function RunCard({
           </header>
         {run.upstreamStatus&&<UpstreamStatusNotice status={run.upstreamStatus}/>}
         {run.status==='finalizing'&&<div className={`${styles['workspace-state']} ${styles['workspace-state-progress']}`} role="status" aria-live="polite"><LoaderCircle aria-hidden="true"/><span>Finalizing files…</span></div>}
-        {run.reasoning&&<ReasoningBlock text={run.reasoning} harnessType={run.harnessType}/>}
+        {run.reasoning&&<ReasoningBlock text={run.reasoning} harnessType={run.harnessType} isStreaming={run.status==='streaming'}/>}
         <RunAnswerHistory run={run} chapters={chapters} fallbackAuthor={author} personas={personas} onMentionPersona={onMentionPersona} openWorkspace={openRunWorkspace} collapsed={collapsed} hiddenInterventionIds={hiddenInterventionIds} routedInterventionIds={routedInterventionIds}/>
         {isLongAnswer(continuationHistoryText(chapters))&&run.status==='completed'&&<button className={`${styles['answer-toggle']} ${collapsed?styles.expand:styles.collapse}`} type="button" onClick={toggleCollapsed} aria-expanded={!collapsed}>{collapsed?<><span>Expand response</span><ChevronDown/></>:<><span>Collapse response</span><ChevronUp/></>}</button>}
         {run.status==='failed'&&<RunFailureNotice errorCode={run.errorCode} error={run.error}/>}

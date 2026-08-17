@@ -12,10 +12,20 @@ describe('ReasoningBlock', () => {
     const {container}=render(<ReasoningBlock text={'**Planning**\n\n- inspect data\n- render safely'} />);
     const details=container.querySelector('details') as HTMLDetailsElement;
     expect(details.open).toBe(false);
+    expect(details.dataset.streaming).toBeUndefined();
     expect(screen.queryByText('Planning')).toBeNull();
     fireEvent.click(screen.getByText('Reasoning').closest('summary')!);
     expect(screen.getByText('Planning').tagName).toBe('STRONG');
     expect(screen.getByText('inspect data').tagName).toBe('LI');
+  });
+
+  it('keeps a streaming block active when it is expanded', () => {
+    const {container}=render(<ReasoningBlock text="Waiting for a result" isStreaming />);
+    const details=container.querySelector('details') as HTMLDetailsElement;
+    expect(details.dataset.streaming).toBe('true');
+    fireEvent.click(screen.getByText('Reasoning').closest('summary')!);
+    expect(details.open).toBe(true);
+    expect(details.dataset.streaming).toBe('true');
   });
 
   it('does not load images embedded in reasoning markdown',()=>{
