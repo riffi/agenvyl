@@ -24,7 +24,7 @@ export class ConnectorRunAdapter implements RunGateway,RunEventStream,RunRecover
         planEnforcement:input.executionProfile.planEnforcement,
       },
       workspace:{roomId:input.workspace.roomId,relativePath:input.workspace.relativePath,...(input.workspace.project?{project:input.workspace.project}:{})},
-      input:{systemPrompt:input.instructions,history:input.conversationHistory??[],message:input.input},
+      input:{systemPrompt:input.instructions,history:input.conversationHistory??[],message:input.input,...(input.attachments?.length?{attachments:input.attachments}:{})},
       ...(input.continuationHandle?{continuation:{handle:input.continuationHandle}}:{}),
     });
     this.remember(execution);
@@ -64,7 +64,7 @@ export class ConnectorRunAdapter implements RunGateway,RunEventStream,RunRecover
     return this.controlCheckpoint(result.execution);
   }
 
-  async intervene(executionId:string,intervention:{interventionId:string;text:string}){
+  async intervene(executionId:string,intervention:{interventionId:string;text:string;attachments?:import('@agenvyl/connector-contract').ExecutionAttachmentReference[]}){
     const result=await this.connector.intervene(executionId,intervention);
     return{checkpoint:this.controlCheckpoint(result.execution),status:result.intervention.status};
   }

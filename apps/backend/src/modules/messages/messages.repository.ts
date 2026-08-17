@@ -49,6 +49,7 @@ export class MessageRepository {
     const[row]=await this.database.sql`SELECT EXISTS(SELECT 1 FROM room_messages WHERE room_id=${roomId}) has_messages`;
     return Boolean(row?.has_messages);
   }
+  executionAttachments(roomId:string,messageId:string){return this.workspace.messageExecutionAttachments(roomId,messageId);}
   async createRound(
     roomId: string,
     text: string,

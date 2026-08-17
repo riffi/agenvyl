@@ -9,6 +9,8 @@ describe('Connector v1 contract fixtures', () => {
     expect(isConnectorCommandResult({execution:connectorContractFixtures.execution})).toBe(true);
     expect(isConnectorRequestCommandResult({execution:connectorContractFixtures.execution,request:{id:'request-1',kind:'approval',prompt:'Allow?'}})).toBe(true);
     expect(isStartExecutionRequest(connectorContractFixtures.startExecution)).toBe(true);
+    const attachment={versionId:'version-1',name:'screen.png',mimeType:'image/png',size:42,sha256:'a'.repeat(64)};
+    expect(isStartExecutionRequest({...connectorContractFixtures.startExecution,input:{...connectorContractFixtures.startExecution.input,attachments:[attachment]}})).toBe(true);
     expect(isStartExecutionRequest({...connectorContractFixtures.startExecution,workspace:{...connectorContractFixtures.startExecution.workspace,project:{path:'C:\\work\\project',access:'read_write'}}})).toBe(true);
     expect(isStartExecutionRequest({...connectorContractFixtures.startExecution,workspace:{...connectorContractFixtures.startExecution.workspace,project:{path:'C:\\work\\project',access:'owner'}}})).toBe(false);
     expect(isExecutionSnapshot(connectorContractFixtures.execution)).toBe(true);
@@ -22,6 +24,9 @@ describe('Connector v1 contract fixtures', () => {
     expect(isConnectorExecutionEvent({...connectorContractFixtures.textEvent,type:'request.opened',payload:{request:{id:'elicit-1',kind:'elicitation',prompt:'Choose',elicitation:{mode:'form',serverName:'nodexium',message:'Choose',requestedSchema:{type:'object',properties:{workspace:{type:'string'}}}}}}})).toBe(true);
     const intervention={interventionId:'c226f522-d864-4f1c-a53f-25d22dc9109f',text:'Focus on the API'};
     expect(isCreateExecutionInterventionRequest(intervention)).toBe(true);
+    expect(isCreateExecutionInterventionRequest({...intervention,attachments:[attachment]})).toBe(true);
+    expect(isCreateExecutionInterventionRequest({...intervention,text:'',attachments:[attachment]})).toBe(true);
+    expect(isConnectorExecutionEvent({...connectorContractFixtures.textEvent,type:'execution.intervention.accepted',payload:{interventionId:intervention.interventionId,text:''}})).toBe(true);
     expect(isConnectorExecutionEvent({...connectorContractFixtures.textEvent,type:'execution.intervention.accepted',payload:intervention})).toBe(true);
     expect(isConnectorExecutionEvent({...connectorContractFixtures.textEvent,type:'execution.intervention.applied',payload:intervention})).toBe(true);
     expect(isConnectorExecutionEvent({...connectorContractFixtures.textEvent,type:'execution.intervention.failed',payload:{...intervention,error:{code:'redirect_failed',message:'Failed'}}})).toBe(true);
@@ -52,6 +57,11 @@ describe('Connector v1 contract fixtures', () => {
     expect(isConnectorExecutionEvent({...connectorContractFixtures.textEvent,type:'request.opened',payload:{request:{id:'elicit-1',kind:'elicitation',prompt:'Open',elicitation:{mode:'url',serverName:'nodexium',message:'Open',url:'javascript:alert(1)',elicitationId:'flow'}}}})).toBe(false);
     expect(isCreateExecutionInterventionRequest({interventionId:'not-a-uuid',text:'redirect'})).toBe(false);
     expect(isCreateExecutionInterventionRequest({interventionId:'c226f522-d864-4f1c-a53f-25d22dc9109f',text:' '})).toBe(false);
+    const attachment={versionId:'version-1',name:'screen.png',mimeType:'image/png',size:42,sha256:'a'.repeat(64)};
+    expect(isStartExecutionRequest({...connectorContractFixtures.startExecution,input:{...connectorContractFixtures.startExecution.input,attachments:[{...attachment,sha256:'../escape'}]}})).toBe(false);
+    expect(isCreateExecutionInterventionRequest({interventionId:'c226f522-d864-4f1c-a53f-25d22dc9109f',text:'redirect',attachments:[{...attachment,size:-1}]})).toBe(false);
+    expect(isCreateExecutionInterventionRequest({interventionId:'c226f522-d864-4f1c-a53f-25d22dc9109f',text:'redirect',attachments:[{...attachment,absolutePath:'/private/file'}]})).toBe(false);
+    expect(isCreateExecutionInterventionRequest({interventionId:'c226f522-d864-4f1c-a53f-25d22dc9109f',text:'redirect',attachments:Array.from({length:11},()=>attachment)})).toBe(false);
   });
 
   it('accepts boolean managed ownership and rejects non-boolean values',()=>{

@@ -13,7 +13,7 @@ import type {
 } from '@agenvyl/connector-contract';
 import {createHash} from 'node:crypto';
 import { CONNECTOR_API_VERSION } from '@agenvyl/connector-contract';
-import type { AdapterExecution, AdapterExecutionEvent, ConnectorAdapter } from './adapter.js';
+import type { AdapterExecution, AdapterExecutionAttachment, AdapterExecutionEvent, ConnectorAdapter } from './adapter.js';
 import { AdapterGenerationError, type AdapterGenerationBinding } from './adapter-generations.js';
 import { safeAdapterError, sanitizeAdapterEvent } from './safety.js';
 import {experimentalTailV1ConversationHistory} from './conversation-history.js';
@@ -46,6 +46,7 @@ type ExecutionRecord = {
   workspacePath: string;
   roomWorkspacePath:string;
   projectScope?:{absolutePath:string;access:'read'|'read_write'};
+  attachments:AdapterExecutionAttachment[];
   adapter: ConnectorAdapter;
   harnessType: string;
   adapterGeneration: number;
@@ -58,6 +59,7 @@ type ExecutionRecord = {
   pendingRequests: Map<string, ConnectorRequestSnapshot>;
   requestResolutions: Map<string, { answerKey: string; promise: Promise<ConnectorRequestSnapshot> }>;
   interventions: Map<string, ExecutionIntervention>;
+  interventionInputs:Map<string,{key:string;attachments:AdapterExecutionAttachment[]}>;
   activeInterventionId?: string;
   error?: { code: string; message: string };
   upstreamStatus?: UpstreamStatus;
@@ -95,7 +97,7 @@ export class ExecutionRegistry {
       if (error instanceof AdapterGenerationError) throw new RegistryError(error.code, error.message, error.statusCode);
       throw error;
     }
-    let workspacePath: string,roomWorkspacePath:string,projectScope:{absolutePath:string;access:'read'|'read_write'}|undefined;
+    let workspacePath: string,roomWorkspacePath:string,projectScope:{absolutePath:string;access:'read'|'read_write'}|undefined,attachments:AdapterExecutionAttachment[]=[];
     try {
       roomWorkspacePath = this.workspacePolicy.resolve(request.workspace.roomId, request.workspace.relativePath);
       if(request.workspace.project){
@@ -104,6 +106,7 @@ export class ExecutionRegistry {
         projectScope={absolutePath:this.workspacePolicy.resolveProject(request.workspace.project.path),access:request.workspace.project.access};
       }
       workspacePath=request.executionProfile.workflowMode==='work'&&projectScope?projectScope.absolutePath:roomWorkspacePath;
+      attachments=(request.input.attachments??[]).map(item=>({...item,absolutePath:this.workspacePolicy.resolveVersion(roomWorkspacePath,item.sha256)}));
     } catch (error) {
       binding.release();
       throw error;
@@ -119,6 +122,7 @@ export class ExecutionRegistry {
       workspacePath,
       roomWorkspacePath,
       projectScope,
+      attachments,
       adapter: binding.adapter,
       harnessType: binding.harnessType,
       adapterGeneration: binding.adapterGeneration,
@@ -129,6 +133,7 @@ export class ExecutionRegistry {
       pendingRequests: new Map(),
       requestResolutions: new Map(),
       interventions: new Map(),
+      interventionInputs:new Map(),
       listeners: new Set(),
       startPromise: Promise.resolve(),
     };
@@ -218,9 +223,10 @@ export class ExecutionRegistry {
   intervene(executionId:string,input:CreateExecutionInterventionRequest):{execution:ExecutionSnapshot;intervention:ExecutionIntervention}{
     const record=this.require(executionId);
     const text=input.text.trim();
+    const inputKey=JSON.stringify({text,attachments:input.attachments??[]});
     const existing=record.interventions.get(input.interventionId);
     if(existing){
-      if(existing.text!==text)throw new RegistryError('intervention_conflict','Intervention ID is already used with different text',409);
+      if(record.interventionInputs.get(input.interventionId)?.key!==inputKey)throw new RegistryError('intervention_conflict','Intervention ID is already used with different text or attachments',409);
       return{execution:this.snapshot(record),intervention:structuredClone(existing)};
     }
     if(record.status!=='running')throw new RegistryError('execution_not_intervenable','Instructions can be added only to a running execution',409);
@@ -229,7 +235,9 @@ export class ExecutionRegistry {
     if(record.adapter.interventionMode!=='interrupt_then_continue'||!record.adapter.intervene)throw new RegistryError('intervention_unsupported','This Connector instance does not support adding instructions to active runs',409);
     if(!record.upstream)throw new RegistryError('adapter_unavailable','Adapter execution is not available',503);
     const intervention:ExecutionIntervention={interventionId:input.interventionId,text,status:'pending'};
+    const attachments=(input.attachments??[]).map(item=>({...item,absolutePath:this.workspacePolicy.resolveVersion(record.roomWorkspacePath,item.sha256)}));
     record.interventions.set(intervention.interventionId,intervention);
+    record.interventionInputs.set(intervention.interventionId,{key:inputKey,attachments});
     record.activeInterventionId=intervention.interventionId;
     this.append(record,'execution.intervention.accepted',{interventionId:intervention.interventionId,text});
     void this.applyIntervention(record,record.upstream,intervention);
@@ -251,8 +259,10 @@ export class ExecutionRegistry {
     try {
       const {history:_,...historyMetrics}=experimentalTailV1ConversationHistory(record.request.input.history);
       this.logger?.info({...historyMetrics,harnessType:record.harnessType},'Prepared conversation history');
-      const adapterRequest={
-        ...record.request,
+      const {input:requestInput,...request}=record.request;
+      const adapterRequest:import('./adapter.js').AdapterStartExecutionRequest={
+        ...request,
+        input:{systemPrompt:requestInput.systemPrompt,history:requestInput.history,message:requestInput.message,...(record.attachments.length?{attachments:record.attachments}:{})},
         workspace: {
           roomId:record.request.workspace.roomId,
           relativePath:record.request.workspace.relativePath,
@@ -304,7 +314,8 @@ export class ExecutionRegistry {
   }
 
   private async applyIntervention(record:ExecutionRecord,upstream:AdapterExecution,intervention:ExecutionIntervention){
-    try{await record.adapter.intervene!(upstream,{interventionId:intervention.interventionId,text:intervention.text});}
+    const attachments=record.interventionInputs.get(intervention.interventionId)?.attachments??[];
+    try{await record.adapter.intervene!(upstream,{interventionId:intervention.interventionId,text:intervention.text,...(attachments.length?{attachments}:{})});}
     catch(error){
       const current=record.interventions.get(intervention.interventionId);
       if(current?.status!=='pending')return;

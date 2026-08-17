@@ -13,6 +13,8 @@ beforeEach(async () => {
   await mkdir(join(root, 'room-1', 'subdir'), { recursive: true });
   await writeFile(join(root, 'room-1', 'file.txt'), 'not a directory');
   await symlink(outside, join(root, 'room-1', 'escape'), process.platform === 'win32' ? 'junction' : 'dir');
+  await mkdir(join(root,'.versions','aa'),{recursive:true});
+  await writeFile(join(root,'.versions','aa','a'.repeat(64)),'image bytes');
 });
 
 afterEach(async () => {
@@ -30,6 +32,13 @@ describe('WorkspacePolicy', () => {
     const policy=new WorkspacePolicy([root]);
     expect(policy.resolveProject(outside)).toBe(outside);
     expectCode(()=>policy.resolveProject(join(outside,'missing')),'project_unavailable');
+  });
+
+  it('resolves immutable attachment snapshots inside the configured version store',()=>{
+    const policy=new WorkspacePolicy([root]),hash='a'.repeat(64);
+    expect(policy.resolveVersion(join(root,'room-1'),hash)).toBe(join(root,'.versions','aa',hash));
+    expectCode(()=>policy.resolveVersion(join(root,'room-1'),'../escape'),'attachment_invalid');
+    expectCode(()=>policy.resolveVersion(join(root,'room-1'),'b'.repeat(64)),'attachment_not_found');
   });
 
   it('switches to a newly configured root',async()=>{

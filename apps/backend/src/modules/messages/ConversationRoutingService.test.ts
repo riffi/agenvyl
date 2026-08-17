@@ -8,9 +8,9 @@ const message={id:'11111111-1111-4111-8111-111111111111',text:'Continue',created
 function fixture(anchors=[{runId:'run-1',roomId:'room',personaId:'persona-coder',personaHandle:'coder',status:'streaming',harnessInstanceId:'local-codex',harnessType:'codex'}]){
   const legacy={execute:vi.fn(async()=>({status:'created' as const,message:{...message,delivery:{route:'room_context' as const,status:'delivered' as const}}}))};
   const followUps={roomMode:vi.fn(async()=> 'auto' as const),anchors:vi.fn(async()=>anchors),create:vi.fn(async()=>({status:'created' as const,pendingId:'pending-1',message,event:{id:'event-1',sequence:1,type:'message.created',payload:message},anchorStatus:anchors[0]?.status??'completed'})),claimApplyNow:vi.fn(),prepareHandoffCancellation:vi.fn(),recordQueuedError:vi.fn(),requeueApplyNow:vi.fn(),markDelivery:vi.fn(),get:vi.fn()};
-  const dispatcher={dispatchById:vi.fn(async()=>undefined)},events={publishPersisted:vi.fn()},interventions={applyNow:vi.fn(),cancelForHandoff:vi.fn()},messages={find:vi.fn(async():Promise<typeof message|undefined>=>undefined),hasMessages:vi.fn(async()=>false)},harnesses={catalog:vi.fn(async()=>({instances:[{id:'local-codex',type:'codex',status:'healthy',controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[],agentVariants:[]}}]}))};
-  const service=new ConversationRoutingService({legacy:legacy as never,followUps:followUps as never,dispatcher:dispatcher as never,personas:{list:vi.fn(async()=>[persona])} as never,events:events as never,interventions:interventions as never,messages:messages as never,harnesses:harnesses as never});
-  return{service,legacy,followUps,dispatcher,interventions,messages};
+  const dispatcher={dispatchById:vi.fn(async()=>undefined)},events={publishPersisted:vi.fn()},interventions={applyNow:vi.fn(),cancelForHandoff:vi.fn()},messages={find:vi.fn(async():Promise<typeof message|undefined>=>undefined),hasMessages:vi.fn(async()=>false),executionAttachments:vi.fn(async()=>[])},harnesses={catalog:vi.fn(async()=>({instances:[{id:'local-codex',type:'codex',status:'healthy',capabilities:['attachments'],controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[],agentVariants:[]}}]}))},roomWorkspace={captureAttachmentVersions:vi.fn(async(_roomId:string,ids:string[])=>ids.map(id=>`version-${id}`))};
+  const service=new ConversationRoutingService({legacy:legacy as never,followUps:followUps as never,dispatcher:dispatcher as never,personas:{list:vi.fn(async()=>[persona])} as never,events:events as never,interventions:interventions as never,messages:messages as never,harnesses:harnesses as never,roomWorkspace:roomWorkspace as never});
+  return{service,legacy,followUps,dispatcher,interventions,messages,harnesses,roomWorkspace};
 }
 
 describe('ConversationRoutingService',()=>{
@@ -40,6 +40,22 @@ describe('ConversationRoutingService',()=>{
     await expect(service.execute({roomId:'room',body:{text:'Continue',message_id:message.id}})).rejects.toMatchObject({code:'routing_target_required',statusCode:409,message:'Auto found several possible recipients. Mention one agent or use @all'});
   });
 
+  it('captures attachments and keeps them on the native agent-session path',async()=>{
+    const{service,legacy,followUps,roomWorkspace}=fixture();
+    await service.execute({roomId:'room',body:{text:'Inspect this',message_id:message.id,attachment_version_ids:['upload-1'],routing:{mode:'agent_session',target:'coder'}}});
+    expect(roomWorkspace.captureAttachmentVersions).toHaveBeenCalledWith('room',['upload-1']);
+    expect(followUps.create).toHaveBeenCalledWith(expect.objectContaining({attachmentVersionIds:['version-upload-1']}));
+    expect(legacy.execute).not.toHaveBeenCalled();
+  });
+
+  it('falls back to room context when the selected connector cannot receive attachments',async()=>{
+    const{service,legacy,followUps,harnesses}=fixture();
+    harnesses.catalog.mockResolvedValue({instances:[{id:'local-codex',type:'codex',status:'healthy',capabilities:[],controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[],agentVariants:[]}}]});
+    await service.execute({roomId:'room',body:{text:'Inspect this',message_id:message.id,attachment_version_ids:['upload-1'],routing:{mode:'agent_session',target:'coder'}}});
+    expect(legacy.execute).toHaveBeenCalledWith(expect.objectContaining({targets:['coder'],attachmentVersionIds:['upload-1']}));
+    expect(followUps.create).not.toHaveBeenCalled();
+  });
+
   it('keeps an explicit Room context request on the legacy tail path',async()=>{
     const{service,legacy,followUps}=fixture();
     await service.execute({roomId:'room',body:{text:'@coder start fresh',message_id:message.id,routing:{mode:'room_context'}}});
@@ -48,9 +64,18 @@ describe('ConversationRoutingService',()=>{
   });
 
   it('applies an urgent correction with the visible message id',async()=>{
-    const{service,interventions}=fixture();
+    const{service,interventions,messages}=fixture();
+    messages.executionAttachments.mockResolvedValue([{versionId:'version-1',name:'shot.png',mimeType:'image/png',size:12,sha256:'a'.repeat(64)}]);
     await service.execute({roomId:'room',body:{text:'Continue',message_id:message.id,routing:{mode:'agent_session',target:'coder',delivery:'apply_now'}}});
-    expect(interventions.applyNow).toHaveBeenCalledWith('run-1',{intervention_id:message.id,text:'Continue'});
+    expect(interventions.applyNow).toHaveBeenCalledWith('run-1',{intervention_id:message.id,text:'Continue',attachments:[expect.objectContaining({name:'shot.png'})]});
+  });
+
+  it('applies an attachment-only correction to the active session',async()=>{
+    const{service,followUps,interventions,messages}=fixture(),attachment={versionId:'version-1',name:'shot.png',mimeType:'image/png',size:12,sha256:'a'.repeat(64)};
+    followUps.create.mockResolvedValue({status:'created',pendingId:'pending-1',message:{...message,text:'',attachments:[]},event:{id:'event-1',sequence:1,type:'message.created',payload:{}},anchorStatus:'streaming'});
+    messages.executionAttachments.mockResolvedValue([attachment]);
+    await service.execute({roomId:'room',body:{message_id:message.id,attachment_version_ids:['upload-1'],routing:{mode:'agent_session',target:'coder',delivery:'apply_now'}}});
+    expect(interventions.applyNow).toHaveBeenCalledWith('run-1',{intervention_id:message.id,text:'',attachments:[attachment]});
   });
 
   it('promotes an existing queued message to an active intervention',async()=>{

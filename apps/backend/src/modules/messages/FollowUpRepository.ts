@@ -3,6 +3,7 @@ import type {Database} from '../../infrastructure/database/Database.js';
 import {toMessage} from '../../infrastructure/database/rowMappers.js';
 import type {MessageDelivery,RunExecutionProfileSnapshot,RunProjectSnapshot,WorkflowMode} from '@agenvyl/contracts';
 import type {RoomEventRepository} from '../room-events/roomEvents.repository.js';
+import {toAttachment,type WorkspaceRepository} from '../workspace/workspace.repository.js';
 
 const nonTerminal=['queued','streaming','finalizing','stopping','waiting_approval','waiting_clarification'];
 
@@ -11,7 +12,7 @@ export type PendingFollowUp={id:string;roomId:string;messageId:string;personaId:
 type ProfileResolver=(source:RunExecutionProfileSnapshot,workflowMode:WorkflowMode)=>RunExecutionProfileSnapshot;
 
 export class FollowUpRepository{
-  constructor(private readonly database:Database,private readonly events:RoomEventRepository){}
+  constructor(private readonly database:Database,private readonly events:RoomEventRepository,private readonly workspace:WorkspaceRepository){}
 
   async roomMode(roomId:string){const[row]=await this.database.sql`SELECT conversation_routing_mode FROM rooms WHERE id=${roomId} AND deleted_at IS NULL`;return row?.conversation_routing_mode as import('@agenvyl/contracts').ConversationRoutingMode|undefined;}
 
@@ -23,12 +24,14 @@ export class FollowUpRepository{
     return selected.map(anchor);
   }
 
-  async create(input:{roomId:string;text:string;messageId:string;anchor:FollowUpAnchor;deliveryKind:'after_response'|'apply_now';resolveProfile:ProfileResolver;requireTransition?:boolean}){
+  async create(input:{roomId:string;text:string;messageId:string;anchor:FollowUpAnchor;deliveryKind:'after_response'|'apply_now';resolveProfile:ProfileResolver;requireTransition?:boolean;attachmentVersionIds?:string[]}){
     return this.database.transaction(async tx=>{
       const room=(await tx`SELECT id,title_source,workflow_mode FROM rooms WHERE id=${input.roomId} AND deleted_at IS NULL FOR UPDATE`)[0];
       if(!room)return{status:'room_not_found' as const};
       const existing=(await tx`SELECT id,text,created_at,targets,run_ids,author_profile_id,author_display_name,author_handle,addressed_to_all,delivery_route,delivery_status,delivery_transition_reason,delivery_agent_handle,delivery_anchor_run_id,delivery_run_id,delivery_error FROM room_messages WHERE room_id=${input.roomId} AND id=${input.messageId}`)[0];
-      if(existing)return{status:'duplicate' as const,message:toMessage(existing)};
+      if(existing){const attachments=await this.workspace.messageAttachments([input.messageId],tx);return{status:'duplicate' as const,message:toMessage(existing,attachments.get(input.messageId)??[])};}
+      const attachmentVersionIds=input.attachmentVersionIds??[],attachmentVersions=await this.workspace.validateVersions(input.roomId,attachmentVersionIds,tx);
+      if(attachmentVersions.length!==attachmentVersionIds.length)return{status:'attachment_unavailable' as const};
       const source=(await tx`SELECT id,status,execution_profile FROM agent_runs WHERE id=${input.anchor.runId} AND room_id=${input.roomId} AND persona_id=${input.anchor.personaId} FOR UPDATE`)[0];
       if(!source)return{status:'anchor_unavailable' as const};
       const sourceProfile=source.execution_profile as RunExecutionProfileSnapshot,executionProfile=input.resolveProfile(sourceProfile,String(room.workflow_mode) as WorkflowMode),transitionReason=executionProfile.workflowMode===sourceProfile.workflowMode?undefined:'workflow_mode_changed' as const;
@@ -42,8 +45,9 @@ export class FollowUpRepository{
       const author={profileId:String(authorRow.id),displayName:String(authorRow.display_name),handle:String(authorRow.handle)};
       const delivery:MessageDelivery={route,status:'queued',...(transitionReason?{transitionReason}:{}),agent:input.anchor.personaHandle,anchorRunId:input.anchor.runId};
       await tx`INSERT INTO room_messages(id,room_id,text,targets,run_ids,created_at,author_profile_id,author_display_name,author_handle,addressed_to_all,delivery_route,delivery_status,delivery_transition_reason,delivery_agent_handle,delivery_anchor_run_id,delivery_updated_at) VALUES(${input.messageId},${input.roomId},${input.text},${tx.json([input.anchor.personaHandle])},${tx.json([])},${now},${author.profileId},${author.displayName},${author.handle},false,${route},'queued',${transitionReason??null},${input.anchor.personaHandle},${input.anchor.runId},${now})`;
+      await this.workspace.attachMessage(input.messageId,attachmentVersionIds,tx);
       await tx`INSERT INTO pending_agent_follow_ups(id,room_id,message_id,persona_id,persona_handle,anchor_run_id,delivery_kind,status,execution_profile_snapshot,transition_reason,created_at,updated_at) VALUES(${pendingId},${input.roomId},${input.messageId},${input.anchor.personaId},${input.anchor.personaHandle},${input.anchor.runId},${deliveryKind},'queued',${tx.json(executionProfile as never)},${transitionReason??null},${now},${now})`;
-      const message={id:input.messageId,text:input.text,createdAt:now,targets:[input.anchor.personaHandle],runIds:[],attachments:[],author,addressedToAll:false,delivery};
+      const message={id:input.messageId,text:input.text,createdAt:now,targets:[input.anchor.personaHandle],runIds:[],attachments:attachmentVersions.map(toAttachment),author,addressedToAll:false,delivery};
       const event=await this.events.appendInTransaction(tx,input.roomId,'message.created',message,now);
       return{status:'created' as const,pendingId,message,event,anchorStatus:String(source.status),transitionReason};
     });
@@ -79,6 +83,18 @@ export class FollowUpRepository{
       await tx`UPDATE pending_agent_follow_ups SET delivery_kind='after_response',status='queued',claimed_at=NULL,updated_at=${now} WHERE id=${id}`;
       await tx`UPDATE room_messages SET delivery_route='agent_session',delivery_status='queued',delivery_error=${error??null},delivery_updated_at=${now} WHERE id=${row.message_id as string}`;
       const event=await this.events.appendInTransaction(tx,String(row.room_id),'message.delivery.updated',{messageId:String(row.message_id),delivery},now);
+      return{roomId:String(row.room_id),item:{...pending(row),deliveryKind:'after_response' as const,status:'queued'},event,delivery};
+    });
+  }
+
+  async requeueAppliedForFallback(anchorRunId:string,messageId:string){
+    return this.database.transaction(async tx=>{
+      const[row]=await tx`SELECT p.*,m.text,m.delivery_status FROM pending_agent_follow_ups p JOIN room_messages m ON m.id=p.message_id WHERE p.anchor_run_id=${anchorRunId} AND p.message_id=${messageId} FOR UPDATE OF p,m`;
+      if(!row||row.delivery_kind!=='apply_now'||row.status!=='delivered'||row.delivery_status!=='applied')return undefined;
+      const now=new Date().toISOString(),delivery:MessageDelivery={route:'agent_session',status:'queued',agent:String(row.persona_handle),anchorRunId};
+      await tx`UPDATE pending_agent_follow_ups SET delivery_kind='after_response',status='queued',claimed_at=NULL,updated_at=${now} WHERE id=${row.id as string}`;
+      await tx`UPDATE room_messages SET delivery_route='agent_session',delivery_status='queued',delivery_error=NULL,delivery_updated_at=${now} WHERE id=${messageId}`;
+      const event=await this.events.appendInTransaction(tx,String(row.room_id),'message.delivery.updated',{messageId,delivery},now);
       return{roomId:String(row.room_id),item:{...pending(row),deliveryKind:'after_response' as const,status:'queued'},event,delivery};
     });
   }

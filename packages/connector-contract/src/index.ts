@@ -20,7 +20,8 @@ export type ConnectorCapability =
   | 'approvals'
   | 'clarifications'
   | 'elicitations'
-  | 'usage';
+  | 'usage'
+  | 'attachments';
 
 export type ConnectorError = { code: string; message: string };
 export type ConnectorErrorEnvelope = { apiVersion: ConnectorApiVersion; error: string; message: string };
@@ -149,6 +150,13 @@ export type ConnectorDirectoryPickerResult = {
 
 export type CanonicalConversationItem = { role: 'user' | 'assistant'; content: string };
 export type ExecutionProjectScope = { path: string; access: 'read' | 'read_write' };
+export type ExecutionAttachmentReference = {
+  versionId: string;
+  name: string;
+  mimeType: string;
+  size: number;
+  sha256: string;
+};
 export type StartExecutionRequest = {
   executionId: string;
   harnessInstanceId: string;
@@ -161,7 +169,7 @@ export type StartExecutionRequest = {
     planEnforcement: 'native' | 'instruction_only' | null;
   };
   workspace: { roomId: string; relativePath: string; project?: ExecutionProjectScope };
-  input: { systemPrompt: string; history: CanonicalConversationItem[]; message: string };
+  input: { systemPrompt: string; history: CanonicalConversationItem[]; message: string; attachments?: ExecutionAttachmentReference[] };
   continuation?: ContinuationReference;
 };
 
@@ -239,7 +247,7 @@ export type ExecutionIntervention = {
   status: ExecutionInterventionStatus;
   error?: ConnectorError;
 };
-export type CreateExecutionInterventionRequest = Pick<ExecutionIntervention, 'interventionId' | 'text'>;
+export type CreateExecutionInterventionRequest = Pick<ExecutionIntervention, 'interventionId' | 'text'> & { attachments?: ExecutionAttachmentReference[] };
 
 type EventEnvelope<T extends string, P> = {
   apiVersion: ConnectorApiVersion;
@@ -397,8 +405,8 @@ export function isConnectorRequestCommandResult(value:unknown):value is Connecto
 }
 
 export function isCreateExecutionInterventionRequest(value:unknown):value is CreateExecutionInterventionRequest {
-  return isRecord(value) && Object.keys(value).every(key => key === 'interventionId' || key === 'text')
-    && isUuid(value.interventionId) && validInterventionText(value.text);
+  return isRecord(value) && Object.keys(value).every(key => key === 'interventionId' || key === 'text' || key === 'attachments')
+    && isUuid(value.interventionId) && isExecutionAttachments(value.attachments) && validInterventionInput(value.text,value.attachments);
 }
 
 export function isConnectorInterventionCommandResult(value:unknown):value is ConnectorInterventionCommandResult {
@@ -430,7 +438,7 @@ export function isStartExecutionRequest(value: unknown): value is StartExecution
   if (!isRecord(value) || !strings(value, 'executionId', 'harnessInstanceId', 'modelId') || !isExecutionProfile(value.executionProfile)) return false;
   if (!isRecord(value.workspace) || !strings(value.workspace, 'roomId', 'relativePath')) return false;
   if (value.workspace.project !== undefined && (!isRecord(value.workspace.project) || !strings(value.workspace.project, 'path') || !['read','read_write'].includes(String(value.workspace.project.access)))) return false;
-  if (!isRecord(value.input) || !strings(value.input, 'systemPrompt', 'message') || !Array.isArray(value.input.history)) return false;
+  if (!isRecord(value.input) || !strings(value.input, 'systemPrompt', 'message') || !Array.isArray(value.input.history) || !isExecutionAttachments(value.input.attachments)) return false;
   return value.input.history.every(item => isRecord(item) && (item.role === 'user' || item.role === 'assistant') && typeof item.content === 'string')
     && (value.continuation === undefined || isContinuationReference(value.continuation));
 }
@@ -467,7 +475,7 @@ export function isConnectorExecutionEvent(value: unknown): value is ConnectorExe
   }
 }
 
-const capabilities = new Set<string>(['model_catalog', 'execution_profiles', 'text_streaming', 'reasoning', 'tools', 'approvals', 'clarifications', 'elicitations', 'usage']);
+const capabilities = new Set<string>(['model_catalog', 'execution_profiles', 'text_streaming', 'reasoning', 'tools', 'approvals', 'clarifications', 'elicitations', 'usage', 'attachments']);
 const harnessTypes = new Set<string>(['hermes', 'opencode', 'antigravity', 'codex', 'claude', 'cursor']);
 const executionStatuses = new Set<string>(['queued', 'running', 'waiting_for_user', 'stopping', 'completed', 'failed', 'cancelled']);
 const requestResolutions = new Set<string>(['answered', 'declined', 'cancelled', 'expired', 'superseded']);
@@ -479,8 +487,18 @@ function isExecutionIntervention(value:unknown):value is ExecutionIntervention {
   return isRecord(value) && isInterventionPayload(value) && ['pending','applied','failed'].includes(String(value.status))
     && (value.error === undefined || isError(value.error)) && (value.status === 'failed' || value.error === undefined);
 }
-function isInterventionPayload(value:Record<string,unknown>):boolean{return isUuid(value.interventionId)&&validInterventionText(value.text);}
-function validInterventionText(value:unknown):value is string{return typeof value === 'string' && value.trim().length > 0 && value.length <= 2_000;}
+
+function isExecutionAttachments(value:unknown){
+  return value===undefined||(Array.isArray(value)&&value.length<=10&&value.every(item=>isRecord(item)
+    && Object.keys(item).every(key=>['versionId','name','mimeType','size','sha256'].includes(key))
+    && strings(item,'versionId','name','mimeType','sha256')
+    && String(item.versionId).length>0&&String(item.versionId).length<=255
+    && String(item.name).length>0&&String(item.name).length<=255&&String(item.mimeType).length>0&&String(item.mimeType).length<=255
+    && Number.isSafeInteger(item.size)&&Number(item.size)>=0
+    && /^[a-f0-9]{64}$/i.test(String(item.sha256))));
+}
+function validInterventionInput(text:unknown,attachments:unknown){return typeof text==='string'&&text.length<=2_000&&(text.trim().length>0||(Array.isArray(attachments)&&attachments.length>0));}
+function isInterventionPayload(value:Record<string,unknown>):boolean{return isUuid(value.interventionId)&&typeof value.text==='string'&&value.text.length<=2_000;}
 function isUuid(value:unknown):value is string{return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);}
 function isUpstreamStatus(value: unknown): value is UpstreamStatus {
   return isRecord(value) && typeof value.state === 'string' && upstreamStatusStates.has(value.state)

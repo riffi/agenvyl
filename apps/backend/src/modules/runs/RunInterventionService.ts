@@ -1,4 +1,5 @@
 import type {CreateRunInterventionResult} from '@agenvyl/contracts';
+import type {ExecutionAttachmentReference} from '@agenvyl/connector-contract';
 import type {RunGateway} from '../harness/harness.ports.js';
 import type {HarnessCatalogService} from '../connector/HarnessCatalogService.js';
 import {AppError} from '../../shared/errors/AppError.js';
@@ -16,7 +17,7 @@ type Dependencies={runs:RunRepository;activeRuns:ActiveRunRegistry;gateway:RunGa
 export class RunInterventionService{
   constructor(private readonly dependencies:Dependencies){}
 
-  async create(runId:string,input:{intervention_id:string;text:string}):Promise<CreateRunInterventionResult>{
+  async create(runId:string,input:{intervention_id:string;text:string;message_id?:string;retry_of_run_id?:string}):Promise<CreateRunInterventionResult>{
     const text=input.text.trim(),control=await this.dependencies.runs.control(runId);
     if(!control)throw new AppError('not_found',404,'Run not found');
     const handoff=await this.workflowHandoff(control,input.intervention_id,text);
@@ -34,14 +35,14 @@ export class RunInterventionService{
         await new Promise<void>(resolve=>setTimeout(resolve,25));
       }
     }
-    return this.continueCompleted(runId,input.intervention_id,text);
+    return this.continueCompleted(runId,input.intervention_id,text,input.message_id,input.retry_of_run_id);
   }
 
-  async applyNow(runId:string,input:{intervention_id:string;text:string}){
+  async applyNow(runId:string,input:{intervention_id:string;text:string;attachments?:ExecutionAttachmentReference[]}){
     const text=input.text.trim(),control=await this.dependencies.runs.control(runId),active=this.dependencies.activeRuns.get(runId);
     if(!control||!active)throw new AppError('not_found',404,'Run not found');
     if(active.terminal||control.status!=='streaming'||active.status!=='streaming')throw new AppError('run_not_intervenable',409,'Apply now is available only while the agent is actively responding');
-    const result=await this.redirectActive(active,input.intervention_id,text);
+    const result=await this.redirectActive(active,input.intervention_id,text,input.attachments);
     if(!result)throw new AppError('run_not_intervenable',409,'The response ended before the instruction could be applied');
     return result;
   }
@@ -77,7 +78,7 @@ export class RunInterventionService{
     return{mode:'workflow_handoff',intervention_id:interventionId,message_id:interventionId,source_run_id:control.id,status:'started'};
   }
 
-  private async redirectActive(run:NonNullable<ReturnType<ActiveRunRegistry['get']>>,interventionId:string,text:string):Promise<CreateRunInterventionResult|undefined>{
+  private async redirectActive(run:NonNullable<ReturnType<ActiveRunRegistry['get']>>,interventionId:string,text:string,attachments?:ExecutionAttachmentReference[]):Promise<CreateRunInterventionResult|undefined>{
     if(run.pendingRequests?.size)throw new AppError('run_waiting_for_user',409,'Resolve the pending agent request before adding an instruction');
     if(run.pendingIntervention){
       if(run.pendingIntervention.id===interventionId&&run.pendingIntervention.text===text)return{mode:'active_redirect',intervention_id:interventionId,status:'pending'};
@@ -87,7 +88,7 @@ export class RunInterventionService{
     const executionId=run.connectorExecutionId??run.upstreamRunId;
     if(!executionId)return undefined;
     try{
-      const result=await this.dependencies.gateway.intervene(executionId,{interventionId,text});
+      const result=await this.dependencies.gateway.intervene(executionId,{interventionId,text,...(attachments?.length?{attachments}:{})});
       if(result.status==='pending')run.pendingIntervention={id:interventionId,text};
       return{mode:'active_redirect',intervention_id:interventionId,status:'pending'};
     }catch(error){
@@ -98,14 +99,14 @@ export class RunInterventionService{
     }
   }
 
-  private async continueCompleted(runId:string,interventionId:string,text:string):Promise<CreateRunInterventionResult>{
+  private async continueCompleted(runId:string,interventionId:string,text:string,messageId?:string,retryOfRunId?:string):Promise<CreateRunInterventionResult>{
     const control=await this.dependencies.runs.control(runId);
     if(!control)throw new AppError('not_found',404,'Run not found');
     if(control.status!=='completed')throw new AppError('run_not_intervenable',409,'Instructions can be added only while streaming or after a successful selected response');
     const instance=await this.dependencies.harnesses.currentInstance(control.harness_instance_id,control.harness_type);
     const capability=instance?.postTurnContinuation;
     if(!capability||capability.mode!=='native_session'||instance?.status==='unavailable')throw new AppError('continuation_unavailable',409,'This harness instance does not support post-turn continuation');
-    const created=await this.dependencies.runs.createContinuation(runId,{interventionId,text,retention:capability.retention});
+    const created=await this.dependencies.runs.createContinuation(runId,{interventionId,text,retention:capability.retention,messageId,retryOfRunId});
     if(created.status==='not_found')throw new AppError('not_found',404,'Run not found');
     if(created.status==='not_completed')throw new AppError('run_not_intervenable',409,'Post-turn continuation requires a completed run');
     if(created.status==='selection_changed')throw new AppError('selection_changed',409,'The response selection changed after this run completed');

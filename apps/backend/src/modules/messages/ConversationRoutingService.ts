@@ -10,10 +10,11 @@ import type {FollowUpAnchor,FollowUpRepository} from './FollowUpRepository.js';
 import type {MessageRepository} from './messages.repository.js';
 import type {HarnessCatalogService} from '../connector/HarnessCatalogService.js';
 import {transitionExecutionProfile} from './workflowModeTransition.js';
+import type {RoomWorkspaceService} from '../workspace/RoomWorkspaceService.js';
 
 export class ConversationRoutingService{
   private readonly applyingNow=new Set<string>();
-  constructor(private readonly dependencies:{legacy:CreateMessageRound;followUps:FollowUpRepository;dispatcher:FollowUpDispatcher;personas:PersonaRepository;events:RoomEventService;interventions:RunInterventionService;messages:MessageRepository;harnesses:HarnessCatalogService}){}
+  constructor(private readonly dependencies:{legacy:CreateMessageRound;followUps:FollowUpRepository;dispatcher:FollowUpDispatcher;personas:PersonaRepository;events:RoomEventService;interventions:RunInterventionService;messages:MessageRepository;harnesses:HarnessCatalogService;roomWorkspace:RoomWorkspaceService}){}
 
   async execute(command:{roomId:string;body:CreateMessageRequest;correlationId?:string}){
     const text=command.body.text?.trim()??'',messageId=command.body.message_id??crypto.randomUUID();
@@ -74,7 +75,8 @@ export class ConversationRoutingService{
       }
       let interventionAccepted=false;
       try{
-        await this.dependencies.interventions.applyNow(claim.item.anchorRunId,{intervention_id:command.messageId,text:claim.item.text});
+        const attachments=await this.dependencies.messages.executionAttachments(claim.item.roomId,claim.item.messageId);
+        await this.dependencies.interventions.applyNow(claim.item.anchorRunId,{intervention_id:command.messageId,text:claim.item.text,...(attachments.length?{attachments}:{})});
         interventionAccepted=true;
         const applied=await this.dependencies.followUps.markDelivery(claim.item.id,'applied',{route:'active_intervention',final:true});
         if(applied)this.dependencies.events.publishPersisted(applied.roomId,applied.event);
@@ -101,15 +103,17 @@ export class ConversationRoutingService{
   }
 
   private async agentSession(command:{roomId:string;body:CreateMessageRequest},anchor:FollowUpAnchor,delivery:'after_response'|'apply_now',messageId:string){
-    if(command.body.attachment_version_ids?.length)throw new AppError('agent_session_attachments_unsupported',409,'Attachments require Room context');
     if(delivery==='apply_now'&&anchor.status!=='streaming')throw new AppError('run_not_intervenable',409,'Apply now is available only while the agent is actively responding');
     const catalog=await this.dependencies.harnesses.catalog(),instance=catalog.instances.find(item=>item.id===anchor.harnessInstanceId&&item.type===anchor.harnessType);
     if(!instance||instance.status==='unavailable')throw new AppError('harness_unavailable',503,'Harness instance is unavailable',{harnessInstanceId:anchor.harnessInstanceId,persona:anchor.personaHandle});
-    const created=await this.dependencies.followUps.create({roomId:command.roomId,text:command.body.text?.trim()??'',messageId,anchor,deliveryKind:delivery,resolveProfile:(source,workflowMode)=>transitionExecutionProfile(source,workflowMode,instance.controls)});
+    if(command.body.attachment_version_ids?.length&&!instance.capabilities.includes('attachments'))return this.legacy(command,[anchor.personaHandle],messageId);
+    const attachmentVersionIds=await this.dependencies.roomWorkspace.captureAttachmentVersions(command.roomId,command.body.attachment_version_ids??[]);
+    const created=await this.dependencies.followUps.create({roomId:command.roomId,text:command.body.text?.trim()??'',messageId,anchor,deliveryKind:delivery,attachmentVersionIds,resolveProfile:(source,workflowMode)=>transitionExecutionProfile(source,workflowMode,instance.controls)});
     if(created.status==='duplicate')return{status:'duplicate' as const,message:created.message};
     if(created.status==='already_queued')throw new AppError('follow_up_already_queued',409,`A follow-up for @${anchor.personaHandle} is already waiting`,{messageId:created.messageId});
     if(created.status==='room_not_found')throw new AppError('room_not_found',404,'Room not found');
     if(created.status==='anchor_unavailable')throw new AppError('session_unavailable',409,'The selected agent session is no longer available');
+    if(created.status==='attachment_unavailable')throw new AppError('attachment_unavailable',409,'One or more attachments are no longer available');
     if(created.status==='mode_matches')throw new Error('Unexpected workflow handoff precondition');
     this.dependencies.events.publishPersisted(command.roomId,created.event);
     if(delivery==='apply_now'&&created.transitionReason==='workflow_mode_changed'){
@@ -125,7 +129,8 @@ export class ConversationRoutingService{
       try{
         // Reuse the visible room message id so the timeline can render this as one
         // ordinary user message while the run still receives a native intervention.
-        await this.dependencies.interventions.applyNow(anchor.runId,{intervention_id:messageId,text:created.message.text});
+        const attachments=await this.dependencies.messages.executionAttachments(command.roomId,messageId);
+        await this.dependencies.interventions.applyNow(anchor.runId,{intervention_id:messageId,text:created.message.text,...(attachments.length?{attachments}:{})});
         const applied=await this.dependencies.followUps.markDelivery(created.pendingId,'applied',{route:'active_intervention',final:true});
         if(applied)this.dependencies.events.publishPersisted(applied.roomId,applied.event);
       }catch(error){

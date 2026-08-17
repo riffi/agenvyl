@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -12,10 +12,18 @@ beforeAll(async () => {
   workspaceRoot = await mkdtemp(join(tmpdir(), 'agenvyl-registry-'));
   projectRoot = await mkdtemp(join(tmpdir(), 'agenvyl-project-'));
   await mkdir(join(workspaceRoot, 'room-1'));
+  await mkdir(join(workspaceRoot,'.versions','aa'),{recursive:true});
+  await writeFile(join(workspaceRoot,'.versions','aa','a'.repeat(64)),'image bytes');
 });
 afterAll(async () => { await Promise.all([rm(workspaceRoot,{recursive:true,force:true}),rm(projectRoot,{recursive:true,force:true})]); });
 
 describe('ExecutionRegistry live subscriptions', () => {
+  it('resolves attachment references to immutable local snapshots before calling an adapter',async()=>{
+    const adapter=new LiveAdapter(),registry=createRegistry(adapter),request=structuredClone(connectorContractFixtures.startExecution) as StartExecutionRequest;
+    request.input.attachments=[{versionId:'version-1',name:'screen.png',mimeType:'image/png',size:11,sha256:'a'.repeat(64)}];
+    registry.start(request);await waitFor(()=>adapter.received!==undefined);
+    expect(adapter.received?.input.attachments).toEqual([{...request.input.attachments[0],absolutePath:join(workspaceRoot,'.versions','aa','a'.repeat(64))}]);
+  });
   it('uses the selected project directly in Work and keeps the room workspace in Plan',async()=>{
     const workAdapter=new LiveAdapter(),workRegistry=createRegistry(workAdapter);
     const workRequest={...structuredClone(connectorContractFixtures.startExecution),executionId:'work-project',workspace:{roomId:'room-1',relativePath:'.',project:{path:projectRoot,access:'read_write' as const}}} as StartExecutionRequest;

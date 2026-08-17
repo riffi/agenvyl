@@ -334,6 +334,20 @@ describe('RunExecutor', () => {
     await executor.shutdown();await database.close();
   });
 
+  it('loads message attachments into the Connector start request',async()=>{
+    let startRequest:import('@agenvyl/connector-contract').StartExecutionRequest|undefined;
+    const snapshot={...connectorContractFixtures.execution,cursor:2,pendingRequests:[]},connector=executionClient(snapshot,async function*(){yield connectorEvent(3,'execution.completed',{});}),transport=new ConnectorRunAdapter(connector);
+    vi.mocked(connector.start).mockImplementation(async request=>{startRequest=request;return{...snapshot,executionId:request.executionId};});
+    const{executor,registry,database,personas,messages}=await fixture(vi.fn<typeof fetch>(),4,connector,transport),persona=(await personas.find('persona-architect'))!,round=await messages.createRound('demo-room','inspect image',[persona],profiles([persona])),runId=round.runs[0].id,now=new Date().toISOString();
+    await database.sql`INSERT INTO workspace_entries(id,room_id,path,kind,size,mime_type,status,created_at,updated_at) VALUES('entry-screen','demo-room','screen.png','file',42,'image/png','tracked',${now},${now})`;
+    await database.sql`INSERT INTO workspace_versions(id,entry_id,room_id,path,size,mime_type,sha256,source,created_at) VALUES('version-screen','entry-screen','demo-room','screen.png',42,'image/png',${'a'.repeat(64)},'user',${now})`;
+    await database.sql`UPDATE workspace_entries SET current_version_id='version-screen' WHERE id='entry-screen'`;
+    await database.sql`INSERT INTO message_attachments(message_id,version_id,position) VALUES(${round.message.id},'version-screen',0)`;
+    registry.add(run(runId,round.message.id));executor.start(runId,'inspect image');await vi.waitFor(()=>expect(registry.get(runId)).toBeUndefined());
+    expect(startRequest?.input.attachments).toEqual([{versionId:'version-screen',name:'screen.png',mimeType:'image/png',size:42,sha256:'a'.repeat(64)}]);
+    await executor.shutdown();await database.close();
+  });
+
   it('moves an intervention completion race to post-turn with the same id',async()=>{
     const interventionId='c226f522-d864-4f1c-a53f-25d22dc9109f',snapshot={...connectorContractFixtures.execution,cursor:2,pendingRequests:[]},streamed=[connectorEvent(3,'execution.intervention.accepted',{interventionId,text:'Focus'}),connectorEvent(4,'execution.intervention.failed',{interventionId,text:'Focus',error:{code:'execution_ended',message:'Turn ended'}}),connectorEvent(5,'execution.completed',{continuation:{handle:'opaque'}})],connector=executionClient(snapshot,async function*(){yield* streamed;}),transport=new ConnectorRunAdapter(connector),fallback=vi.fn(async()=>undefined);
     vi.mocked(connector.instances).mockResolvedValue({...connectorContractFixtures.instances,instances:[{id:'local-hermes',type:'hermes',status:'healthy',capabilities:[],postTurnContinuation:{mode:'native_session',durability:'connector_restart',retention:'explicit_release'}}]});

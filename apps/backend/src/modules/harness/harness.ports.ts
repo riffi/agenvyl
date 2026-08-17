@@ -7,6 +7,7 @@ export type StartRunInput = {
   executionProfile: import('@agenvyl/contracts').RunExecutionProfileSnapshot;
   workspace: { roomId: string; relativePath: string; absolutePath?: string; project?:import('@agenvyl/connector-contract').ExecutionProjectScope };
   input: string;
+  attachments?: import('@agenvyl/connector-contract').ExecutionAttachmentReference[];
   sessionId: string;
   instructions: string;
   conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
@@ -36,7 +37,7 @@ export interface RunGateway {
   approve(runId: string, requestId:string, choice: ApprovalChoice): Promise<RunCheckpoint | undefined>;
   clarify?(runId: string, requestId:string, resolution: import('@agenvyl/contracts').RunRequestResolution|string): Promise<RunCheckpoint | undefined>;
   elicit?(runId:string,requestId:string,answer:import('@agenvyl/contracts').McpElicitationAnswer):Promise<RunCheckpoint|undefined>;
-  intervene?(runId:string,intervention:{interventionId:string;text:string}):Promise<{checkpoint?:RunCheckpoint;status:'pending'|'applied'|'failed'}>;
+  intervene?(runId:string,intervention:{interventionId:string;text:string;attachments?:import('@agenvyl/connector-contract').ExecutionAttachmentReference[]}):Promise<{checkpoint?:RunCheckpoint;status:'pending'|'applied'|'failed'}>;
   releaseContinuation?(instanceId:string,handle:string):Promise<import('@agenvyl/connector-contract').ContinuationReleaseOutcome>;
 }
 

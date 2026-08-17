@@ -44,6 +44,13 @@ describe('ConnectorRunAdapter',()=>{
     expect(client.start).toHaveBeenCalledWith(expect.objectContaining({workspace:{roomId:'room-1',relativePath:'.',project:{path:'C:\\work\\project',access:'read_write'}}}));
   });
 
+  it('forwards immutable attachment references to Connector',async()=>{
+    const execution={...connectorContractFixtures.execution,pendingRequests:[]},client=clientFixture(execution,[]),adapter=new ConnectorRunAdapter(client);
+    const attachment={versionId:'version-1',name:'screen.png',mimeType:'image/png',size:42,sha256:'a'.repeat(64)};
+    await adapter.createRun({...input(),attachments:[attachment]});
+    expect(client.start).toHaveBeenCalledWith(expect.objectContaining({input:expect.objectContaining({attachments:[attachment]})}));
+  });
+
   it('maps a generic UI approval to the offered external-directory grant',async()=>{
     const pending={id:'request-directory',kind:'approval' as const,prompt:'Add C:\\work?',choices:['allow_directory','deny']},execution={...connectorContractFixtures.execution,cursor:3,pendingRequests:[pending]};
     const client=clientFixture(execution,[]),adapter=new ConnectorRunAdapter(client);

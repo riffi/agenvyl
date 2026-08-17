@@ -26,7 +26,7 @@ describe('buildConfiguredAdapters', () => {
     expect(buildConfiguredAdapters(value, {})).toHaveLength(0);
     const adapters = buildConfiguredAdapters(value, { AGENVYL_CONNECTOR_OPENCODE_URL: 'http://127.0.0.1:4096' });
     expect([...adapters.keys()]).toEqual(['local-opencode']);
-    expect(adapters.get('local-opencode')).toMatchObject({ type: 'opencode',externalDirectoryRoots:['/srv/shared'], capabilities: ['model_catalog', 'execution_profiles', 'text_streaming', 'reasoning', 'tools', 'approvals', 'clarifications', 'usage'] });
+    expect(adapters.get('local-opencode')).toMatchObject({ type: 'opencode',externalDirectoryRoots:['/srv/shared'], capabilities: ['model_catalog', 'execution_profiles', 'text_streaming', 'reasoning', 'tools', 'approvals', 'clarifications', 'usage', 'attachments'] });
   });
 
   it('loads enabled Antigravity instances without an instance permission ceiling', () => {

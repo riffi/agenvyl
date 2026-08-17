@@ -18,5 +18,5 @@ export async function createRepositories(databaseUrl:string,options:{legacySeed?
   const roomEvents=new RoomEventRepository(database);
   const workspace=new WorkspaceRepository(database),runWorkspaces=new RunWorkspaceRepository(database),rooms=new RoomRepository(database,personas,workspace,roomEvents);
   const userProfile=new UserProfileRepository(database);
-  return{database,personas,userProfile,personaGroups:new PersonaGroupRepository(database),projects:new ProjectRepository(database),rooms,messages:new MessageRepository(database,personas,userProfile,roomEvents,workspace),followUps:new FollowUpRepository(database,roomEvents),runs:new RunRepository(database,roomEvents),roomEvents,workspace,runWorkspaces};
+  return{database,personas,userProfile,personaGroups:new PersonaGroupRepository(database),projects:new ProjectRepository(database),rooms,messages:new MessageRepository(database,personas,userProfile,roomEvents,workspace),followUps:new FollowUpRepository(database,roomEvents,workspace),runs:new RunRepository(database,roomEvents),roomEvents,workspace,runWorkspaces};
 }

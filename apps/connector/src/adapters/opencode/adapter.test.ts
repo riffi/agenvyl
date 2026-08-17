@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
+import {pathToFileURL} from 'node:url';
 import type { AdapterStartExecutionRequest } from '../../adapter.js';
-import { OpenCodeConnectorAdapter, type OpenCodeClientPort } from './adapter.js';
+import { OpenCodeConnectorAdapter, openCodePromptParts, type OpenCodeClientPort } from './adapter.js';
 
 describe('OpenCodeConnectorAdapter', () => {
   it('advertises connected models and primary modes from the native SDK', async () => {
@@ -20,7 +21,7 @@ describe('OpenCodeConnectorAdapter', () => {
     ]);
     const adapter = new OpenCodeConnectorAdapter({ baseUrl: 'http://127.0.0.1:4096', client, catalogDirectory: '/workspace/catalog' });
 
-    expect(adapter.capabilities).toEqual(['model_catalog', 'execution_profiles', 'text_streaming', 'reasoning', 'tools', 'approvals', 'clarifications', 'usage']);
+    expect(adapter.capabilities).toEqual(['model_catalog', 'execution_profiles', 'text_streaming', 'reasoning', 'tools', 'approvals', 'clarifications', 'usage', 'attachments']);
     await expect(adapter.catalog()).resolves.toEqual({
       models: [{ id: 'anthropic/claude-sonnet', label: 'Anthropic/Claude Sonnet', reasoningEfforts: ['high', 'max'] }],
       controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[{id:'standard',label:'Standard'},{id:'auto-approve',label:'Auto-approve'}],agentVariants:[{id:'build',label:'build'}]},
@@ -64,6 +65,13 @@ describe('OpenCodeConnectorAdapter', () => {
       {type:'usage.updated',payload:{usage:{inputTokens:18,outputTokens:6,reasoningTokens:1,cacheReadTokens:5,cacheWriteTokens:0}}},
       completion(),
     ]);
+  });
+
+  it('passes attachment snapshots to the native OpenCode prompt',async()=>{
+    const client=fixtureClient(),adapter=new OpenCodeConnectorAdapter({baseUrl:'http://localhost:4096',client});
+    await adapter.start({...startRequest(),input:{...startRequest().input,message:'',attachments:[attachment()]}});
+    expect(client.prompt).toHaveBeenCalledWith(expect.objectContaining({message:'',attachments:[attachment()]}));
+    expect(openCodePromptParts('',[attachment()])).toEqual([{type:'file',mime:'image/png',filename:'screen.png',url:pathToFileURL(attachment().absolutePath).href}]);
   });
 
   it('fails an intervention and the execution when the replacement prompt cannot start',async()=>{
@@ -815,6 +823,8 @@ function startRequest(): AdapterStartExecutionRequest {
     input: { systemPrompt: 'Be useful.', history: [{ role: 'user', content: 'Earlier' }, { role: 'assistant', content: 'Previous answer' }], message: 'Continue' },
   };
 }
+
+function attachment(){return{versionId:'version-1',name:'screen.png',mimeType:'image/png',size:42,sha256:'a'.repeat(64),absolutePath:'/srv/workspaces/.versions/aa/screen'};}
 
 function fixtureClient(calls: string[] = []): OpenCodeClientPort {
   return {

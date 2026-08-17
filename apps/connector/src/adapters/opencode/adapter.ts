@@ -1,10 +1,11 @@
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
+import {pathToFileURL} from 'node:url';
 import { createOpencodeClient } from '@opencode-ai/sdk/v2/client';
 import type { SessionStatus } from '@opencode-ai/sdk/v2/client';
 import type { ExecutionStatus, TokenUsage } from '@agenvyl/connector-contract';
 import type { UpstreamStatus, UpstreamStatusReason } from '@agenvyl/connector-contract';
-import {AdapterContinuationError,type AdapterExecution, type AdapterExecutionEvent, type AdapterStartExecutionRequest, type ConnectorAdapter } from '../../adapter.js';
+import {AdapterContinuationError,type AdapterExecution, type AdapterExecutionAttachment, type AdapterExecutionEvent, type AdapterStartExecutionRequest, type ConnectorAdapter } from '../../adapter.js';
 import {experimentalTailV1ConversationHistory} from '../../conversation-history.js';
 import { redactConnectorText } from '../../safety.js';
 import {
@@ -24,7 +25,7 @@ type CatalogAgent = { name: string; description?: string; mode: 'subagent' | 'pr
 type PermissionReply = 'once' | 'always' | 'reject';
 type QuestionVersion = 'legacy' | 'v2';
 type PromptConfiguration={system:string;agent?:string;variant?:string;model:{providerID:string;modelID:string}};
-type InterventionTransition={interventionId:string;text:string;phase:'interrupting'|'starting';promise:Promise<void>;resolve:()=>void;reject:(error:Error)=>void};
+type InterventionTransition={interventionId:string;text:string;attachments?:AdapterExecutionAttachment[];phase:'interrupting'|'starting';promise:Promise<void>;resolve:()=>void;reject:(error:Error)=>void};
 type OpenCodeContinuationHandle={v:1;harness:'opencode';instanceId:string;sessionId:string;directory:string;storageScopeHash:string;configurationHash:string;contextHash:string};
 
 export interface OpenCodeClientPort {
@@ -34,7 +35,7 @@ export interface OpenCodeClientPort {
   sessionStatuses(directory?: string): Promise<Record<string, SessionStatus>>;
   subscribe(directory: string, signal: AbortSignal): Promise<AsyncIterable<unknown>>;
   sessionMessages(sessionID:string,directory:string):Promise<Array<{info?:{role?:string;system?:string}}>>;
-  prompt(input: { sessionID: string; directory: string; system: string; message: string; agent?: string; variant?: string; model: { providerID: string; modelID: string } }): Promise<void>;
+  prompt(input: { sessionID: string; directory: string; system: string; message: string; attachments?:AdapterExecutionAttachment[]; agent?: string; variant?: string; model: { providerID: string; modelID: string } }): Promise<void>;
   replyPermission(input: { sessionID: string; requestID: string; directory: string; reply: PermissionReply; version: 'legacy' | 'v2' }): Promise<void>;
   replyQuestion(input: { sessionID: string; requestID: string; directory: string; answers: string[][]; version: QuestionVersion }): Promise<void>;
   abortSession(sessionID: string, directory?: string): Promise<void>;
@@ -87,7 +88,7 @@ type PendingQuestion = { upstreamId: string; nativeRequestId: string; directory:
 
 export class OpenCodeConnectorAdapter implements ConnectorAdapter {
   readonly type = 'opencode';
-  readonly capabilities: ConnectorAdapter['capabilities'] = ['model_catalog', 'execution_profiles', 'text_streaming', 'reasoning', 'tools', 'approvals', 'clarifications', 'usage'];
+  readonly capabilities: ConnectorAdapter['capabilities'] = ['model_catalog', 'execution_profiles', 'text_streaming', 'reasoning', 'tools', 'approvals', 'clarifications', 'usage', 'attachments'];
   readonly interventionMode='interrupt_then_continue' as const;
   readonly postTurnContinuation={mode:'native_session',durability:'connector_restart',retention:'explicit_release'} as const;
   private readonly client: OpenCodeClientPort;
@@ -216,6 +217,7 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
         sessionID: session.id,
         directory,
         message: request.input.message,
+        attachments:request.input.attachments,
         ...promptConfiguration,
       });
       return { upstreamId: session.id };
@@ -432,7 +434,7 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
     return { outcome: reply === 'reject' ? 'declined' as const : 'answered' as const };
   }
 
-  intervene(execution:AdapterExecution,input:{interventionId:string;text:string}){
+  intervene(execution:AdapterExecution,input:{interventionId:string;text:string;attachments?:AdapterExecutionAttachment[]}){
     const active=this.requireActive(execution.upstreamId);
     if(active.stopping||active.cleanup)throw new Error('OpenCode execution is not running');
     if(this.hasPendingRequest(execution.upstreamId))throw new Error('OpenCode is waiting for user input');
@@ -486,7 +488,7 @@ export class OpenCodeConnectorAdapter implements ConnectorAdapter {
     resetTurnState(active);
     active.awaitingReplacementStart=true;
     try{
-      await this.client.prompt({sessionID:sessionId,directory:active.directory,message:transition.text,...active.promptConfiguration});
+      await this.client.prompt({sessionID:sessionId,directory:active.directory,message:transition.text,attachments:transition.attachments,...active.promptConfiguration});
       if(active.intervention!==transition||active.stopping)return this.failedIntervention(transition,'execution_stopped','The instruction was cancelled because the run was stopped');
       active.intervention=undefined;transition.resolve();
       return{type:'applied' as const,event:{type:'execution.intervention.applied' as const,payload:{interventionId:transition.interventionId,text:transition.text}}};
@@ -654,7 +656,7 @@ function sdkClient(baseUrl: string, request: typeof fetch, username?: string, pa
         sessionID: input.sessionID,
         directory: input.directory,
         system: input.system,
-        parts: [{ type: 'text', text: input.message }],
+        parts: openCodePromptParts(input.message,input.attachments),
         model: input.model,
         ...(input.agent ? { agent: input.agent } : {}),
         ...(input.variant ? { variant: input.variant } : {}),
@@ -679,6 +681,11 @@ function sdkClient(baseUrl: string, request: typeof fetch, username?: string, pa
     async disposeInstance(directory) { await client.instance.dispose({ directory }, { throwOnError: true }); },
   };
 }
+
+export const openCodePromptParts=(message:string,attachments:AdapterExecutionAttachment[]=[])=>([
+  ...(message.trim()?[{type:'text' as const,text:message}]:[]),
+  ...attachments.map(attachment=>({type:'file' as const,mime:attachment.mimeType,filename:attachment.name,url:pathToFileURL(attachment.absolutePath).href})),
+]);
 
 export function openCodeSystemContext(request: AdapterStartExecutionRequest) {
   const {history}=experimentalTailV1ConversationHistory(request.input.history);

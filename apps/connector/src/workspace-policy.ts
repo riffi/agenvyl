@@ -68,6 +68,24 @@ export class WorkspacePolicy {
     try{return canonicalDirectory(path,'workspace.project.path');}
     catch{throw new WorkspacePolicyError('project_unavailable','Selected project directory is unavailable',404);}
   }
+
+  resolveVersion(roomWorkspacePath:string,sha256:string){
+    if(!/^[a-f0-9]{64}$/i.test(sha256))throw new WorkspacePolicyError('attachment_invalid','Attachment hash is invalid',400);
+    const roots=this.roots.filter(root=>isWithin(root,roomWorkspacePath));
+    if(roots.length!==1)throw new WorkspacePolicyError('attachment_unavailable','Attachment workspace root is unavailable',503);
+    let versionsRoot:string,canonical:string;
+    try{
+      versionsRoot=realpathSync(resolve(roots[0],'.versions'));
+      canonical=realpathSync(resolve(versionsRoot,sha256.slice(0,2),sha256));
+    }catch(error){
+      if(isMissing(error))throw new WorkspacePolicyError('attachment_not_found','Attachment snapshot was not found',404);
+      throw new WorkspacePolicyError('attachment_unavailable','Attachment snapshot cannot be inspected',503);
+    }
+    if(!isWithin(roots[0],versionsRoot))throw new WorkspacePolicyError('attachment_forbidden','Attachment version store escapes its configured root',403);
+    if(!isWithin(versionsRoot,canonical))throw new WorkspacePolicyError('attachment_forbidden','Attachment snapshot escapes the version store',403);
+    if(!statSync(canonical).isFile())throw new WorkspacePolicyError('attachment_invalid','Attachment snapshot is not a file',400);
+    return canonical;
+  }
 }
 
 function canonicalDirectory(path: string, label: string) {

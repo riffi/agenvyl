@@ -15,6 +15,7 @@ export class FollowUpDispatcher{
   async recover(){for(const item of await this.dependencies.followUps.recoverable()){if(item.deliveryKind==='apply_now'){const reset=await this.dependencies.followUps.requeueApplyNow(item.id);if(reset)this.dependencies.events.publishPersisted(reset.roomId,reset.event);if(reset)await this.dispatch(reset.item);continue}await this.dispatch(item);}}
   async onRunTerminal(runId:string){for(const item of await this.dependencies.followUps.pendingForAnchor(runId))await this.dispatch(item);}
   async dispatchById(id:string){const item=await this.dependencies.followUps.get(id);if(item)await this.dispatch(item);}
+  async fallbackApplied(anchorRunId:string,messageId:string){const reset=await this.dependencies.followUps.requeueAppliedForFallback(anchorRunId,messageId);if(!reset)return false;this.dependencies.events.publishPersisted(reset.roomId,reset.event);await this.dispatch(reset.item);return true;}
 
   private async dispatch(item:PendingFollowUp){
     if(this.dispatching.has(item.id)||item.deliveryKind!=='after_response')return;

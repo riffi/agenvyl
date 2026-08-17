@@ -275,6 +275,7 @@ export class RunExecutor {
       if (!persona) throw new Error(`Persona ${version.persona_id} not found`);
       if (!run.personaHandle) run.personaHandle = persona.handle;
       const currentMessage=this.dependencies.messages&&run.messageId?await this.dependencies.messages.find(run.roomId,run.messageId):undefined;
+      const attachments=this.dependencies.messages&&run.messageId?await this.dependencies.messages.executionAttachments(run.roomId,run.messageId):[];
       const input=run.continuedFromRunId?text:currentMessage?`${formatHumanMessage(currentMessage)}${text.startsWith(currentMessage.text)?text.slice(currentMessage.text.length):''}`:text;
       let immutableContextInstructions='';
       if(this.dependencies.messages&&run.messageId&&run.refreshContext!==false){
@@ -305,6 +306,7 @@ export class RunExecutor {
           ...(run.recommendedProject?.availability==='available'?{project:{path:run.recommendedProject.path,access:run.executionProfile.workflowMode==='work'?'read_write' as const:'read' as const}}:{}),
         },
         input,
+        ...(attachments.length?{attachments}:{}),
         sessionId,
         instructions,
         conversationHistory: run.conversationHistory,

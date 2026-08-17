@@ -9,17 +9,20 @@ import type {
   PostTurnContinuation,
   ContinuationReleaseOutcome,
   StartExecutionRequest,
+  ExecutionAttachmentReference,
   TokenUsage,
   UpstreamStatus,
 } from '@agenvyl/connector-contract';
 
 export type AdapterExecution = { upstreamId: string };
-export type AdapterStartExecutionRequest = Omit<StartExecutionRequest, 'workspace'> & {
+export type AdapterExecutionAttachment = ExecutionAttachmentReference & { absolutePath:string };
+export type AdapterStartExecutionRequest = Omit<StartExecutionRequest, 'workspace'|'input'> & {
   workspace: Omit<StartExecutionRequest['workspace'],'project'> & {
     absolutePath: string;
     roomAbsolutePath?: string;
     project?:{absolutePath:string;access:'read'|'read_write'};
   };
+  input: Omit<StartExecutionRequest['input'],'attachments'> & { attachments?:AdapterExecutionAttachment[] };
 };
 
 export type AdapterExecutionEvent =
@@ -47,7 +50,7 @@ export interface ConnectorAdapter {
   inspect(execution: AdapterExecution): Promise<{ status: ExecutionStatus }>;
   events(execution: AdapterExecution): AsyncIterable<AdapterExecutionEvent>;
   resolveRequest?(execution: AdapterExecution, request: ConnectorRequestSnapshot, resolution: ConnectorRequestAnswer|string): Promise<{ outcome: ConnectorRequestResolution }>;
-  intervene?(execution: AdapterExecution, intervention: { interventionId:string;text:string }): Promise<void>;
+  intervene?(execution: AdapterExecution, intervention: { interventionId:string;text:string;attachments?:AdapterExecutionAttachment[] }): Promise<void>;
   stop(execution: AdapterExecution): Promise<void>;
   releaseContinuation?(handle:string,scope:{instanceId:string}):Promise<ContinuationReleaseOutcome>;
   close?(): Promise<void>;

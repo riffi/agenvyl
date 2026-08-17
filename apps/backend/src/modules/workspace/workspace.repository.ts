@@ -1,6 +1,7 @@
 import type {Database,QueryContext} from '../../infrastructure/database/Database.js';
 import {number,stringArray,text,timestamp} from '../../infrastructure/database/rowMappers.js';
 import type {RunArtifact,RunArtifactSummary,RunEmbed,WorkspaceAttachment,WorkspaceEntry,WorkspaceSource,WorkspaceVersion} from '@agenvyl/contracts';
+import type {ExecutionAttachmentReference} from '@agenvyl/connector-contract';
 
 type VersionRow={id:string;entry_id?:string;room_id:string;path:string;size:number;mime_type:string;sha256:string;source:WorkspaceSource;run_ids:string[];created_at:string};
 export type RunArtifactProjection={artifacts:RunArtifact[];artifactSummary:RunArtifactSummary;staticPreview?:WorkspaceAttachment;staticPreviewStatus?:'ready'|'build_missing'|'capture_failed'};
@@ -72,6 +73,10 @@ export class WorkspaceRepository{
   }
 
   async messageAttachments(messageIds:string[],db:QueryContext=this.database.sql){if(!messageIds.length)return new Map<string,WorkspaceAttachment[]>();const rows=await db`SELECT ma.message_id,ma.position,v.* FROM message_attachments ma JOIN workspace_versions v ON v.id=ma.version_id WHERE ma.message_id=ANY(${messageIds}) ORDER BY ma.message_id,ma.position`;const result=new Map<string,WorkspaceAttachment[]>();for(const row of rows){const id=text(row.message_id),items=result.get(id)??[];items.push(toAttachment(toVersionRow(row)));result.set(id,items);}return result;}
+  async messageExecutionAttachments(roomId:string,messageId:string):Promise<ExecutionAttachmentReference[]>{
+    const rows=await this.database.sql`SELECT v.id,v.path,v.mime_type,v.size,v.sha256 FROM message_attachments ma JOIN workspace_versions v ON v.id=ma.version_id JOIN room_messages m ON m.id=ma.message_id WHERE ma.message_id=${messageId} AND m.room_id=${roomId} AND v.room_id=${roomId} ORDER BY ma.position`;
+    return rows.map(row=>({versionId:text(row.id),name:text(row.path).split('/').pop()??text(row.path),mimeType:text(row.mime_type),size:number(row.size),sha256:text(row.sha256)}));
+  }
   async attachMessage(messageId:string,versionIds:string[],db:QueryContext){for(let position=0;position<versionIds.length;position++)await db`INSERT INTO message_attachments(message_id,version_id,position) VALUES(${messageId},${versionIds[position]},${position})`;}
 
   async linkArtifacts(runIds:string[],version:VersionRow,change:RunArtifact['change'],attribution:RunArtifact['attribution']){const now=new Date().toISOString();for(const runId of runIds)await this.database.sql`INSERT INTO run_artifacts(run_id,version_id,change,attribution,visibility,created_at) VALUES(${runId},${version.id},${change},${attribution},'project',${now}) ON CONFLICT DO NOTHING`;}

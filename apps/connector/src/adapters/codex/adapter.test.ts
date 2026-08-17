@@ -14,6 +14,11 @@ class FakeAppServer implements CodexAppServerPort{
 const input=(id='run-1')=>({executionId:id,harnessInstanceId:'local-codex',modelId:'codex-model',executionProfile:{workflowMode:'work' as const,reasoningEffort:'high',permissionProfileId:'workspace-write',agentVariantId:null,planEnforcement:null},workspace:{roomId:'room',relativePath:'.',absolutePath:'C:/workspace/room'},input:{systemPrompt:'Be precise',history:[{role:'user' as const,content:'Earlier'}],message:'Now'}});
 
 describe('Codex connector adapter',()=>{
+  it('passes image snapshots as local-image turn input',async()=>{
+    const client=new FakeAppServer(),adapter=new CodexConnectorAdapter({client}),request=input();
+    await adapter.start({...request,input:{...request.input,message:'',attachments:[{versionId:'version-1',name:'screen.png',mimeType:'image/png',size:42,sha256:'a'.repeat(64),absolutePath:'C:/workspace/.versions/aa/screen'}]}});
+    expect(client.requests.find(entry=>entry.method==='turn/start')).toMatchObject({params:{input:[{type:'localImage',path:'C:/workspace/.versions/aa/screen'}]}});
+  });
   it('streams text, reasoning, tools, usage, approvals and structured clarification',async()=>{const client=new FakeAppServer(),adapter=new CodexConnectorAdapter({client});const execution=await adapter.start(input()),iterator=adapter.events(execution)[Symbol.asyncIterator]();expect(client.requests.find(request=>request.method==='thread/start')).toMatchObject({method:'thread/start',params:{cwd:'C:/workspace/room',sandbox:'workspace-write',approvalPolicy:'on-request',ephemeral:false}});expect(client.requests.find(request=>request.method==='turn/start')).toMatchObject({method:'turn/start',params:{summary:'auto',collaborationMode:{mode:'default',settings:{reasoning_effort:'high'}}}});
     client.emit({method:'item/agentMessage/delta',params:{threadId:'thread-1',turnId:'turn-1',itemId:'answer',delta:'Hello'}});expect(await iterator.next()).toMatchObject({value:{type:'output.text.delta',payload:{text:'Hello'}}});
     client.emit({method:'item/reasoning/summaryTextDelta',params:{threadId:'thread-1',turnId:'turn-1',itemId:'reasoning-1',summaryIndex:0,delta:'**Thinking**'}});expect(await iterator.next()).toMatchObject({value:{type:'output.reasoning.delta',payload:{text:'**Thinking**'}}});

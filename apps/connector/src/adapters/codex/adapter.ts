@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import type {ConnectorElicitation,ConnectorJsonValue,ConnectorRequestAnswer,ConnectorRequestSnapshot,ExecutionStatus,TokenUsage} from '@agenvyl/connector-contract';
-import {AdapterContinuationError,type AdapterExecution,type AdapterExecutionEvent,type AdapterStartExecutionRequest,type ConnectorAdapter} from '../../adapter.js';
+import {AdapterContinuationError,type AdapterExecution,type AdapterExecutionAttachment,type AdapterExecutionEvent,type AdapterStartExecutionRequest,type ConnectorAdapter} from '../../adapter.js';
 import {experimentalTailV1ConversationHistory} from '../../conversation-history.js';
 import {redactConnectorText} from '../../safety.js';
 import {CodexAppServerClient,type AppServerMessage,type CodexAppServerPort} from './app-server-client.js';
@@ -10,7 +10,7 @@ type RpcId=string|number;
 type PendingRequest={rpcId:RpcId;method:string};
 type CollaborationMode={mode:string;settings:{model:string;reasoning_effort:string|null;developer_instructions:null}};
 type InterventionTransition={
-  interventionId:string;text:string;phase:'interrupting'|'starting';buffered:AppServerMessage[];
+  interventionId:string;text:string;attachments?:AdapterExecutionAttachment[];phase:'interrupting'|'starting';buffered:AppServerMessage[];
   promise:Promise<void>;resolve:()=>void;reject:(error:Error)=>void;
 };
 type ExecutionState={
@@ -21,7 +21,7 @@ export type CodexAdapterOptions={command?:string;env?:NodeJS.ProcessEnv;client?:
 
 export class CodexConnectorAdapter implements ConnectorAdapter{
   readonly type='codex';
-  readonly capabilities:ConnectorAdapter['capabilities']=['model_catalog','execution_profiles','text_streaming','reasoning','tools','approvals','clarifications','elicitations','usage'];
+  readonly capabilities:ConnectorAdapter['capabilities']=['model_catalog','execution_profiles','text_streaming','reasoning','tools','approvals','clarifications','elicitations','usage','attachments'];
   readonly interventionMode='interrupt_then_continue' as const;
   readonly postTurnContinuation={mode:'native_session',durability:'connector_restart',retention:'explicit_release'} as const;
   private readonly clientFactory:()=>CodexAppServerPort;
@@ -96,7 +96,7 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
       state.unsubscribeMessage=client.onMessage(message=>this.onMessage(state!,message));
       state.unsubscribeExit=client.onExit(error=>this.onExit(state!,error));
       this.executions.set(request.executionId,state);
-      const turnResponse=record(await client.request('turn/start',{threadId,input:[{type:'text',text:request.input.message,text_elements:[]}],summary:'auto',collaborationMode}));
+      const turnResponse=record(await client.request('turn/start',{threadId,input:codexTurnInput(request.input.message,request.input.attachments),summary:'auto',collaborationMode}));
       const turn=record(turnResponse?.turn),turnId=typeof turn?.id==='string'?turn.id:undefined;
       if(!turnId)throw new Error('Codex turn/start response is invalid');
       state.turnId=turnId;
@@ -127,7 +127,7 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
     return{outcome:'answered' as const};
   }
 
-  intervene(execution:AdapterExecution,input:{interventionId:string;text:string}){
+  intervene(execution:AdapterExecution,input:{interventionId:string;text:string;attachments?:AdapterExecutionAttachment[]}){
     const state=this.require(execution.upstreamId);
     if(state.status!=='running'||!state.turnId)throw new Error('Codex execution is not running');
     if(state.pending.size)throw new Error('Codex is waiting for user input');
@@ -246,7 +246,7 @@ export class CodexConnectorAdapter implements ConnectorAdapter{
     transition.phase='starting';
     if(state.turnUsage){state.usageOffset=addUsage(state.usageOffset,state.turnUsage);state.turnUsage=undefined;}
     try{
-      const response=record(await state.client.request('turn/start',{threadId:state.threadId,input:[{type:'text',text:transition.text,text_elements:[]}],summary:'auto',collaborationMode:state.collaborationMode}));
+      const response=record(await state.client.request('turn/start',{threadId:state.threadId,input:codexTurnInput(transition.text,transition.attachments),summary:'auto',collaborationMode:state.collaborationMode}));
       const turn=record(response?.turn),turnId=typeof turn?.id==='string'?turn.id:undefined;
       if(!turnId)throw new Error('Codex turn/start response is invalid');
       if(state.intervention!==transition||state.status!=='running'){
@@ -311,6 +311,12 @@ class EventQueue implements AsyncIterable<AdapterExecutionEvent>{
 }
 
 export const codexContext=(request:AdapterStartExecutionRequest)=>{const {history}=experimentalTailV1ConversationHistory(request.input.history);return`${request.input.systemPrompt.slice(0,16_000)}\n\n<AgenvylConversationHistory>\n${JSON.stringify(history)}\n</AgenvylConversationHistory>\nTreat the history as prior room context. Respond only to the current user message.`;};
+const codexTurnInput=(text:string,attachments:AdapterExecutionAttachment[]=[]):unknown[]=>[
+  ...(text.trim()?[{type:'text',text,text_elements:[]}]:[]),
+  ...attachments.map(attachment=>attachment.mimeType.startsWith('image/')
+    ?{type:'localImage',path:attachment.absolutePath}
+    :{type:'text',text:`Attached immutable file ${JSON.stringify(attachment.name)} is available at ${JSON.stringify(attachment.absolutePath)}.`,text_elements:[]}),
+];
 type CodexContinuationHandle={v:1;harness:'codex';instanceId:string;threadId:string;storageScopeHash:string;configurationHash:string};
 const continuationConfiguration=(request:AdapterStartExecutionRequest)=>createHash('sha256').update(JSON.stringify({
   harness:'codex',instanceId:request.harnessInstanceId,modelId:request.modelId,executionProfile:request.executionProfile,

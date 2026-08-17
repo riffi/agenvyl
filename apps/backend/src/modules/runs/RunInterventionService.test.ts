@@ -15,6 +15,14 @@ describe('RunInterventionService',()=>{
     await expect(service.create('run-1',{...input,text:'Different'})).rejects.toMatchObject({code:'intervention_conflict',statusCode:409});
   });
 
+  it('forwards attachments when applying a queued message immediately',async()=>{
+    const activeRuns=new ActiveRunRegistry(),intervene=vi.fn(async()=>({status:'pending' as const})),attachment={versionId:'version-1',name:'screen.png',mimeType:'image/png',size:42,sha256:'a'.repeat(64)};
+    activeRuns.add({id:'run-1',roomId:'room',messageId:'message',connectorExecutionId:'execution-1',status:'streaming',terminal:false} as never);
+    const service=new RunInterventionService({runs:{control:vi.fn(async()=>({id:'run-1',status:'streaming'}))} as never,activeRuns,gateway:{intervene} as never});
+    await service.applyNow('run-1',{...input,attachments:[attachment]});
+    expect(intervene).toHaveBeenCalledWith('execution-1',{interventionId:input.intervention_id,text:input.text,attachments:[attachment]});
+  });
+
   it('rejects missing, non-streaming, waiting, and unsupported runs',async()=>{
     const activeRuns=new ActiveRunRegistry(),control=vi.fn(async(id:string)=>id==='missing'?undefined:{id:'run-1',status:'queued'});
     let service=new RunInterventionService({runs:{control} as never,activeRuns,gateway:{} as never});

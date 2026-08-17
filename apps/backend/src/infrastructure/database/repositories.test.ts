@@ -100,19 +100,44 @@ describe("PostgreSQL repositories", () => {
     await repositories.database.close();
   });
   it('attaches a queued follow-up to the new message through a native continuation',async()=>{
-    const p=await createRepositories(testDatabaseUrl('conversation_routing_native'),{legacySeed:true}),persona=(await p.personas.find('persona-architect'))!,round=await p.messages.createRound('demo-room','source',[persona],profiles([persona])),source=round.runs[0].id,followUpMessage=crypto.randomUUID();
+    const p=await createRepositories(testDatabaseUrl('conversation_routing_native'),{legacySeed:true}),persona=(await p.personas.find('persona-architect'))!,round=await p.messages.createRound('demo-room','source',[persona],profiles([persona])),source=round.runs[0].id,followUpMessage=crypto.randomUUID(),now=new Date().toISOString();
     await p.runs.setSystemPromptSnapshot(source,'immutable prompt');
     await p.runs.finishNonTerminal(source,'completed',undefined,undefined,{handle:'opaque-follow-up',retention:'explicit_release'});
     await p.runs.selectCompletedAttempt(source);
     const[anchor]=await p.followUps.anchors('demo-room','architect');
-    const queued=await p.followUps.create({roomId:'demo-room',text:'continue here',messageId:followUpMessage,anchor,deliveryKind:'after_response',resolveProfile:source=>source});
+    await p.database.sql`INSERT INTO workspace_entries(id,room_id,path,kind,size,mime_type,status,created_at,updated_at) VALUES('native-entry','demo-room','screen.png','file',42,'image/png','tracked',${now},${now})`;
+    await p.database.sql`INSERT INTO workspace_versions(id,entry_id,room_id,path,size,mime_type,sha256,source,created_at) VALUES('native-version','native-entry','demo-room','screen.png',42,'image/png',${'a'.repeat(64)},'user',${now})`;
+    await p.database.sql`UPDATE workspace_entries SET current_version_id='native-version' WHERE id='native-entry'`;
+    const queued=await p.followUps.create({roomId:'demo-room',text:'continue here',messageId:followUpMessage,anchor,deliveryKind:'after_response',attachmentVersionIds:['native-version'],resolveProfile:source=>source});
     if(queued.status!=='created')throw new Error('Expected queued follow-up');
     const continuation=await p.runs.createFollowUpContinuation(queued.pendingId,'explicit_release');
     expect(continuation).toMatchObject({status:'created',sourceRunId:source,messageId:followUpMessage,text:'continue here',continuationHandle:'opaque-follow-up',history:[]});
     if(continuation.status!=='created')throw new Error('Expected native continuation');
-    expect(await p.messages.find('demo-room',followUpMessage)).toMatchObject({runIds:[continuation.runId],delivery:{route:'agent_session',status:'continued',agent:'architect',anchorRunId:source,runId:continuation.runId}});
+    expect(await p.messages.find('demo-room',followUpMessage)).toMatchObject({runIds:[continuation.runId],attachments:[{version_id:'native-version',name:'screen.png',mime_type:'image/png'}],delivery:{route:'agent_session',status:'continued',agent:'architect',anchorRunId:source,runId:continuation.runId}});
+    expect(await p.messages.executionAttachments('demo-room',followUpMessage)).toEqual([{versionId:'native-version',name:'screen.png',mimeType:'image/png',size:42,sha256:'a'.repeat(64)}]);
     expect((await p.rooms.timeline('demo-room',undefined,10))?.runs.find(run=>run.id===continuation.runId)).toMatchObject({messageId:followUpMessage,continuedFromRunId:source,continuationInstruction:'continue here'});
     await expect(p.runs.createFollowUpContinuation(queued.pendingId,'explicit_release')).resolves.toMatchObject({status:'duplicate',runId:continuation.runId});
+    await p.runs.finishNonTerminal(continuation.runId,'failed','provider unavailable');
+    const retryInfo=await p.runs.continuationRetry(continuation.runId);
+    expect(retryInfo).toEqual({sourceRunId:source,messageId:followUpMessage,instruction:'continue here',available:true});
+    const retry=await p.runs.createContinuation(source,{interventionId:crypto.randomUUID(),text:'continue here',retention:'explicit_release',messageId:followUpMessage,retryOfRunId:continuation.runId});
+    expect(retry).toMatchObject({status:'created',messageId:followUpMessage,sourceRunId:source});
+    if(retry.status!=='created')throw new Error('Expected continuation retry');
+    expect((await p.database.sql`SELECT message_id,retry_of_run_id FROM agent_runs WHERE id=${retry.runId}`)[0]).toEqual({message_id:followUpMessage,retry_of_run_id:continuation.runId});
+    expect(await p.messages.executionAttachments('demo-room',followUpMessage)).toHaveLength(1);
+    await p.database.close();
+  });
+  it('requeues an execution-ended apply-now message with its attachment for native fallback',async()=>{
+    const p=await createRepositories(testDatabaseUrl('apply_now_attachment_fallback'),{legacySeed:true}),persona=(await p.personas.find('persona-architect'))!,round=await p.messages.createRound('demo-room','source',[persona],profiles([persona])),source=round.runs[0].id,messageId=crypto.randomUUID(),now=new Date().toISOString();
+    await p.runs.setSystemPromptSnapshot(source,'immutable prompt');await p.runs.finishNonTerminal(source,'completed',undefined,undefined,{handle:'opaque-race',retention:'explicit_release'});await p.runs.selectCompletedAttempt(source);
+    await p.database.sql`INSERT INTO workspace_entries(id,room_id,path,kind,size,mime_type,status,created_at,updated_at) VALUES('race-entry','demo-room','race.png','file',42,'image/png','tracked',${now},${now})`;
+    await p.database.sql`INSERT INTO workspace_versions(id,entry_id,room_id,path,size,mime_type,sha256,source,created_at) VALUES('race-version','race-entry','demo-room','race.png',42,'image/png',${'b'.repeat(64)},'user',${now})`;
+    const[anchor]=await p.followUps.anchors('demo-room','architect'),queued=await p.followUps.create({roomId:'demo-room',text:'',messageId,anchor,deliveryKind:'apply_now',attachmentVersionIds:['race-version'],resolveProfile:profile=>profile});
+    if(queued.status!=='created')throw new Error('Expected apply-now follow-up');
+    await p.followUps.markDelivery(queued.pendingId,'applied',{route:'active_intervention',final:true});
+    const reset=await p.followUps.requeueAppliedForFallback(source,messageId);expect(reset).toMatchObject({item:{deliveryKind:'after_response',status:'queued'}});
+    const continuation=await p.runs.createFollowUpContinuation(queued.pendingId,'explicit_release');expect(continuation).toMatchObject({status:'created',messageId,text:''});
+    expect(await p.messages.executionAttachments('demo-room',messageId)).toEqual([{versionId:'race-version',name:'race.png',mimeType:'image/png',size:42,sha256:'b'.repeat(64)}]);
     await p.database.close();
   });
   it('snapshots a workflow handoff and rejects native continuation across modes',async()=>{
@@ -530,7 +555,7 @@ describe("PostgreSQL repositories", () => {
     expect((await p.database.sql`SELECT context FROM agent_runs WHERE id=${first.runId}`)[0]?.context).toEqual([]);
     if(second.status!=='created')throw new Error('Expected second continuation child');
     await p.runs.finishNonTerminal(second.runId,'cancelled');
-    await expect(p.runs.continuationRetry(second.runId)).resolves.toEqual({sourceRunId:first.runId,instruction:'One more pass',available:true});
+    await expect(p.runs.continuationRetry(second.runId)).resolves.toEqual({sourceRunId:first.runId,messageId:round.message.id,instruction:'One more pass',available:true});
     await p.database.close();
   });
   it("durably projects and replays transient upstream state across timeline reload", async () => {
