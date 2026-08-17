@@ -4,6 +4,10 @@ import type {TokenUsage} from '@agenvyl/connector-contract';
 
 export type AntigravityMessage=Record<string,unknown>;
 export type AntigravityResult={conversationId:string;status:string;response:string;error?:string;usage?:TokenUsage};
+export type AntigravityOutputSegment={type:'text'|'reasoning';text:string};
+
+const communicationThoughtOpen='<communication_thought>';
+const communicationThoughtClose='</communication_thought>';
 
 export class AntigravityProtocolError extends Error{
   constructor(readonly code:'agy_invalid_output'|'agy_output_too_large',message:string){super(message);this.name='AntigravityProtocolError';}
@@ -41,6 +45,37 @@ export class AntigravityNdjsonDecoder{
     if(finished)this.buffered='';
     if(Buffer.byteLength(this.buffered,'utf8')>this.maxLineBytes)throw new AntigravityProtocolError('agy_invalid_output','Antigravity stream-json event exceeded the Connector line limit');
     return messages;
+  }
+}
+
+export class AntigravityCommunicationParser{
+  private buffered='';
+  private insideThought=false;
+
+  push(value:string):AntigravityOutputSegment[]{
+    if(!value)return[];
+    this.buffered+=value;
+    const segments:AntigravityOutputSegment[]=[];
+    for(;;){
+      const delimiter=this.insideThought?communicationThoughtClose:communicationThoughtOpen,index=this.buffered.indexOf(delimiter);
+      if(index>=0){
+        appendSegment(segments,this.insideThought?'reasoning':'text',this.buffered.slice(0,index));
+        this.buffered=this.buffered.slice(index+delimiter.length);
+        this.insideThought=!this.insideThought;
+        continue;
+      }
+      if(this.insideThought)return segments;
+      const retained=delimiterPrefixLength(this.buffered,communicationThoughtOpen),ready=this.buffered.slice(0,this.buffered.length-retained);
+      appendSegment(segments,'text',ready);
+      this.buffered=this.buffered.slice(this.buffered.length-retained);
+      return segments;
+    }
+  }
+
+  finish():AntigravityOutputSegment[]{
+    const text=this.insideThought?communicationThoughtOpen+this.buffered:this.buffered;
+    this.buffered='';this.insideThought=false;
+    return text?[{type:'text',text}]:[];
   }
 }
 
@@ -82,6 +117,18 @@ const parseLine=(line:string,maxBytes:number):AntigravityMessage=>{
   const message=record(value);
   if(!message||typeof message.event!=='string')throw new AntigravityProtocolError('agy_invalid_output','Antigravity CLI emitted an invalid stream-json event');
   return message;
+};
+
+const appendSegment=(segments:AntigravityOutputSegment[],type:AntigravityOutputSegment['type'],text:string)=>{
+  if(!text)return;
+  const previous=segments.at(-1);
+  if(previous?.type===type)previous.text+=text;
+  else segments.push({type,text});
+};
+
+const delimiterPrefixLength=(value:string,delimiter:string)=>{
+  for(let length=Math.min(value.length,delimiter.length-1);length>0;length--)if(delimiter.startsWith(value.slice(-length)))return length;
+  return 0;
 };
 
 const record=(value:unknown):Record<string,unknown>|undefined=>value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:undefined;

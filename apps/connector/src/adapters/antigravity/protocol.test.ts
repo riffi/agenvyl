@@ -1,6 +1,6 @@
 import {Buffer} from 'node:buffer';
 import {describe,expect,it} from 'vitest';
-import {AntigravityNdjsonDecoder,AntigravityProtocolError,antigravityResult,antigravityText,antigravityTool} from './protocol.js';
+import {AntigravityCommunicationParser,AntigravityNdjsonDecoder,AntigravityProtocolError,antigravityResult,antigravityText,antigravityTool} from './protocol.js';
 
 describe('Antigravity stream-json protocol',()=>{
   it('decodes split UTF-8 NDJSON and extracts progress events',()=>{
@@ -15,6 +15,26 @@ describe('Antigravity stream-json protocol',()=>{
     expect(antigravityTool({event:'step_update',step_update:{step_index:3,state:'ACTIVE',step_type:'tool',tool_name:'run_command',tool_info:{parameters:{CommandLine:'npm test'}}}})).toEqual({id:'agy-step-3',name:'run_command',state:'active',parameters:{CommandLine:'npm test'}});
     expect(antigravityTool({event:'step_update',step_update:{step_index:3,state:'ERROR',step_type:'tool',tool_name:'run_command',tool_info:{error:{type:'TOOL_ERROR'}}}})).toEqual({id:'agy-step-3',name:'run_command',state:'failed',parameters:undefined});
     expect(antigravityResult({event:'result',result:{conversation_id:'conversation-1',status:'SUCCESS',response:'done',usage:{input_tokens:10,output_tokens:2,total_tokens:12,thinking_tokens:1,cache_read_tokens:5}}})).toEqual({conversationId:'conversation-1',status:'SUCCESS',response:'done',usage:{inputTokens:10,outputTokens:2,totalTokens:12,reasoningTokens:1,cacheReadTokens:5}});
+  });
+
+  it('separates tagged communication thoughts across arbitrary chunks',()=>{
+    const parser=new AntigravityCommunicationParser();
+    expect(parser.push('Before <communic')).toEqual([{type:'text',text:'Before '}]);
+    expect(parser.push('ation_thought>Проверяю')).toEqual([]);
+    expect(parser.push('</communication_')).toEqual([]);
+    expect(parser.push('thought>After <communication_thought>Second</communication_thought>.')).toEqual([
+      {type:'reasoning',text:'Проверяю'},
+      {type:'text',text:'After '},
+      {type:'reasoning',text:'Second'},
+      {type:'text',text:'.'},
+    ]);
+    expect(parser.finish()).toEqual([]);
+  });
+
+  it('preserves an unclosed communication thought as ordinary text',()=>{
+    const parser=new AntigravityCommunicationParser();
+    expect(parser.push('Answer <communication_thought>unfinished')).toEqual([{type:'text',text:'Answer '}]);
+    expect(parser.finish()).toEqual([{type:'text',text:'<communication_thought>unfinished'}]);
   });
 
   it('rejects malformed, oversized and structurally invalid events',()=>{

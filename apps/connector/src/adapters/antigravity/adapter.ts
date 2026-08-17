@@ -7,7 +7,7 @@ import {experimentalTailV1ConversationHistory} from '../../conversation-history.
 import { commandInvocation, resolveCommand } from '../../discovery.js';
 import { redactConnectorText } from '../../safety.js';
 import {antigravityContinuationConfiguration,antigravityStorageScopeHash,encodeAntigravityContinuationHandle,parseAntigravityContinuationHandle} from './native-continuation.js';
-import {AntigravityNdjsonDecoder,AntigravityProtocolError,antigravityResult,antigravityText,antigravityTool,type AntigravityMessage,type AntigravityResult} from './protocol.js';
+import {AntigravityCommunicationParser,AntigravityNdjsonDecoder,AntigravityProtocolError,antigravityResult,antigravityText,antigravityTool,type AntigravityMessage,type AntigravityOutputSegment,type AntigravityResult} from './protocol.js';
 
 const minimumVersion = [1, 1, 8] as const;
 
@@ -40,7 +40,8 @@ type ActiveExecution = {
   stopRequested: boolean;
   terminal:boolean;
   sawMessage:boolean;
-  streamedText:string;
+  rawStreamedText:string;
+  communicationParser:AntigravityCommunicationParser;
   tools:Map<string,string>;
   result?:AntigravityResult;
   continuation:{instanceId:string;directory:string;configurationHash:string;expectedConversationId?:string};
@@ -55,7 +56,7 @@ const parseAntigravityModel = (value:string) => {
 
 export class AntigravityConnectorAdapter implements ConnectorAdapter {
   readonly type = 'antigravity';
-  readonly capabilities: ConnectorAdapter['capabilities'] = ['model_catalog', 'execution_profiles','text_streaming','tools','usage'];
+  readonly capabilities: ConnectorAdapter['capabilities'] = ['model_catalog', 'execution_profiles','text_streaming','reasoning','tools','usage'];
   readonly postTurnContinuation={mode:'native_session',durability:'connector_restart',retention:'provider_managed'} as const;
   private readonly command: string;
   private readonly commandArgsPrefix: string[];
@@ -148,7 +149,8 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
       stopRequested: false,
       terminal:false,
       sawMessage:false,
-      streamedText:'',
+      rawStreamedText:'',
+      communicationParser:new AntigravityCommunicationParser(),
       tools:new Map(),
       continuation:{instanceId:request.harnessInstanceId,directory,configurationHash,...(continuation?{expectedConversationId:continuation.conversationId}:{})},
     };
@@ -186,7 +188,7 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
     if(active.terminal)return;
     active.sawMessage=true;
     const text=antigravityText(message);
-    if(text){active.streamedText+=text;active.queue.push({type:'output.text.delta',payload:{text}});}
+    if(text){active.rawStreamedText+=text;this.publishSegments(active,active.communicationParser.push(text));}
     const tool=antigravityTool(message);
     if(tool){
       const seen=active.tools.has(tool.id),name=tool.name??active.tools.get(tool.id)??'Antigravity tool';active.tools.set(tool.id,name);
@@ -198,23 +200,30 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
 
   private exit(active:ActiveExecution,result:ProcessResult){
     if(active.terminal)return;
-    if(active.stopRequested){this.finish(active,{type:'execution.cancelled',payload:{}});return;}
-    if(result.error instanceof AntigravityProtocolError){this.finish(active,failure(result.error.code,result.error.message));return;}
-    if(result.outputTooLarge){this.finish(active,failure('agy_output_too_large','Antigravity output exceeded the Connector limit'));return;}
-    if(result.error){this.finish(active,failure('agy_spawn_failed',result.error.message||'Unable to start Antigravity CLI'));return;}
-    if(result.code!==0){const detail=redactConnectorText(result.stderr,500);this.finish(active,failure('agy_execution_failed',detail||`Antigravity CLI exited with code ${result.code??'unknown'}`));return;}
+    if(active.stopRequested){this.flushCommunicationParser(active);this.finish(active,{type:'execution.cancelled',payload:{}});return;}
+    if(result.error instanceof AntigravityProtocolError){this.flushCommunicationParser(active);this.finish(active,failure(result.error.code,result.error.message));return;}
+    if(result.outputTooLarge){this.flushCommunicationParser(active);this.finish(active,failure('agy_output_too_large','Antigravity output exceeded the Connector limit'));return;}
+    if(result.error){this.flushCommunicationParser(active);this.finish(active,failure('agy_spawn_failed',result.error.message||'Unable to start Antigravity CLI'));return;}
+    if(result.code!==0){const detail=redactConnectorText(result.stderr,500);this.flushCommunicationParser(active);this.finish(active,failure('agy_execution_failed',detail||`Antigravity CLI exited with code ${result.code??'unknown'}`));return;}
     const parsed=active.result;
-    if(!parsed){this.finish(active,failure(active.sawMessage?'agy_invalid_output':'agy_empty_output',active.sawMessage?'Antigravity CLI exited without a terminal result event':'Antigravity CLI completed without a response'));return;}
-    if(parsed.status!=='SUCCESS'){this.finish(active,failure('agy_execution_failed',redactConnectorText(parsed.error||parsed.response,500)||`Antigravity CLI returned ${parsed.status}`));return;}
-    if(active.continuation.expectedConversationId&&parsed.conversationId!==active.continuation.expectedConversationId){this.finish(active,failure('continuation_incompatible','Antigravity resumed a different conversation'));return;}
+    if(!parsed){this.flushCommunicationParser(active);this.finish(active,failure(active.sawMessage?'agy_invalid_output':'agy_empty_output',active.sawMessage?'Antigravity CLI exited without a terminal result event':'Antigravity CLI completed without a response'));return;}
+    if(parsed.status!=='SUCCESS'){this.flushCommunicationParser(active);this.finish(active,failure('agy_execution_failed',redactConnectorText(parsed.error||parsed.response,500)||`Antigravity CLI returned ${parsed.status}`));return;}
+    if(active.continuation.expectedConversationId&&parsed.conversationId!==active.continuation.expectedConversationId){this.flushCommunicationParser(active);this.finish(active,failure('continuation_incompatible','Antigravity resumed a different conversation'));return;}
     const response=parsed.response.trim();
-    if(!active.streamedText&&!response){this.finish(active,failure('agy_empty_output','Antigravity CLI completed without a response'));return;}
-    if(!active.streamedText&&response)active.queue.push({type:'output.text.delta',payload:{text:response}});
-    else if(parsed.response.startsWith(active.streamedText)){const remainder=parsed.response.slice(active.streamedText.length);if(remainder)active.queue.push({type:'output.text.delta',payload:{text:remainder}});}
+    if(!active.rawStreamedText&&!response){this.flushCommunicationParser(active);this.finish(active,failure('agy_empty_output','Antigravity CLI completed without a response'));return;}
+    if(!active.rawStreamedText&&response)this.publishSegments(active,active.communicationParser.push(response));
+    else if(parsed.response.startsWith(active.rawStreamedText))this.publishSegments(active,active.communicationParser.push(parsed.response.slice(active.rawStreamedText.length)));
+    this.flushCommunicationParser(active);
     if(parsed.usage)active.queue.push({type:'usage.updated',payload:{usage:parsed.usage}});
     const handle=encodeAntigravityContinuationHandle({v:1,harness:'antigravity',instanceId:active.continuation.instanceId,conversationId:parsed.conversationId,directory:active.continuation.directory,storageScopeHash:this.storageScopeHash,configurationHash:active.continuation.configurationHash});
     this.finish(active,{type:'execution.completed',payload:{continuation:{handle}}});
   }
+
+  private publishSegments(active:ActiveExecution,segments:AntigravityOutputSegment[]){
+    for(const segment of segments)active.queue.push({type:segment.type==='reasoning'?'output.reasoning.delta':'output.text.delta',payload:{text:segment.text}});
+  }
+
+  private flushCommunicationParser(active:ActiveExecution){this.publishSegments(active,active.communicationParser.finish());}
 
   private finish(active:ActiveExecution,event:AdapterExecutionEvent){
     if(active.terminal)return;active.terminal=true;active.status=event.type==='execution.completed'?'completed':event.type==='execution.cancelled'?'cancelled':'failed';active.queue.push(event);active.queue.end();
