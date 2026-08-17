@@ -19,7 +19,7 @@ describe('Composer agent list',()=>{
   it('hides the legacy agent-session mode and safely restores Auto',async()=>{
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
     const send=vi.fn<RoomGateway['send']>().mockResolvedValue(sentMessage),updateConversationRouting=vi.fn(async()=>undefined),localGateway={...gateway,send};
-    render(<Composer gateway={localGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} conversationRouting conversationRoutingMode="agent_session" updateConversationRouting={updateConversationRouting}/>);
+    render(<Composer gateway={localGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} conversationRoutingMode="agent_session" updateConversationRouting={updateConversationRouting}/>);
     await waitFor(()=>expect(updateConversationRouting).toHaveBeenCalledWith('auto'));
     fireEvent.click(screen.getByRole('button',{name:/Auto/i}));
     expect(screen.queryByText('Agent session')).toBeNull();
@@ -33,7 +33,7 @@ describe('Composer agent list',()=>{
   it('explains ambiguous Auto routing and disables sending until a recipient is mentioned',async()=>{
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
     const reviewer={...persona,id:'reviewer',handle:'reviewer',name:'Reviewer'},send=vi.fn<RoomGateway['send']>().mockResolvedValue(sentMessage),updateConversationRouting=vi.fn(async()=>undefined),localGateway={...gateway,send};
-    render(<Composer gateway={localGateway} active={0} personas={[persona,reviewer]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} conversationRouting conversationRoutingMode="auto" updateConversationRouting={updateConversationRouting} autoRoutingCandidates={['coder','reviewer']}/>);
+    render(<Composer gateway={localGateway} active={0} personas={[persona,reviewer]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} conversationRoutingMode="auto" updateConversationRouting={updateConversationRouting} autoRoutingCandidates={['coder','reviewer']}/>);
     const editor=screen.getByRole('textbox',{name:'Message'});
     fireEvent.change(editor,{target:{value:'What should we do next?'}});
     expect(screen.getByRole('status').textContent).toContain('Auto needs a recipient');
@@ -61,7 +61,7 @@ describe('Composer agent list',()=>{
   it('shows a queued message above the composer and applies that message now',async()=>{
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
     const applyQueuedNow=vi.fn(async()=>undefined),localGateway={...gateway,applyQueuedNow},queuedMessage={...sentMessage,id:'queued-message',text:'Use the existing parser',targets:['coder'],delivery:{route:'agent_session' as const,status:'queued' as const,agent:'coder',anchorRunId:'run-1'}};
-    render(<Composer gateway={localGateway} active={1} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} conversationRouting pendingFollowUps={[queuedMessage]}/>);
+    render(<Composer gateway={localGateway} active={1} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} pendingFollowUps={[queuedMessage]}/>);
     expect(screen.getByRole('region',{name:'Queued messages'}).textContent).toContain('Use the existing parser');
     fireEvent.click(screen.getByRole('button',{name:'Apply queued message to Coder now'}));
     await waitFor(()=>expect(applyQueuedNow).toHaveBeenCalledWith('queued-message'));
@@ -70,7 +70,7 @@ describe('Composer agent list',()=>{
   it('shows a cross-mode handoff and offers to switch the active agent now',async()=>{
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
     const applyQueuedNow=vi.fn(async()=>undefined),localGateway={...gateway,applyQueuedNow},queuedMessage={...sentMessage,id:'queued-handoff',text:'Implement the agreed plan',targets:['coder'],delivery:{route:'agent_session' as const,status:'queued' as const,transitionReason:'workflow_mode_changed' as const,agent:'coder',anchorRunId:'run-1'}};
-    render(<Composer gateway={localGateway} active={1} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} conversationRouting pendingFollowUps={[queuedMessage]} pendingWorkflowModes={{'queued-handoff':'work'}}/>);
+    render(<Composer gateway={localGateway} active={1} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} pendingFollowUps={[queuedMessage]} pendingWorkflowModes={{'queued-handoff':'work'}}/>);
     expect(screen.getByRole('status').textContent).toContain('New Work session queued');
     fireEvent.click(screen.getByRole('button',{name:'Switch Coder to Work now'}));
     await waitFor(()=>expect(applyQueuedNow).toHaveBeenCalledWith('queued-handoff'));
@@ -135,7 +135,7 @@ describe('Composer agent list',()=>{
     render(<Composer gateway={localGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} workflowMode="plan" updateWorkflowMode={updateWorkflowMode}/>);
     const editor=screen.getByRole('textbox',{name:'Message'});fireEvent.change(editor,{target:{value:'Implement it'}});fireEvent.click(screen.getByRole('button',{name:'Plan mode. Switch to Work'}));fireEvent.keyDown(editor,{key:'Enter'});
     expect(send).not.toHaveBeenCalled();finish();
-    await waitFor(()=>expect(send).toHaveBeenCalledWith('Implement it',[],expect.any(String),[],undefined));
+    await waitFor(()=>expect(send).toHaveBeenCalledWith('Implement it',[],expect.any(String),[],{mode:'auto',delivery:'after_response'}));
   });
 
   it('keeps Plan active after sending to multiple responders',async()=>{
@@ -227,7 +227,7 @@ describe('Composer agent list',()=>{
   it('moves conversation routing into the add menu on mobile',async()=>{
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:true,addEventListener:vi.fn(),removeEventListener:vi.fn()})));
     const updateConversationRouting=vi.fn(async()=>undefined);
-    render(<Composer gateway={gateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} conversationRouting conversationRoutingMode="auto" updateConversationRouting={updateConversationRouting}/>);
+    render(<Composer gateway={gateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} conversationRoutingMode="auto" updateConversationRouting={updateConversationRouting}/>);
     expect(screen.queryByRole('button',{name:/^Auto$/i})).toBeNull();
     fireEvent.click(screen.getByRole('button',{name:'Add to message'}));
     const auto=screen.getByRole('menuitemradio',{name:/Auto/}),roomContext=screen.getByRole('menuitemradio',{name:/Room context/});

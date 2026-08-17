@@ -12,7 +12,6 @@ import { CreateRoomDialog, RoomAgentManager,RoomProjectDialog } from "../../feat
 import {AttachmentPicker,useRoomAttachments} from '../../features/send-message';
 import { FakeRoomGateway, HttpRoomGateway, isPendingFollowUp, type RoomGateway } from "../../features/room-session";
 import { Button, EmptyState } from "../../shared/ui";
-import {useRuntimeFeatures} from '../../shared/features';
 import { applyWorkspaceRequestUpdate, WorkspaceWindow, workspaceRequestForTarget, workspaceRequestFromSearch, workspaceSearchWithRequest, type OpenWorkspaceArtifact, type WorkspaceOpenRequest, type WorkspaceRequestUpdate, type WorkspaceTarget } from '../workspace-window';
 import { autoRoutingCandidates, Composer, type ComposerHandle, type ComposerInterventionTarget } from "../composer";
 import { PersonasScreen } from "../personas-screen";
@@ -65,7 +64,6 @@ export function WorkspaceApp({
   selectedPersonaId?:string;
   navigateToPersona:(id?:string,options?:{replace?:boolean})=>void;
 }) {
-  const runtimeFeatures=useRuntimeFeatures();
   const [searchParams,setSearchParams]=useSearchParams();
   const sidebarCollapse=useSidebarCollapse();
   const fake=useMemo(()=>{const query=new URLSearchParams(location.search).get('gateway');return query==='fake'||(query!=='real'&&import.meta.env.VITE_GATEWAY_MODE==='fake')},[]);
@@ -265,7 +263,7 @@ export function WorkspaceApp({
             manageAgents={() => setManagingAgents(true)}
           />
           <Timeline roomId={roomId} state={state} personas={personaCatalog} harnessCatalog={harnessCatalog} select={setSelected} gateway={gateway} loadOlder={loadOlder} loadingOlder={loadingOlder} initialLoading={!fake&&timelineQuery.isPending} onMentionPersona={mentionPersona} openWorkspace={openWorkspace} openArtifact={openArtifact} addInstructionToRun={setInstructionRunId}/>
-          <Composer ref={composerRef} gateway={gateway} active={active} personas={personas} roomPersonas={roomPersonas} updateParticipantReasoning={updateParticipantReasoning} harnessCatalog={harnessCatalog} catalogReady={gateway.mode === "fake" || (!catalogLoading && !catalogError)} onSent={async()=>{await invalidateRooms()}} openWorkspace={openWorkspace} openArtifact={openArtifact} roomId={roomId} attachments={attachments.items} attachmentsBusy={attachments.busy} openAttachmentPicker={()=>setAttachmentPicker(true)} uploadFiles={files=>void attachments.uploadFiles(files)} removeAttachment={attachments.remove} retryAttachment={attachments.retry} clearAttachments={attachments.clear} workflowMode={state.workflowMode} updateWorkflowMode={updateWorkflowMode} interventionTarget={interventionTarget} exitIntervention={()=>setInstructionRunId(undefined)} conversationRouting={Boolean(runtimeFeatures.conversation_routing)} conversationRoutingMode={state.conversationRoutingMode} updateConversationRouting={updateConversationRouting} autoRoutingCandidates={autoRouteCandidates} pendingFollowUps={pendingFollowUps} pendingWorkflowModes={pendingWorkflowModes}/>
+          <Composer ref={composerRef} gateway={gateway} active={active} personas={personas} roomPersonas={roomPersonas} updateParticipantReasoning={updateParticipantReasoning} harnessCatalog={harnessCatalog} catalogReady={gateway.mode === "fake" || (!catalogLoading && !catalogError)} onSent={async()=>{await invalidateRooms()}} openWorkspace={openWorkspace} openArtifact={openArtifact} roomId={roomId} attachments={attachments.items} attachmentsBusy={attachments.busy} openAttachmentPicker={()=>setAttachmentPicker(true)} uploadFiles={files=>void attachments.uploadFiles(files)} removeAttachment={attachments.remove} retryAttachment={attachments.retry} clearAttachments={attachments.clear} workflowMode={state.workflowMode} updateWorkflowMode={updateWorkflowMode} interventionTarget={interventionTarget} exitIntervention={()=>setInstructionRunId(undefined)} conversationRoutingMode={state.conversationRoutingMode} updateConversationRouting={updateConversationRouting} autoRoutingCandidates={autoRouteCandidates} pendingFollowUps={pendingFollowUps} pendingWorkflowModes={pendingWorkflowModes}/>
         </>:<div className={styles['empty-chat']}><div className={styles['empty-mobile-header']}><button type="button" aria-label="Open menu" onClick={()=>setMenu(true)}><Menu /></button><strong>agenvyl</strong></div><EmptyState icon={<MessageCircle />} title="No rooms" description="Create a room to start a conversation with agents." action={<Button variant="primary" icon={<Plus />} onClick={()=>setCreatingRoom(true)}>Create room</Button>} /></div>):<PersonasScreen
           personas={personaCatalog}
           harnessCatalog={harnessCatalog}

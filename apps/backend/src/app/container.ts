@@ -48,7 +48,7 @@ export async function createAppContainer(config: AppConfig, fetchImplementation?
   const createMessageRound=new CreateMessageRound({personas,rooms,messages,events,harnesses:harnessCatalogService,activeRuns,runExecutor,roomWorkspace,continuationCleanup});
   const conversationRoutingService=new ConversationRoutingService({legacy:createMessageRound,followUps,dispatcher:followUpDispatcher,personas,events,interventions:runInterventions,messages,harnesses:harnessCatalogService});
   await runExecutor.reconcilePersistedRuns();
-  if(config.conversationRouting)await followUpDispatcher.recover();
+  await followUpDispatcher.recover();
   await continuationCleanup.reconcile();
   await roomWorkspace.recoverRuns();
   return {
@@ -65,7 +65,6 @@ export async function createAppContainer(config: AppConfig, fetchImplementation?
     personasService:new PersonasService(personas,rooms,harnessCatalogService),
     userProfileService:new UserProfileService(userProfile),
     personaGroupsService:new PersonaGroupsService(personaGroups),
-    createMessageRound,
     conversationRoutingService,
     runsService:new RunsService({runs,events,activeRuns,executor:runExecutor,interventions:runInterventions,continuationCleanup}),
     harnessCatalogService,

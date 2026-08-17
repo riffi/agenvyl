@@ -57,7 +57,6 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   updateWorkflowMode=async()=>{},
   interventionTarget,
   exitIntervention=()=>{},
-  conversationRouting=false,
   conversationRoutingMode='auto',
   updateConversationRouting=async()=>{},
   autoRoutingCandidates=[],
@@ -126,9 +125,9 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   const selectWorkflowMode=async(nextMode:WorkflowMode)=>{if(modeSaving||nextMode===workflowMode)return;setModeSaving(true);setModeError(undefined);const update=Promise.resolve().then(()=>updateWorkflowMode(nextMode));modeUpdateRef.current=update;try{await update}catch(error){setModeError(error instanceof Error?error.message:String(error))}finally{if(modeUpdateRef.current===update)modeUpdateRef.current=undefined;setModeSaving(false)}};
   const selectConversationRouting=async(nextMode:import('@agenvyl/contracts').ConversationRoutingMode)=>{if(routeSaving||nextMode===conversationRoutingMode)return;setRouteSaving(true);setRouteError(undefined);try{await updateConversationRouting(nextMode)}catch(error){setRouteError(error instanceof Error?error.message:String(error))}finally{setRouteSaving(false)}};
   const visibleConversationRoutingMode=conversationRoutingMode==='agent_session'?'auto':conversationRoutingMode;
-  const ambiguousAutoRouting=conversationRouting&&visibleConversationRoutingMode==='auto'&&targets.length===0&&autoRoutingCandidates.length>1;
+  const ambiguousAutoRouting=visibleConversationRoutingMode==='auto'&&targets.length===0&&autoRoutingCandidates.length>1;
   const showAutoRoutingGuidance=ambiguousAutoRouting&&Boolean(text.trim()||attachments.length);
-  useEffect(()=>{if(conversationRouting&&conversationRoutingMode==='agent_session')void selectConversationRouting('auto')},[conversationRouting,conversationRoutingMode]);
+  useEffect(()=>{if(conversationRoutingMode==='agent_session')void selectConversationRouting('auto')},[conversationRoutingMode]);
   const workflowModeLabel=workflowMode==='plan'?'Plan':'Work',nextWorkflowMode:WorkflowMode=workflowMode==='plan'?'work':'plan',nextWorkflowModeLabel=nextWorkflowMode==='plan'?'Plan':'Work';
   const workflowModeTitle=workflowMode==='plan'?'Plan mode: project changes are blocked; MCP actions require confirmation. Switch to Work':`Work mode. Switch to ${nextWorkflowModeLabel}`;
   const send = async (retry=sendError) => {
@@ -143,7 +142,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
     }
     const outgoing=retry?.text??text.trim();
     const outgoingTargets=retry?.targets??parseMentions(outgoing,personas), messageId=retry?.messageId??crypto.randomUUID(),attachmentVersionIds=retry?.attachmentVersionIds??attachments.flatMap(item=>item.attachment?[item.attachment.version_id]:[]);
-    const outgoingRouting=retry?.routing??(conversationRouting?(visibleConversationRoutingMode==='room_context'?{mode:'room_context' as const}:{mode:'auto' as const,delivery:'after_response' as const}):undefined);
+    const outgoingRouting=retry?.routing??(visibleConversationRoutingMode==='room_context'?{mode:'room_context' as const}:{mode:'auto' as const,delivery:'after_response' as const});
     if ((!outgoing&&!attachmentVersionIds.length) || !catalogReady || sending || (!retry&&attachmentsBusy))return;
     if(outgoingRouting?.mode==='auto'&&!outgoingTargets.length&&autoRoutingCandidates.length>1){editorRef.current?.focus();return;}
     setSending(true);setSendError(undefined);
@@ -187,7 +186,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
         </div>
       )}
       {active > 0 && <div className={styles['active-runs']}><span><i />{active} {active===1?'agent is responding':'agents are responding'}</span><Button size="sm" variant="danger" onClick={() => void gateway.cancel()}><Square /> Stop all</Button></div>}
-      {!interventionTarget&&conversationRouting&&pendingFollowUps.length>0&&<PendingFollowUps messages={pendingFollowUps} personas={personas} workflowModes={pendingWorkflowModes} onApplyNow={messageId=>gateway.applyQueuedNow(messageId)}/>}
+      {!interventionTarget&&pendingFollowUps.length>0&&<PendingFollowUps messages={pendingFollowUps} personas={personas} workflowModes={pendingWorkflowModes} onApplyNow={messageId=>gateway.applyQueuedNow(messageId)}/>}
       {modeError&&<Alert className={styles['send-error']} tone="error">Could not change room mode: {modeError}</Alert>}
       {routeError&&<Alert className={styles['send-error']} tone="error">Could not change message route: {routeError}</Alert>}
       {!interventionTarget&&instructionOnlyTargets.length>0&&<Alert className={styles['plan-warning']} tone="warning">Instruction-only for {instructionOnlyTargets.map(item=>`@${item.handle}`).join(', ')}: this mode does not technically block writes to the external project.</Alert>}
@@ -245,9 +244,9 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
           />
         </div>
         <footer className={interventionTarget?styles['instruction-footer']:undefined}>
-          {!interventionTarget&&<ComposerAddMenu attachmentDisabled={attachments.length>=10||attachmentsBusy} onAttach={openAttachmentPicker} onOpenWorkspace={()=>openWorkspace()} routing={conversationRouting&&mobileControls?{mode:visibleConversationRoutingMode,saving:routeSaving,onModeChange:mode=>void selectConversationRouting(mode)}:undefined}/>}
+          {!interventionTarget&&<ComposerAddMenu attachmentDisabled={attachments.length>=10||attachmentsBusy} onAttach={openAttachmentPicker} onOpenWorkspace={()=>openWorkspace()} routing={mobileControls?{mode:visibleConversationRoutingMode,saving:routeSaving,onModeChange:mode=>void selectConversationRouting(mode)}:undefined}/>}
           <span className={styles['footer-spacer']} aria-hidden="true"/>
-          {!interventionTarget&&conversationRouting&&!mobileControls&&<ConversationRouteControl mode={visibleConversationRoutingMode} saving={routeSaving} onModeChange={mode=>void selectConversationRouting(mode)}/>}
+          {!interventionTarget&&!mobileControls&&<ConversationRouteControl mode={visibleConversationRoutingMode} saving={routeSaving} onModeChange={mode=>void selectConversationRouting(mode)}/>}
           {!interventionTarget&&<Button
             className={styles['plan-button']}
             size="sm"
@@ -298,7 +297,6 @@ type ComposerProps={
   updateWorkflowMode?:(workflowMode:WorkflowMode)=>Promise<unknown>;
   interventionTarget?:ComposerInterventionTarget;
   exitIntervention?:()=>void;
-  conversationRouting?:boolean;
   conversationRoutingMode?:import('@agenvyl/contracts').ConversationRoutingMode;
   updateConversationRouting?:(mode:import('@agenvyl/contracts').ConversationRoutingMode)=>Promise<unknown>;
   autoRoutingCandidates?:string[];

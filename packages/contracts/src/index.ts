@@ -21,7 +21,7 @@ export type MessageRouting =
   | { mode: 'auto'; target?: AgentHandle; delivery?: 'after_response' | 'apply_now' | 'new_request' }
   | { mode: 'room_context'; target?: AgentHandle }
   | { mode: 'agent_session'; target?: AgentHandle; delivery?: 'after_response' | 'apply_now' };
-export type RuntimeFeatures = { preview_origin: string; conversation_routing?: boolean };
+export type RuntimeFeatures = { preview_origin: string };
 export type RoomWorkflowState = { workflow_mode: WorkflowMode };
 export type RoomConversationRoutingState = { conversation_routing_mode: ConversationRoutingMode };
 export type ReasoningEffortSource = 'room_override' | 'persona_default' | 'model_default' | 'auto';

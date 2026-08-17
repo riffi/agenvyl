@@ -50,7 +50,7 @@ try{
   throw error;
 }
 
-process.stdout.write(`Conversation routing POC prepared.\nDatabase: ${pocDatabaseName}\nWorkspace: ${pocWorkspaceRoot}\nArtifacts: ${pocArtifactRoot}\nSet AGENVYL_EXPERIMENT_CONVERSATION_ROUTING=true and point the POC runtime at these isolated targets.\n`);
+process.stdout.write(`Conversation routing POC prepared.\nDatabase: ${pocDatabaseName}\nWorkspace: ${pocWorkspaceRoot}\nArtifacts: ${pocArtifactRoot}\nPoint the POC runtime at these isolated targets.\n`);
 
 async function requireStoppedRuntime(){const url=process.env.AGENVYL_CORE_URL?.trim()||'http://127.0.0.1:8791/health';try{const response=await fetch(url,{signal:AbortSignal.timeout(800)});if(response.ok)fail(`Main runtime is responding at ${url}; stop it before preparing the POC`)}catch(error){if(error?.name==='AbortError'||error?.name==='TimeoutError'||String(error?.cause?.code??'').startsWith('ECONNREFUSED'))return;if(error?.message?.startsWith('Main runtime'))throw error;}}
 async function databaseSnapshot(sql){const[rooms]=await sql`SELECT COUNT(*)::int count FROM rooms`,[messages]=await sql`SELECT COUNT(*)::int count FROM room_messages`,migrations=await sql`SELECT version,name FROM schema_migrations ORDER BY version`;return{rooms:Number(rooms.count),messages:Number(messages.count),migrations:migrations.map(row=>[Number(row.version),String(row.name)])};}
