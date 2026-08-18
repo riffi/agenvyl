@@ -98,7 +98,10 @@ export const ReasoningBlock=memo(({text,harnessType,isStreaming=false}:Reasoning
   useLayoutEffect(()=>{
     const body=bodyRef.current;
     if(!open||!following||!body)return;
-    const instant=instantScrollRef.current;
+    // Streaming markdown can replace large parts of the rendered tree. Keep the
+    // viewport pinned before paint instead of restarting a smooth animation for
+    // every snapshot, which otherwise makes the text appear to jump both ways.
+    const instant=instantScrollRef.current||isStreaming;
     instantScrollRef.current=false;
     scrollToBottom(instant);
   },[following,open,renderedText,scrollToBottom]);

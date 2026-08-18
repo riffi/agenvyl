@@ -138,6 +138,25 @@ describe('ReasoningBlock', () => {
     expect(body.scrollTop).toBe(500);
   });
 
+  it('pins streaming snapshots before paint without restarting a scroll animation',()=>{
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const requestFrame=vi.fn();
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:true})));
+    vi.stubGlobal('requestAnimationFrame',requestFrame);
+    const view=render(<ReasoningBlock text="Initial reasoning" isStreaming/>);
+    const details=document.querySelector('details') as HTMLDetailsElement;
+    Object.defineProperty(details,'open',{configurable:true,value:true,writable:true});
+    fireEvent(details,new Event('toggle'));
+    const body=screen.getByRole('region',{name:'Reasoning output'});
+    setScrollMetrics(body,{height:500,clientHeight:100,top:400});
+    Object.defineProperty(body,'scrollHeight',{configurable:true,value:600});
+    view.rerender(<ReasoningBlock text="Updated reasoning" isStreaming/>);
+    act(()=>vi.advanceTimersByTime(250));
+    expect(body.scrollTop).toBe(500);
+    expect(requestFrame).not.toHaveBeenCalled();
+  });
+
   it('follows immediately when motion is not allowed',async()=>{
     const requestFrame=vi.fn();
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
