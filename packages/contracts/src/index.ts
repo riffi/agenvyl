@@ -7,7 +7,7 @@ export type WorkflowMode = 'plan' | 'work';
 export type PlanEnforcement = 'native' | 'instruction_only';
 export type ConversationRoutingMode = 'auto' | 'room_context' | 'agent_session';
 export type MessageDeliveryRoute = 'room_context' | 'agent_session' | 'active_intervention';
-export type MessageDeliveryStatus = 'delivered' | 'queued' | 'dispatching' | 'continued' | 'fallback' | 'applied' | 'failed';
+export type MessageDeliveryStatus = 'delivered' | 'started_fresh' | 'queued' | 'dispatching' | 'continued' | 'fallback' | 'applied' | 'failed';
 export type MessageDelivery = {
   route: MessageDeliveryRoute;
   status: MessageDeliveryStatus;
@@ -412,7 +412,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 function isMessageDelivery(value:unknown):value is MessageDelivery{
-  if(!isRecord(value)||!['room_context','agent_session','active_intervention'].includes(String(value.route))||!['delivered','queued','dispatching','continued','fallback','applied','failed'].includes(String(value.status)))return false;
+  if(!isRecord(value)||!['room_context','agent_session','active_intervention'].includes(String(value.route))||!['delivered','started_fresh','queued','dispatching','continued','fallback','applied','failed'].includes(String(value.status)))return false;
   return ['agent','anchorRunId','runId','error'].every(key=>value[key]===undefined||typeof value[key]==='string')&&(value.transitionReason===undefined||value.transitionReason==='workflow_mode_changed');
 }
 function isTokenUsage(value:unknown):value is TokenUsage{if(!isRecord(value)||!tokenCount(value.inputTokens)||!tokenCount(value.outputTokens))return false;return['totalTokens','reasoningTokens','cacheReadTokens','cacheWriteTokens'].every(key=>value[key]===undefined||tokenCount(value[key]));}

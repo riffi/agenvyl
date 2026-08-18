@@ -24,6 +24,7 @@ describe('room event contract', () => {
     expect(isServerRoomEvent({id:'event-7',sequence:7,type:'room.workflow_mode.updated',payload:{workflowMode:'plan'}})).toBe(true);
     expect(isServerRoomEvent({id:'event-route',sequence:7,type:'room.conversation_routing.updated',payload:{conversationRoutingMode:'agent_session'}})).toBe(true);
     expect(isServerRoomEvent({id:'event-delivery',sequence:7,type:'message.delivery.updated',payload:{messageId:'message-1',delivery:{route:'agent_session',status:'queued',agent:'coder',anchorRunId:'run-1'}}})).toBe(true);
+    expect(isServerRoomEvent({id:'event-fresh',sequence:8,type:'message.delivery.updated',payload:{messageId:'message-2',delivery:{route:'room_context',status:'started_fresh'}}})).toBe(true);
     expect(isServerRoomEvent({id:'event-handoff',sequence:8,type:'message.delivery.updated',payload:{messageId:'message-2',delivery:{route:'room_context',status:'fallback',transitionReason:'workflow_mode_changed',agent:'coder',anchorRunId:'run-1',runId:'run-2'}}})).toBe(true);
     expect(isServerRoomEvent({id:'event-title',sequence:8,type:'room.title.updated',payload:{title:'Fix OAuth redirect'}})).toBe(true);
     expect(isServerRoomEvent({id:'event-8',sequence:8,type:'run.workspace.finalized',payload:{runId:'run-1',workspaceResult:{base_head:'base',result_head:'base',capture_status:'complete',errors:[],updated_at:'2026-08-10T10:00:00.000Z'}}})).toBe(true);

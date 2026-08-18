@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import type {HarnessCatalog} from '../../entities/harness';
 import type {Persona} from '../../entities/persona';
@@ -45,7 +45,7 @@ describe('Composer agent list',()=>{
     expect(editor.getAttribute('aria-describedby')).toBe('auto-routing-guidance');
     expect((editor as HTMLTextAreaElement).value).toBe('What should we do next?');
     expect(screen.queryByRole('button',{name:'Use Room context'})).toBeNull();
-    fireEvent.keyDown(editor,{key:'Enter'});
+    fireEvent.keyDown(screen.getByRole('textbox',{name:'Message'}),{key:'Enter'});
     expect(send).not.toHaveBeenCalled();
     editor.focus();const caret=(editor as HTMLTextAreaElement).value.length;(editor as HTMLTextAreaElement).setSelectionRange(caret,caret);
     expect(screen.getByRole('button',{name:'Add @all to message'})).toBeTruthy();
@@ -262,7 +262,17 @@ describe('Composer agent list',()=>{
     await waitFor(()=>expect(document.activeElement).toBe(editor));
     fireEvent.keyDown(editor,{key:'Enter'});
     await waitFor(()=>expect(send).toHaveBeenCalledWith('Please review this',[],expect.any(String),['version-1'],{mode:'auto',delivery:'new_request'}));
-    expect(screen.queryByRole('button',{name:'Remove Start fresh'})).toBeNull();expect(screen.getByRole('status').textContent).toBe('Started fresh.');expect(clearAttachments).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('button',{name:'Remove Start fresh'})).toBeNull();expect(screen.queryByRole('status')).toBeNull();expect(clearAttachments).toHaveBeenCalledOnce();
+  });
+
+  it('does not lose new_request routing across batched Enter events',async()=>{
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
+    const send=vi.fn<RoomGateway['send']>().mockResolvedValue(sentMessage),localGateway={...gateway,send};
+    render(<Composer gateway={localGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()}/>);
+    const editor=screen.getByRole('textbox',{name:'Message'});fireEvent.change(editor,{target:{value:'/new Immediate request'}});
+    await act(async()=>{editor.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));editor.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));});expect(send).not.toHaveBeenCalled();
+    fireEvent.keyDown(screen.getByRole('textbox',{name:'Message'}),{key:'Enter'});
+    await waitFor(()=>expect(send).toHaveBeenCalledWith('Immediate request',[],expect.any(String),[],{mode:'auto',delivery:'new_request'}));
   });
 
   it('opens the command popup anywhere in a draft and supports keyboard insertion',()=>{
@@ -290,7 +300,16 @@ describe('Composer agent list',()=>{
     const send=vi.fn<RoomGateway['send']>().mockResolvedValue(sentMessage),localGateway={...gateway,send};
     render(<Composer gateway={localGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>{throw new Error('refresh failed')})} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()}/>);
     const editor=screen.getByRole('textbox',{name:'Message'});fireEvent.change(editor,{target:{value:'/new Send once'}});fireEvent.keyDown(editor,{key:'Enter'});fireEvent.keyDown(editor,{key:'Enter'});
-    await waitFor(()=>expect(send).toHaveBeenCalledOnce());await waitFor(()=>expect(screen.getByRole('status').textContent).toBe('Started fresh.'));expect(screen.queryByRole('button',{name:'Retry'})).toBeNull();
+    await waitFor(()=>expect(send).toHaveBeenCalledOnce());expect(screen.queryByRole('status')).toBeNull();expect(screen.queryByRole('button',{name:'Retry'})).toBeNull();
+  });
+
+  it('does not reuse stale failed routing for an edited Start fresh message',async()=>{
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
+    const send=vi.fn<RoomGateway['send']>().mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(sentMessage),localGateway={...gateway,send};
+    render(<Composer gateway={localGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()}/>);
+    const editor=screen.getByRole('textbox',{name:'Message'});fireEvent.change(editor,{target:{value:'Old request'}});fireEvent.keyDown(editor,{key:'Enter'});await screen.findByText(/Failed to send: offline/);
+    fireEvent.change(editor,{target:{value:'/new New request'}});expect(screen.queryByRole('button',{name:'Retry'})).toBeNull();fireEvent.keyDown(editor,{key:'Enter'});fireEvent.keyDown(editor,{key:'Enter'});
+    await waitFor(()=>expect(send).toHaveBeenCalledTimes(2));expect(send.mock.calls[0]?.[4]).toEqual({mode:'auto',delivery:'after_response'});expect(send.mock.calls[1]?.[0]).toBe('New request');expect(send.mock.calls[1]?.[4]).toEqual({mode:'auto',delivery:'new_request'});
   });
 
   it('removes /new in Room context without adding a redundant flag',()=>{

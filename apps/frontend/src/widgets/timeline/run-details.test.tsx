@@ -124,6 +124,12 @@ describe('Timeline run details', () => {
     expect(screen.getByText('Готово')).toBeTruthy();
   });
 
+  it('labels an explicit fresh request on the user message',()=>{
+    const message={id:'message-1',text:'Start another task',createdAt:'2026-07-20T12:00:00.000Z',targets:['coder' as const],runIds:['run-1'],author,addressedToAll:false,delivery:{route:'room_context' as const,status:'started_fresh' as const}},state={...initialState,hydrated:true,messages:[message],runs:{'run-1':run},runOrder:['run-1']};
+    render(<Timeline state={state} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()}/>);
+    expect(screen.getByRole('status').textContent).toBe('Started fresh');
+  });
+
   it('keeps failed and legacy instructions in the visible answer history',()=>{
     const instructionRun:Run={...run,status:'streaming',text:'Current answer',interventions:[{id:'legacy',text:'Legacy guidance',status:'applied',supersededText:'Legacy answer'},{id:'failed',text:'Try another path',status:'failed',error:'Instruction rejected'}]};
     const state={...initialState,hydrated:true,messages:[{id:'message-1',text:'@coder work',createdAt:'2026-07-20T12:00:00.000Z',targets:['coder' as const],runIds:['run-1'],author,addressedToAll:false}],runs:{'run-1':instructionRun},runOrder:['run-1']};

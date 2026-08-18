@@ -328,7 +328,7 @@ export function Timeline({
                 ? <>Invoked: <MentionText text={m.targets.map((x) => "@" + x).join(", ")} personas={personas} onMentionPersona={onMentionPersona}/></>
                 : "No agents invoked"}
             </small>
-            {m.delivery&&(m.delivery.route!=='room_context'||m.delivery.transitionReason)&&<small className={styles['delivery-status']} role="status">{deliveryStatus(m.delivery)}</small>}
+            {m.delivery&&(m.delivery.route!=='room_context'||m.delivery.transitionReason||m.delivery.status==='started_fresh')&&<small className={styles['delivery-status']} role="status">{deliveryStatus(m.delivery)}</small>}
           </div>
           {responseTabs&&<nav className={styles['answer-navigation']} aria-label="Agent responses in this round"><span>Responses</span>{visibleGroups.map(group=>{const response=state.runs[group.id];const responsePersona=byHandle.get(response.agent)??unknownPersona(response.agent);const selected=group.slot===focusedSlot;return <button type="button" key={group.slot} aria-pressed={selected} onClick={()=>setFocusedResponseSlots(current=>({...current,[m.id]:group.slot}))}><i style={{background:responsePersona.color}}/>{responsePersona.name}<StatusIcon status={response.status}/></button>})}</nav>}
           <div className={`${styles.runs} ${singleColumn?styles['runs-list']:styles['runs-grid']}`}>
@@ -380,6 +380,7 @@ export function Timeline({
 function formatBytes(value:number){if(value<1024)return`${value} B`;if(value<1024*1024)return`${(value/1024).toFixed(1)} KB`;return`${(value/1024/1024).toFixed(1)} MB`;}
 
 function deliveryStatus(delivery:import('@agenvyl/contracts').MessageDelivery){
+  if(delivery.status==='started_fresh')return'Started fresh';
   if(delivery.transitionReason==='workflow_mode_changed'&&!['queued','dispatching','failed'].includes(delivery.status))return'New session · mode changed';
   if(delivery.transitionReason==='workflow_mode_changed'&&delivery.status==='dispatching')return'Stopping current run…';
   if(delivery.status==='queued'||delivery.status==='dispatching')return`Waiting for ${delivery.agent?`@${delivery.agent}`:'agent'}`;

@@ -1,4 +1,4 @@
-import type {CreateMessageRequest,MessageRouting} from '@agenvyl/contracts';
+import type {CreateMessageRequest,MessageDelivery,MessageRouting} from '@agenvyl/contracts';
 import {parseMentions} from '../../routing.js';
 import {AppError} from '../../shared/errors/AppError.js';
 import type {PersonaRepository} from '../personas/personas.repository.js';
@@ -27,7 +27,16 @@ export class ConversationRoutingService{
     const roomMode=await this.dependencies.followUps.roomMode(command.roomId);
     if(!roomMode)throw new AppError('room_not_found',404,'Room not found');
     const routing:MessageRouting=command.body.routing??{mode:roomMode};
-    if(routing.mode==='room_context'||(routing.mode==='auto'&&routing.delivery==='new_request')||unique.length>1)return this.legacy(command,routing.target?[routing.target]:unique,messageId);
+    if(routing.mode==='room_context'||unique.length>1)return this.legacy(command,routing.target?[routing.target]:unique,messageId);
+    if(routing.mode==='auto'&&routing.delivery==='new_request'){
+      const requested=routing.target?[routing.target]:unique;
+      if(requested.length)return this.legacy(command,requested,messageId,{route:'room_context',status:'started_fresh'});
+      const current=await this.dependencies.followUps.anchors(command.roomId);
+      if(current.length===1)return this.legacy(command,[current[0].personaHandle],messageId,{route:'room_context',status:'started_fresh'});
+      if(current.length>1)throw new AppError('routing_target_required',409,'Auto found several possible recipients. Mention one agent or use @all');
+      if(handles.length===1)return this.legacy(command,handles,messageId,{route:'room_context',status:'started_fresh'});
+      throw new AppError('routing_target_required',409,'Auto could not determine who should start fresh. Mention an agent or use @all');
+    }
     if(routing.mode==='auto'){
       if(unique.length===1){
         const current=await this.dependencies.followUps.anchors(command.roomId);
@@ -92,8 +101,8 @@ export class ConversationRoutingService{
     }finally{this.applyingNow.delete(command.messageId);}
   }
 
-  private legacy(command:{roomId:string;body:CreateMessageRequest;correlationId?:string},targets:string[],messageId:string){
-    return this.dependencies.legacy.execute({roomId:command.roomId,text:command.body.text,targets,attachmentVersionIds:command.body.attachment_version_ids,messageId,correlationId:command.correlationId,delivery:{route:'room_context',status:'delivered'}});
+  private legacy(command:{roomId:string;body:CreateMessageRequest;correlationId?:string},targets:string[],messageId:string,delivery:MessageDelivery={route:'room_context',status:'delivered'}){
+    return this.dependencies.legacy.execute({roomId:command.roomId,text:command.body.text,targets,attachmentVersionIds:command.body.attachment_version_ids,messageId,correlationId:command.correlationId,delivery});
   }
 
   private async existingMessage(roomId:string,messageId:string,status:'created'|'duplicate'){

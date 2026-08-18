@@ -5,11 +5,11 @@ const persona={id:'persona-coder',handle:'coder',name:'Coder',color:'#64748b',re
 const author={profileId:'local-user',displayName:'User',handle:'user'};
 const message={id:'11111111-1111-4111-8111-111111111111',text:'Continue',createdAt:'2026-08-14T00:00:00.000Z',targets:['coder'],runIds:[],attachments:[],author,addressedToAll:false,delivery:{route:'agent_session' as const,status:'queued' as const,agent:'coder',anchorRunId:'run-1'}};
 
-function fixture(anchors=[{runId:'run-1',roomId:'room',personaId:'persona-coder',personaHandle:'coder',status:'streaming',harnessInstanceId:'local-codex',harnessType:'codex'}]){
+function fixture(anchors=[{runId:'run-1',roomId:'room',personaId:'persona-coder',personaHandle:'coder',status:'streaming',harnessInstanceId:'local-codex',harnessType:'codex'}],personas=[persona]){
   const legacy={execute:vi.fn(async()=>({status:'created' as const,message:{...message,delivery:{route:'room_context' as const,status:'delivered' as const}}}))};
   const followUps={roomMode:vi.fn(async()=> 'auto' as const),anchors:vi.fn(async()=>anchors),create:vi.fn(async()=>({status:'created' as const,pendingId:'pending-1',message,event:{id:'event-1',sequence:1,type:'message.created',payload:message},anchorStatus:anchors[0]?.status??'completed'})),claimApplyNow:vi.fn(),prepareHandoffCancellation:vi.fn(),recordQueuedError:vi.fn(),requeueApplyNow:vi.fn(),markDelivery:vi.fn(),get:vi.fn()};
   const dispatcher={dispatchById:vi.fn(async()=>undefined)},events={publishPersisted:vi.fn()},interventions={applyNow:vi.fn(),cancelForHandoff:vi.fn()},messages={find:vi.fn(async():Promise<typeof message|undefined>=>undefined),hasMessages:vi.fn(async()=>false),executionAttachments:vi.fn(async()=>[])},harnesses={catalog:vi.fn(async()=>({instances:[{id:'local-codex',type:'codex',status:'healthy',capabilities:['attachments'],controls:{nativeWorkflowModes:['plan','work'],permissionProfiles:[],agentVariants:[]}}]}))},roomWorkspace={captureAttachmentVersions:vi.fn(async(_roomId:string,ids:string[])=>ids.map(id=>`version-${id}`))};
-  const service=new ConversationRoutingService({legacy:legacy as never,followUps:followUps as never,dispatcher:dispatcher as never,personas:{list:vi.fn(async()=>[persona])} as never,events:events as never,interventions:interventions as never,messages:messages as never,harnesses:harnesses as never,roomWorkspace:roomWorkspace as never});
+  const service=new ConversationRoutingService({legacy:legacy as never,followUps:followUps as never,dispatcher:dispatcher as never,personas:{list:vi.fn(async()=>personas)} as never,events:events as never,interventions:interventions as never,messages:messages as never,harnesses:harnesses as never,roomWorkspace:roomWorkspace as never});
   return{service,legacy,followUps,dispatcher,interventions,messages,harnesses,roomWorkspace};
 }
 
@@ -61,6 +61,32 @@ describe('ConversationRoutingService',()=>{
     await service.execute({roomId:'room',body:{text:'@coder start fresh',message_id:message.id,routing:{mode:'room_context'}}});
     expect(legacy.execute).toHaveBeenCalledWith(expect.objectContaining({targets:['coder']}));
     expect(followUps.create).not.toHaveBeenCalled();
+  });
+
+  it('starts a fresh request and persists that fact on the visible message',async()=>{
+    const{service,legacy,followUps}=fixture();
+    await service.execute({roomId:'room',body:{text:'@coder start fresh',message_id:message.id,routing:{mode:'auto',delivery:'new_request'}}});
+    expect(legacy.execute).toHaveBeenCalledWith(expect.objectContaining({targets:['coder'],delivery:{route:'room_context',status:'started_fresh'}}));
+    expect(followUps.create).not.toHaveBeenCalled();
+  });
+
+  it('starts an unmentioned fresh request for the one clear Auto session',async()=>{
+    const{service,legacy}=fixture();
+    await service.execute({roomId:'room',body:{text:'start fresh',message_id:message.id,routing:{mode:'auto',delivery:'new_request'}}});
+    expect(legacy.execute).toHaveBeenCalledWith(expect.objectContaining({targets:['coder'],delivery:{route:'room_context',status:'started_fresh'}}));
+  });
+
+  it('uses the only room agent for a fresh request when no session exists',async()=>{
+    const{service,legacy}=fixture([]);
+    await service.execute({roomId:'room',body:{text:'start fresh',message_id:message.id,routing:{mode:'auto',delivery:'new_request'}}});
+    expect(legacy.execute).toHaveBeenCalledWith(expect.objectContaining({targets:['coder']}));
+  });
+
+  it('rejects an unaddressed fresh request when Auto has no clear recipient',async()=>{
+    const reviewer={...persona,id:'persona-reviewer',handle:'reviewer',name:'Reviewer'};
+    const{service,legacy}=fixture([],[persona,reviewer]);
+    await expect(service.execute({roomId:'room',body:{text:'start fresh',message_id:message.id,routing:{mode:'auto',delivery:'new_request'}}})).rejects.toMatchObject({code:'routing_target_required',statusCode:409});
+    expect(legacy.execute).not.toHaveBeenCalled();
   });
 
   it('applies an urgent correction with the visible message id',async()=>{

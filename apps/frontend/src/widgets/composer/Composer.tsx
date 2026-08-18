@@ -4,7 +4,7 @@ import {personaModelName,type HarnessCatalog} from '../../entities/harness';
 import type { Persona } from '../../entities/persona';
 import type {Message} from '../../entities/message';
 import { FakeRoomGateway, type DemoKind, type RoomGateway } from '../../features/room-session';
-import { activeComposerCommandQuery, activeMentionQuery, composerCommands, extractComposerCommands, findComposerCommands, insertComposerCommandAt, insertMentionAt, parseMentions, removeMentionTarget, type ActiveComposerCommandQuery, type ComposerAttachment } from '../../features/send-message';
+import { activeComposerCommandQuery, activeMentionQuery, composerCommands, extractComposerCommands, insertComposerCommandAt, insertMentionAt, parseMentions, removeMentionTarget, type ActiveComposerCommandQuery, type ComposerAttachment } from '../../features/send-message';
 import { ApiError } from '../../shared/api';
 import { Alert, Button, TextArea } from '../../shared/ui';
 import type {RoomPersona,WorkflowMode} from '@agenvyl/contracts';
@@ -24,7 +24,6 @@ function highlightComposerText(text:string,personas:readonly Persona[]):ReactNod
     const persona=known.get(handle),color=handle==='all'?'#4f6ef7':persona?.color??'#b45309';
     ranges.push({start,end,className:persona||handle==='all'?styles['known-mention']:styles['unknown-mention'],color});
   }
-  for(const command of findComposerCommands(text))ranges.push({start:command.start,end:command.end,className:styles['composer-command']});
   const parts:ReactNode[]=[];let cursor=0,index=0;
   for(const range of ranges.sort((a,b)=>a.start-b.start)){
     if(range.start<cursor)continue;
@@ -82,6 +81,8 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   const [command,setCommand]=useState<ActiveComposerCommandQuery>();
   const [commandIndex,setCommandIndex]=useState(0);
   const [startFresh,setStartFresh]=useState(false);
+  const startFreshRef=useRef(false);
+  const updateStartFresh=(value:boolean)=>{startFreshRef.current=value;setStartFresh(value)};
   const [composerStatus,setComposerStatus]=useState('');
   const [sending,setSending]=useState(false);
   const [modeSaving,setModeSaving]=useState(false);
@@ -121,7 +122,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   useEffect(()=>setMentionIndex(0),[mention?.query]);
   useEffect(()=>setCommandIndex(0),[command?.query]);
   useEffect(()=>{if(typeof matchMedia!=='function')return;const query=matchMedia('(max-width: 767px)'),update=()=>setMobileControls(query.matches);update();query.addEventListener?.('change',update);return()=>query.removeEventListener?.('change',update)},[]);
-  useEffect(()=>{setText('');setMention(undefined);setCommand(undefined);setStartFresh(false);setComposerStatus('');setSendError(undefined);setProfileError(undefined);setModeError(undefined);setRouteError(undefined)},[roomId]);
+  useEffect(()=>{setText('');setMention(undefined);setCommand(undefined);updateStartFresh(false);setComposerStatus('');setSendError(undefined);setProfileError(undefined);setModeError(undefined);setRouteError(undefined)},[roomId]);
   useEffect(()=>{
     const previous=previousInterventionRef.current,next=interventionTarget?.runId;
     if(previous===next)return;
@@ -141,7 +142,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   const visibleConversationRoutingMode=conversationRoutingMode==='agent_session'?'auto':conversationRoutingMode;
   const ambiguousAutoRouting=visibleConversationRoutingMode==='auto'&&targets.length===0&&autoRoutingCandidates.length>1;
   const showAutoRoutingGuidance=ambiguousAutoRouting&&Boolean(text.trim()||attachments.length);
-  useEffect(()=>{if(visibleConversationRoutingMode==='room_context'&&startFresh){setStartFresh(false);setComposerStatus('Room context already starts a new conversation.')}},[startFresh,visibleConversationRoutingMode]);
+  useEffect(()=>{if(visibleConversationRoutingMode==='room_context'&&startFresh){updateStartFresh(false);setComposerStatus('Room context already starts a new conversation.')}},[startFresh,visibleConversationRoutingMode]);
   useEffect(()=>{if(conversationRoutingMode==='agent_session')void selectConversationRouting('auto')},[conversationRoutingMode]);
   const workflowModeLabel=workflowMode==='plan'?'Plan':'Work',nextWorkflowMode:WorkflowMode=workflowMode==='plan'?'work':'plan',nextWorkflowModeLabel=nextWorkflowMode==='plan'?'Plan':'Work';
   const workflowModeTitle=workflowMode==='plan'?'Plan mode: project changes are blocked; MCP actions require confirmation. Switch to Work':`Work mode. Switch to ${nextWorkflowModeLabel}`;
@@ -150,14 +151,14 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
     if(!extracted.commands.some(item=>item.name==='new'))return false;
     setText(extracted.text);setMention(undefined);setCommand(undefined);
     if(visibleConversationRoutingMode==='room_context'){
-      setStartFresh(false);setComposerStatus('Room context already starts a new conversation.');
+      updateStartFresh(false);setComposerStatus('Room context already starts a new conversation.');
     }else{
-      setStartFresh(true);setComposerStatus('Start fresh is on for the next message.');
+      updateStartFresh(true);setComposerStatus('Start fresh is on for the next message.');
     }
     requestAnimationFrame(()=>{const editor=editorRef.current;editor?.focus();const caret=extracted.text.length;editor?.setSelectionRange(caret,caret)});
     return true;
   };
-  const send = async (retry=sendError) => {
+  const send = async (retry?:typeof sendError) => {
     try{await modeUpdateRef.current}catch{return}
     if(interventionTarget){
       const outgoing=text.trim();if(!outgoing||sending)return;
@@ -169,12 +170,12 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
     }
     const outgoing=retry?.text??text.trim();
     const outgoingTargets=retry?.targets??parseMentions(outgoing,personas), messageId=retry?.messageId??crypto.randomUUID(),attachmentVersionIds=retry?.attachmentVersionIds??attachments.flatMap(item=>item.attachment?[item.attachment.version_id]:[]);
-    const outgoingRouting=retry?.routing??(visibleConversationRoutingMode==='room_context'?{mode:'room_context' as const}:{mode:'auto' as const,delivery:startFresh?'new_request' as const:'after_response' as const});
+    const outgoingRouting=retry?.routing??(visibleConversationRoutingMode==='room_context'?{mode:'room_context' as const}:{mode:'auto' as const,delivery:startFresh||startFreshRef.current?'new_request' as const:'after_response' as const});
     if ((!outgoing&&!attachmentVersionIds.length) || !catalogReady || sending || (!retry&&attachmentsBusy))return;
     if(outgoingRouting?.mode==='auto'&&!outgoingTargets.length&&autoRoutingCandidates.length>1){editorRef.current?.focus();return;}
     setSending(true);setSendError(undefined);
     let delivered=false;
-    try{await gateway.send(outgoing,outgoingTargets,messageId,attachmentVersionIds,outgoingRouting);delivered=true;setText("");setMention(undefined);setCommand(undefined);clearAttachments();setStartFresh(false);if(outgoingRouting.mode==='auto'&&outgoingRouting.delivery==='new_request')setComposerStatus('Started fresh.');await onSent();}
+    try{await gateway.send(outgoing,outgoingTargets,messageId,attachmentVersionIds,outgoingRouting);delivered=true;setText("");setMention(undefined);setCommand(undefined);clearAttachments();updateStartFresh(false);setComposerStatus('');await onSent();}
     catch(error){if(!delivered){setText(outgoing);setSendError({message:error instanceof ApiError?`${error.code}: ${error.message}`:error instanceof Error?error.message:String(error),messageId,text:outgoing,targets:outgoingTargets,attachmentVersionIds,routing:outgoingRouting});}}
     finally{setSending(false);}
   };
@@ -226,7 +227,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
       <div className={`${styles['compose-card']} ${composerExpanded?styles['compose-card-expanded']:styles['compose-card-compact']} ${interventionTarget?styles['instruction-card']:''}`}>
         {interventionTarget&&<header className={styles['instruction-header']}><span><MessageSquarePlus aria-hidden="true"/><strong>Add instruction to @{interventionTarget.agent}</strong></span><button type="button" onClick={exitIntervention} aria-label="Exit instruction mode" title="Back to message composer"><X/></button></header>}
         {!interventionTarget&&attachments.length>0&&<div className={styles.attachments}>{attachments.map(item=><span key={item.id} className={[item.status==='error'?styles['attachment-error']:'',item.mimeType.startsWith('image/')&&item.attachment?styles['image-attachment']:''].filter(Boolean).join(' ')}>{item.status==='uploading'?<LoaderCircle className={styles.spinning}/>:item.mimeType.startsWith('image/')&&item.attachment?<img src={item.attachment.preview_url} alt=""/>:<FileText/>}<button type="button" disabled={!item.attachment} onClick={event=>item.attachment&&openArtifact(item.attachment,readyAttachments,event.currentTarget)}>{item.name}</button><small>{item.status==='uploading'?`${item.progress}%`:item.status==='error'?item.error:formatBytes(item.size)}</small>{item.status==='uploading'&&<i style={{width:`${item.progress}%`}}/>}{item.attachment&&<WorkspaceArtifactActions attachment={item.attachment} openWorkspace={openWorkspace}/>} {item.status==='error'&&<button type="button" aria-label={`Retry upload ${item.name}`} onClick={()=>retryAttachment(item.id)}><RefreshCw/></button>}<button type="button" aria-label={`Remove ${item.name}`} onClick={()=>removeAttachment(item.id)}><X/></button></span>)}</div>}
-        {!interventionTarget&&startFresh&&<div className={styles['start-fresh-row']}><button type="button" aria-label="Remove Start fresh" onClick={()=>{setStartFresh(false);setComposerStatus('')}}><Slash aria-hidden="true"/><span>Start fresh</span><X aria-hidden="true"/></button><small>Next message only</small></div>}
+        {!interventionTarget&&startFresh&&<div className={styles['start-fresh-row']}><button type="button" aria-label="Remove Start fresh" onClick={()=>{updateStartFresh(false);setComposerStatus('')}}><Slash aria-hidden="true"/><span>Start fresh</span><X aria-hidden="true"/></button><small>Next message only</small></div>}
         {!interventionTarget&&targets.length>0&&<div className={styles['target-row']}>
           <span>Responders:</span>
           <div className={styles.targets}>
@@ -258,7 +259,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
             value={text}
             rows={1}
             maxLength={interventionTarget?2000:4000}
-            onChange={(e) => {setText(e.target.value);setComposerStatus('');if(!interventionTarget)updateComposerQueries(e.target.value,e.target.selectionStart)}}
+            onChange={(e) => {setText(e.target.value);setComposerStatus('');setSendError(undefined);if(!interventionTarget)updateComposerQueries(e.target.value,e.target.selectionStart)}}
             onSelect={(e)=>{if(!interventionTarget)updateComposerQueries(e.currentTarget.value,e.currentTarget.selectionStart)}}
             onBlur={()=>setTimeout(()=>{setMention(undefined);setCommand(undefined)},100)}
             onScroll={event=>{if(mirrorRef.current){mirrorRef.current.scrollTop=event.currentTarget.scrollTop;mirrorRef.current.scrollLeft=event.currentTarget.scrollLeft}}}

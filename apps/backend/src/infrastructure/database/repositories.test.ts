@@ -32,7 +32,7 @@ describe("PostgreSQL repositories", () => {
         await p.database
           .sql`SELECT version FROM schema_migrations ORDER BY version`
       ).map((row) => row.version),
-    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]);
+    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37]);
     expect(
       await p.database.sql`SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='personas' AND column_name='role'`,
     ).toEqual([]);
@@ -71,12 +71,16 @@ describe("PostgreSQL repositories", () => {
     await database.close();
   });
   it('persists one queued follow-up per agent and can fall back to room history',async()=>{
-    const repositories=await createRepositories(testDatabaseUrl('conversation_routing'),{legacySeed:true}),now=new Date().toISOString(),sourceMessage=crypto.randomUUID(),sourceRun=crypto.randomUUID(),sourceSlot=crypto.randomUUID(),followUpMessage=crypto.randomUUID();
+    const repositories=await createRepositories(testDatabaseUrl('conversation_routing'),{legacySeed:true}),now=new Date().toISOString(),later=new Date(Date.now()+1_000).toISOString(),sourceMessage=crypto.randomUUID(),sourceRun=crypto.randomUUID(),sourceSlot=crypto.randomUUID(),failedMessage=crypto.randomUUID(),failedRun=crypto.randomUUID(),failedSlot=crypto.randomUUID(),followUpMessage=crypto.randomUUID();
     await repositories.database.transaction(async tx=>{
       await tx`INSERT INTO room_messages(id,room_id,text,targets,run_ids,created_at,author_profile_id,author_display_name,author_handle,addressed_to_all) VALUES(${sourceMessage},'demo-room','source',${tx.json(['architect'])},${tx.json([sourceRun])},${now},'local-user','User','user',false)`;
       await tx`INSERT INTO response_slots(id,message_id,persona_id,created_at) VALUES(${sourceSlot},${sourceMessage},'persona-architect',${now})`;
       await tx`INSERT INTO agent_runs(id,message_id,room_id,persona_id,persona_version_id,persona_handle,requested_model,harness_instance_id,harness_type,model_id,execution_profile,status,response_slot_id,context,system_prompt_snapshot,created_at,updated_at) VALUES(${sourceRun},${sourceMessage},'demo-room','persona-architect','persona-architect-v1','architect','sol','local-hermes','hermes','sol',${tx.json(workProfile)},'completed',${sourceSlot},${tx.json([])},'snapshot',${now},${now})`;
       await tx`UPDATE response_slots SET selected_run_id=${sourceRun} WHERE id=${sourceSlot}`;
+      await tx`INSERT INTO room_messages(id,room_id,text,targets,run_ids,created_at,author_profile_id,author_display_name,author_handle,addressed_to_all) VALUES(${failedMessage},'demo-room','failed later',${tx.json(['architect'])},${tx.json([failedRun])},${later},'local-user','User','user',false)`;
+      await tx`INSERT INTO response_slots(id,message_id,persona_id,created_at) VALUES(${failedSlot},${failedMessage},'persona-architect',${later})`;
+      await tx`INSERT INTO agent_runs(id,message_id,room_id,persona_id,persona_version_id,persona_handle,requested_model,harness_instance_id,harness_type,model_id,execution_profile,status,response_slot_id,context,system_prompt_snapshot,created_at,updated_at) VALUES(${failedRun},${failedMessage},'demo-room','persona-architect','persona-architect-v1','architect','sol','local-hermes','hermes','sol',${tx.json(workProfile)},'failed',${failedSlot},${tx.json([])},'snapshot',${later},${later})`;
+      await tx`UPDATE response_slots SET selected_run_id=${failedRun} WHERE id=${failedSlot}`;
     });
     expect(await repositories.followUps.roomMode('demo-room')).toBe('auto');
     const[anchor]=await repositories.followUps.anchors('demo-room');
@@ -250,7 +254,7 @@ describe("PostgreSQL repositories", () => {
         await repositories.database
           .sql`SELECT version FROM schema_migrations ORDER BY version`
       ).map((row) => row.version),
-    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36]);
+    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37]);
     expect(
       await repositories.database.sql`SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='personas' AND column_name='role'`,
     ).toEqual([]);
