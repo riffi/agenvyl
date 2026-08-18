@@ -250,4 +250,76 @@ describe('Composer agent list',()=>{
     expect(screen.queryByRole('menu',{name:'Add to message'})).toBeNull();
     await waitFor(()=>expect(document.activeElement).toBe(trigger));
   });
+
+  it('extracts /new without sending and applies it to the next message once',async()=>{
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
+    const send=vi.fn<RoomGateway['send']>().mockResolvedValue(sentMessage),clearAttachments=vi.fn(),localGateway={...gateway,send};
+    const attachment={version_id:'version-1',entry_id:'entry-1',path:'brief.md',name:'brief.md',size:12,mime_type:'text/markdown',url:'/brief',preview_url:'/brief/preview'};
+    render(<Composer gateway={localGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[{id:'attachment-1',name:'brief.md',size:12,mimeType:'text/markdown',status:'ready',progress:100,attachment}]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={clearAttachments}/>);
+    const editor=screen.getByRole('textbox',{name:'Message'});
+    fireEvent.change(editor,{target:{value:'Please /new review this'}});fireEvent.keyDown(editor,{key:'Enter'});
+    expect(send).not.toHaveBeenCalled();expect((editor as HTMLTextAreaElement).value).toBe('Please review this');expect(screen.getByRole('button',{name:'Remove Start fresh'})).toBeTruthy();expect(screen.getByRole('button',{name:'brief.md'})).toBeTruthy();
+    await waitFor(()=>expect(document.activeElement).toBe(editor));
+    fireEvent.keyDown(editor,{key:'Enter'});
+    await waitFor(()=>expect(send).toHaveBeenCalledWith('Please review this',[],expect.any(String),['version-1'],{mode:'auto',delivery:'new_request'}));
+    expect(screen.queryByRole('button',{name:'Remove Start fresh'})).toBeNull();expect(screen.getByRole('status').textContent).toBe('Started fresh.');expect(clearAttachments).toHaveBeenCalledOnce();
+  });
+
+  it('opens the command popup anywhere in a draft and supports keyboard insertion',()=>{
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
+    render(<Composer gateway={gateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()}/>);
+    const editor=screen.getByRole('textbox',{name:'Message'});fireEvent.change(editor,{target:{value:'Please /n'}});
+    expect(screen.getByRole('listbox',{name:'Composer commands'})).toBeTruthy();expect(screen.getByRole('option',{name:/\/new/})).toBeTruthy();
+    fireEvent.keyDown(editor,{key:'ArrowDown'});fireEvent.keyDown(editor,{key:'Enter'});
+    expect((editor as HTMLTextAreaElement).value).toBe('Please /new');
+    fireEvent.keyDown(editor,{key:'Escape'});expect(screen.queryByRole('listbox',{name:'Composer commands'})).toBeNull();
+  });
+
+  it('keeps fresh routing for retry and clears it only after success',async()=>{
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
+    const send=vi.fn<RoomGateway['send']>().mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(sentMessage),localGateway={...gateway,send};
+    render(<Composer gateway={localGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()}/>);
+    const editor=screen.getByRole('textbox',{name:'Message'});fireEvent.change(editor,{target:{value:'/new Try again'}});fireEvent.keyDown(editor,{key:'Enter'});fireEvent.keyDown(editor,{key:'Enter'});
+    await screen.findByText(/Failed to send: offline/);expect(screen.getByRole('button',{name:'Remove Start fresh'})).toBeTruthy();
+    fireEvent.click(screen.getByRole('button',{name:'Retry'}));await waitFor(()=>expect(send).toHaveBeenCalledTimes(2));
+    expect(send.mock.calls.map(call=>call[4])).toEqual([{mode:'auto',delivery:'new_request'},{mode:'auto',delivery:'new_request'}]);expect(screen.queryByRole('button',{name:'Remove Start fresh'})).toBeNull();
+  });
+
+  it('does not offer a duplicate retry when post-send refresh fails',async()=>{
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
+    const send=vi.fn<RoomGateway['send']>().mockResolvedValue(sentMessage),localGateway={...gateway,send};
+    render(<Composer gateway={localGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>{throw new Error('refresh failed')})} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()}/>);
+    const editor=screen.getByRole('textbox',{name:'Message'});fireEvent.change(editor,{target:{value:'/new Send once'}});fireEvent.keyDown(editor,{key:'Enter'});fireEvent.keyDown(editor,{key:'Enter'});
+    await waitFor(()=>expect(send).toHaveBeenCalledOnce());await waitFor(()=>expect(screen.getByRole('status').textContent).toBe('Started fresh.'));expect(screen.queryByRole('button',{name:'Retry'})).toBeNull();
+  });
+
+  it('removes /new in Room context without adding a redundant flag',()=>{
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
+    const send=vi.fn<RoomGateway['send']>(),localGateway={...gateway,send};
+    render(<Composer gateway={localGateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} conversationRoutingMode="room_context"/>);
+    const editor=screen.getByRole('textbox',{name:'Message'});fireEvent.change(editor,{target:{value:'/new Keep this draft'}});fireEvent.keyDown(editor,{key:'Enter'});
+    expect(send).not.toHaveBeenCalled();expect((editor as HTMLTextAreaElement).value).toBe('Keep this draft');expect(screen.queryByRole('button',{name:'Remove Start fresh'})).toBeNull();expect(screen.getByRole('status').textContent).toContain('Room context already starts');
+  });
+
+  it('does not interpret /new in the intervention composer',async()=>{
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
+    const intervene=vi.fn(async()=>undefined),localGateway={...gateway,intervene};
+    render(<Composer gateway={localGateway} active={1} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()} interventionTarget={{runId:'run-1',agent:'coder',mode:'active_redirect'}}/>);
+    const editor=screen.getByRole('textbox',{name:'Instruction for coder'});fireEvent.change(editor,{target:{value:'/new keep literal'}});fireEvent.keyDown(editor,{key:'Enter'});
+    await waitFor(()=>expect(intervene).toHaveBeenCalledWith('run-1','/new keep literal'));expect(screen.queryByRole('listbox',{name:'Composer commands'})).toBeNull();
+  });
+
+  it('clears the pending Start fresh flag when changing rooms',()=>{
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
+    const props={gateway,active:0,personas:[persona],harnessCatalog:catalog,catalogReady:true,onSent:vi.fn(async()=>undefined),openWorkspace:vi.fn(),attachments:[],attachmentsBusy:false,openAttachmentPicker:vi.fn(),uploadFiles:vi.fn(),removeAttachment:vi.fn(),retryAttachment:vi.fn(),clearAttachments:vi.fn()};
+    const view=render(<Composer {...props} roomId="room-1"/>);const editor=screen.getByRole('textbox',{name:'Message'});fireEvent.change(editor,{target:{value:'/new Draft'}});fireEvent.keyDown(editor,{key:'Enter'});expect(screen.getByRole('button',{name:'Remove Start fresh'})).toBeTruthy();
+    view.rerender(<Composer {...props} roomId="room-2"/>);expect(screen.queryByRole('button',{name:'Remove Start fresh'})).toBeNull();expect((screen.getByRole('textbox',{name:'Message'}) as HTMLTextAreaElement).value).toBe('');
+  });
+
+  it('allows removing Start fresh without changing the draft',()=>{
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
+    render(<Composer gateway={gateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()}/>);
+    const editor=screen.getByRole('textbox',{name:'Message'});fireEvent.change(editor,{target:{value:'/new Keep draft'}});fireEvent.keyDown(editor,{key:'Enter'});fireEvent.click(screen.getByRole('button',{name:'Remove Start fresh'}));
+    expect((editor as HTMLTextAreaElement).value).toBe('Keep draft');expect(screen.queryByRole('button',{name:'Remove Start fresh'})).toBeNull();
+  });
 });
