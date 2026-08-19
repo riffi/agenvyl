@@ -30,6 +30,7 @@ describe('Connector v1 contract fixtures', () => {
     expect(isConnectorExecutionEvent({...connectorContractFixtures.textEvent,type:'execution.intervention.accepted',payload:intervention})).toBe(true);
     expect(isConnectorExecutionEvent({...connectorContractFixtures.textEvent,type:'execution.intervention.applied',payload:intervention})).toBe(true);
     expect(isConnectorExecutionEvent({...connectorContractFixtures.textEvent,type:'execution.intervention.failed',payload:{...intervention,error:{code:'redirect_failed',message:'Failed'}}})).toBe(true);
+    expect(isConnectorExecutionEvent({...connectorContractFixtures.textEvent,type:'execution.completed',payload:{warning:{code:'recovered_tool_error',message:'One intermediate tool call failed'}}})).toBe(true);
     expect(isConnectorInterventionCommandResult({execution:connectorContractFixtures.execution,intervention:{...intervention,status:'pending'}})).toBe(true);
   });
 
@@ -51,6 +52,7 @@ describe('Connector v1 contract fixtures', () => {
     expect(isConnectorExecutionEvent({...toolEvent,payload:{...toolEvent.payload,safeInput:42}})).toBe(false);
     expect(isConnectorExecutionEvent({...toolEvent,payload:{...toolEvent.payload,safeInput:'x'.repeat(8_001)}})).toBe(false);
     expect(isConnectorExecutionEvent({...connectorContractFixtures.textEvent,type:'execution.upstream_status',payload:{state:'retrying',reason:'vendor_secret',retryable:true}})).toBe(false);
+    expect(isConnectorExecutionEvent({...connectorContractFixtures.textEvent,type:'execution.completed',payload:{warning:{code:'warning',message:42}}})).toBe(false);
     expect(isResolveConnectorRequest({ resolution: ' ' })).toBe(false);
     expect(isResolveConnectorRequest({ resolution: 'x'.repeat(2_001) })).toBe(false);
     expect(isResolveConnectorRequest({elicitation:{action:'decline',content:{}}})).toBe(false);

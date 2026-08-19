@@ -394,7 +394,7 @@ export class ExecutionRegistry {
     });
   }
 
-  private appendTerminal(record: ExecutionRecord, type: 'execution.completed' | 'execution.failed' | 'execution.cancelled', payload: {continuation?:{handle:string}} | { error: { code: string; message: string } }) {
+  private appendTerminal(record: ExecutionRecord, type: 'execution.completed' | 'execution.failed' | 'execution.cancelled', payload: {continuation?:{handle:string};warning?:{code:string;message:string}} | { error: { code: string; message: string } }) {
     if (terminalStatuses.has(record.status)) return;
     this.failActiveIntervention(record,{code:'execution_ended',message:'The instruction could not be applied before the run ended'});
     const requestOutcome = type === 'execution.completed' ? 'superseded' : 'cancelled';

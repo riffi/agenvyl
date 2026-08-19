@@ -35,7 +35,7 @@ export type AdapterExecutionEvent =
   | { type: 'request.resolved'; payload: { requestId: string; outcome: 'answered' | 'declined' | 'cancelled' | 'expired' | 'superseded' } }
   | { type: 'execution.intervention.applied'; payload: { interventionId: string; text: string } }
   | { type: 'execution.intervention.failed'; payload: { interventionId: string; text: string; error: ConnectorError } }
-  | { type: 'execution.completed'; payload: { continuation?: { handle: string } } }
+  | { type: 'execution.completed'; payload: { continuation?: { handle: string }; warning?: ConnectorError } }
   | { type: 'execution.failed'; payload: { error: ConnectorError } }
   | { type: 'execution.cancelled'; payload: Record<string, never> };
 

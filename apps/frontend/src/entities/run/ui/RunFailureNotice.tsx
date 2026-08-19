@@ -1,4 +1,4 @@
-import {CircleAlert} from 'lucide-react';
+import {CircleAlert,TriangleAlert} from 'lucide-react';
 import styles from './RunFailureNotice.module.css';
 
 type FailurePresentation={title:string;description:string;guidance?:string;action?:{label:string;href:string}};
@@ -18,5 +18,12 @@ export function RunFailureNotice({errorCode,error}:{errorCode?:string;error?:str
   return <section className={styles.notice} role="alert" aria-live="polite">
     <CircleAlert aria-hidden="true"/>
     <span><strong>{presentation.title}</strong><p>{presentation.description}</p>{presentation.guidance&&<small>{presentation.guidance}</small>}{presentation.action&&<a href={presentation.action.href} target="_blank" rel="noreferrer">{presentation.action.label}</a>}</span>
+  </section>;
+}
+
+export function RunCompletionWarning({warning}:{warning:string}){
+  return <section className={`${styles.notice} ${styles.warning}`} role="status" aria-live="polite">
+    <TriangleAlert aria-hidden="true"/>
+    <span><strong>Completed with a warning</strong><p>{warning}</p></span>
   </section>;
 }

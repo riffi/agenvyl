@@ -1,6 +1,6 @@
 import {renderToStaticMarkup} from 'react-dom/server';
 import {describe,expect,it} from 'vitest';
-import {RunFailureNotice} from './RunFailureNotice';
+import {RunCompletionWarning,RunFailureNotice} from './RunFailureNotice';
 
 describe('RunFailureNotice',()=>{
   it('explains a provider region opt-in without exposing raw provider data',()=>{
@@ -15,5 +15,12 @@ describe('RunFailureNotice',()=>{
     const html=renderToStaticMarkup(<RunFailureNotice errorCode="unknown_failure" error="Safe fallback message"/>);
     expect(html).toContain('Could not complete');
     expect(html).toContain('Safe fallback message');
+  });
+
+  it('presents a recovered tool error without marking the answer failed',()=>{
+    const html=renderToStaticMarkup(<RunCompletionWarning warning="One intermediate tool call failed"/>);
+    expect(html).toContain('Completed with a warning');
+    expect(html).toContain('One intermediate tool call failed');
+    expect(html).toContain('role="status"');
   });
 });

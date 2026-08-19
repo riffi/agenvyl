@@ -117,7 +117,7 @@ function mapConnectorEvent(localRunId:string,event:ConnectorExecutionEvent):RunE
     case'execution.intervention.accepted':return{events:[{type:'run.intervention.updated',payload:{runId:localRunId,intervention:{id:event.payload.interventionId,text:event.payload.text,status:'pending'}}}]};
     case'execution.intervention.applied':return{events:[{type:'run.intervention.updated',payload:{runId:localRunId,intervention:{id:event.payload.interventionId,text:event.payload.text,status:'applied'}}}]};
     case'execution.intervention.failed':return{events:[{type:'run.intervention.updated',payload:{runId:localRunId,intervention:{id:event.payload.interventionId,text:event.payload.text,status:'failed',error:event.payload.error.message,errorCode:event.payload.error.code}}}]};
-    case'execution.completed':return{events:[],terminal:{status:'completed',...(event.payload.continuation?{continuationHandle:event.payload.continuation.handle}:{})}};
+    case'execution.completed':return{events:[],terminal:{status:'completed',...(event.payload.warning?{error:event.payload.warning.message,errorCode:event.payload.warning.code}:{}),...(event.payload.continuation?{continuationHandle:event.payload.continuation.handle}:{})}};
     case'execution.cancelled':return{events:[],terminal:{status:'cancelled'}};
     case'execution.failed':return{events:[],terminal:{status:'failed',error:event.payload.error.message,errorCode:event.payload.error.code}};
   }

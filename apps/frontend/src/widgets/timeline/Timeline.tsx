@@ -5,7 +5,7 @@ import {WorkspaceArtifactActions,type OpenWorkspaceArtifact,type WorkspaceTarget
 import {HarnessIcon,type HarnessCatalog} from '../../entities/harness';
 import type { Persona } from '../../entities/persona';
 import type { RoomState } from '../../entities/room';
-import {RunFailureNotice,type Run} from '../../entities/run';
+import {RunCompletionWarning,RunFailureNotice,type Run} from '../../entities/run';
 import type {RoomGateway} from '../../features/room-session';
 import { Alert, Avatar, EmptyState, IconButton } from '../../shared/ui';
 import styles from './Timeline.module.css';
@@ -192,6 +192,7 @@ function RunCard({
         <RunAnswerHistory run={run} chapters={chapters} fallbackAuthor={author} personas={personas} onMentionPersona={onMentionPersona} openWorkspace={openRunWorkspace} collapsed={collapsed} hiddenInterventionIds={hiddenInterventionIds} routedInterventionIds={routedInterventionIds}/>
         {isLongAnswer(continuationHistoryText(chapters))&&run.status==='completed'&&<button className={`${styles['answer-toggle']} ${collapsed?styles.expand:styles.collapse}`} type="button" onClick={toggleCollapsed} aria-expanded={!collapsed}>{collapsed?<><span>Expand response</span><ChevronDown/></>:<><span>Collapse response</span><ChevronUp/></>}</button>}
         {run.status==='failed'&&<RunFailureNotice errorCode={run.errorCode} error={run.error}/>}
+        {run.status==='completed'&&run.error&&<RunCompletionWarning warning={run.error}/>}
         {(run.requests??[]).some(request=>!request.resolved)&&<section className={styles['request-list']} aria-label="Pending agent requests"><strong>{(run.requests??[]).filter(request=>!request.resolved).length} pending {(run.requests??[]).filter(request=>!request.resolved).length===1?'request':'requests'}</strong>{(run.requests??[]).filter(request=>!request.resolved).map(request=><RunRequest key={request.id} request={request} resolve={value=>resolve(request.id,value)}/>)}</section>}
         <RunFiles files={changedFiles} summary={run.artifactSummary} openWorkspace={openWorkspace}/>
         {(run.staticPreview||buildMissing||previewCaptureFailed)&&<div className={styles['run-output-actions']}>

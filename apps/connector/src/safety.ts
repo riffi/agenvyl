@@ -33,6 +33,14 @@ export function safeAdapterError(error: unknown, fallbackCode: string): Connecto
 
 export function sanitizeAdapterEvent(event: AdapterExecutionEvent): AdapterExecutionEvent {
   switch (event.type) {
+    case 'execution.completed':
+      return {
+        type:event.type,
+        payload:{
+          ...(event.payload.continuation?{continuation:structuredClone(event.payload.continuation)}:{}),
+          ...(event.payload.warning?{warning:safeConnectorError(event.payload.warning,'Adapter completed with a warning')}:{}),
+        },
+      };
     case 'tool.started':
     case 'tool.updated':
     case 'tool.completed':
@@ -127,4 +135,8 @@ function safeIdentifier(value: string, fallback: string) {
 
 function safeErrorCode(value: string) {
   return /^[a-z][a-z0-9_]{0,63}$/.test(value) ? value : 'adapter_execution_failed';
+}
+
+function safeConnectorError(error:ConnectorError,fallbackMessage:string):ConnectorError{
+  return{code:safeErrorCode(error.code),message:redactConnectorText(error.message,500)||fallbackMessage};
 }

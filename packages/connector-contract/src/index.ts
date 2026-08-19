@@ -312,7 +312,7 @@ export type ConnectorExecutionEvent =
   | EventEnvelope<'execution.intervention.accepted', { interventionId: string; text: string }>
   | EventEnvelope<'execution.intervention.applied', { interventionId: string; text: string }>
   | EventEnvelope<'execution.intervention.failed', { interventionId: string; text: string; error: ConnectorError }>
-  | EventEnvelope<'execution.completed', { continuation?: ContinuationReference }>
+  | EventEnvelope<'execution.completed', { continuation?: ContinuationReference; warning?: ConnectorError }>
   | EventEnvelope<'execution.cancelled', Record<string, never>>
   | EventEnvelope<'execution.failed', { error: ConnectorError }>;
 
@@ -497,8 +497,9 @@ export function isConnectorExecutionEvent(value: unknown): value is ConnectorExe
   if (!isIsoDate(value.occurredAt)) return false;
   switch (value.type) {
     case 'execution.accepted': case 'execution.started': case 'execution.cancelled': return Object.keys(value.payload).length === 0;
-    case 'execution.completed': return Object.keys(value.payload).every(key=>key==='continuation')
-      && (value.payload.continuation===undefined||isContinuationReference(value.payload.continuation));
+    case 'execution.completed': return Object.keys(value.payload).every(key=>key==='continuation'||key==='warning')
+      && (value.payload.continuation===undefined||isContinuationReference(value.payload.continuation))
+      && (value.payload.warning===undefined||isError(value.payload.warning));
     case 'execution.status': return typeof value.payload.status === 'string' && executionStatuses.has(value.payload.status);
     case 'execution.upstream_status': return isUpstreamStatus(value.payload);
     case 'output.text.delta': case 'output.reasoning.delta': return typeof value.payload.text === 'string';

@@ -146,6 +146,21 @@ describe('AntigravityConnectorAdapter', () => {
     await expect(collect(failed.events(failedHandle))).resolves.toEqual([{ type: 'execution.failed', payload: { error: { code: 'agy_execution_failed', message: 'token=[REDACTED] failed' } } }]);
   });
 
+  it('completes with a warning when AGY recovers from its artifact-only write tool error',async()=>{
+    const fixture=await fakeAgy(),response='Final answer';
+    const messages=[
+      {event:'step_update',step_update:{step_index:196,state:'DONE',step_type:'agent_response',text_delta:response}},
+      {event:'result',result:{conversation_id:'conversation-recovered',status:'ERROR',response,error:'declaring permissions: cortex tool write_to_file: invalid tool call error (invalid_args) C:\\workspace\\test.js is not a valid artifact path; artifacts must be in C:\\brain'}},
+    ];
+    const stderr='declaring permissions: cortex tool write_to_file: convert tool call for permissions: model output error: invalid tool call error (invalid_args) C:\\workspace\\test.js is not a valid artifact path; artifacts must be in C:\\brain';
+    const adapter=fixture.adapter({env:{FAKE_AGY_EXIT:'1',FAKE_AGY_STDERR:stderr,FAKE_AGY_RAW_OUTPUT:messages.map(value=>JSON.stringify(value)).join('\n')}}),handle=await adapter.start({...execution(fixture.directory),executionId:'recovered-artifact-write'});
+
+    await expect(collect(adapter.events(handle))).resolves.toEqual([
+      {type:'output.text.delta',payload:{text:response}},
+      {type:'execution.completed',payload:{continuation:{handle:expect.any(String)},warning:{code:'agy_recovered_artifact_write',message:'Antigravity rejected an intermediate write_to_file call outside its artifact directory, then continued and produced the final response.'}}},
+    ]);
+  });
+
   it('keeps the current request and newest contiguous history inside the command-line boundary',async()=>{
     const fixture=await fakeAgy(),capturePath=join(fixture.directory,'bounded-capture.json');
     const adapter=fixture.adapter({env:{FAKE_AGY_CAPTURE:capturePath},maxCommandChars:4_000});

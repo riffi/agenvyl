@@ -1,1 +1,1 @@
-export {RunFailureNotice} from './RunFailureNotice';
+export {RunCompletionWarning,RunFailureNotice} from './RunFailureNotice';

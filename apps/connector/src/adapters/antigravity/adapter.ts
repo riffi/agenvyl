@@ -204,10 +204,11 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
     if(result.error instanceof AntigravityProtocolError){this.flushCommunicationParser(active);this.finish(active,failure(result.error.code,result.error.message));return;}
     if(result.outputTooLarge){this.flushCommunicationParser(active);this.finish(active,failure('agy_output_too_large','Antigravity output exceeded the Connector limit'));return;}
     if(result.error){this.flushCommunicationParser(active);this.finish(active,failure('agy_spawn_failed',result.error.message||'Unable to start Antigravity CLI'));return;}
-    if(result.code!==0){const detail=redactConnectorText(result.stderr,500);this.flushCommunicationParser(active);this.finish(active,failure('agy_execution_failed',detail||`Antigravity CLI exited with code ${result.code??'unknown'}`));return;}
     const parsed=active.result;
+    const recoveredWarning=recoveredArtifactWriteWarning(active,result,parsed);
+    if(result.code!==0&&!recoveredWarning){const detail=redactConnectorText(result.stderr,500);this.flushCommunicationParser(active);this.finish(active,failure('agy_execution_failed',detail||`Antigravity CLI exited with code ${result.code??'unknown'}`));return;}
     if(!parsed){this.flushCommunicationParser(active);this.finish(active,failure(active.sawMessage?'agy_invalid_output':'agy_empty_output',active.sawMessage?'Antigravity CLI exited without a terminal result event':'Antigravity CLI completed without a response'));return;}
-    if(parsed.status!=='SUCCESS'){this.flushCommunicationParser(active);this.finish(active,failure('agy_execution_failed',redactConnectorText(parsed.error||parsed.response,500)||`Antigravity CLI returned ${parsed.status}`));return;}
+    if(parsed.status!=='SUCCESS'&&!recoveredWarning){this.flushCommunicationParser(active);this.finish(active,failure('agy_execution_failed',redactConnectorText(parsed.error||parsed.response,500)||`Antigravity CLI returned ${parsed.status}`));return;}
     if(active.continuation.expectedConversationId&&parsed.conversationId!==active.continuation.expectedConversationId){this.flushCommunicationParser(active);this.finish(active,failure('continuation_incompatible','Antigravity resumed a different conversation'));return;}
     const response=parsed.response.trim();
     if(!active.rawStreamedText&&!response){this.flushCommunicationParser(active);this.finish(active,failure('agy_empty_output','Antigravity CLI completed without a response'));return;}
@@ -216,7 +217,7 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
     this.flushCommunicationParser(active);
     if(parsed.usage)active.queue.push({type:'usage.updated',payload:{usage:parsed.usage}});
     const handle=encodeAntigravityContinuationHandle({v:1,harness:'antigravity',instanceId:active.continuation.instanceId,conversationId:parsed.conversationId,directory:active.continuation.directory,storageScopeHash:this.storageScopeHash,configurationHash:active.continuation.configurationHash});
-    this.finish(active,{type:'execution.completed',payload:{continuation:{handle}}});
+    this.finish(active,{type:'execution.completed',payload:{continuation:{handle},...(recoveredWarning?{warning:recoveredWarning}:{})}});
   }
 
   private publishSegments(active:ActiveExecution,segments:AntigravityOutputSegment[]){
@@ -420,6 +421,20 @@ function assertSupportedVersion(value: string) {
 }
 
 function failure(code: string, message: string): AdapterExecutionEvent { return { type: 'execution.failed', payload: { error: { code, message } } }; }
+
+function recoveredArtifactWriteWarning(active:ActiveExecution,result:ProcessResult,parsed:AntigravityResult|undefined){
+  if(result.code===0||!parsed)return;
+  const streamed=active.rawStreamedText.trim(),response=parsed.response.trim();
+  if(!streamed||!response||!response.startsWith(streamed))return;
+  const error=`${result.stderr}\n${parsed.error??''}`;
+  if(!/declaring permissions:\s*cortex tool write_to_file:/iu.test(error)
+    ||!/invalid tool call error \(invalid_args\)/iu.test(error)
+    ||!/is not a valid artifact path; artifacts must be in/iu.test(error))return;
+  return{
+    code:'agy_recovered_artifact_write',
+    message:'Antigravity rejected an intermediate write_to_file call outside its artifact directory, then continued and produced the final response.',
+  };
+}
 function positiveInteger(value: number | undefined, fallback: number, label: string) {
   const resolved = value ?? fallback;
   if (!Number.isSafeInteger(resolved) || resolved < 1) throw new Error(`Antigravity ${label} must be a positive integer`);

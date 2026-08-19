@@ -71,6 +71,9 @@ describe('Connector safety boundary', () => {
     expect(sanitizeAdapterEvent({ type: 'execution.failed', payload: { error: { code: 'INVALID CODE', message: 'Bearer secret-token-value' } } })).toEqual({
       type: 'execution.failed', payload: { error: { code: 'adapter_execution_failed', message: 'Bearer [REDACTED]' } },
     });
+    expect(sanitizeAdapterEvent({type:'execution.completed',payload:{continuation:{handle:'opaque'},warning:{code:'agy_recovered_artifact_write',message:'password=secret at C:\\private\\file'}}})).toEqual({
+      type:'execution.completed',payload:{continuation:{handle:'opaque'},warning:{code:'agy_recovered_artifact_write',message:'password=[REDACTED] at [ABSOLUTE_PATH]'}},
+    });
     expect(sanitizeAdapterEvent({type:'execution.upstream_status',payload:{state:'retrying',reason:'provider_unavailable',retryable:true,message:'token=secret-value /srv/private/body.json'}})).toEqual({
       type:'execution.upstream_status',payload:{state:'retrying',reason:'provider_unavailable',retryable:true,message:'token=[REDACTED] [ABSOLUTE_PATH]'},
     });

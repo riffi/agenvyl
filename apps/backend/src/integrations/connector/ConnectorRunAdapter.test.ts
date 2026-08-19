@@ -127,6 +127,16 @@ describe('ConnectorRunAdapter',()=>{
     const mappings=[];for await(const mapping of adapter.stream('run-1','local-run',new AbortController().signal))mappings.push(mapping);
     expect(mappings).toEqual([{events:[],terminal:{status:'failed',error:'External access denied',errorCode:'external_directory_denied'},checkpoint:{executionId:'run-1',connectorEpoch:'epoch-1',cursor:2}}]);
   });
+
+  it('maps a recovered Connector warning onto a completed terminal result',async()=>{
+    const execution={...connectorContractFixtures.execution,cursor:1,pendingRequests:[]};
+    const warning={code:'agy_recovered_artifact_write',message:'An intermediate artifact write was rejected'};
+    const adapter=new ConnectorRunAdapter(clientFixture(execution,[event(2,'execution.completed',{warning})]));
+    await adapter.createRun(input());
+
+    const mappings=[];for await(const mapping of adapter.stream('run-1','local-run',new AbortController().signal))mappings.push(mapping);
+    expect(mappings).toEqual([{events:[],terminal:{status:'completed',error:warning.message,errorCode:warning.code},checkpoint:{executionId:'run-1',connectorEpoch:'epoch-1',cursor:2}}]);
+  });
 });
 
 function input(){return{executionId:'run-1',harnessInstanceId:'local-hermes',modelId:'sol',executionProfile:{workflowMode:'work' as const,requestedReasoningEffort:null,reasoningEffort:null,reasoningEffortFallback:false,reasoningEffortSource:'auto',planEnforcement:null,permissionProfileId:null,agentVariantId:null},workspace:{roomId:'room-1',relativePath:'.',absolutePath:'/host/private/room-1'},input:'Continue',sessionId:'session-1',instructions:'Be useful.',conversationHistory:[{role:'user' as const,content:'Earlier'}],model:'sol'};}
