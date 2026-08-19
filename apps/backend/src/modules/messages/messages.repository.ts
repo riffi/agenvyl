@@ -273,7 +273,20 @@ export class MessageRepository {
       references: Array<{ path: string; versionId: string }> = [];
     for (const m of messages) {
       const answers =
-        await db`SELECT r.id,r.persona_handle,r.text FROM response_slots s JOIN agent_runs r ON r.id=s.selected_run_id WHERE s.message_id=${m.id as string} AND r.status='completed' AND r.text<>'' ORDER BY r.persona_handle`;
+        await db`SELECT candidate.id,candidate.persona_handle,candidate.text,candidate.status
+          FROM response_slots s
+          JOIN LATERAL (
+            SELECT r.id,r.persona_handle,r.text,r.status
+            FROM agent_runs r
+            WHERE r.response_slot_id=s.id
+              AND r.text<>''
+              AND ((s.selected_run_id IS NOT NULL AND r.id=s.selected_run_id AND r.status='completed')
+                OR (s.selected_run_id IS NULL AND r.status='failed'))
+            ORDER BY (r.id=s.selected_run_id) DESC,r.created_at DESC,r.id DESC
+            LIMIT 1
+          ) candidate ON true
+          WHERE s.message_id=${m.id as string}
+          ORDER BY candidate.persona_handle`;
       const embedMap = await this.workspace.runEmbeds(
           answers.map((answer) => String(answer.id)),
           db,
@@ -293,13 +306,20 @@ export class MessageRepository {
               versionId: embed.attachment.version_id,
             });
       history.push({ role: "user", content: formatHumanMessageRow(m) });
-      const own = answers.find((a) => a.persona_handle === personaHandle);
+      const completed=answers.filter((answer)=>answer.status==='completed');
+      const own = completed.find((a) => a.persona_handle === personaHandle);
       if (own) history.push({ role: "assistant", content: clean(own) });
-      const peers = answers.filter((a) => a.persona_handle !== personaHandle);
+      const peers = completed.filter((a) => a.persona_handle !== personaHandle);
       if (peers.length)
         history.push({
           role: "user",
           content: `[MESSAGES FROM OTHER AGENTS — these are not the human user and not your responses]\nDo not continue their roles or answer on their behalf.\n\n${peers.map((a) => `[Other agent: @${a.persona_handle}]\n${clean(a)}`).join("\n\n")}`,
+        });
+      const failed=answers.filter((answer)=>answer.status==='failed');
+      if(failed.length)
+        history.push({
+          role:"user",
+          content:`[PARTIAL OUTPUT FROM FAILED AGENTS — may be incomplete or unverified]\nThese runs failed after producing text. Treat the following as diagnostic context, not as completed answers.\n\n${failed.map((answer)=>`[Failed agent: @${answer.persona_handle}]\n${clean(answer)}`).join("\n\n")}`,
         });
     }
     return {

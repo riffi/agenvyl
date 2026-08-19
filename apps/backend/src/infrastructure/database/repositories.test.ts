@@ -1140,6 +1140,32 @@ describe("PostgreSQL repositories", () => {
     });
     await p.database.close();
   });
+  it("includes failed output as marked diagnostic context and prefers a successful retry",async()=>{
+    const p=await createRepositories(testDatabaseUrl("failed_history"));
+    const architect=(await p.personas.find("persona-architect"))!,coder=(await p.personas.find("persona-coder"))!;
+    const first=await p.messages.createRound("demo-room","diagnose",[architect,coder],profiles([architect,coder]));
+    const architectRun=first.runs.find(item=>item.persona.handle==="architect")!,coderRun=first.runs.find(item=>item.persona.handle==="coder")!;
+    for(const[item,text]of[[architectRun,"architect partial"],[coderRun,"coder obsolete"]] as const){
+      await p.roomEvents.append("demo-room","run.delta",{runId:item.id,text});
+      await p.roomEvents.append("demo-room","run.status",{runId:item.id,status:"failed",error:"tool failed"});
+    }
+    const retry=await p.runs.retry(coderRun.id);
+    expect(retry.status).toBe("created");
+    if(retry.status!=="created")throw new Error("Expected retry");
+    await p.roomEvents.append("demo-room","run.delta",{runId:retry.runId,text:"coder recovered"});
+    await p.roomEvents.append("demo-room","run.status",{runId:retry.runId,status:"completed"});
+
+    const next=await p.messages.createRound("demo-room","next",[architect],profiles([architect]));
+    expect(next.runs[0].history).toEqual([
+      {role:"user",content:"[Human user: User (@user); recipient: @architect, @coder]\ndiagnose"},
+      {role:"user",content:expect.stringContaining("[Other agent: @coder]\ncoder recovered")},
+      {role:"user",content:expect.stringContaining("[Failed agent: @architect]\narchitect partial")},
+    ]);
+    expect(next.runs[0].history[2]?.content).toContain("PARTIAL OUTPUT FROM FAILED AGENTS");
+    expect(next.runs[0].history[2]?.content).toContain("may be incomplete or unverified");
+    expect(JSON.stringify(next.runs[0].history)).not.toContain("coder obsolete");
+    await p.database.close();
+  });
   it("keeps human-only messages and their attachments in conversation context", async () => {
     const p = await createRepositories(testDatabaseUrl("human_only_history"));
     const attachment = await p.workspace.saveVersion({
