@@ -188,6 +188,77 @@ export const experimentalTailV1ConversationHistory = (
     historyJsonChars,
   };
 };
+
+export const EXPERIMENTAL_TAIL_V2_HISTORY_POLICY = 'tail-v2' as const;
+export const EXPERIMENTAL_TAIL_V2_ITEM_CHAR_LIMIT = 8_000;
+export const EXPERIMENTAL_TAIL_V2_JSON_CHAR_LIMIT = 32 * 1_024;
+export const EXPERIMENTAL_TAIL_V2_ITEM_LIMIT = 16;
+export const EXPERIMENTAL_TAIL_V2_ROUND_LIMIT = 8;
+
+export type ExperimentalTailV2ConversationHistory = {
+  history: CanonicalConversationItem[];
+  historyPolicy: typeof EXPERIMENTAL_TAIL_V2_HISTORY_POLICY;
+  historyItemsTotal: number;
+  historyItemsIncluded: number;
+  historyItemsDropped: number;
+  historyRoundsTotal: number;
+  historyRoundsIncluded: number;
+  historyJsonChars: number;
+};
+
+export const experimentalTailV2ConversationHistory = (
+  source: readonly CanonicalConversationItem[],
+): ExperimentalTailV2ConversationHistory => {
+  const rounds=conversationRounds(source.map(item=>({role:item.role,content:item.content.slice(0,EXPERIMENTAL_TAIL_V2_ITEM_CHAR_LIMIT)})));
+  const selected:CanonicalConversationItem[][]=[];
+  let historyItemsIncluded=0,historyJsonChars=0;
+  for(let index=rounds.length-1;index>=0&&selected.length<EXPERIMENTAL_TAIL_V2_ROUND_LIMIT;index-=1){
+    const round=rounds[index]!,roundJsonChars=jsonChars(round);
+    if(historyItemsIncluded+round.length>EXPERIMENTAL_TAIL_V2_ITEM_LIMIT||historyJsonChars+roundJsonChars>EXPERIMENTAL_TAIL_V2_JSON_CHAR_LIMIT){
+      if(!selected.length){const fitted=fitNewestRound(round);if(fitted.length){selected.unshift(fitted);historyItemsIncluded=fitted.length;historyJsonChars=jsonChars(fitted);}}
+      break;
+    }
+    selected.unshift(round);historyItemsIncluded+=round.length;historyJsonChars+=roundJsonChars;
+  }
+  const history=selected.flat();
+  return{
+    history,
+    historyPolicy:EXPERIMENTAL_TAIL_V2_HISTORY_POLICY,
+    historyItemsTotal:source.length,
+    historyItemsIncluded:history.length,
+    historyItemsDropped:source.length-history.length,
+    historyRoundsTotal:rounds.length,
+    historyRoundsIncluded:selected.length,
+    historyJsonChars,
+  };
+};
+
+const conversationRounds=(source:CanonicalConversationItem[])=>{
+  const rounds:CanonicalConversationItem[][]=[];
+  for(const item of source){
+    if(!rounds.length||startsConversationRound(item))rounds.push([]);
+    rounds.at(-1)!.push(item);
+  }
+  return rounds;
+};
+
+const startsConversationRound=(item:CanonicalConversationItem)=>item.role==='user'
+  &&!item.content.startsWith('[MESSAGES FROM OTHER AGENTS')
+  &&!item.content.startsWith('[PARTIAL OUTPUT FROM FAILED AGENTS');
+
+const fitNewestRound=(round:CanonicalConversationItem[])=>{
+  const first=round[0];if(!first)return[];
+  const selected=[first],remaining=round.slice(1),firstJsonChars=jsonChars(selected);
+  let historyJsonChars=firstJsonChars;
+  for(let index=remaining.length-1;index>=0&&selected.length<EXPERIMENTAL_TAIL_V2_ITEM_LIMIT;index-=1){
+    const item=remaining[index]!,itemJsonChars=jsonChars([item]);
+    if(historyJsonChars+itemJsonChars>EXPERIMENTAL_TAIL_V2_JSON_CHAR_LIMIT)continue;
+    selected.splice(1,0,item);historyJsonChars+=itemJsonChars;
+  }
+  return selected;
+};
+
+const jsonChars=(items:CanonicalConversationItem[])=>items.reduce((sum,item)=>sum+JSON.stringify(item).length,0);
 export type ExecutionProjectScope = { path: string; access: 'read' | 'read_write' };
 export type ExecutionAttachmentReference = {
   versionId: string;

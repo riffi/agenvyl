@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { ExecutionStatus } from '@agenvyl/connector-contract';
 import type { AdapterExecution, AdapterStartExecutionRequest, ConnectorAdapter } from '../../adapter.js';
-import {experimentalTailV1ConversationHistory} from '../../conversation-history.js';
+import {experimentalTailV2ConversationHistory} from '../../conversation-history.js';
 import { HermesToolLifecycle, mapHermesEvent } from './events.js';
 import { parseSse } from './parse-sse.js';
 
@@ -140,7 +140,7 @@ export class HermesConnectorAdapter implements ConnectorAdapter {
 }
 
 export const hermesRunBody=(request:AdapterStartExecutionRequest)=>{
-  const {history}=experimentalTailV1ConversationHistory(request.input.history);
+  const {history}=experimentalTailV2ConversationHistory(request.input.history);
   return{
     input:request.input.message,
     session_id:sessionId(request.executionId),

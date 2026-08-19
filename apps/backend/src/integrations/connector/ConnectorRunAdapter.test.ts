@@ -1,5 +1,5 @@
 import type { ConnectorExecutionClient } from '../../modules/connector/connector.ports.js';
-import { connectorContractFixtures, EXPERIMENTAL_TAIL_V1_JSON_CHAR_LIMIT, type ConnectorExecutionEvent, type ExecutionSnapshot } from '@agenvyl/connector-contract';
+import { connectorContractFixtures, EXPERIMENTAL_TAIL_V2_ITEM_LIMIT, EXPERIMENTAL_TAIL_V2_JSON_CHAR_LIMIT, EXPERIMENTAL_TAIL_V2_ROUND_LIMIT, type ConnectorExecutionEvent, type ExecutionSnapshot } from '@agenvyl/connector-contract';
 import { describe,expect,it,vi } from 'vitest';
 import {ConnectorRunAdapter} from './ConnectorRunAdapter.js';
 
@@ -51,7 +51,7 @@ describe('ConnectorRunAdapter',()=>{
     expect(client.start).toHaveBeenCalledWith(expect.objectContaining({input:expect.objectContaining({attachments:[attachment]})}));
   });
 
-  it('applies tail-v1 before sending a long conversation through the Connector HTTP boundary',async()=>{
+  it('applies round-aware tail-v2 before sending a long conversation through the Connector HTTP boundary',async()=>{
     const execution={...connectorContractFixtures.execution,pendingRequests:[]},client=clientFixture(execution,[]),adapter=new ConnectorRunAdapter(client);
     const conversationHistory=Array.from({length:400},(_,index)=>({role:index%2?'assistant' as const:'user' as const,content:`history-${index}-`+'x'.repeat(4_000)}));
 
@@ -59,8 +59,11 @@ describe('ConnectorRunAdapter',()=>{
 
     const request=vi.mocked(client.start).mock.calls[0]![0];
     expect(request.input.history.length).toBeLessThan(conversationHistory.length);
+    expect(request.input.history.length).toBeLessThanOrEqual(EXPERIMENTAL_TAIL_V2_ITEM_LIMIT);
+    expect(request.input.history.filter(item=>item.role==='user').length).toBeLessThanOrEqual(EXPERIMENTAL_TAIL_V2_ROUND_LIMIT);
+    expect(request.input.history[0]?.role).toBe('user');
     expect(request.input.history.at(-1)).toEqual(conversationHistory.at(-1));
-    expect(request.input.history.reduce((sum,item)=>sum+JSON.stringify(item).length,0)).toBeLessThanOrEqual(EXPERIMENTAL_TAIL_V1_JSON_CHAR_LIMIT);
+    expect(request.input.history.reduce((sum,item)=>sum+JSON.stringify(item).length,0)).toBeLessThanOrEqual(EXPERIMENTAL_TAIL_V2_JSON_CHAR_LIMIT);
     expect(conversationHistory).toHaveLength(400);
   });
 

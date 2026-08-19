@@ -3,7 +3,7 @@ import { spawn, spawnSync, type ChildProcessByStdio } from 'node:child_process';
 import type { Readable } from 'node:stream';
 import type { ExecutionStatus } from '@agenvyl/connector-contract';
 import {AdapterContinuationError,type AdapterExecution,type AdapterExecutionEvent,type AdapterStartExecutionRequest,type ConnectorAdapter} from '../../adapter.js';
-import {experimentalTailV1ConversationHistory} from '../../conversation-history.js';
+import {experimentalTailV2ConversationHistory} from '../../conversation-history.js';
 import { commandInvocation, resolveCommand } from '../../discovery.js';
 import { redactConnectorText } from '../../safety.js';
 import {antigravityContinuationConfiguration,antigravityStorageScopeHash,encodeAntigravityContinuationHandle,parseAntigravityContinuationHandle} from './native-continuation.js';
@@ -308,7 +308,7 @@ export function antigravityPrompt(request: AdapterStartExecutionRequest) {
 
 export function boundedAntigravityPrompt(request:AdapterStartExecutionRequest,fits:(prompt:string)=>boolean){
   const promptFor=(history:AdapterStartExecutionRequest['input']['history'])=>antigravityPrompt({...request,input:{...request.input,history}});
-  const tail=experimentalTailV1ConversationHistory(request.input.history).history;
+  const tail=experimentalTailV2ConversationHistory(request.input.history).history;
   let history:AdapterStartExecutionRequest['input']['history']=[],prompt=promptFor(history);
   if(!fits(prompt))throw new Error('Antigravity current request exceeds the configured CLI argv boundary');
   for(const item of [...tail].reverse()){

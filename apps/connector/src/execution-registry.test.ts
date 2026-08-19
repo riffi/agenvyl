@@ -50,12 +50,12 @@ describe('ExecutionRegistry live subscriptions', () => {
     await expect(registry.releaseContinuation('local-hermes','opaque-next')).resolves.toBe('released');expect(released).toBe('opaque-next');
     expect(()=>registry.start({...request,executionId:'replayed',input:{...request.input,history:[{role:'assistant',content:'old output'}]}})).toThrow('must not replay');
   });
-  it('logs only safe tail-v1 counters when a run starts',async()=>{
+  it('logs only safe tail-v2 counters when a run starts',async()=>{
     const adapter=new LiveAdapter(),logs:Array<Record<string,unknown>>=[];
     const registry=createRegistry(adapter,{info:details=>logs.push(details)}),request=structuredClone(connectorContractFixtures.startExecution) as StartExecutionRequest;
     request.input.history=[{role:'user',content:'private-history-content'}];
     registry.start(request);await waitFor(()=>registry.inspect(request.executionId).status==='running');
-    expect(logs).toEqual([{historyPolicy:'tail-v1',historyItemsTotal:1,historyItemsIncluded:1,historyItemsDropped:0,historyJsonChars:JSON.stringify(request.input.history[0]).length,harnessType:'hermes'}]);
+    expect(logs).toEqual([{historyPolicy:'tail-v2',historyItemsTotal:1,historyItemsIncluded:1,historyItemsDropped:0,historyRoundsTotal:1,historyRoundsIncluded:1,historyJsonChars:JSON.stringify(request.input.history[0]).length,harnessType:'hermes'}]);
     expect(JSON.stringify(logs)).not.toContain('private-history-content');
   });
   it('serializes idempotent interventions and publishes strict cursor order',async()=>{

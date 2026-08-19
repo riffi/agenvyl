@@ -1,7 +1,7 @@
 import {Buffer} from 'node:buffer';
 import {describe,expect,it} from 'vitest';
 import type {AdapterStartExecutionRequest} from './adapter.js';
-import {experimentalTailV1ConversationHistory} from './conversation-history.js';
+import {experimentalTailV2ConversationHistory} from './conversation-history.js';
 import {boundedAntigravityPrompt} from './adapters/antigravity/adapter.js';
 import {claudeContext} from './adapters/claude/adapter.js';
 import {codexContext} from './adapters/codex/adapter.js';
@@ -9,9 +9,9 @@ import {cursorPrompt} from './adapters/cursor/adapter.js';
 import {hermesRunBody} from './adapters/hermes/adapter.js';
 import {openCodeSystemContext} from './adapters/opencode/adapter.js';
 
-describe('tail-v1 adapter contract',()=>{
+describe('tail-v2 adapter contract',()=>{
   it('gives all six harnesses the same bounded history while keeping system and current input separate',()=>{
-    const request=longRequest(),expected=experimentalTailV1ConversationHistory(request.input.history).history;
+    const request=longRequest(),expected=experimentalTailV2ConversationHistory(request.input.history).history;
     const histories=[
       xmlHistory(codexContext(request)),
       xmlHistory(claudeContext(request)),
@@ -29,10 +29,10 @@ describe('tail-v1 adapter contract',()=>{
     expect(Buffer.byteLength(cursorPrompt(longRequest()),'utf8')).toBeLessThan(120*1_024);
   });
 
-  it('lets Antigravity reduce tail-v1 further without dropping the newest item',()=>{
+  it('lets Antigravity reduce tail-v2 further without dropping the newest item',()=>{
     const request=longRequest(),prompt=boundedAntigravityPrompt(request,value=>Buffer.byteLength(value,'utf8')<45_000),payload=jsonPrompt(prompt);
     expect(payload.conversationHistory.length).toBeGreaterThan(0);
-    expect(payload.conversationHistory.at(-1)).toEqual(experimentalTailV1ConversationHistory(request.input.history).history.at(-1));
+    expect(payload.conversationHistory.at(-1)).toEqual(experimentalTailV2ConversationHistory(request.input.history).history.at(-1));
     expect(payload.currentUserMessage).toContain('CURRENT-SENTINEL');
   });
 });

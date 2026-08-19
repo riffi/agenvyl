@@ -16,7 +16,7 @@ import { CONNECTOR_API_VERSION } from '@agenvyl/connector-contract';
 import type { AdapterExecution, AdapterExecutionAttachment, AdapterExecutionEvent, ConnectorAdapter } from './adapter.js';
 import { AdapterGenerationError, type AdapterGenerationBinding } from './adapter-generations.js';
 import { safeAdapterError, sanitizeAdapterEvent } from './safety.js';
-import {experimentalTailV1ConversationHistory} from './conversation-history.js';
+import {experimentalTailV2ConversationHistory} from './conversation-history.js';
 import { WorkspacePolicy } from './workspace-policy.js';
 
 const terminalStatuses = new Set<ExecutionStatus>(['completed', 'failed', 'cancelled']);
@@ -257,7 +257,7 @@ export class ExecutionRegistry {
 
   private async startAdapter(record: ExecutionRecord) {
     try {
-      const {history:_,...historyMetrics}=experimentalTailV1ConversationHistory(record.request.input.history);
+      const {history:_,...historyMetrics}=experimentalTailV2ConversationHistory(record.request.input.history);
       this.logger?.info({...historyMetrics,harnessType:record.harnessType},'Prepared conversation history');
       const {input:requestInput,...request}=record.request;
       const adapterRequest:import('./adapter.js').AdapterStartExecutionRequest={

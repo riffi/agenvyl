@@ -6,7 +6,7 @@ import type { SessionStatus } from '@opencode-ai/sdk/v2/client';
 import type { ExecutionStatus, TokenUsage } from '@agenvyl/connector-contract';
 import type { UpstreamStatus, UpstreamStatusReason } from '@agenvyl/connector-contract';
 import {AdapterContinuationError,type AdapterExecution, type AdapterExecutionAttachment, type AdapterExecutionEvent, type AdapterStartExecutionRequest, type ConnectorAdapter } from '../../adapter.js';
-import {experimentalTailV1ConversationHistory} from '../../conversation-history.js';
+import {experimentalTailV2ConversationHistory} from '../../conversation-history.js';
 import { redactConnectorText } from '../../safety.js';
 import {
   assessExternalDirectoryRequest,
@@ -688,7 +688,7 @@ export const openCodePromptParts=(message:string,attachments:AdapterExecutionAtt
 ]);
 
 export function openCodeSystemContext(request: AdapterStartExecutionRequest) {
-  const {history}=experimentalTailV1ConversationHistory(request.input.history);
+  const {history}=experimentalTailV2ConversationHistory(request.input.history);
   const sections = [request.input.systemPrompt.trim()];
   if(request.executionProfile.workflowMode==='plan')sections.push([
     'OpenCode exposes structured clarification through the tool named `question`.',

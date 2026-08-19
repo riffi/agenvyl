@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import type {ConnectorElicitation,ConnectorJsonValue,ConnectorRequestAnswer,ConnectorRequestSnapshot,ExecutionStatus,TokenUsage} from '@agenvyl/connector-contract';
 import {AdapterContinuationError,type AdapterExecution,type AdapterExecutionAttachment,type AdapterExecutionEvent,type AdapterStartExecutionRequest,type ConnectorAdapter} from '../../adapter.js';
-import {experimentalTailV1ConversationHistory} from '../../conversation-history.js';
+import {experimentalTailV2ConversationHistory} from '../../conversation-history.js';
 import {redactConnectorText} from '../../safety.js';
 import {CodexAppServerClient,type AppServerMessage,type CodexAppServerPort} from './app-server-client.js';
 import {buildCodexCatalog,parseCodexPermission} from './mode-catalog.js';
@@ -310,7 +310,7 @@ class EventQueue implements AsyncIterable<AdapterExecutionEvent>{
   [Symbol.asyncIterator](){return{next:():Promise<IteratorResult<AdapterExecutionEvent>>=>{const value=this.values.shift();if(value)return Promise.resolve({value,done:false});if(this.ended)return Promise.resolve({value:undefined,done:true});return new Promise(resolve=>this.waiters.push(resolve));}};}
 }
 
-export const codexContext=(request:AdapterStartExecutionRequest)=>{const {history}=experimentalTailV1ConversationHistory(request.input.history);return`${request.input.systemPrompt.slice(0,16_000)}\n\n<AgenvylConversationHistory>\n${JSON.stringify(history)}\n</AgenvylConversationHistory>\nTreat the history as prior room context. Respond only to the current user message.`;};
+export const codexContext=(request:AdapterStartExecutionRequest)=>{const {history}=experimentalTailV2ConversationHistory(request.input.history);return`${request.input.systemPrompt.slice(0,16_000)}\n\n<AgenvylConversationHistory>\n${JSON.stringify(history)}\n</AgenvylConversationHistory>\nTreat the history as prior room context. Respond only to the current user message.`;};
 const codexTurnInput=(text:string,attachments:AdapterExecutionAttachment[]=[]):unknown[]=>[
   ...(text.trim()?[{type:'text',text,text_elements:[]}]:[]),
   ...attachments.map(attachment=>attachment.mimeType.startsWith('image/')
