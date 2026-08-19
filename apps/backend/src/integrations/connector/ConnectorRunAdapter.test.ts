@@ -1,5 +1,5 @@
 import type { ConnectorExecutionClient } from '../../modules/connector/connector.ports.js';
-import { connectorContractFixtures, type ConnectorExecutionEvent, type ExecutionSnapshot } from '@agenvyl/connector-contract';
+import { connectorContractFixtures, EXPERIMENTAL_TAIL_V1_JSON_CHAR_LIMIT, type ConnectorExecutionEvent, type ExecutionSnapshot } from '@agenvyl/connector-contract';
 import { describe,expect,it,vi } from 'vitest';
 import {ConnectorRunAdapter} from './ConnectorRunAdapter.js';
 
@@ -49,6 +49,19 @@ describe('ConnectorRunAdapter',()=>{
     const attachment={versionId:'version-1',name:'screen.png',mimeType:'image/png',size:42,sha256:'a'.repeat(64)};
     await adapter.createRun({...input(),attachments:[attachment]});
     expect(client.start).toHaveBeenCalledWith(expect.objectContaining({input:expect.objectContaining({attachments:[attachment]})}));
+  });
+
+  it('applies tail-v1 before sending a long conversation through the Connector HTTP boundary',async()=>{
+    const execution={...connectorContractFixtures.execution,pendingRequests:[]},client=clientFixture(execution,[]),adapter=new ConnectorRunAdapter(client);
+    const conversationHistory=Array.from({length:400},(_,index)=>({role:index%2?'assistant' as const:'user' as const,content:`history-${index}-`+'x'.repeat(4_000)}));
+
+    await adapter.createRun({...input(),conversationHistory});
+
+    const request=vi.mocked(client.start).mock.calls[0]![0];
+    expect(request.input.history.length).toBeLessThan(conversationHistory.length);
+    expect(request.input.history.at(-1)).toEqual(conversationHistory.at(-1));
+    expect(request.input.history.reduce((sum,item)=>sum+JSON.stringify(item).length,0)).toBeLessThanOrEqual(EXPERIMENTAL_TAIL_V1_JSON_CHAR_LIMIT);
+    expect(conversationHistory).toHaveLength(400);
   });
 
   it('maps a generic UI approval to the offered external-directory grant',async()=>{

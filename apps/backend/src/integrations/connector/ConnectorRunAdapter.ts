@@ -1,4 +1,4 @@
-import type { ConnectorExecutionEvent, ConnectorRequestSnapshot, ExecutionSnapshot } from '@agenvyl/connector-contract';
+import { experimentalTailV1ConversationHistory, type ConnectorExecutionEvent, type ConnectorRequestSnapshot, type ExecutionSnapshot } from '@agenvyl/connector-contract';
 import type { ConnectorExecutionClient } from '../../modules/connector/connector.ports.js';
 import type { ApprovalChoice, DependencyHealth, ReattachRunInput, RunCheckpoint, RunEventMapping, RunEventStream, RunGateway, RunHandle, RunRecovery, StartRunInput } from '../../modules/harness/harness.ports.js';
 
@@ -12,6 +12,7 @@ export class ConnectorRunAdapter implements RunGateway,RunEventStream,RunRecover
   async capabilities(){try{const health=await this.connector.health();return{ok:health.status==='ready',status:health.status==='ready'?200:503,data:{apiVersion:health.apiVersion,status:health.status}};}catch(error){return{ok:false,status:0,error:error instanceof Error?error.message:String(error)};}}
 
   async createRun(input:StartRunInput):Promise<RunHandle>{
+    const {history}=experimentalTailV1ConversationHistory(input.conversationHistory??[]);
     const execution=await this.connector.start({
       executionId:input.executionId,
       harnessInstanceId:input.harnessInstanceId,
@@ -24,7 +25,7 @@ export class ConnectorRunAdapter implements RunGateway,RunEventStream,RunRecover
         planEnforcement:input.executionProfile.planEnforcement,
       },
       workspace:{roomId:input.workspace.roomId,relativePath:input.workspace.relativePath,...(input.workspace.project?{project:input.workspace.project}:{})},
-      input:{systemPrompt:input.instructions,history:input.conversationHistory??[],message:input.input,...(input.attachments?.length?{attachments:input.attachments}:{})},
+      input:{systemPrompt:input.instructions,history,message:input.input,...(input.attachments?.length?{attachments:input.attachments}:{})},
       ...(input.continuationHandle?{continuation:{handle:input.continuationHandle}}:{}),
     });
     this.remember(execution);
