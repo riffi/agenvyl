@@ -161,6 +161,40 @@ describe('AntigravityConnectorAdapter', () => {
     ]);
   });
 
+  it('completes with a warning when AGY continues after a structured tool failure',async()=>{
+    const fixture=await fakeAgy(),response='The search tool was unavailable, so I inspected the files directly. Final answer.';
+    const messages=[
+      {event:'step_update',step_update:{step_index:3,state:'ACTIVE',step_type:'tool',tool_name:'grep_search'}},
+      {event:'step_update',step_update:{step_index:3,state:'ERROR',step_type:'tool',tool_name:'grep_search'}},
+      {event:'step_update',step_update:{step_index:4,state:'DONE',step_type:'agent_response',text_delta:response}},
+      {event:'result',result:{conversation_id:'conversation-recovered-tool',status:'ERROR',response,error:'exec: "grep": executable file not found in %PATH%'}},
+    ];
+    const adapter=fixture.adapter({env:{FAKE_AGY_EXIT:'1',FAKE_AGY_STDERR:'exec: "grep": executable file not found in %PATH%',FAKE_AGY_RAW_OUTPUT:messages.map(value=>JSON.stringify(value)).join('\n')}}),handle=await adapter.start({...execution(fixture.directory),executionId:'recovered-tool-failure'});
+
+    await expect(collect(adapter.events(handle))).resolves.toEqual([
+      {type:'tool.started',payload:{toolId:'agy-step-3',name:'grep_search',safeSummary:'grep_search running'}},
+      {type:'tool.failed',payload:{toolId:'agy-step-3',name:'grep_search',safeSummary:'grep_search failed'}},
+      {type:'output.text.delta',payload:{text:response}},
+      {type:'execution.completed',payload:{continuation:{handle:expect.any(String)},warning:{code:'agy_recovered_tool_failure',message:'Antigravity reported that an intermediate tool call failed, then continued and produced the final response.'}}},
+    ]);
+  });
+
+  it('does not recover when AGY only emitted text before the tool failure',async()=>{
+    const fixture=await fakeAgy(),response='I will search the project.';
+    const messages=[
+      {event:'step_update',step_update:{step_index:2,state:'DONE',step_type:'agent_response',text_delta:response}},
+      {event:'step_update',step_update:{step_index:3,state:'ERROR',step_type:'tool',tool_name:'grep_search'}},
+      {event:'result',result:{conversation_id:'conversation-failed-tool',status:'ERROR',response,error:'exec: "grep": executable file not found in %PATH%'}},
+    ];
+    const adapter=fixture.adapter({env:{FAKE_AGY_EXIT:'1',FAKE_AGY_STDERR:'exec: "grep": executable file not found in %PATH%',FAKE_AGY_RAW_OUTPUT:messages.map(value=>JSON.stringify(value)).join('\n')}}),handle=await adapter.start({...execution(fixture.directory),executionId:'unrecovered-tool-failure'});
+
+    await expect(collect(adapter.events(handle))).resolves.toEqual([
+      {type:'output.text.delta',payload:{text:response}},
+      {type:'tool.failed',payload:{toolId:'agy-step-3',name:'grep_search',safeSummary:'grep_search failed'}},
+      {type:'execution.failed',payload:{error:{code:'agy_execution_failed',message:'exec: "grep": executable file not found in %PATH%'}}},
+    ]);
+  });
+
   it('keeps the current request and newest contiguous history inside the command-line boundary',async()=>{
     const fixture=await fakeAgy(),capturePath=join(fixture.directory,'bounded-capture.json');
     const adapter=fixture.adapter({env:{FAKE_AGY_CAPTURE:capturePath},maxCommandChars:4_000});

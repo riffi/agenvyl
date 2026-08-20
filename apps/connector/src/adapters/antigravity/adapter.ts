@@ -43,6 +43,7 @@ type ActiveExecution = {
   rawStreamedText:string;
   communicationParser:AntigravityCommunicationParser;
   tools:Map<string,string>;
+  lastFailedTool?:{textLength:number};
   result?:AntigravityResult;
   continuation:{instanceId:string;directory:string;configurationHash:string;expectedConversationId?:string};
 };
@@ -193,6 +194,7 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
     if(tool){
       const seen=active.tools.has(tool.id),name=tool.name??active.tools.get(tool.id)??'Antigravity tool';active.tools.set(tool.id,name);
       const type=tool.state==='failed'?'tool.failed':tool.state==='completed'?'tool.completed':seen?'tool.updated':'tool.started';
+      if(tool.state==='failed')active.lastFailedTool={textLength:active.rawStreamedText.length};
       active.queue.push({type,payload:{toolId:tool.id,name,safeSummary:`${name} ${tool.state==='failed'?'failed':tool.state==='completed'?'completed':'running'}`,...(tool.parameters===undefined?{}:{safeInput:safeJson(tool.parameters)})}});
     }
     const result=antigravityResult(message);if(result)active.result=result;
@@ -205,7 +207,7 @@ export class AntigravityConnectorAdapter implements ConnectorAdapter {
     if(result.outputTooLarge){this.flushCommunicationParser(active);this.finish(active,failure('agy_output_too_large','Antigravity output exceeded the Connector limit'));return;}
     if(result.error){this.flushCommunicationParser(active);this.finish(active,failure('agy_spawn_failed',result.error.message||'Unable to start Antigravity CLI'));return;}
     const parsed=active.result;
-    const recoveredWarning=recoveredArtifactWriteWarning(active,result,parsed);
+    const recoveredWarning=recoveredExecutionWarning(active,result,parsed);
     if(result.code!==0&&!recoveredWarning){const detail=redactConnectorText(result.stderr,500);this.flushCommunicationParser(active);this.finish(active,failure('agy_execution_failed',detail||`Antigravity CLI exited with code ${result.code??'unknown'}`));return;}
     if(!parsed){this.flushCommunicationParser(active);this.finish(active,failure(active.sawMessage?'agy_invalid_output':'agy_empty_output',active.sawMessage?'Antigravity CLI exited without a terminal result event':'Antigravity CLI completed without a response'));return;}
     if(parsed.status!=='SUCCESS'&&!recoveredWarning){this.flushCommunicationParser(active);this.finish(active,failure('agy_execution_failed',redactConnectorText(parsed.error||parsed.response,500)||`Antigravity CLI returned ${parsed.status}`));return;}
@@ -422,10 +424,14 @@ function assertSupportedVersion(value: string) {
 
 function failure(code: string, message: string): AdapterExecutionEvent { return { type: 'execution.failed', payload: { error: { code, message } } }; }
 
-function recoveredArtifactWriteWarning(active:ActiveExecution,result:ProcessResult,parsed:AntigravityResult|undefined){
-  if(result.code===0||!parsed)return;
+function recoveredExecutionWarning(active:ActiveExecution,result:ProcessResult,parsed:AntigravityResult|undefined){
+  if(!parsed||(result.code===0&&parsed.status==='SUCCESS'))return;
   const streamed=active.rawStreamedText.trim(),response=parsed.response.trim();
   if(!streamed||!response||!response.startsWith(streamed))return;
+  if(active.lastFailedTool&&active.rawStreamedText.length>active.lastFailedTool.textLength)return{
+    code:'agy_recovered_tool_failure',
+    message:'Antigravity reported that an intermediate tool call failed, then continued and produced the final response.',
+  };
   const error=`${result.stderr}\n${parsed.error??''}`;
   if(!/declaring permissions:\s*cortex tool write_to_file:/iu.test(error)
     ||!/invalid tool call error \(invalid_args\)/iu.test(error)
