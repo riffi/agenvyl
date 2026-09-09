@@ -2,6 +2,7 @@
 
 import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,describe,expect,it,vi} from 'vitest';
+import {MAX_MESSAGE_TEXT_LENGTH} from '@agenvyl/contracts';
 import type {HarnessCatalog} from '../../entities/harness';
 import type {Persona} from '../../entities/persona';
 import type {RoomGateway} from '../../features/room-session';
@@ -16,6 +17,12 @@ const sentMessage={id:'message-1',text:'',createdAt:'2026-07-22T00:00:00.000Z',t
 afterEach(()=>{cleanup();vi.unstubAllGlobals()});
 
 describe('Composer agent list',()=>{
+  it('allows ordinary messages up to the shared 64,000-character limit',()=>{
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
+    render(<Composer gateway={gateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()}/>);
+    expect(screen.getByRole('textbox',{name:'Message'}).getAttribute('maxlength')).toBe(String(MAX_MESSAGE_TEXT_LENGTH));
+  });
+
   it('hides the legacy agent-session mode and safely restores Auto',async()=>{
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
     const send=vi.fn<RoomGateway['send']>().mockResolvedValue(sentMessage),updateConversationRouting=vi.fn(async()=>undefined),localGateway={...gateway,send};

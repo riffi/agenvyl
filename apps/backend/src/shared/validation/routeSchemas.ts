@@ -1,3 +1,5 @@
+import {MAX_MESSAGE_TEXT_LENGTH} from '@agenvyl/contracts';
+
 const nullableStringSchema={anyOf:[{type:'null'},{type:'string'}]} as const;
 
 export const idParamsSchema = objectSchema({ id: { type: 'string' } }, ['id']);
@@ -78,7 +80,7 @@ export const updatePersonaBodySchema = {
 } as const;
 
 export const createMessageBodySchema = objectSchema({
-  text: { type: 'string' },
+  text: { type: 'string', maxLength: MAX_MESSAGE_TEXT_LENGTH },
   targets: { type: 'array', items: { type: 'string' } },
   message_id: { type: 'string' },
   attachment_version_ids:{type:'array',items:{type:'string'},maxItems:10},

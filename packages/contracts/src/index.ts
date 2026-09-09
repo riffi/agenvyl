@@ -1,6 +1,8 @@
 export { DEFAULT_ROOM_TITLE, deriveRoomTitle } from './roomTitle.js';
 export type { DeriveRoomTitleInput } from './roomTitle.js';
 
+export const MAX_MESSAGE_TEXT_LENGTH = 64_000;
+
 export type AgentHandle = string;
 
 export type WorkflowMode = 'plan' | 'work';

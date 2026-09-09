@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import {afterEach,describe,expect,it} from 'vitest';
+import {MAX_MESSAGE_TEXT_LENGTH} from '@agenvyl/contracts';
 import {createMessageBodySchema} from './routeSchemas.js';
 
 describe('createMessageBodySchema',()=>{
@@ -21,5 +22,14 @@ describe('createMessageBodySchema',()=>{
   it('rejects new_request outside auto routing',async()=>{
     expect((await validate({mode:'agent_session',delivery:'new_request'})).statusCode).toBe(400);
     expect((await validate({mode:'room_context',delivery:'new_request'})).statusCode).toBe(400);
+  });
+
+  it('accepts messages up to 64,000 characters and rejects longer messages',async()=>{
+    const app=Fastify();apps.push(app);
+    app.post('/',{schema:{body:createMessageBodySchema}},request=>request.body);
+    const atLimit=await app.inject({method:'POST',url:'/',payload:{text:'x'.repeat(MAX_MESSAGE_TEXT_LENGTH)}});
+    const overLimit=await app.inject({method:'POST',url:'/',payload:{text:'x'.repeat(MAX_MESSAGE_TEXT_LENGTH+1)}});
+    expect(atLimit.statusCode).toBe(200);
+    expect(overLimit.statusCode).toBe(400);
   });
 });

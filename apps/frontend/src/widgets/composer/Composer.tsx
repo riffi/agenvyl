@@ -7,7 +7,7 @@ import { FakeRoomGateway, type DemoKind, type RoomGateway } from '../../features
 import { activeComposerCommandQuery, activeMentionQuery, composerCommands, extractComposerCommands, insertComposerCommandAt, insertMentionAt, parseMentions, removeMentionTarget, type ActiveComposerCommandQuery, type ComposerAttachment } from '../../features/send-message';
 import { ApiError } from '../../shared/api';
 import { Alert, Button, TextArea } from '../../shared/ui';
-import type {RoomPersona,WorkflowMode} from '@agenvyl/contracts';
+import {MAX_MESSAGE_TEXT_LENGTH,type RoomPersona,type WorkflowMode} from '@agenvyl/contracts';
 import {WorkspaceArtifactActions,type OpenWorkspaceArtifact,type WorkspaceTarget} from '../workspace-window';
 import styles from './Composer.module.css';
 import {ReasoningEffortChip,roomPersonaModel,roomPersonaReasoning} from '../../features/reasoning-effort';
@@ -96,7 +96,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   const [mobileControls,setMobileControls]=useState(()=>typeof matchMedia==='function'&&matchMedia('(max-width: 767px)').matches);
   const insertMention=(handle:string)=>{
     const editor=editorRef.current,{text:next,caret}=insertMentionAt(text,handle,editor?.selectionStart??text.length,editor?.selectionEnd??text.length);
-    if(next.length>4000)return;
+    if(next.length>MAX_MESSAGE_TEXT_LENGTH)return;
     setText(next);
     setMention(undefined);
     requestAnimationFrame(()=>{editorRef.current?.focus();editorRef.current?.setSelectionRange(caret,caret)});
@@ -258,7 +258,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
             ref={editorRef}
             value={text}
             rows={1}
-            maxLength={interventionTarget?2000:4000}
+            maxLength={interventionTarget?2000:MAX_MESSAGE_TEXT_LENGTH}
             onChange={(e) => {setText(e.target.value);setComposerStatus('');setSendError(undefined);if(!interventionTarget)updateComposerQueries(e.target.value,e.target.selectionStart)}}
             onSelect={(e)=>{if(!interventionTarget)updateComposerQueries(e.currentTarget.value,e.currentTarget.selectionStart)}}
             onBlur={()=>setTimeout(()=>{setMention(undefined);setCommand(undefined)},100)}
