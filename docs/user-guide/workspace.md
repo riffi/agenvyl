@@ -116,6 +116,39 @@ file also keeps its saved history.
 The viewer follows changes while you are viewing Current. A deliberately opened
 historical version remains pinned until you return to Current.
 
+## Restore the Workspace before an agent run
+
+Open the build menu in the Workspace header. Each saved build has an
+**Undo this run** action next to its agent, timestamp and build number. Runs
+without a build and previous restorations appear in the same menu under
+**Other workspace changes**; there are no rollback controls on agent responses.
+Select **Undo this run** to review the files that will be added,
+updated or deleted, the affected runs, and the saved app preview, if available.
+Confirm with **Restore workspace**.
+
+This restores the entire Git-tracked tree to the checkpoint from before the
+selected run, including undoing later changes. Uncommitted changes and new
+non-ignored files are saved first. Restoration creates a new commit and keeps
+the old history. In the build menu, **Restore to before this rollback**
+returns to the saved state from before a restoration, using the same review.
+
+Conversation messages, attachments and historical builds remain available.
+The timeline records the restoration, and subsequent agent runs and native
+session continuations are told to re-read the current files.
+
+Wait for all agents to finish or stop, including file finalization. Queued runs
+wait during restoration. If files change after review, review the updated
+changes again. An interrupted restoration blocks edits and runs until recovery
+finishes; Agenvyl retries on startup, and **Retry recovery** is available in the
+build menu. Unexpected external edits or Git operations must be resolved before
+recovery can proceed.
+
+Ignored files such as `.env`, dependencies, local databases and generated output
+are not restored. External actions are not undone. Git submodules and targets
+that collide with preserved files are not supported by this restoration flow.
+Restoration is also blocked if it would change Git-tracked files inside
+`dist`, `build` or `out`, because output directories must remain untouched.
+
 ## Attach and download a version
 
 **Attach** adds the version currently being viewed to the composer. It remains

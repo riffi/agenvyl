@@ -378,6 +378,7 @@ export function Timeline({
                 )},
             )}
           </div>
+          {(state.workspaceRestorations??[]).filter(item=>item.createdAt>=m.createdAt&&(!timelineMessages[messageIndex+1]||item.createdAt<timelineMessages[messageIndex+1]!.createdAt)).map(item=><div key={item.id} className={styles.reconnect} role="status"><RotateCcw/><span>Workspace restored · {new Date(item.createdAt).toLocaleString()} · {item.previewRunId?'Saved app preview restored':'No matching saved build'}. Conversation preserved.</span></div>)}
         </section>
         )})}
     </main>;

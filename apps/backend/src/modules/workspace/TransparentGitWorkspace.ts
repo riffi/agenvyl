@@ -57,7 +57,7 @@ export class TransparentGitWorkspace{
     return true;
   }
 
-  private async assertHealthy(root:string){
+  async assertHealthy(root:string){
     for(const marker of operationMarkers){
       const absolute=path.join(root,'.git',marker);
       if(await exists(absolute))throw new Error(`Workspace has an unfinished Git operation (${marker})`);

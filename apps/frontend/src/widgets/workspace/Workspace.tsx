@@ -78,6 +78,7 @@ export function WorkspaceApp({
   const snapshot=timelineQuery.data;
   const gateway=useMemo<RoomGateway>(()=>{const pendingDemoRoom=pendingDemoTitles.current.has(roomId);return fake?new FakeRoomGateway(pendingDemoRoom,pendingDemoRoom?'plan':'work'):new HttpRoomGateway(roomId,snapshot?.lastSequence,snapshot?.runs)},[fake,roomId,snapshot]);
   const {state,prepend} = useRoomStream(gateway,snapshot,fake);
+  useEffect(()=>{if(state.workspaceRestorations?.length)void queryClient.invalidateQueries({queryKey:['rooms',roomId,'workspace']});},[queryClient,roomId,state.workspaceRestorations]);
   const [loadingOlder,setLoadingOlder]=useState(false);
   const loadOlder=async()=>{if(fake||loadingOlder||!state.hasMore||!state.nextCursor)return;setLoadingOlder(true);try{prepend(await roomsApi.timeline(roomId,{before:state.nextCursor,limit:30}));}finally{setLoadingOlder(false)}};
   const roomsQuery=useQuery({queryKey:roomKeys.all,queryFn:({signal})=>roomsApi.list(signal),enabled:!fake});

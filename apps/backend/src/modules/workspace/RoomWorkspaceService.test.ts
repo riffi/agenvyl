@@ -10,6 +10,7 @@ afterEach(async()=>{await Promise.all(roots.splice(0).map(root=>rm(root,{recursi
 function fixture(root:string,max=1024,activeValues:()=>any[]=()=>[]){
   const entries=new Map<string,any>(),versions=new Map<string,any>();
   const repository={
+    restores:{pending:vi.fn(async()=>[]),forHead:vi.fn(async()=>undefined)},
     list:vi.fn(async()=>[...entries.values()]),entry:vi.fn(async(_room:string,p:string)=>entries.get(p)),entryById:vi.fn(async(_room:string,id:string)=>[...entries.values()].find(value=>value.id===id)),
     version:vi.fn(async(_room:string,id:string)=>versions.get(id)),
     currentVersion:vi.fn(async(_room:string,filePath:string)=>{const entry=entries.get(filePath);return entry?.current_version_id?versions.get(entry.current_version_id):undefined;}),

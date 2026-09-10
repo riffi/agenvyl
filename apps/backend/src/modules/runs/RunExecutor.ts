@@ -54,7 +54,7 @@ export class RunExecutor {
   private readonly recoveryHealthDelayMs:number;
   private closing=false;
 
-  constructor(private readonly dependencies: RunExecutorDependencies) {this.concurrency=Math.max(1,dependencies.concurrency??4);this.runTimeoutMs=Math.max(1,dependencies.runTimeoutMs??15*60_000);this.logger=dependencies.logger??noopLogger;this.recoveryHealthAttempts=Math.max(1,dependencies.recoveryHealthAttempts??6);this.recoveryHealthDelayMs=Math.max(0,dependencies.recoveryHealthDelayMs??1_000);}
+  constructor(private readonly dependencies: RunExecutorDependencies) {if(dependencies.roomWorkspace?.restores)dependencies.roomWorkspace.restores.onAvailable=()=>this.pump();this.concurrency=Math.max(1,dependencies.concurrency??4);this.runTimeoutMs=Math.max(1,dependencies.runTimeoutMs??15*60_000);this.logger=dependencies.logger??noopLogger;this.recoveryHealthAttempts=Math.max(1,dependencies.recoveryHealthAttempts??6);this.recoveryHealthDelayMs=Math.max(0,dependencies.recoveryHealthDelayMs??1_000);}
 
   start(runId: string, text: string) {
     if(this.closing||this.scheduled.has(runId))return;
@@ -255,7 +255,7 @@ export class RunExecutor {
   }
 
   private canStart(item:QueuedRun,pendingIndex:number){
-    const run=this.dependencies.activeRuns.get(item.runId);if(!run)return false;
+    const run=this.dependencies.activeRuns.get(item.runId);if(!run||this.dependencies.roomWorkspace?.restores?.isBlocked(run.roomId))return false;
     const runningInRoom=[...this.tasks.keys()].map(id=>this.dependencies.activeRuns.get(id)).filter((candidate):candidate is RunContext=>candidate!==undefined&&candidate.roomId===run.roomId);
     const earlierInRoom=this.pending.slice(0,pendingIndex).map(candidate=>this.dependencies.activeRuns.get(candidate.runId)).filter((candidate):candidate is RunContext=>candidate!==undefined&&candidate.roomId===run.roomId);
     if(run.executionProfile.workflowMode!=='plan')return !runningInRoom.length&&!earlierInRoom.length;
@@ -305,7 +305,7 @@ export class RunExecutor {
           ...(preparedWorkspace?.absolutePath?{absolutePath:preparedWorkspace.absolutePath}:{}),
           ...(run.recommendedProject?.availability==='available'?{project:{path:run.recommendedProject.path,access:run.executionProfile.workflowMode==='work'?'read_write' as const:'read' as const}}:{}),
         },
-        input,
+        input:input+(preparedWorkspace?.restorationContext??''),
         ...(attachments.length?{attachments}:{}),
         sessionId,
         instructions,

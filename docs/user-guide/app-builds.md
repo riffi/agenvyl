@@ -18,6 +18,15 @@ flowchart LR
 
 Opening a historical build does not restore files or change the current build.
 
+To undo a run, open the build menu and choose **Undo this run** beneath its
+build. The confirmation identifies the build that will become current.
+Restoring the Workspace also makes the matching saved preview current, when
+one exists. No automatic build runs. Without a matching preview, App asks for
+a build of the restored source; historical builds remain available to inspect.
+Generated output stays in the working folder. Agenvyl does not capture the
+unchanged output left by the rollback as a new preview. A subsequent build
+with changed output can be captured even if it changes no source files.
+
 ## Create a previewable build
 
 Ask an agent to implement the change and run the production build:

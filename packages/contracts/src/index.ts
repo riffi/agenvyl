@@ -1,4 +1,5 @@
 export { DEFAULT_ROOM_TITLE, deriveRoomTitle } from './roomTitle.js';
+import type {WorkspaceRestoreRecord} from './workspaceRestore.js';
 export type { DeriveRoomTitleInput } from './roomTitle.js';
 
 export const MAX_MESSAGE_TEXT_LENGTH = 64_000;
@@ -270,6 +271,7 @@ export type PersonaGroup = {
 };
 
 export type TimelinePage = {
+  workspaceRestorations?:WorkspaceRestoreRecord[];
   messages: Message[];
   messageCount: number;
   runs: Run[];
@@ -349,6 +351,7 @@ export type ServerRoomEvent =
   | Envelope<'room.conversation_routing.updated', { conversationRoutingMode: ConversationRoutingMode }>
   | Envelope<'message.delivery.updated', { messageId: string; delivery: MessageDelivery }>
   | Envelope<'workspace.changed', { entry:WorkspaceEntry;change:'created'|'updated'|'deleted'|'restored'|'moved' }>
+  | Envelope<'workspace.restored', {restoration:WorkspaceRestoreRecord}>
   | Envelope<'artifact.created', { runId:string;artifact:RunArtifact }>
   | Envelope<'run.embeds', { runId:string;embeds:RunEmbed[] }>
   | Envelope<'run.workspace.finalized', {runId:string;workspaceResult:RunWorkspaceResult;artifacts?:RunArtifact[];artifactSummary?:RunArtifactSummary;staticPreview?:WorkspaceAttachment;staticPreviewStatus?:'ready'|'build_missing'|'capture_failed'}>;
@@ -373,6 +376,7 @@ const eventTypes = new Set<ServerRoomEvent['type']>([
   'room.conversation_routing.updated',
   'message.delivery.updated',
   'workspace.changed',
+  'workspace.restored',
   'artifact.created',
   'run.embeds',
   'run.workspace.finalized',
@@ -403,6 +407,7 @@ export function isServerRoomEvent(value: unknown): value is ServerRoomEvent {
     case 'room.conversation_routing.updated': return ['auto','room_context','agent_session'].includes(String(payload.conversationRoutingMode));
     case 'message.delivery.updated': return typeof payload.messageId==='string'&&isMessageDelivery(payload.delivery);
     case 'workspace.changed': return isRecord(payload.entry) && typeof payload.entry.id==='string' && typeof payload.change==='string';
+    case 'workspace.restored': return isRecord(payload.restoration)&&strings(payload.restoration,'id','roomId','targetHead','beforeHead','resultHead','createdAt')&&payload.restoration.status==='complete'&&payload.restoration.kind==='restore'&&isRecord(payload.restoration.target)&&strings(payload.restoration.target,'id')&&['run','restore'].includes(String(payload.restoration.target.kind));
     case 'artifact.created': return typeof payload.runId==='string' && isRecord(payload.artifact) && typeof payload.artifact.version_id==='string';
     case 'run.embeds': return typeof payload.runId==='string'&&Array.isArray(payload.embeds);
     case 'run.workspace.finalized': return typeof payload.runId==='string'&&isRunWorkspaceResult(payload.workspaceResult)&&(payload.artifacts===undefined||Array.isArray(payload.artifacts))&&(payload.artifactSummary===undefined||isRunArtifactSummary(payload.artifactSummary))&&(payload.staticPreview===undefined||isWorkspaceAttachment(payload.staticPreview))&&(payload.staticPreviewStatus===undefined||payload.staticPreviewStatus==='ready'||payload.staticPreviewStatus==='build_missing'||payload.staticPreviewStatus==='capture_failed');
@@ -444,3 +449,4 @@ function isUpstreamStatusEvent(value: Record<string, unknown>) {
     && (value.retryAt === undefined || (typeof value.retryAt === 'string' && Number.isFinite(Date.parse(value.retryAt))))
     && (value.message === undefined || typeof value.message === 'string');
 }
+export * from './workspaceRestore.js';

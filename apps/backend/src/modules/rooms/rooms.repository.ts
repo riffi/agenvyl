@@ -151,6 +151,7 @@ export class RoomRepository {
         const artifactMap = await this.workspace.artifactProjections(runIds, tx),
           embedMap = await this.workspace.runEmbeds(runIds, tx);
         return {
+          workspaceRestorations:(await tx`SELECT payload->'restoration' restoration FROM room_events WHERE room_id=${roomId} AND type='workspace.restored' ORDER BY sequence`).map(row=>row.restoration as import('@agenvyl/contracts').WorkspaceRestoreRecord),
           messages,
           messageCount: number(room.message_count),
           runs: runRows.map((row) => {

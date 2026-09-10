@@ -16,8 +16,9 @@ The implementation preserves these invariants:
 - the bundle stores one recognized output root with a deterministic entry point;
 - bundle files are immutable after successful publication to the artifact store;
 - a historical selection never mutates Workspace state;
-- a build is current only when `preview_bundles.source_head` equals the room's
-  current Git HEAD;
+- a build is current when `preview_bundles.source_head` equals the room's
+  current Git HEAD, or a completed Workspace restoration explicitly links that
+  HEAD to a saved build;
 - every preview asset resolves inside the selected bundle;
 - a failed or cancelled run may have a bundle if terminal finalization captured
   usable output; and
@@ -113,6 +114,24 @@ matches and the current tree is an unbuilt web project, history produces
 `outdated`; no history produces `build_missing`. If the current tree is not an
 unbuilt web project, Core returns history without a room-level static preview
 state.
+
+Completed `workspace_restores` rows provide a fallback link from their new
+`result_head` to `preview_run_id`; immutable bundle ownership and `source_head`
+are unchanged. A direct capture at that HEAD takes precedence over the link.
+If a restoration has no matching bundle, the room explicitly returns
+`build_missing`, including when other historical bundles exist.
+
+The restoration journal is persisted before checkout, with retained before and
+result commits, request identity, target, branch and output fingerprint. Pending
+operations block file mutations and queue dispatch. Recovery runs before
+startup run reconciliation and atomically completes its database record with a
+`workspace.restored` event after files and versions have been synchronized.
+Live Git operations share the existing room operation lock.
+
+The output fingerprint prevents subsequent runs from publishing unchanged
+output left behind by restoration. Changed output can be captured without a
+source diff; an identical capture at the current HEAD is not duplicated in that
+case. Restorations do not copy historical bundles into the working directory.
 
 There are no publication status or conflict-count eligibility checks.
 

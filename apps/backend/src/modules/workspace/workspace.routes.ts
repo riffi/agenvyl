@@ -2,9 +2,11 @@ import type {FastifyInstance,FastifyReply} from 'fastify';
 import {createReadStream} from 'node:fs';
 import {readFile} from 'node:fs/promises';
 import type {RoomWorkspaceService} from './RoomWorkspaceService.js';
+import {registerWorkspaceRestoreRoutes} from './workspaceRestore.routes.js';
 import {runPreviewAssetParamsSchema,runPreviewParamsSchema} from '../../shared/validation/routeSchemas.js';
 
 export async function registerWorkspaceRoutes(app:FastifyInstance,workspace:RoomWorkspaceService){
+  await registerWorkspaceRestoreRoutes(app,workspace.restores);
   app.addContentTypeParser('*',{parseAs:'buffer',bodyLimit:workspace.maxFileBytes},(_request,body,done)=>done(null,body));
   app.get<{Params:{roomId:string};Querystring:{deleted?:string}}>('/api/v1/rooms/:roomId/workspace',request=>workspace.list(request.params.roomId,request.query.deleted==='true'));
   app.post<{Params:{roomId:string};Body:Buffer;Headers:{'x-file-path'?:string;'x-file-name'?:string;'x-conflict-strategy'?:string}}>('/api/v1/rooms/:roomId/workspace/files',async(request,reply)=>{const strategy=request.headers['x-conflict-strategy'];const conflict=strategy==='replace'||strategy==='rename'?strategy:'fail';return reply.code(201).send(await workspace.upload(request.params.roomId,request.headers['x-file-path']??request.headers['x-file-name'],request.headers['content-type'],request.body,conflict));});

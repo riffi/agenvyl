@@ -1,6 +1,7 @@
 import type { Room,TimelinePage } from '../model';
 import type {ConversationRoutingMode,RoomConversationRoutingState,RoomPersona,RoomWorkflowState,RoomWorkspace,UpdateRoomPersonaRequest,WorkflowMode,WorkspaceEntry,WorkspaceVersion} from '@agenvyl/contracts';
 import { apiRequest } from '../../../shared/api';
+import type {WorkspaceHistory,WorkspaceRestorePreview,WorkspaceRestoreRecord,WorkspaceRestoreRequest,WorkspaceRestoreTarget} from '@agenvyl/contracts';
 
 export const roomKeys = { all: ['rooms'] as const };
 
@@ -21,6 +22,10 @@ export const roomsApi = {
   updateWorkflowMode:(roomId:string,workflowMode:WorkflowMode)=>apiRequest<RoomWorkflowState>(`/api/v1/rooms/${encodeURIComponent(roomId)}/workflow-mode`,{method:'PUT',body:{workflow_mode:workflowMode}}),
   updateConversationRouting:(roomId:string,mode:ConversationRoutingMode)=>apiRequest<RoomConversationRoutingState>(`/api/v1/rooms/${encodeURIComponent(roomId)}/conversation-routing`,{method:'PUT',body:{conversation_routing_mode:mode}}),
   workspace:(roomId:string,signal?:AbortSignal)=>apiRequest<RoomWorkspace>(`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace`,{signal}),
+  workspaceHistory:(roomId:string,signal?:AbortSignal)=>apiRequest<WorkspaceHistory>(`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace/history`,{signal}),
+  previewWorkspaceRestore:(roomId:string,target:WorkspaceRestoreTarget)=>apiRequest<WorkspaceRestorePreview>(`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace/restores/preview`,{method:'POST',body:{target}}),
+  restoreWorkspace:(roomId:string,request:WorkspaceRestoreRequest)=>apiRequest<WorkspaceRestoreRecord>(`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace/restores`,{method:'POST',body:request}),
+  retryWorkspaceRestore:(roomId:string,id:string)=>apiRequest<WorkspaceRestoreRecord>(`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace/restores/${encodeURIComponent(id)}/retry`,{method:'POST'}),
   uploadFile:(roomId:string,file:File,filePath=file.name,conflict:'fail'|'replace'|'rename'='fail',options:{signal?:AbortSignal;onProgress?:(progress:number)=>void}={})=>new Promise<{entry:WorkspaceEntry;version?:WorkspaceVersion}>((resolve,reject)=>{
     const request=new XMLHttpRequest();
     request.open('POST',`/api/v1/rooms/${encodeURIComponent(roomId)}/workspace/files`);

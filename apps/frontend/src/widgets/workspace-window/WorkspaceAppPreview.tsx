@@ -28,6 +28,8 @@ export const WorkspaceAppPreview = ({
         <p>Source files changed after this build.</p>
         <div><button type="button" className={styles.primaryPreviewAction} disabled={!latestOutdated} onClick={() => latestOutdated && onSelect(latestOutdated.runId)}>Open latest build anyway</button><button type="button" onClick={onFiles}>View files</button></div>
       </div>
+      : staticPreview?.status==='build_missing'&&!selectedRunId
+        ? <div className={styles.previewGate}><span className={styles.previewGateIcon}><Layers3 aria-hidden="true"/></span><strong>No build for the current workspace</strong><p>Build the current source to create a preview. Saved builds remain available in build history.</p><div><button type="button" onClick={onFiles}>View files</button></div></div>
       : selected
         ? <IsolatedHtmlPreview className={styles.appPreviewFrame} title={`App build by @${selected.agent}`} previewUrl={selected.attachment.preview_url}/>
         : <div className={styles.previewGate}>

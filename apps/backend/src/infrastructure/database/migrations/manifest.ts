@@ -36,4 +36,5 @@ export const migrations = [
   { version: 35, name: 'conversation_routing_poc', file: '035_conversation_routing_poc.sql' },
   { version: 36, name: 'workflow_mode_handoffs', file: '036_workflow_mode_handoffs.sql' },
   { version: 37, name: 'started_fresh_delivery', file: '037_started_fresh_delivery.sql' },
+  { version: 38, name: 'workspace_restores', file: '038_workspace_restores.sql' },
 ] as const;

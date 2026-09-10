@@ -9,6 +9,7 @@ import { WorkspaceContent } from './WorkspaceContent';
 import { WorkspaceAppPreview } from './WorkspaceAppPreview';
 import { WorkspaceExplorer } from './WorkspaceExplorer';
 import { WorkspaceHeader } from './WorkspaceHeader';
+import { WorkspaceRestoreDialog, type WorkspaceRestoreChoice } from './WorkspaceRestoreDialog';
 import { WorkspaceOperationDialog, type WorkspaceOperation } from './WorkspaceDialogs';
 import {
   defaultWorkspaceMode,
@@ -38,6 +39,7 @@ export const WorkspaceWindow = ({
   const queryClient = useQueryClient();
   const workspaceKey = ['rooms', roomId, 'workspace'] as const;
   const [trash, setTrash] = useState(false);
+  const [restoreChoice,setRestoreChoice]=useState<WorkspaceRestoreChoice>();
   const [operation, setOperation] = useState<WorkspaceOperation>();
   const [uploadDirectory, setUploadDirectory] = useState('');
   const [error, setError] = useState<string>();
@@ -50,6 +52,12 @@ export const WorkspaceWindow = ({
     queryFn: ({ signal }) => trash ? fetchDeletedWorkspace(roomId, signal) : roomsApi.workspace(roomId, signal),
     enabled: open && !fake && Boolean(roomId),
     refetchInterval: open ? 5000 : false,
+  });
+  const historyQuery = useQuery({
+    queryKey: [...workspaceKey, 'history'],
+    queryFn: ({signal}) => roomsApi.workspaceHistory(roomId,signal),
+    enabled: open && !fake && Boolean(roomId),
+    refetchInterval: open ? 3000 : false,
   });
   const entries = (workspaceQuery.data?.entries ?? []) as WorkspaceEntry[];
   const visibleEntries = useMemo(() => entries.filter(entry => trash ? Boolean(entry.deleted_at) : !entry.deleted_at), [entries, trash]);
@@ -87,9 +95,9 @@ export const WorkspaceWindow = ({
     ?? (currentBuildRunId ? previewHistory.find(build => build.runId === currentBuildRunId) : undefined)
     ?? previewHistory[0];
   const latestOutdated = staticPreview?.status === 'outdated' ? previewHistory.find(build => build.runId === staticPreview.runId) ?? previewHistory[0] : undefined;
-  const outdatedGate = staticPreview?.status === 'outdated' && !request?.buildRunId;
-  const historicalBuild = section === 'app' && !outdatedGate && Boolean(selectedBuild && selectedBuild.runId !== currentBuildRunId);
-  const canReturnToCurrentBuild = Boolean(currentBuildRunId || staticPreview?.status === 'outdated');
+  const previewGate = (staticPreview?.status === 'outdated'||staticPreview?.status === 'build_missing') && !request?.buildRunId;
+  const historicalBuild = section === 'app' && !previewGate && Boolean(selectedBuild && selectedBuild.runId !== currentBuildRunId);
+  const canReturnToCurrentBuild = Boolean(currentBuildRunId || staticPreview?.status === 'outdated'||staticPreview?.status === 'build_missing');
 
   const mutation = useMutation({
     mutationFn: async (action: () => Promise<unknown>) => action(),
@@ -110,6 +118,9 @@ export const WorkspaceWindow = ({
     document.body.style.overflow = 'hidden';
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
+      if(restoreChoice)return;
+      const picker=document.querySelector<HTMLDetailsElement>('details[open]');
+      if(picker){picker.removeAttribute('open');picker.querySelector('summary')?.focus();return;}
       if (document.querySelector('.yarl__root')) return;
       if (operation) {
         setOperation(undefined);
@@ -123,7 +134,7 @@ export const WorkspaceWindow = ({
       document.removeEventListener('keydown', closeOnEscape);
       request?.opener?.isConnected && request.opener.focus({ preventScroll: true });
     };
-  }, [onClose, open, operation, request?.opener]);
+  }, [onClose, open, operation, restoreChoice, request?.opener]);
 
   useEffect(() => {
     if (!open || !target?.entryId || selected || workspaceQuery.isFetching || !workspaceQuery.isSuccess || trash) return;
@@ -263,6 +274,9 @@ export const WorkspaceWindow = ({
       onMove={() => selected && setOperation({ kind: 'move', entry: selected })}
       onDelete={() => selected && setOperation({ kind: 'delete', entry: selected })}
       onRefresh={() => void workspaceQuery.refetch()}
+      history={historyQuery.data}
+      historyError={historyQuery.error?.message}
+      onWorkspaceRestore={fake?undefined:(target,label,recovery)=>setRestoreChoice({target,label,recovery})}
       onClose={onClose}
     />
     {error && <div className={styles.alert}><Alert tone="error">{error}</Alert></div>}
@@ -319,6 +333,10 @@ export const WorkspaceWindow = ({
       </main>
     </div>}
     {operation && <WorkspaceOperationDialog operation={operation} directory={uploadDirectory} pending={mutation.isPending} onClose={() => setOperation(undefined)} onSubmit={submitOperation} />}
+    {restoreChoice&&<WorkspaceRestoreDialog roomId={roomId} choice={restoreChoice} builds={previewHistory} onClose={()=>setRestoreChoice(undefined)} onRestored={()=>{
+      setRestoreChoice(undefined);setTrash(false);setNotice('Workspace restored. Return to the previous state from the build menu.');
+      onRequestChange({section:'app',target:undefined,buildRunId:undefined,gallery:undefined,treeVisible:false,followCurrent:false});
+    }}/>}
   </section>, document.body);
 };
 

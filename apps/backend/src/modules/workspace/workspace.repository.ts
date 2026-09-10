@@ -2,6 +2,7 @@ import type {Database,QueryContext} from '../../infrastructure/database/Database
 import {number,stringArray,text,timestamp} from '../../infrastructure/database/rowMappers.js';
 import type {RunArtifact,RunArtifactSummary,RunEmbed,WorkspaceAttachment,WorkspaceEntry,WorkspaceSource,WorkspaceVersion} from '@agenvyl/contracts';
 import type {ExecutionAttachmentReference} from '@agenvyl/connector-contract';
+import {WorkspaceRestoreRepository} from './WorkspaceRestoreRepository.js';
 
 type VersionRow={id:string;entry_id?:string;room_id:string;path:string;size:number;mime_type:string;sha256:string;source:WorkspaceSource;run_ids:string[];created_at:string};
 export type RunArtifactProjection={artifacts:RunArtifact[];artifactSummary:RunArtifactSummary;staticPreview?:WorkspaceAttachment;staticPreviewStatus?:'ready'|'build_missing'|'capture_failed'};
@@ -9,7 +10,8 @@ export type PreviewBundleRow={id:string;runId:string;roomId:string;sourceHead?:s
 export type PreviewBundleHistoryRow=PreviewBundleRow&{agent:string;runStatus:string;runCreatedAt:string};
 
 export class WorkspaceRepository{
-  constructor(private readonly database:Database){}
+  readonly restores:WorkspaceRestoreRepository;
+  constructor(private readonly database:Database){this.restores=new WorkspaceRestoreRepository(database);}
 
   async list(roomId:string,includeDeleted=false){
     const rows=includeDeleted

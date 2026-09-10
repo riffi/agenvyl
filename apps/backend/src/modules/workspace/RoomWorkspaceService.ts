@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto';
 import {createReadStream} from 'node:fs';
-import {copyFile,mkdir,readFile,rename,rm,stat,writeFile} from 'node:fs/promises';
+import {copyFile,lstat,mkdir,readFile,rename,rm,stat,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import mime from 'mime';
 import type {RoomStaticPreview,RunArtifact,RunArtifactSummary,RunEmbed,RunWorkspaceResult,WorkspaceAttachment,WorkspaceBuildPreview,WorkspaceCaptureError,WorkspaceEntry,WorkspaceVersion} from '@agenvyl/contracts';
@@ -17,6 +17,8 @@ import {hasUnbuiltWebProject,selectStaticPreviewPath} from './runStaticPreview.j
 import {scanWorkspaceTree,stableReadWorkspaceFile} from './workspaceCapture.js';
 import {extractWorkspaceImageReferences} from './workspaceEmbeds.js';
 import {TransparentGitWorkspace} from './TransparentGitWorkspace.js';
+import {WorkspaceRestoreService} from './WorkspaceRestoreService.js';
+import {previewOutputFingerprint} from './workspaceOutputFingerprint.js';
 
 type WorkspaceLogger={info:(context:Record<string,unknown>,message:string)=>void;warn:(context:Record<string,unknown>,message:string)=>void};
 type CapturedFile={path:string;data:Buffer;sha256:string;mimeType:string;version?:WorkspaceVersionRow};
@@ -27,6 +29,7 @@ const supportedRunImageMimeTypes=new Set(['image/png','image/jpeg','image/webp',
 export class RoomWorkspaceService{
   private roomMutations=new Map<string,Promise<void>>();
   private readonly git=new TransparentGitWorkspace();
+  readonly restores:WorkspaceRestoreService;
 
   constructor(
     private readonly rooms:RoomRepository,
@@ -39,7 +42,14 @@ export class RoomWorkspaceService{
     readonly maxFileBytes:number,
     private readonly logger?:WorkspaceLogger,
     private readonly previewBundles?:PreviewBundleStore,
-  ){}
+  ){
+    this.restores=new WorkspaceRestoreService(repository,events,{
+      ensure:roomId=>this.ensure(roomId),withOperation:(roomId,operation)=>this.withRoomOperation(roomId,operation),
+      active:roomId=>[...this.activeRuns.values()].some(run=>run.roomId===roomId&&run.started),
+      syncFiles:(roomId,before,after)=>this.syncRestoredFiles(roomId,before,after),maxFileBytes,
+      previewAvailable:(roomId,runId)=>this.resolveRunPreview(roomId,runId).then(()=>true,()=>false),
+    });
+  }
 
   configureRoots(root:string,agentRoot=root){this.root=root;this.agentRoot=agentRoot;}
   roomPath(roomId:string){return path.join(path.resolve(this.root),roomId);}
@@ -59,14 +69,15 @@ export class RoomWorkspaceService{
     return{path:this.agentRoomPath(roomId),head,entries,...(projection.staticPreview?{staticPreview:projection.staticPreview}:{}),previewHistory:projection.previewHistory};
   }
 
-  async recoverRuns(){for(const item of await this.runWorkspaces.abandoned())await this.finalizeRun(item.roomId,item.runId,item.status).catch(()=>{});}
+  async recoverRuns(){await this.restores.recover();for(const item of await this.runWorkspaces.abandoned())await this.finalizeRun(item.roomId,item.runId,item.status).catch(()=>{});}
 
   async prepareRun(roomId:string,runId:string){
     return this.withRoomOperation(roomId,async()=>{
+      await this.restores.assertAvailable(roomId);
       const started=Date.now(),directory=await this.ensure(roomId),checkpoint=await this.git.prepare(directory,runId);
       await this.runWorkspaces.prepare(roomId,runId,checkpoint.head);
       this.logger?.info({metric:'workspace.prepare',roomId,runId,driver:'direct',durationMs:Date.now()-started,baseHead:checkpoint.head},'Direct Git workspace prepared');
-      return{relativePath:'.',absolutePath:this.agentRoomPath(roomId)};
+      return{relativePath:'.',absolutePath:this.agentRoomPath(roomId),restorationContext:await this.restores.context(roomId)};
     });
   }
 
@@ -80,8 +91,9 @@ export class RoomWorkspaceService{
       await this.runWorkspaces.markFinalizing(runId);
       const directory=await this.ensure(roomId);
       try{
+        await this.restores.assertAvailable(roomId);
         const checkpoint=await this.git.finalize(directory,runId,status),captured=await this.captureRunTree(roomId,runId,directory,existing.base_head,checkpoint.head);
-        if(captured.changedPaths.size)await this.capturePreviewBundle(roomId,runId,checkpoint.head,captured).catch(error=>this.logPreviewCaptureFailure(roomId,runId,error));
+        await this.capturePreviewBundle(roomId,runId,checkpoint.head,captured).catch(error=>this.logPreviewCaptureFailure(roomId,runId,error));
         const result=(await this.runWorkspaces.complete(runId,{resultHead:checkpoint.head,checkpointSha:checkpoint.checkpointSha,errors:captured.errors}))!;
         await this.emitFinalized(roomId,runId,result);
         this.logger?.info({metric:'workspace.capture',roomId,runId,driver:'direct',durationMs:Date.now()-started,captureStatus:result.capture_status,resultHead:checkpoint.head,changedPaths:captured.changedPaths.size},'Direct Git workspace finalized');
@@ -188,17 +200,24 @@ export class RoomWorkspaceService{
 
   private async capturePreviewBundle(roomId:string,runId:string,sourceHead:string,captured:CaptureResult){
     if(!this.previewBundles)return;
+    const restored=await this.repository.restores.latest(roomId);
+    if(!captured.changedPaths.size&&!restored)return;
     const existing=await this.repository.previewBundleForRun(roomId,runId);if(existing?.status==='ready')return;
     const entrypoint=selectStaticPreviewPath(captured.paths);if(!entrypoint)return;
+    if(restored&&restored.outputFingerprint===previewOutputFingerprint(entrypoint,captured.files))return;
     const root=path.posix.dirname(entrypoint),selected=captured.files.filter(file=>root==='.'||file.path.startsWith(`${root}/`)),files:PreviewBundleFile[]=selected.map(file=>({path:root==='.'?file.path:file.path.slice(root.length+1),data:file.data,mimeType:file.mimeType}));
-    const relativeEntrypoint=root==='.'?entrypoint:entrypoint.slice(root.length+1),sourceManifestSha256=manifest(selected),uncompressedSize=files.reduce((total,file)=>total+file.data.length,0),record=await this.repository.beginPreviewBundle({roomId,runId,sourceHead,entrypoint:relativeEntrypoint,sourceManifestSha256,uncompressedSize,fileCount:files.length});
+    const relativeEntrypoint=root==='.'?entrypoint:entrypoint.slice(root.length+1),sourceManifestSha256=manifest(selected),uncompressedSize=files.reduce((total,file)=>total+file.data.length,0);
+    if(!captured.changedPaths.size&&(await this.repository.previewBundles(roomId)).some(bundle=>bundle.sourceHead===sourceHead&&bundle.sourceManifestSha256===sourceManifestSha256))return;
+    const record=await this.repository.beginPreviewBundle({roomId,runId,sourceHead,entrypoint:relativeEntrypoint,sourceManifestSha256,uncompressedSize,fileCount:files.length});
     if(record.status==='ready')return;
     try{const metadata=await this.previewBundles.write(record.id,relativeEntrypoint,files);await this.repository.completePreviewBundle(record.id,metadata.bundleSha256,metadata.bundleSize);}catch(error){await this.repository.failPreviewBundle(record.id,message(error));throw error}
   }
 
   private async resolveRoomPreviewProjection(roomId:string,currentHead:string,currentPaths:string[]):Promise<{staticPreview?:RoomStaticPreview;previewHistory:WorkspaceBuildPreview[]}>{
     const bundles=await this.repository.previewBundles(roomId),previewHistory=bundles.map((bundle,index)=>({runId:bundle.runId,...(bundle.sourceHead?{sourceHead:bundle.sourceHead}:{}),agent:bundle.agent,createdAt:bundle.runCreatedAt,runStatus:bundle.runStatus as WorkspaceBuildPreview['runStatus'],sameBuildAsPrevious:Boolean(bundles[index+1]&&bundles[index+1]!.bundleSha256===bundle.bundleSha256),attachment:{version_id:bundle.id,path:bundle.entrypoint,name:path.posix.basename(bundle.entrypoint),size:bundle.bundleSize??bundle.uncompressedSize,mime_type:'text/html',url:runPreviewUrl(roomId,bundle.runId),preview_url:runPreviewUrl(roomId,bundle.runId)}}));
-    const exact=previewHistory.find(item=>item.sourceHead===currentHead);if(exact)return{staticPreview:{status:'ready',runId:exact.runId,attachment:exact.attachment},previewHistory};
+    const restored=await this.repository.restores.forHead(roomId,currentHead);
+    const exact=previewHistory.find(item=>item.sourceHead===currentHead)??(restored?previewHistory.find(item=>item.runId===restored.previewRunId):undefined);if(exact)return{staticPreview:{status:'ready',runId:exact.runId,attachment:exact.attachment},previewHistory};
+    if(restored)return{staticPreview:{status:'build_missing'},previewHistory};
     if(!hasUnbuiltWebProject(currentPaths))return{previewHistory};
     return{staticPreview:previewHistory.length?{status:'outdated',runId:previewHistory[0]!.runId}:{status:'build_missing'},previewHistory};
   }
@@ -238,7 +257,23 @@ export class RoomWorkspaceService{
   }
   private async versionRow(roomId:string,id:string){await this.assertRoom(roomId);const version=await this.repository.version(roomId,id);if(!version)throw new AppError('version_not_found',404,'Version not found');return version;}
   private async assertRoom(roomId:string){if(!await this.rooms.exists(roomId))throw new AppError('room_not_found',404,'Room not found');}
-  private withRoomMutation<T>(roomId:string,operation:()=>Promise<T>):Promise<T>{return this.withRoomOperation(roomId,async()=>{if([...this.activeRuns.values()].some(run=>run.roomId===roomId&&run.started&&!run.terminal))throw new AppError('workspace_writer_active',409,'Workspace changes are blocked while an agent is writing in this room');return operation();});}
+  private withRoomMutation<T>(roomId:string,operation:()=>Promise<T>):Promise<T>{return this.withRoomOperation(roomId,async()=>{await this.restores.assertAvailable(roomId);if([...this.activeRuns.values()].some(run=>run.roomId===roomId&&run.started))throw new AppError('workspace_writer_active',409,'Workspace changes are blocked while an agent is writing in this room');return operation();});}
+  private async syncRestoredFiles(roomId:string,before:string,after:string){
+    const root=this.roomPath(roomId),changes=await this.git.changedPaths(root,before,after);
+    for(const change of changes.filter(item=>item.change==='deleted')){
+      const entry=await this.repository.entry(roomId,change.path);
+      if(entry)await this.repository.softDelete(roomId,entry.id);
+    }
+    for(const change of changes.filter(item=>item.change!=='deleted')){
+      const file=path.join(root,...change.path.split('/')),details=await lstat(file);
+      if(!details.isFile())continue;
+      if(details.size>this.maxFileBytes){await this.repository.markOversize(roomId,change.path,details.size,mimeFor(change.path));continue;}
+      await this.captureBuffer(roomId,change.path,await readFile(file),'user',[],change.change==='created'?'created':'updated');
+    }
+    for(const entry of await this.repository.list(roomId)){
+      if(!await lstat(path.join(root,...entry.path.split('/'))).catch(()=>undefined))await this.repository.softDelete(roomId,entry.id);
+    }
+  }
   private async withRoomOperation<T>(roomId:string,operation:()=>Promise<T>):Promise<T>{const prior=this.roomMutations.get(roomId)??Promise.resolve();let release!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve}),queued=prior.catch(()=>{}).then(()=>gate);this.roomMutations.set(roomId,queued);await prior.catch(()=>{});try{return await operation();}finally{release();if(this.roomMutations.get(roomId)===queued)this.roomMutations.delete(roomId)}}
 }
 

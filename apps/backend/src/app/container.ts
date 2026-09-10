@@ -39,6 +39,8 @@ export async function createAppContainer(config: AppConfig, fetchImplementation?
   const activeRuns = new ActiveRunRegistry();
   const previewBundles=new PreviewBundleStore(config.artifactRoot,config.artifactMaxBytes);
   const roomWorkspace=new RoomWorkspaceService(rooms,workspace,runWorkspaces,events,activeRuns,workspaceRoot,workspaceAgentRoot,config.workspaceMaxFileBytes,logger,previewBundles);
+  // Recover (or block) restored workspaces before queued runs or native sessions can resume.
+  await roomWorkspace.restores.recover();
 
   const continuationCleanup=new RunContinuationCleanupService({runs,gateway:connectorRuns});
   let runInterventions:RunInterventionService,followUpDispatcher:FollowUpDispatcher;

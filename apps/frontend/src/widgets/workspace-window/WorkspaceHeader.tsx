@@ -17,7 +17,7 @@ import {
   Type,
   X,
 } from 'lucide-react';
-import type { WorkspaceAttachment, WorkspaceBuildPreview, WorkspaceEntry, WorkspaceVersion } from '@agenvyl/contracts';
+import type { WorkspaceAttachment, WorkspaceBuildPreview, WorkspaceEntry, WorkspaceHistory, WorkspaceRestoreTarget, WorkspaceVersion } from '@agenvyl/contracts';
 import { IconButton } from '../../shared/ui';
 import { workspaceModesFor, type WorkspaceSection, type WorkspaceViewMode } from './workspaceModel';
 import { WorkspaceBuildPicker } from './WorkspaceBuildPicker';
@@ -52,6 +52,9 @@ type WorkspaceHeaderProps = {
   onMove: () => void;
   onDelete: () => void;
   onRefresh: () => void;
+  history?: WorkspaceHistory;
+  historyError?: string;
+  onWorkspaceRestore?: (target: WorkspaceRestoreTarget, label: string, recovery?: boolean) => void;
   onClose: () => void;
 };
 
@@ -84,6 +87,9 @@ export const WorkspaceHeader = ({
   onMove,
   onDelete,
   onRefresh,
+  history,
+  historyError,
+  onWorkspaceRestore,
   onClose,
 }: WorkspaceHeaderProps) => {
   const actionsRef = useRef<HTMLDetailsElement>(null);
@@ -184,7 +190,7 @@ export const WorkspaceHeader = ({
         </details>
         <IconButton aria-label="View newer version" title="Newer version" disabled={!newer} onClick={() => newer && onVersion(newer, newer.id === current?.id)}><ChevronRight /></IconButton>
       </div>}
-      {section === 'app' && <WorkspaceBuildPicker builds={builds} selected={selectedBuild} currentRunId={currentBuildRunId} historical={historicalBuild} onSelect={onBuild} onBack={onCurrentBuild}/>}
+      {(section === 'app' || onWorkspaceRestore) && <WorkspaceBuildPicker builds={builds} selected={selectedBuild} currentRunId={currentBuildRunId} historical={historicalBuild} onSelect={onBuild} onBack={onCurrentBuild} history={history} historyError={historyError} onRestore={onWorkspaceRestore}/>}
       <details ref={actionsRef} className={styles.workspaceMenu} onBlur={closeOutside}>
         <summary role="button" aria-label="Workspace actions" title="Workspace actions"><MoreHorizontal /></summary>
         <div className={styles.workspaceMenuPopover}>
