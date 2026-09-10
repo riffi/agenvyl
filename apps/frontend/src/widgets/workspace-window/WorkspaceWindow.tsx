@@ -15,6 +15,7 @@ import {
   defaultWorkspaceMode,
   workspaceAttachmentFromVersion,
   type WorkspaceEncoding,
+  type WorkspacePreviewDevice,
   type WorkspaceOpenRequest,
   type WorkspaceRequestUpdate,
 } from './workspaceModel';
@@ -39,6 +40,7 @@ export const WorkspaceWindow = ({
   const queryClient = useQueryClient();
   const workspaceKey = ['rooms', roomId, 'workspace'] as const;
   const [trash, setTrash] = useState(false);
+  const [previewDevice, setPreviewDevice] = useState<WorkspacePreviewDevice>('desktop');
   const [restoreChoice,setRestoreChoice]=useState<WorkspaceRestoreChoice>();
   const [operation, setOperation] = useState<WorkspaceOperation>();
   const [uploadDirectory, setUploadDirectory] = useState('');
@@ -242,6 +244,8 @@ export const WorkspaceWindow = ({
 
   return createPortal(<section className={styles.window} role="dialog" aria-modal="true" aria-label="Workspace">
     <WorkspaceHeader
+      previewDevice={previewDevice}
+      onPreviewDevice={setPreviewDevice}
       section={section}
       treeVisible={treeVisible}
       entry={selected}
@@ -284,6 +288,7 @@ export const WorkspaceWindow = ({
     {notice && <button className={styles.notice} onClick={() => setNotice(undefined)}>{notice}<X /></button>}
     {section === 'app'
       ? <WorkspaceAppPreview
+        device={previewDevice}
         selected={selectedBuild}
         latestOutdated={latestOutdated}
         staticPreview={staticPreview}

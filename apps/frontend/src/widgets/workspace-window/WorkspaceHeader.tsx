@@ -9,22 +9,26 @@ import {
   FolderOpen,
   History,
   MoreHorizontal,
+  Monitor,
   PanelLeft,
   Paperclip,
   RefreshCw,
   RotateCcw,
+  Smartphone,
   Trash2,
   Type,
   X,
 } from 'lucide-react';
 import type { WorkspaceAttachment, WorkspaceBuildPreview, WorkspaceEntry, WorkspaceHistory, WorkspaceRestoreTarget, WorkspaceVersion } from '@agenvyl/contracts';
 import { IconButton } from '../../shared/ui';
-import { workspaceModesFor, type WorkspaceSection, type WorkspaceViewMode } from './workspaceModel';
+import { workspaceModesFor, type WorkspacePreviewDevice, type WorkspaceSection, type WorkspaceViewMode } from './workspaceModel';
 import { WorkspaceBuildPicker } from './WorkspaceBuildPicker';
 import styles from './WorkspaceWindow.module.css';
 
 type WorkspaceHeaderProps = {
   section: WorkspaceSection;
+  previewDevice: WorkspacePreviewDevice;
+  onPreviewDevice: (device: WorkspacePreviewDevice) => void;
   treeVisible: boolean;
   entry?: WorkspaceEntry;
   attachment?: WorkspaceAttachment;
@@ -60,6 +64,8 @@ type WorkspaceHeaderProps = {
 
 export const WorkspaceHeader = ({
   section,
+  previewDevice,
+  onPreviewDevice,
   treeVisible,
   entry,
   attachment,
@@ -136,6 +142,10 @@ export const WorkspaceHeader = ({
     </div>
 
     <div className={styles.headerControls}>
+      {section === 'app' && <div className={`${styles.headerModeSwitch} ${styles.previewDeviceSwitch}`} role="group" aria-label="Preview device">
+        <button type="button" aria-label="Desktop preview" title="Desktop" aria-pressed={previewDevice === 'desktop'} className={previewDevice === 'desktop' ? styles.headerModeActive : ''} onClick={() => onPreviewDevice('desktop')}><Monitor aria-hidden="true" /></button>
+        <button type="button" aria-label="Mobile preview" title="Mobile" aria-pressed={previewDevice === 'mobile'} className={previewDevice === 'mobile' ? styles.headerModeActive : ''} onClick={() => onPreviewDevice('mobile')}><Smartphone aria-hidden="true" /></button>
+      </div>}
       {section === 'files' && modes.length > 1 && <div className={styles.headerModeSwitch} aria-label="View mode">
         <button
           aria-label="Rendered"

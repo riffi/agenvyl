@@ -1,0 +1,7 @@
+.stage{position:relative;display:flex;min-width:0;min-height:0;flex:1;overflow:hidden}
+.device,.screen{display:flex;min-width:0;min-height:0;flex:1}
+.screen{overflow:hidden}
+.mobile .device{position:absolute;top:50%;left:50%;width:414px;height:892px;box-sizing:border-box;flex:none;padding:24px 12px;border-radius:48px;background:#171b23;box-shadow:inset 0 0 0 1px #ffffff40,inset 0 0 0 4px #343a45,0 18px 48px #18223830;transform:translate(-50%,-50%) scale(var(--preview-scale));transform-origin:center}
+.mobile .device::before{position:absolute;top:10px;left:50%;width:48px;height:4px;transform:translateX(-50%);border-radius:4px;background:#080b10;content:"";pointer-events:none}
+.mobile .device::after{position:absolute;bottom:10px;left:50%;width:96px;height:4px;transform:translateX(-50%);border-radius:4px;background:#626975;content:"";pointer-events:none}
+.mobile .screen{border-radius:36px;background:#fff}

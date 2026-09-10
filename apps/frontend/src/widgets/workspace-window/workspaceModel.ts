@@ -2,6 +2,7 @@ import type { WorkspaceAttachment } from '@agenvyl/contracts';
 
 export type WorkspaceViewMode = 'rendered' | 'source';
 export type WorkspaceSection = 'app' | 'files';
+export type WorkspacePreviewDevice = 'desktop' | 'mobile';
 export type WorkspaceOpenOrigin = 'workspace' | 'artifact';
 export type WorkspaceEncoding = 'utf-8' | 'utf-16le' | 'utf-16be' | 'windows-1251' | 'windows-1252' | 'koi8-r';
 
