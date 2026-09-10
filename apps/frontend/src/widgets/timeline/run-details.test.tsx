@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Persona } from '../../entities/persona';
 import { initialState } from '../../entities/room';
@@ -18,6 +18,22 @@ const gateway: RoomGateway = { mode: 'fake', subscribe: vi.fn(() => vi.fn()), se
 afterEach(()=>{cleanup();vi.restoreAllMocks();vi.unstubAllGlobals();});
 
 describe('Timeline run details', () => {
+  it('copies user messages and agent responses without continuation instructions',async()=>{
+    const writeText=vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText}});
+    const source:Run={...run,id:'source',responseSlotId:'slot',text:'Original answer'};
+    const child:Run={...source,id:'child',text:'Revised answer',continuedFromRunId:'source',continuationInstruction:'Focus on the API'};
+    const message={id:'message-1',text:'@coder work',createdAt:'2026-07-20T12:00:00.000Z',targets:['coder' as const],runIds:['source','child'],author,addressedToAll:false};
+    const state={...initialState,hydrated:true,messages:[message],runs:{source,child},runOrder:['source','child'],selectedRuns:{slot:'child'}};
+    render(<Timeline state={state} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()}/>);
+    fireEvent.click(screen.getByRole('button',{name:'Copy user message'}));
+    await waitFor(()=>expect(writeText).toHaveBeenCalledWith('@coder work'));
+    expect(screen.getByRole('button',{name:'User message copied'})).toBeTruthy();
+    fireEvent.click(screen.getByRole('button',{name:'Copy Coder response'}));
+    await waitFor(()=>expect(writeText).toHaveBeenLastCalledWith('Original answer\n\nRevised answer'));
+    expect(screen.getByRole('button',{name:'Coder response copied'})).toBeTruthy();
+  });
+
   it('keeps the agent avatar outside the bordered response surface',()=>{
     const state={...initialState,hydrated:true,messages:[{id:'message-1',text:'@coder work',createdAt:'2026-07-20T12:00:00.000Z',targets:['coder' as const],runIds:['run-1'],author,addressedToAll:false}],runs:{'run-1':run},runOrder:['run-1']};
     const {container}=render(<Timeline state={state} personas={[persona]} select={vi.fn()} gateway={gateway} loadOlder={vi.fn()} loadingOlder={false} initialLoading={false} onMentionPersona={vi.fn()}/>);

@@ -4,6 +4,8 @@ import {commandInvocation,resolveCommand} from '../../discovery.js';
 import {spawnStdioInWindowsJob} from '../../windows-job-object.js';
 
 type RpcId=string|number;
+const maxAppServerMessageBytes=16*1024*1024;
+const oversizedMessageError='Codex app-server message exceeded 16 MiB';
 export type AppServerMessage={id?:RpcId;method?:string;params?:unknown;result?:unknown;error?:unknown};
 type RunningChild=ChildProcessByStdio<Writable,Readable,Readable>;
 
@@ -92,7 +94,7 @@ export class CodexAppServerClient implements CodexAppServerPort{
   }
 
   private readLine(line:string){
-    if(Buffer.byteLength(line,'utf8')>2*1024*1024){this.protocolFailure(new Error('Codex app-server message exceeded 2 MiB'));return;}
+    if(Buffer.byteLength(line,'utf8')>maxAppServerMessageBytes){this.protocolFailure(new Error(oversizedMessageError));return;}
     let message:unknown;try{message=JSON.parse(line);}catch{this.protocolFailure(new Error('Codex app-server emitted invalid JSON'));return;}
     if(!isRecord(message))return;
     const typed=message as AppServerMessage;
@@ -105,7 +107,7 @@ export class CodexAppServerClient implements CodexAppServerPort{
   }
 
   private readChunk(chunk:string){
-    let lines:string[];try{lines=this.decoder.push(chunk);}catch(error){this.protocolFailure(error instanceof Error?error:new Error('Codex app-server message exceeded 2 MiB'));return;}
+    let lines:string[];try{lines=this.decoder.push(chunk);}catch(error){this.protocolFailure(error instanceof Error?error:new Error(oversizedMessageError));return;}
     for(const line of lines){if(line)this.readLine(line);if(!this.child)return;}
   }
 
@@ -128,8 +130,8 @@ export class CodexAppServerClient implements CodexAppServerPort{
 
 export class JsonLineDecoder{
   private buffer='';
-  constructor(private readonly maxBytes=2*1024*1024){}
-  push(chunk:string){this.buffer+=chunk;const lines:string[]=[];while(true){const newline=this.buffer.indexOf('\n');if(newline<0)break;const line=this.buffer.slice(0,newline).replace(/\r$/,'');this.buffer=this.buffer.slice(newline+1);if(Buffer.byteLength(line,'utf8')>this.maxBytes)throw new Error('Codex app-server message exceeded 2 MiB');lines.push(line);}if(Buffer.byteLength(this.buffer,'utf8')>this.maxBytes)throw new Error('Codex app-server message exceeded 2 MiB');return lines;}
+  constructor(private readonly maxBytes=maxAppServerMessageBytes){}
+  push(chunk:string){this.buffer+=chunk;const lines:string[]=[];while(true){const newline=this.buffer.indexOf('\n');if(newline<0)break;const line=this.buffer.slice(0,newline).replace(/\r$/,'');this.buffer=this.buffer.slice(newline+1);if(Buffer.byteLength(line,'utf8')>this.maxBytes)throw new Error(oversizedMessageError);lines.push(line);}if(Buffer.byteLength(this.buffer,'utf8')>this.maxBytes)throw new Error(oversizedMessageError);return lines;}
 }
 
 const rpcError=(value:unknown)=>isRecord(value)&&typeof value.message==='string'?value.message:'Codex app-server request failed';

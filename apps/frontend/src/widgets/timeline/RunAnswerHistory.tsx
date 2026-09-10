@@ -20,10 +20,13 @@ type Props={
 
 const precedingText=(intervention:RunIntervention)=>intervention.precedingText??intervention.supersededText;
 
-export const answerHistoryText=(run:Run)=>[
-  ...run.interventions.flatMap(intervention=>precedingText(intervention)??''),
+const agentResponseSegments=(run:Run)=>[
+  ...run.interventions.map(precedingText).filter((text):text is string=>Boolean(text)),
   run.text,
-].join('\n\n');
+].filter(Boolean);
+
+export const answerHistoryText=(run:Run)=>agentResponseSegments(run).join('\n\n');
+export const agentResponseText=(runs:Run[])=>runs.flatMap(agentResponseSegments).join('\n\n');
 export const continuationHistoryText=(runs:Run[])=>runs.map(run=>`${run.continuationInstruction??''}\n\n${answerHistoryText(run)}`).join('\n\n');
 
 const statusView=(intervention:RunIntervention,appliedLabel='Applied')=>intervention.status==='pending'

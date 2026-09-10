@@ -15,8 +15,9 @@ import {ReasoningBlock} from './ReasoningBlock';
 import {RunActivity} from './RunActivity';
 import {RunFiles} from './RunFiles';
 import {RunRequest} from './RunRequest';
-import {continuationHistoryText,RunAnswerHistory} from './RunAnswerHistory';
+import {agentResponseText,continuationHistoryText,RunAnswerHistory} from './RunAnswerHistory';
 import {conversationProjection} from './conversationProjection';
+import {CopyTextButton} from './CopyTextButton';
 
 export { MarkdownAnswer } from './MarkdownAnswer';
 export {ReasoningBlock} from './ReasoningBlock';
@@ -157,6 +158,7 @@ function RunCard({
   const hasActivity=Boolean(workspaceActivity||run.tools.length);
   const buildMissing=hasProjectChanges&&run.staticPreviewStatus==='build_missing';
   const previewCaptureFailed=run.staticPreviewStatus==='capture_failed';
+  const responseText=agentResponseText(chapters);
   return (
     <article
       className={`${styles['run-card']} ${styles[run.status]}`}
@@ -179,6 +181,7 @@ function RunCard({
           <span className={styles['run-header-actions']}>
             <StatusIcon status={run.status}/>
             <span className={styles['run-actions']}>
+              <CopyTextButton text={responseText} label={`Copy ${persona.name} response`} copiedLabel={`${persona.name} response copied`}/>
               <IconButton className={styles['run-details']} onClick={select} title="Run details" aria-label={`Run details: ${persona.name}`}><Info/></IconButton>
               {canAddInstruction&&<IconButton className={styles['instruction-run']} onClick={addInstruction} title={instructionActionLabel} aria-label={`${instructionActionLabel} to ${persona.name}`}><MessageSquarePlus/></IconButton>}
               {canCancel&&<IconButton className={styles['stop-run']} onClick={cancel} title="Stop" aria-label={`Stop ${persona.name} response`}><Square/></IconButton>}
@@ -316,6 +319,7 @@ export function Timeline({
         return (
         <section className={`${styles.round} ${responseTabs?styles['has-answer-navigation']:''}`} data-timeline-layout key={m.id}>
           <div className={`${styles['user-message']} ${imageAttachments.length?styles['with-images']:''}`}>
+            <CopyTextButton className={styles['copy-user-message']} text={m.text} label="Copy user message" copiedLabel="User message copied"/>
             <p><MentionText text={m.text} personas={personas} onMentionPersona={onMentionPersona}/></p>
             {imageAttachments.length>0&&<div className={styles['image-attachments']} data-count={Math.min(imageAttachments.length,4)}>{imageAttachments.map(item=><MessageImage key={item.version_id} attachment={item} gallery={imageAttachments} openArtifact={openArtifact} openWorkspace={openWorkspace}/>)}</div>}
             {fileAttachments.length>0&&<div className={styles.attachments}>{fileAttachments.map(item=><MessageAttachment key={item.version_id} attachment={item} gallery={m.attachments} openArtifact={openArtifact} openWorkspace={openWorkspace}/>)}</div>}

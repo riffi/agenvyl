@@ -18,12 +18,13 @@
   contain-intrinsic-size: auto 420px;
 }
 .user-message {
+  position: relative;
   margin-left: auto;
   max-width: 72%;
   background: #eef2ff;
   border: 1px solid #c7d2fe;
   border-radius: 13px 13px 3px 13px;
-  padding: 11px 14px;
+  padding: 11px 42px 11px 14px;
 }
 .user-message.with-images { max-width:min(82%,720px); }
 .image-attachments{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:8px}.image-attachments[data-count="1"]{grid-template-columns:minmax(0,1fr)}.messageImage{position:relative;display:block;min-width:0}.messageImage>button{display:block;width:100%;padding:0;border:0;background:transparent;color:inherit;text-align:left;cursor:zoom-in}.messageImage>button:focus-visible{outline:2px solid var(--primary);outline-offset:2px}.messageImage>button img{display:block;width:100%;height:180px;object-fit:cover}.image-attachments[data-count="1"] .messageImage>button img{width:auto;max-width:100%;height:auto;max-height:420px;object-fit:contain}.messageImage>button span{display:block;overflow:hidden;padding-top:4px;color:var(--muted);font-size:9px;text-overflow:ellipsis;white-space:nowrap}.messageImage>span{position:absolute;top:5px;right:5px;border-radius:7px;background:#ffffffe6;box-shadow:0 2px 8px #0f172a24}
@@ -268,6 +269,16 @@
 }
 .run-actions .instruction-run { color:#738199; }
 .run-actions .instruction-run:hover { background:#eef2ff;color:#4f46e5; }
+.copy-action { color:#738199;touch-action:manipulation; }
+.copy-action:hover { background:#eef2ff;color:#4f46e5; }
+.copy-action[data-state='copied'] { color:#397554; }
+.copy-action[data-state='failed'] { color:#a94444; }
+.copy-user-message { position:absolute;top:5px;right:5px; }
+.copy-feedback { position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0; }
+@media (prefers-reduced-motion:no-preference) {
+  .copy-action { transition:background-color .15s ease,color .15s ease,scale .1s ease; }
+  .copy-action:active:not(:disabled) { scale:.96; }
+}
 .status-icon.queued,
 .status-icon.streaming {
   color: #71839b;
