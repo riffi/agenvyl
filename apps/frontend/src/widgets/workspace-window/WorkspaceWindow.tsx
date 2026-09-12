@@ -98,6 +98,9 @@ export const WorkspaceWindow = ({
     ?? previewHistory[0];
   const latestOutdated = staticPreview?.status === 'outdated' ? previewHistory.find(build => build.runId === staticPreview.runId) ?? previewHistory[0] : undefined;
   const previewGate = (staticPreview?.status === 'outdated'||staticPreview?.status === 'build_missing') && !request?.buildRunId;
+  const fullScreenPreviewUrl = section === 'app' && !previewGate && selectedBuild
+    ? `/rooms/${encodeURIComponent(roomId)}/runs/${encodeURIComponent(selectedBuild.runId)}/fullscreen-preview`
+    : undefined;
   const historicalBuild = section === 'app' && !previewGate && Boolean(selectedBuild && selectedBuild.runId !== currentBuildRunId);
   const canReturnToCurrentBuild = Boolean(currentBuildRunId || staticPreview?.status === 'outdated'||staticPreview?.status === 'build_missing');
 
@@ -259,6 +262,7 @@ export const WorkspaceWindow = ({
       sourceOnly={appEntry}
       builds={previewHistory}
       selectedBuild={selectedBuild}
+      fullScreenPreviewUrl={fullScreenPreviewUrl}
       currentBuildRunId={currentBuildRunId}
       historicalBuild={historicalBuild}
       onSection={nextSection => nextSection === 'files' ? openFiles() : onRequestChange({ section: 'app', treeVisible: false })}

@@ -5,6 +5,7 @@ import {
   Code2,
   Download,
   Eye,
+  ExternalLink,
   FolderInput,
   FolderOpen,
   History,
@@ -41,6 +42,7 @@ type WorkspaceHeaderProps = {
   sourceOnly?: boolean;
   builds: WorkspaceBuildPreview[];
   selectedBuild?: WorkspaceBuildPreview;
+  fullScreenPreviewUrl?: string;
   currentBuildRunId?: string;
   historicalBuild: boolean;
   onSection: (section: WorkspaceSection) => void;
@@ -78,6 +80,7 @@ export const WorkspaceHeader = ({
   sourceOnly = false,
   builds,
   selectedBuild,
+  fullScreenPreviewUrl,
   currentBuildRunId,
   historicalBuild,
   onSection,
@@ -146,6 +149,14 @@ export const WorkspaceHeader = ({
         <button type="button" aria-label="Desktop preview" title="Desktop" aria-pressed={previewDevice === 'desktop'} className={previewDevice === 'desktop' ? styles.headerModeActive : ''} onClick={() => onPreviewDevice('desktop')}><Monitor aria-hidden="true" /></button>
         <button type="button" aria-label="Mobile preview" title="Mobile" aria-pressed={previewDevice === 'mobile'} className={previewDevice === 'mobile' ? styles.headerModeActive : ''} onClick={() => onPreviewDevice('mobile')}><Smartphone aria-hidden="true" /></button>
       </div>}
+      {section === 'app' && fullScreenPreviewUrl && <a
+        className={styles.fullScreenPreviewLink}
+        href={fullScreenPreviewUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="Open full-screen preview"
+        title="Open full-screen preview"
+      ><ExternalLink aria-hidden="true" /></a>}
       {section === 'files' && modes.length > 1 && <div className={styles.headerModeSwitch} aria-label="View mode">
         <button
           aria-label="Rendered"
