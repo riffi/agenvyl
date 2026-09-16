@@ -172,6 +172,11 @@ inline disposition. Immutable resources use content hashes for ETag and
 long-lived cache headers. The origin boundary reduces coupling to the product
 UI but does not make generated application code trusted.
 
+HTML's `script-src` includes `wasm-unsafe-eval` for WebAssembly-based applications
+(for example, navigation and physics engines). JavaScript string evaluation via
+`unsafe-eval` remains disabled. After changing preview CSP, reload existing
+previews with the browser cache bypassed so cached HTML headers are refreshed.
+
 ## Frontend state
 
 `WorkspaceWindow` has independent `files | app` sections. `wsSection` and

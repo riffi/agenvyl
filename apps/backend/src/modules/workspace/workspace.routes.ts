@@ -29,7 +29,7 @@ export async function registerWorkspaceRoutes(app:FastifyInstance,workspace:Room
   app.get<{Params:{roomId:string;versionId:string;'*':string}}>('/api/v1/rooms/:roomId/workspace/versions/:versionId/preview/*',async(request,reply)=>{const file=await workspace.resolvePreviewAsset(request.params.roomId,request.params.versionId,request.params['*']);return reply.type(file.contentType).header('x-content-type-options','nosniff').header('content-security-policy',htmlCsp).send(createReadStream(file.path));});
 }
 
-const htmlCsp="default-src 'self' http: https: data: blob:; img-src 'self' http: https: data: blob:; style-src 'self' http: https: 'unsafe-inline'; script-src 'self' http: https: 'unsafe-inline' blob:; connect-src 'self' http: https: ws: wss:; font-src 'self' http: https: data:; media-src 'self' http: https: data: blob:; frame-src http: https:; worker-src 'self' http: https: blob:; object-src 'none'";
+const htmlCsp="default-src 'self' http: https: data: blob:; img-src 'self' http: https: data: blob:; style-src 'self' http: https: 'unsafe-inline'; script-src 'self' http: https: 'unsafe-inline' 'wasm-unsafe-eval' blob:; connect-src 'self' http: https: ws: wss:; font-src 'self' http: https: data:; media-src 'self' http: https: data: blob:; frame-src http: https:; worker-src 'self' http: https: blob:; object-src 'none'";
 const documentCsp="default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data: blob:";
 
 const sendImmutablePreview=async(reply:FastifyReply,file:Awaited<ReturnType<RoomWorkspaceService['resolveRunPreview']>>,base:string,ifNoneMatch?:string)=>{

@@ -44,6 +44,8 @@ describe('versioned room workspace',()=>{
     const uploaded=await app.inject({method:'POST',url:'/api/v1/rooms/demo-room/workspace/files',headers:{'content-type':'text/html','x-file-path':'demo.html'},payload:Buffer.from('<html><head></head><body><script>fetch("https://example.com")</script></body></html>')});
     const preview=await app.inject(`/api/v1/rooms/demo-room/workspace/versions/${uploaded.json().version.id}/preview`),csp=preview.headers['content-security-policy'];
     expect(csp).toContain("style-src 'self' http: https: 'unsafe-inline'");
+    expect(csp).toContain("'wasm-unsafe-eval'");
+    expect(csp).not.toContain("'unsafe-eval'");
     expect(csp).toContain("connect-src 'self' http: https: ws: wss:");
     expect(csp).toContain("font-src 'self' http: https: data:");
     expect(csp).not.toContain("connect-src 'none'");

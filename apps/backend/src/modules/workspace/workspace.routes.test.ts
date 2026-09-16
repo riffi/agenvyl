@@ -16,6 +16,14 @@ describe('run workspace routes',()=>{
     const html=await app.inject('/api/v1/rooms/room/runs/run/preview/'),script=await app.inject('/api/v1/rooms/room/runs/run/preview/assets/app.js');
     expect(html.body).toContain('<base href="/api/v1/rooms/room/runs/run/preview/">');
     expect(script.body).toContain('previewBundle=true');
+    const csp=String(html.headers['content-security-policy']);
+    expect(csp).toContain("'wasm-unsafe-eval'");
+    expect(csp).not.toContain("'unsafe-eval'");
+    expect(csp).toContain("object-src 'none'");
+    expect(script.headers['content-security-policy']).not.toContain("'wasm-unsafe-eval'");
+    const cached=await app.inject({url:'/api/v1/rooms/room/runs/run/preview/',headers:{'if-none-match':String(html.headers.etag)}});
+    expect(cached.statusCode).toBe(304);
+    expect(cached.headers['content-security-policy']).toBe(csp);
     await app.close();
   });
 });
