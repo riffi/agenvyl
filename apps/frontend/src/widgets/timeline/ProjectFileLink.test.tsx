@@ -9,6 +9,26 @@ afterEach(cleanup);
 const project = {id: 'p', name: 'Game', path: 'C:/work/game', availability: 'available' as const};
 const run = {id: 'run', status: 'completed', recommendedProject: project} as Run;
 describe('file links in answers', () => {
+  it.each(['workspace:story.md','/srv/rooms/room/story.md'])('routes %s to the room workspace without a selected project',async href=>{
+    const openWorkspaceLink=vi.fn().mockResolvedValue(true),open=vi.fn();
+    render(<ProjectReferenceContext.Provider value={{open,insert:vi.fn(),openWorkspaceLink}}><MarkdownAnswer text={`[Story](${href})`} run={{...run,recommendedProject:undefined,artifacts:[]}}/></ProjectReferenceContext.Provider>);
+    const button=screen.getByRole('button',{name:'Story'});
+    fireEvent.click(button);
+    await waitFor(()=>expect(openWorkspaceLink).toHaveBeenCalledWith(href,[],button));
+    await waitFor(()=>expect(button.hasAttribute('disabled')).toBe(false));
+    expect(open).not.toHaveBeenCalled();
+    expect(screen.queryByRole('link')).toBeNull();
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+  it('allows retry after a workspace lookup fails',async()=>{
+    const openWorkspaceLink=vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValue(true);
+    render(<ProjectReferenceContext.Provider value={{open:vi.fn(),insert:vi.fn(),openWorkspaceLink}}><MarkdownAnswer text="[Story](workspace:story.md)" run={run}/></ProjectReferenceContext.Provider>);
+    fireEvent.click(screen.getByRole('button',{name:'Story'}));
+    expect(await screen.findByText(/Could not load the room workspace/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button',{name:'Story'}));
+    await waitFor(()=>expect(screen.queryByRole('status')).toBeNull());
+    expect(openWorkspaceLink).toHaveBeenCalledTimes(2);
+  });
   it('opens historical absolute paths and new project links without browser navigation', () => {
     const open = vi.fn();
     render(<ProjectReferenceContext.Provider value={{open, insert: vi.fn(), project: {...project, id: 'another'}}}>

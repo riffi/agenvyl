@@ -1,6 +1,6 @@
 import {createContext,useContext} from 'react';
-import type {ProjectReference,ProjectSummary} from '@agenvyl/contracts';
-export const ProjectReferenceContext=createContext<{project?:ProjectSummary;open:(reference:ProjectReference)=>void;insert:(reference:ProjectReference)=>void}|undefined>(undefined);
+import type {ProjectReference,ProjectSummary,WorkspaceAttachment} from '@agenvyl/contracts';
+export const ProjectReferenceContext=createContext<{project?:ProjectSummary;open:(reference:ProjectReference)=>void;insert:(reference:ProjectReference)=>void;openWorkspaceLink?:(href:string,artifacts:WorkspaceAttachment[],opener:HTMLElement)=>Promise<boolean>}|undefined>(undefined);
 export const useProjectReferenceActions=()=>useContext(ProjectReferenceContext);
 export function ProjectReferenceChip({reference}:{reference:ProjectReference}){
   const actions=useProjectReferenceActions();

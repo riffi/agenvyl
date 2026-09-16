@@ -102,7 +102,7 @@ export const MarkdownAnswer = memo(({
         },
         a: ({ node: _node, href, ...props }) => {
           if (!href) return <>{props.children}</>;
-          if (isProjectFileLink(href)) return <ProjectFileLink href={href} project={run.recommendedProject}>{props.children}</ProjectFileLink>;
+          if (isProjectFileLink(href)) return <ProjectFileLink href={href} project={run.recommendedProject} artifacts={run.artifacts}>{props.children}</ProjectFileLink>;
           if (!href?.startsWith('mention:')) return <a {...props} href={href} target="_blank" rel="noopener noreferrer" />;
           let handle = href.slice('mention:'.length);
           try {
