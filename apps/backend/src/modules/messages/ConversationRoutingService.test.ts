@@ -14,6 +14,15 @@ function fixture(anchors=[{runId:'run-1',roomId:'room',personaId:'persona-coder'
 }
 
 describe('ConversationRoutingService',()=>{
+  it.each(['after_response','apply_now'] as const)('starts a fresh run on project change instead of %s',async delivery=>{
+    const{service,followUps,legacy,interventions,dispatcher}=fixture();
+    followUps.create.mockResolvedValue({status:'project_changed'} as never);
+    await service.execute({roomId:'room',body:{text:'Use the new project',message_id:message.id,routing:{mode:'auto',delivery}}});
+    expect(legacy.execute).toHaveBeenCalledWith(expect.objectContaining({targets:['coder'],messageId:message.id,delivery:{route:'room_context',status:'started_fresh'}}));
+    expect(interventions.applyNow).not.toHaveBeenCalled();
+    expect(interventions.cancelForHandoff).not.toHaveBeenCalled();
+    expect(dispatcher.dispatchById).not.toHaveBeenCalled();
+  });
   it('addresses the first unmentioned Auto message to the room\'s only agent',async()=>{
     const{service,legacy,messages}=fixture([]);
     await service.execute({roomId:'room',body:{text:'Start',message_id:message.id}});

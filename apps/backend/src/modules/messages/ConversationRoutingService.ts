@@ -64,6 +64,7 @@ export class ConversationRoutingService{
     try{
       const claim=await this.dependencies.followUps.claimApplyNow(command.roomId,command.messageId);
       if(claim.status==='not_found')throw new AppError('queued_message_not_found',404,'Queued message not found');
+      if(claim.status==='project_changed')throw new AppError('project_changed',409,'The room project changed. This message will start a new session after the current response.');
       if(claim.status==='unavailable')throw new AppError('queued_message_unavailable',409,'This message is no longer waiting for the agent');
       if(claim.status==='anchor_not_streaming'){
         await this.dependencies.dispatcher.dispatchById(claim.pendingId);
@@ -119,6 +120,7 @@ export class ConversationRoutingService{
     const attachmentVersionIds=await this.dependencies.roomWorkspace.captureAttachmentVersions(command.roomId,command.body.attachment_version_ids??[]);
     const created=await this.dependencies.followUps.create({roomId:command.roomId,text:command.body.text?.trim()??'',messageId,anchor,deliveryKind:delivery,attachmentVersionIds,resolveProfile:(source,workflowMode)=>transitionExecutionProfile(source,workflowMode,instance.controls)});
     if(created.status==='duplicate')return{status:'duplicate' as const,message:created.message};
+    if(created.status==='project_changed')return this.legacy(command,[anchor.personaHandle],messageId,{route:'room_context',status:'started_fresh'});
     if(created.status==='already_queued')throw new AppError('follow_up_already_queued',409,`A follow-up for @${anchor.personaHandle} is already waiting`,{messageId:created.messageId});
     if(created.status==='room_not_found')throw new AppError('room_not_found',404,'Room not found');
     if(created.status==='anchor_unavailable')throw new AppError('session_unavailable',409,'The selected agent session is no longer available');

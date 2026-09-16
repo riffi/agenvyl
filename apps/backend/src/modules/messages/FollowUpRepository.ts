@@ -4,6 +4,7 @@ import {toMessage} from '../../infrastructure/database/rowMappers.js';
 import type {MessageDelivery,RunExecutionProfileSnapshot,RunProjectSnapshot,WorkflowMode} from '@agenvyl/contracts';
 import type {RoomEventRepository} from '../room-events/roomEvents.repository.js';
 import {toAttachment,type WorkspaceRepository} from '../workspace/workspace.repository.js';
+import {currentRoomProject,sameRunProject} from '../runs/runProject.js';
 
 const nonTerminal=['queued','streaming','finalizing','stopping','waiting_approval','waiting_clarification'];
 
@@ -32,8 +33,9 @@ export class FollowUpRepository{
       if(existing){const attachments=await this.workspace.messageAttachments([input.messageId],tx);return{status:'duplicate' as const,message:toMessage(existing,attachments.get(input.messageId)??[])};}
       const attachmentVersionIds=input.attachmentVersionIds??[],attachmentVersions=await this.workspace.validateVersions(input.roomId,attachmentVersionIds,tx);
       if(attachmentVersions.length!==attachmentVersionIds.length)return{status:'attachment_unavailable' as const};
-      const source=(await tx`SELECT id,status,execution_profile FROM agent_runs WHERE id=${input.anchor.runId} AND room_id=${input.roomId} AND persona_id=${input.anchor.personaId} FOR UPDATE`)[0];
+      const source=(await tx`SELECT id,status,execution_profile,project_id_snapshot,project_path_snapshot FROM agent_runs WHERE id=${input.anchor.runId} AND room_id=${input.roomId} AND persona_id=${input.anchor.personaId} FOR UPDATE`)[0];
       if(!source)return{status:'anchor_unavailable' as const};
+      if(!sameRunProject(source,await currentRoomProject(tx,input.roomId)))return{status:'project_changed' as const};
       const sourceProfile=source.execution_profile as RunExecutionProfileSnapshot,executionProfile=input.resolveProfile(sourceProfile,String(room.workflow_mode) as WorkflowMode),transitionReason=executionProfile.workflowMode===sourceProfile.workflowMode?undefined:'workflow_mode_changed' as const;
       if(input.requireTransition&&!transitionReason)return{status:'mode_matches' as const};
       const pending=(await tx`SELECT message_id FROM pending_agent_follow_ups WHERE room_id=${input.roomId} AND persona_id=${input.anchor.personaId} AND status IN('queued','dispatching') LIMIT 1`)[0];
@@ -59,10 +61,11 @@ export class FollowUpRepository{
 
   async claimApplyNow(roomId:string,messageId:string){
     return this.database.transaction(async tx=>{
-      const[row]=await tx`SELECT p.*,m.text,m.delivery_status,r.status anchor_status FROM pending_agent_follow_ups p JOIN room_messages m ON m.id=p.message_id JOIN agent_runs r ON r.id=p.anchor_run_id WHERE p.room_id=${roomId} AND p.message_id=${messageId} FOR UPDATE OF p,m,r`;
+      const[row]=await tx`SELECT p.*,m.text,m.delivery_status,r.status anchor_status,r.project_id_snapshot,r.project_path_snapshot FROM pending_agent_follow_ups p JOIN room_messages m ON m.id=p.message_id JOIN agent_runs r ON r.id=p.anchor_run_id WHERE p.room_id=${roomId} AND p.message_id=${messageId} FOR UPDATE OF p,m,r`;
       if(!row)return{status:'not_found' as const};
       if(row.status==='delivered'&&row.delivery_status==='applied')return{status:'already_applied' as const};
       if(row.delivery_kind==='apply_now'&&row.status==='dispatching')return{status:'resume' as const,item:{...pending(row),deliveryKind:'apply_now' as const,status:'dispatching'}};
+      if(!sameRunProject(row,await currentRoomProject(tx,roomId)))return{status:'project_changed' as const};
       const transitionReason=row.transition_reason==='workflow_mode_changed'?'workflow_mode_changed' as const:undefined;
       if(row.delivery_kind!=='after_response'||row.status!=='queued')return{status:'unavailable' as const};
       if(row.anchor_status!=='streaming'&&!(transitionReason&&row.anchor_status==='stopping'))return{status:'anchor_not_streaming' as const,pendingId:String(row.id),transitionReason};
@@ -137,7 +140,9 @@ export class FollowUpRepository{
       if(p.status==='delivered'){const[r]=await tx`SELECT * FROM agent_runs WHERE id=(SELECT delivery_run_id FROM room_messages WHERE id=${p.message_id as string})`;return r?{status:'duplicate' as const,...runProjection(r)}:{status:'not_found' as const};}
       const[source]=await tx`SELECT * FROM agent_runs WHERE id=${p.anchor_run_id as string}`;
       if(!source)return{status:'not_found' as const};
-      const now=new Date().toISOString(),runId=crypto.randomUUID(),slotId=crypto.randomUUID(),profile=p.execution_profile_snapshot as RunExecutionProfileSnapshot,snapshot=project(source);
+      const currentProject=await currentRoomProject(tx,String(p.room_id));
+      if(!currentProject)return{status:'not_found' as const};
+      const now=new Date().toISOString(),runId=crypto.randomUUID(),slotId=crypto.randomUUID(),profile=p.execution_profile_snapshot as RunExecutionProfileSnapshot,snapshot=project(currentProject);
       await tx`INSERT INTO response_slots(id,message_id,persona_id,created_at) VALUES(${slotId},${p.message_id as string},${p.persona_id as string},${now})`;
       await tx`INSERT INTO agent_runs(id,message_id,room_id,persona_id,persona_version_id,persona_handle,requested_model,harness_instance_id,harness_type,model_id,execution_profile,project_id_snapshot,project_name_snapshot,project_path_snapshot,project_availability,status,response_slot_id,context,created_at,updated_at) VALUES(${runId},${p.message_id as string},${p.room_id as string},${p.persona_id as string},${source.persona_version_id as string},${p.persona_handle as string},${source.requested_model as string},${source.harness_instance_id as string},${source.harness_type as string},${source.model_id as string},${tx.json(profile as never)},${snapshot?.id??null},${snapshot?.name??null},${snapshot?.path??null},${snapshot?.availability??null},'queued',${slotId},${tx.json(history)},${now},${now})`;
       await tx`UPDATE room_messages SET run_ids=${tx.json([...(p.run_ids as string[]),runId])},delivery_route='room_context',delivery_status='fallback',delivery_run_id=${runId},delivery_error=NULL,delivery_updated_at=${now} WHERE id=${p.message_id as string}`;
@@ -146,7 +151,7 @@ export class FollowUpRepository{
       const transitionReason=p.transition_reason==='workflow_mode_changed'?'workflow_mode_changed' as const:undefined;
       const delivery:MessageDelivery={route:'room_context',status:'fallback',...(transitionReason?{transitionReason}:{}),agent:String(p.persona_handle),anchorRunId:String(p.anchor_run_id),runId};
       const deliveryEvent=await this.events.appendInTransaction(tx,String(p.room_id),'message.delivery.updated',{messageId:String(p.message_id),delivery},now);
-      return{status:'created' as const,...runProjection({...source,id:runId,message_id:p.message_id,room_id:p.room_id,persona_id:p.persona_id,persona_handle:p.persona_handle,response_slot_id:slotId,context:history,execution_profile:profile}),text:String(p.text),runEvent,deliveryEvent};
+      return{status:'created' as const,...runProjection({...source,...currentProject,id:runId,message_id:p.message_id,room_id:p.room_id,persona_id:p.persona_id,persona_handle:p.persona_handle,response_slot_id:slotId,context:history,execution_profile:profile}),text:String(p.text),runEvent,deliveryEvent};
     });
   }
 }

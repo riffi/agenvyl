@@ -54,7 +54,10 @@ the agent continues in the room workspace and receives an explicit notice that
 the recommended project is unavailable.
 
 Each run records the project name and path it started with. Changing the room's
-project affects future runs only. A retry keeps the original run's project
+project affects future runs only. The next message starts a fresh agent session
+with the current project and room history instead of resuming the previous
+project's session. Queued follow-ups also use the current project when they
+start; running tasks keep their original project. A retry keeps the original run's project
 selection and checks that path again before starting.
 
 Deleting a project removes it from every room after confirmation. It does not

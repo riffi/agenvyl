@@ -4,6 +4,7 @@ import type { RoomEventRepository } from '../room-events/roomEvents.repository.j
 import type { RunCheckpoint } from '../harness/harness.ports.js';
 import type { MappedRunEvent } from '../harness/harness.ports.js';
 import type {HumanAuthorSnapshot,RunExecutionProfileSnapshot,RunIntervention,RunProjectSnapshot} from '@agenvyl/contracts';
+import {currentRoomProject,sameRunProject} from './runProject.js';
 
 const nonTerminalStatuses=['queued','streaming','finalizing','stopping','waiting_approval','waiting_clarification'];
 export type PersistedNonTerminalRun={id:string;messageId:string;roomId:string;personaVersionId:string;personaHandle:string;requestedModel:string;harnessInstanceId:string;harnessType:string;modelId:string;executionProfile:RunExecutionProfileSnapshot;recommendedProject?:RunProjectSnapshot;status:string;text:string;context:ConversationItem[];upstreamRunId:string|null;connectorExecutionId:string|null;connectorEpoch:string|null;connectorCursor:number|null;executionDeadlineAt:string|null};
@@ -53,7 +54,7 @@ export class RunRepository{
     if(existing){if(existing.source_run_id!==sourceRunId||existing.instruction!==input.text)return{status:'intervention_conflict' as const};return{status:'duplicate' as const,runId:existing.child_run_id as string,runStatus:existing.status as string,sourceRunId};}
     const source=(await tx`SELECT r.*,m.text message_text,m.run_ids FROM agent_runs r JOIN room_messages m ON m.id=r.message_id WHERE r.id=${sourceRunId} FOR UPDATE`)[0];
     if(!source)return{status:'not_found' as const};
-    await tx`SELECT id FROM rooms WHERE id=${source.room_id as string} FOR UPDATE`;
+    if(!sameRunProject(source,await currentRoomProject(tx,String(source.room_id))))return{status:'continuation_incompatible' as const};
     const concurrent=(await tx`SELECT l.source_run_id,l.child_run_id,l.instruction,r.status FROM run_continuation_ledger l JOIN agent_runs r ON r.id=l.child_run_id WHERE l.intervention_id=${input.interventionId}`)[0];
     if(concurrent){if(concurrent.source_run_id!==sourceRunId||concurrent.instruction!==input.text)return{status:'intervention_conflict' as const};return{status:'duplicate' as const,runId:concurrent.child_run_id as string,runStatus:concurrent.status as string,sourceRunId};}
     if(source.status!=='completed')return{status:'not_completed' as const};
@@ -94,6 +95,7 @@ export class RunRepository{
     const source=(await tx`SELECT r.* FROM agent_runs r WHERE r.id=${pending.anchor_run_id as string} FOR UPDATE`)[0];
     if(!source)return{status:'not_found' as const};
     if(source.status!=='completed')return{status:'not_completed' as const};
+    if(!sameRunProject(source,await currentRoomProject(tx,String(source.room_id))))return{status:'continuation_incompatible' as const};
     const[chain]=await tx`SELECT * FROM run_continuation_chains WHERE head_run_id=${source.id as string} FOR UPDATE`;
     if(!chain||!source.system_prompt_snapshot)return{status:'continuation_unavailable' as const};
     const[slot]=await tx`SELECT selected_run_id FROM response_slots WHERE id=${chain.response_slot_id as string} FOR UPDATE`;

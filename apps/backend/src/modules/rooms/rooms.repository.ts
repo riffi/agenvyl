@@ -210,6 +210,9 @@ export class RoomRepository {
   async assignProject(id:string,projectId:string|null){
     return this.database.transaction(async tx=>{
       if(projectId&&!(await tx`SELECT 1 FROM local_projects WHERE id=${projectId}`).length)return'project_not_found' as const;
+      const[room]=await tx`SELECT project_id,event_sequence FROM rooms WHERE id=${id} AND deleted_at IS NULL FOR UPDATE`;
+      if(!room)return'room_not_found' as const;
+      if(room.project_id!==projectId)await tx`UPDATE run_continuation_chains SET invalidated_sequence=COALESCE(invalidated_sequence,${Number(room.event_sequence)}),release_state=CASE WHEN release_state='retained' THEN 'pending' ELSE release_state END,updated_at=now() WHERE room_id=${id} AND invalidated_sequence IS NULL`;
       const rows=await tx`UPDATE rooms SET project_id=${projectId} WHERE id=${id} AND deleted_at IS NULL RETURNING id`;
       return rows.length?'updated' as const:'room_not_found' as const;
     });
