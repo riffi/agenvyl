@@ -452,3 +452,5 @@ function isUpstreamStatusEvent(value: Record<string, unknown>) {
     && (value.message === undefined || typeof value.message === 'string');
 }
 export * from './workspaceRestore.js';
+
+export * from './directoryBrowser.js';

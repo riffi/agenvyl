@@ -1,9 +1,10 @@
 import type {ConnectorDirectoryPickerResult,ConnectorDirectoryValidation} from '@agenvyl/connector-contract';
-import type {LocalProject,ProjectAvailability} from '@agenvyl/contracts';
+import type {DirectoryListing,LocalProject,ProjectAvailability} from '@agenvyl/contracts';
 import {AppError} from '../../shared/errors/AppError.js';
+import {ConnectorClientError} from '../../integrations/connector/HttpConnectorClient.js';
 import type {ProjectRepository,ProjectRow} from './projects.repository.js';
 
-type DirectoryConnector={validateDirectory(path:string):Promise<ConnectorDirectoryValidation>;pickDirectory():Promise<ConnectorDirectoryPickerResult>};
+type DirectoryConnector={browseDirectories(path?:string):Promise<DirectoryListing>;validateDirectory(path:string):Promise<ConnectorDirectoryValidation>;pickDirectory():Promise<ConnectorDirectoryPickerResult>};
 
 export class ProjectsService{
   constructor(private readonly projects:ProjectRepository,private readonly connector:DirectoryConnector){}
@@ -22,6 +23,7 @@ export class ProjectsService{
     catch{throw new AppError('project_conflict',409,'A project with this name or folder already exists');}
   }
   async delete(id:string){if(!await this.projects.delete(id))throw new AppError('project_not_found',404,'Project not found');}
+  async browse(path?:string){try{return await this.connector.browseDirectories(path);}catch(error){if(error instanceof ConnectorClientError)throw new AppError(error.serverCode??error.code,error.status??503,error.message);throw error;}}
   async pick(){const result=await this.connector.pickDirectory();if(result.status==='selected')return{status:'selected' as const,path:result.path};if(result.status==='cancelled')return{status:'cancelled' as const};return{status:'unavailable' as const,message:result.error?.message};}
   private async requireDirectory(path?:string){
     if(!path?.trim())throw new AppError('project_path_required',400,'Project path is required');

@@ -1,6 +1,6 @@
 import {ProjectReferenceContext} from '../../shared/project-references/ProjectReferenceContext';
 import type {ProjectReference} from '@agenvyl/contracts';
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from 'react-router-dom';
 import { Menu, MessageCircle, Paperclip, Plus } from "lucide-react";
@@ -55,9 +55,11 @@ export function WorkspaceApp({
   navigateToHarnessSettings,
   navigateToProjects,
   selectedPersonaId,
+  renderProjects,
   navigateToPersona,
 }: {
-  view: 'chat' | 'personas';
+  view: 'chat' | 'personas' | 'projects';
+  renderProjects?:(openMenu:()=>void)=>ReactNode;
   roomId: string;
   navigateToRoom: (roomId: string, options?: { replace?: boolean }) => void;
   navigateToPersonas: () => void;
@@ -256,7 +258,7 @@ export function WorkspaceApp({
       )}
       <div className={`${styles.workspaceMain} ${sidebarCollapse.collapsed ? styles.sidebarCollapsed : ''}`} onDragEnter={event=>{if(event.dataTransfer.types.includes('Files')){event.preventDefault();dragDepth.current+=1;setDraggingFiles(true)}}} onDragOver={event=>{if(event.dataTransfer.types.includes('Files'))event.preventDefault()}} onDragLeave={event=>{if(!event.dataTransfer.types.includes('Files'))return;dragDepth.current=Math.max(0,dragDepth.current-1);if(!dragDepth.current)setDraggingFiles(false)}} onDrop={event=>{if(!event.dataTransfer.files.length)return;event.preventDefault();dragDepth.current=0;setDraggingFiles(false);void attachments.uploadFiles([...event.dataTransfer.files])}}>
         {draggingFiles&&view==='chat'&&<div className={styles.dropzone}><Paperclip/><strong>Drop files to attach them</strong><span>They will be uploaded to the workspace Inbox</span></div>}
-        {view==='chat'?(currentRoom?<>
+        {view==='projects'?renderProjects?.(()=>setMenu(true)):view==='chat'?(currentRoom?<>
           <RoomHeader
             title={currentRoom?.title??"Room"}
             project={currentRoom.project}

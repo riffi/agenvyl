@@ -1,3 +1,4 @@
+import {browseDirectories,directoryBrowseError} from './directory-browser.js';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { Readable } from 'node:stream';
 import Fastify, { type FastifyRequest } from 'fastify';
@@ -125,6 +126,8 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
     const result=await validateLocalDirectory(path);
     return reply.send({apiVersion:CONNECTOR_API_VERSION,...result});
   });
+
+  app.post<{Body:{path?:string}}>('/v2/directories/browse',{schema:{body:{type:'object',additionalProperties:false,properties:{path:{type:'string',maxLength:32768}}}}},async(request,reply)=>{try{return await browseDirectories(request.body.path);}catch(error){return reply.code(400).send({apiVersion:CONNECTOR_API_VERSION,error:'directory_unavailable',message:directoryBrowseError(error)});}});
 
   app.post('/v2/directories/pick',async()=>({apiVersion:CONNECTOR_API_VERSION,...await pickLocalDirectory()}));
 

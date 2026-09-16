@@ -15,7 +15,7 @@ export type SidebarProps = {
   close: () => void;
   collapsed?: boolean;
   toggleCollapsed?: () => void;
-  view: 'chat' | 'personas';
+  view: 'chat' | 'personas' | 'projects';
   openPersonas: () => void;
   openHarnessSettings?: () => void;
   openProjects?:()=>void;
@@ -130,7 +130,7 @@ export function Sidebar({ open, close, collapsed = false, toggleCollapsed, view,
         <button type="button" aria-label={collapsed ? 'New room' : undefined} title={collapsed ? 'New room' : undefined} onClick={createRoom}><Plus aria-hidden /> <span>New room</span></button>
         {collapsed && <button type="button" aria-label="Search rooms" title="Search rooms (Ctrl/Cmd+K)" onClick={openSearch}><Search aria-hidden /><span>Search rooms</span></button>}
         <button type="button" aria-label={collapsed ? 'Agents' : undefined} title={collapsed ? 'Agents' : undefined} aria-current={view === 'personas' ? 'page' : undefined} className={view === 'personas' ? styles.active : ''} onClick={openPersonas}><Users aria-hidden /> <span>Agents</span></button>
-        {openProjects&&<button type="button" aria-label={collapsed ? 'Projects' : undefined} title={collapsed ? 'Projects' : undefined} onClick={openProjects}><Folder aria-hidden /><span>Projects</span></button>}
+        {openProjects&&<button aria-current={view==='projects'?'page':undefined} className={view==='projects'?styles.active:''} type="button" aria-label={collapsed ? 'Projects' : undefined} title={collapsed ? 'Projects' : undefined} onClick={openProjects}><Folder aria-hidden /><span>Projects</span></button>}
       </nav>
 
       {!collapsed && <section className={styles.history} aria-label="Room history">

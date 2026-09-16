@@ -18,6 +18,11 @@ describe('projects API',()=>{
         return Response.json({apiVersion:'v2',status:'available',path:input.path,pathKey:input.path.toLocaleLowerCase('en-US')});
       }
       if(path==='/v2/directories/pick')return Response.json({apiVersion:'v2',status:'selected',path:first});
+      if(path==='/v2/directories/browse'){
+        const input=JSON.parse(String(init?.body)) as{path?:string};
+        if(input.path==='missing')return Response.json({error:'directory_unavailable',message:'Folder no longer exists.'},{status:400});
+        return Response.json({path:input.path??null,parent:null,home:first,host:'test-host',platform:'linux',entries:[{name:'Test folder',path:first}],truncated:false});
+      }
       return new Response('{}',{status:404});
     });
     const app=await buildApp({databaseUrl:testDatabaseUrl('projects_api'),connectorUrl:'http://connector.test',connectorToken:'x'.repeat(32),fetch:request,distPath:'missing-dist',legacySeed:false,logger:false});
@@ -27,6 +32,9 @@ describe('projects API',()=>{
     expect((await app.inject({method:'PUT',url:`/api/v1/rooms/${room.json().id}/project`,payload:{project_id:null}})).json().project).toBeNull();
     await app.inject({method:'PUT',url:`/api/v1/rooms/${room.json().id}/project`,payload:{project_id:projectId}});
     expect((await app.inject({method:'POST',url:'/api/v1/projects/pick-directory'})).json()).toEqual({status:'selected',path:first});
+    expect((await app.inject('/api/v1/projects/directories')).json()).toMatchObject({path:null,host:'test-host',entries:[{name:'Test folder',path:first}]});
+    expect((await app.inject(`/api/v1/projects/directories?path=${encodeURIComponent(first)}`)).json()).toMatchObject({path:first});
+    const missing=await app.inject('/api/v1/projects/directories?path=missing');expect(missing.statusCode).toBe(400);expect(missing.json().message).toBe('Folder no longer exists.');
     expect((await app.inject({method:'DELETE',url:`/api/v1/projects/${projectId}`})).statusCode).toBe(204);
     expect((await app.inject('/api/v1/rooms')).json()[0].project).toBeNull();
     await app.close();

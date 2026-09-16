@@ -6,6 +6,7 @@ const projectBody={type:'object',additionalProperties:false,required:['name','pa
 const updateBody={type:'object',additionalProperties:false,minProperties:1,properties:projectBody.properties} as const;
 
 export const registerProjectRoutes=async(app:FastifyInstance,projects:ProjectsService)=>{
+  app.get<{Querystring:{path?:string}}>('/api/v1/projects/directories',{schema:{querystring:{type:'object',additionalProperties:false,properties:{path:{type:'string',maxLength:32768}}}}},request=>projects.browse(request.query.path));
   app.get('/api/v1/projects',()=>projects.list());
   app.post<{Body:CreateProjectRequest}>('/api/v1/projects',{schema:{body:projectBody}},async(request,reply)=>reply.code(201).send(await projects.create(request.body)));
   app.patch<{Params:{id:string};Body:UpdateProjectRequest}>('/api/v1/projects/:id',{schema:{body:updateBody}},request=>projects.update(request.params.id,request.body));
