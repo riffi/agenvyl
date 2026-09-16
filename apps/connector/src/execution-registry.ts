@@ -105,7 +105,7 @@ export class ExecutionRegistry {
         if(request.workspace.project.access!==expectedAccess)throw new RegistryError('project_access_invalid',`Selected project access must be ${expectedAccess} in ${request.executionProfile.workflowMode} mode`,400);
         projectScope={absolutePath:this.workspacePolicy.resolveProject(request.workspace.project.path),access:request.workspace.project.access};
       }
-      workspacePath=request.executionProfile.workflowMode==='work'&&projectScope?projectScope.absolutePath:roomWorkspacePath;
+      workspacePath=projectScope?.absolutePath??roomWorkspacePath;
       attachments=(request.input.attachments??[]).map(item=>({...item,absolutePath:this.workspacePolicy.resolveVersion(roomWorkspacePath,item.sha256)}));
     } catch (error) {
       binding.release();

@@ -4,11 +4,13 @@ A project is a named local folder that gives agents a preferred place to work.
 Register a folder once, then select it with **Add project** when creating a room
 or from the room's **Project…** action.
 
-Projects are guidance, not storage or a security boundary:
+An available selected project is the execution working directory in both
+**Plan** and **Work**. Plan uses it for read-only exploration; Work applies
+changes directly to it. Without an available project, executions use the
+room's shared Git-backed Workspace.
 
-- the agent process starts in the room's shared Git-backed Workspace;
-- selecting a project does not change the process working directory, extend a
-  sandbox, or add the folder to an allowlist;
+Selecting a project is not a blanket permission grant:
+
 - the selected harness and permission profile still decide which paths the
   agent can access;
 - agents may use other folders when their permissions and task allow it; and
@@ -21,13 +23,13 @@ coordinated changes or otherwise protect the external repository yourself.
 
 ### Harness access requirements
 
-| Harness | What is required to use a project outside the room workspace |
+| Harness | Selected project behavior and access |
 | --- | --- |
-| Codex CLI | A profile whose Codex sandbox permits the external path; **Full access** is the Agenvyl profile intended for unrestricted host access. |
-| OpenCode | The directory must be covered by the instance's **Allowed external directories**. **Standard** still asks for approval; **Auto-approve** applies only to Work runs. |
+| Codex CLI | The project is passed as `cwd`. Plan forces a read-only sandbox, including when **Full access** is selected; Work uses the selected permission profile. |
+| OpenCode | The session is rooted in the project. Native Plan enforcement and the selected permission profile still apply; unrelated external directories need separate authorization. |
 | Claude Code | Claude's selected permission mode and any runtime approval must permit the operation. Agenvyl does not pre-authorize the project path. |
 | Antigravity / AGY | The instance and workflow mode remain authoritative; selecting a project does not enable edits. |
-| Cursor CLI | Agenvyl starts Cursor in the room workspace and instructs it to stay there. A selected project is context only for this integration. |
+| Cursor CLI | Agenvyl starts Cursor in the execution working directory and instructs it to stay there. Plan uses Cursor's native planning mode. |
 | Hermes | Access depends on the connected Hermes server and its tools; Agenvyl does not mount or grant the local path. |
 
 Registering or selecting a project therefore does not prove that every agent in

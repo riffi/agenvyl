@@ -441,7 +441,7 @@ export class RunExecutor {
     await this.dependencies.events.emit(run.roomId,'run.project.updated',{runId:run.id,project:run.recommendedProject});
     if(availability!=='available')return`\n\nRecommended project “${project.name}” is currently unavailable. Continue in the Agenvyl room workspace and do not assume that the configured project path can be accessed.`;
     if(run.executionProfile.workflowMode==='work')return`\n\nSelected project for this room:\n- Name: ${project.name}\n- Working directory: ${project.path}\nWork directly in this directory. Changes affect the selected local project immediately. The Agenvyl room workspace remains reserved for managed attachments and response artifacts.`;
-    return`\n\nSelected project context for this room:\n- Name: ${project.name}\n- Read-only directory: ${project.path}\nYou may inspect this directory without requesting additional external-directory access. Do not create, edit, move, or delete files in it while Plan mode is active. The Agenvyl room workspace remains the working directory and the location for managed attachments and response artifacts.`;
+    return`\n\nSelected project for this room:\n- Name: ${project.name}\n- Working directory: ${project.path}\nUse this directory for read-only exploration. Do not create, edit, move, or delete files in it while Plan mode is active. The Agenvyl room workspace remains reserved for managed attachments and response artifacts.`;
   }
 
   private armDeadline(run:RunContext){

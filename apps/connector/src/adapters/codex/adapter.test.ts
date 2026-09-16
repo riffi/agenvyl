@@ -68,8 +68,9 @@ describe('Codex connector adapter',()=>{
     await workAdapter.start({...input('full-work'),executionProfile:{...input().executionProfile,permissionProfileId:'danger-full-access'}});
     expect(workClient.requests.find(request=>request.method==='thread/start')).toMatchObject({params:{sandbox:'danger-full-access',approvalPolicy:'never'}});
     const planClient=new FakeAppServer(),planAdapter=new CodexConnectorAdapter({client:planClient});
-    await planAdapter.start({...input('full-plan'),executionProfile:{...input().executionProfile,workflowMode:'plan' as const,permissionProfileId:'danger-full-access'}});
-    expect(planClient.requests.find(request=>request.method==='thread/start')).toMatchObject({params:{sandbox:'read-only',approvalPolicy:'on-request'}});
+    await planAdapter.start({...input('full-plan'),workspace:{roomId:'room',relativePath:'.',absolutePath:'C:/projects/main',roomAbsolutePath:'C:/workspace/room',project:{absolutePath:'C:/projects/main',access:'read'}},executionProfile:{...input().executionProfile,workflowMode:'plan' as const,permissionProfileId:'danger-full-access'}});
+    expect(planClient.requests.find(request=>request.method==='thread/start')).toMatchObject({params:{cwd:'C:/projects/main',sandbox:'read-only',approvalPolicy:'on-request'}});
+    expect(planClient.requests.find(request=>request.method==='turn/start')).toMatchObject({params:{collaborationMode:{mode:'plan'}}});
   });
   it('round-trips MCP form and URL elicitations without failing the execution',async()=>{
     const client=new FakeAppServer(),adapter=new CodexConnectorAdapter({client}),execution=await adapter.start(input()),iterator=adapter.events(execution)[Symbol.asyncIterator]();

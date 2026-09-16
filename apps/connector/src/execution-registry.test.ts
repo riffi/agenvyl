@@ -24,7 +24,7 @@ describe('ExecutionRegistry live subscriptions', () => {
     registry.start(request);await waitFor(()=>adapter.received!==undefined);
     expect(adapter.received?.input.attachments).toEqual([{...request.input.attachments[0],absolutePath:join(workspaceRoot,'.versions','aa','a'.repeat(64))}]);
   });
-  it('uses the selected project directly in Work and keeps the room workspace in Plan',async()=>{
+  it('uses the selected project directly in Work and Plan with mode-specific access',async()=>{
     const workAdapter=new LiveAdapter(),workRegistry=createRegistry(workAdapter);
     const workRequest={...structuredClone(connectorContractFixtures.startExecution),executionId:'work-project',workspace:{roomId:'room-1',relativePath:'.',project:{path:projectRoot,access:'read_write' as const}}} as StartExecutionRequest;
     workRegistry.start(workRequest);
@@ -36,8 +36,18 @@ describe('ExecutionRegistry live subscriptions', () => {
     const planRequest={...structuredClone(connectorContractFixtures.startExecution),executionId:'plan-project',executionProfile:{...connectorContractFixtures.startExecution.executionProfile,workflowMode:'plan' as const,planEnforcement:'instruction_only' as const},workspace:{roomId:'room-1',relativePath:'.',project:{path:projectRoot,access:'read' as const}}} as StartExecutionRequest;
     planRegistry.start(planRequest);
     await waitFor(()=>planAdapter.received!==undefined);
-    expect(planAdapter.received?.workspace).toEqual({roomId:'room-1',relativePath:'.',absolutePath:join(workspaceRoot,'room-1'),roomAbsolutePath:join(workspaceRoot,'room-1'),project:{absolutePath:projectRoot,access:'read'}});
+    expect(planAdapter.received?.workspace).toEqual({roomId:'room-1',relativePath:'.',absolutePath:projectRoot,roomAbsolutePath:join(workspaceRoot,'room-1'),project:{absolutePath:projectRoot,access:'read'}});
     expect(()=>planRegistry.start({...planRequest,executionId:'invalid-plan',workspace:{...planRequest.workspace,project:{path:projectRoot,access:'read_write'}}})).toThrow('Selected project access must be read in plan mode');
+  });
+
+  it.each(['plan','work'] as const)('uses the room workspace in %s without a selected project',async workflowMode=>{
+    const adapter=new LiveAdapter(),registry=createRegistry(adapter);
+    const request=structuredClone(connectorContractFixtures.startExecution) as StartExecutionRequest;
+    request.executionProfile.workflowMode=workflowMode;
+    request.executionProfile.planEnforcement=workflowMode==='plan'?'instruction_only':null;
+    registry.start(request);await waitFor(()=>adapter.received!==undefined);
+    expect(adapter.received?.workspace.absolutePath).toBe(join(workspaceRoot,'room-1'));
+    expect(adapter.received?.workspace.project).toBeUndefined();
   });
 
   it('enforces the harness-neutral native continuation contract',async()=>{
