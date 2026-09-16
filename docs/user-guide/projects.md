@@ -46,6 +46,45 @@ available; manual path entry always remains available.
 The Connector verifies that the path is an existing directory and stores its
 canonical form. The same folder cannot be registered twice.
 
+## Browse project files and the current build
+
+With a project attached, the room's **Workspace** button opens the project on
+first use. The source selector in the upper left switches between the project
+and **Room workspace**. **App preview / Files** works in both sources. Agenvyl
+remembers the last source and view for that room and project in your browser.
+Opening a message attachment still opens its saved workspace version.
+
+The project tree reads files through Connector, loads directories as you expand
+them, and refreshes open directories and the selected file every three seconds.
+It is a read-only browser: Download and Attach are available, but file mutations,
+Trash, history and restores belong to Room workspace. Attach copies the bytes
+at that moment into an immutable workspace version. Later project edits do not
+change the message attachment. No project Git commits are created.
+
+App preview serves the current static files directly from the project. It uses
+the same `dist`, `build`, `out` and plain HTML discovery rules as Workspace.
+Equally ranked builds are offered for selection. The actions menu's **Build
+settings…** lets you choose another relative HTML path and override the build
+command; clear either field to restore automatic detection. Settings belong to
+the project and are shared across rooms.
+
+**Build now** runs the detected `package.json` build script (using the package
+manager field or lockfile) or your configured command directly in the project
+through Connector. It does not invoke an agent. The log shows progress, success
+or failure and offers cancellation. Only one manual build runs per project;
+builds time out after ten minutes. Logs are bounded and last until Connector
+restarts. Opening a preview never starts a build. Refresh reloads the preview;
+it also refreshes when a room agent finishes or a manual build ends.
+
+There is no build history or development-server management for projects. During
+a build, files are changing on disk; refresh the preview when the build ends.
+An inaccessible project shows an error rather than displaying Workspace files
+under the project's name. Files larger than 32 MiB cannot be opened or attached.
+Git internals and symbolic links are excluded. Auto-detection scans at most
+10,000 entries and six directory levels, skipping dependency/cache folders;
+use a manual HTML path when a project exceeds those limits. Individual folders
+show at most 2,000 entries, with a notice when truncated.
+
 ## Availability and run history
 
 A folder can become unavailable after registration because it was moved,

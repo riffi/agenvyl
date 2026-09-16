@@ -36,7 +36,7 @@ export const WorkspaceAppPreview = ({
       : staticPreview?.status==='build_missing'&&!selectedRunId
         ? <div className={styles.previewGate}><span className={styles.previewGateIcon}><Layers3 aria-hidden="true"/></span><strong>No build for the current workspace</strong><p>Build the current source to create a preview. Saved builds remain available in build history.</p><div><button type="button" onClick={onFiles}>View files</button></div></div>
       : selected
-        ? <AppPreviewDevice selected={selected} device={device} />
+        ? <AppPreviewDevice previewUrl={selected.attachment.preview_url} title={`App build by @${selected.agent}`} device={device} />
         : <div className={styles.previewGate}>
           <span className={styles.previewGateIcon}><Layers3 aria-hidden="true"/></span>
           <strong>App preview unavailable</strong>
@@ -46,7 +46,7 @@ export const WorkspaceAppPreview = ({
   </section>;
 };
 
-const AppPreviewDevice = ({ selected, device }: { selected: WorkspaceBuildPreview; device: WorkspacePreviewDevice }) => {
+export const AppPreviewDevice = ({ previewUrl,title,device }: { previewUrl:string;title:string;device:WorkspacePreviewDevice }) => {
   const stageRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
   const mobile = device === 'mobile';
@@ -67,7 +67,7 @@ const AppPreviewDevice = ({ selected, device }: { selected: WorkspaceBuildPrevie
   return <div ref={stageRef} className={`${deviceStyles.stage} ${mobile ? deviceStyles.mobile : ''}`} style={{ '--preview-scale': scale } as CSSProperties}>
     <div className={deviceStyles.device}>
       <div className={deviceStyles.screen}>
-        <IsolatedHtmlPreview className={styles.appPreviewFrame} title={`App build by @${selected.agent}`} previewUrl={selected.attachment.preview_url} />
+        <IsolatedHtmlPreview className={styles.appPreviewFrame} title={title} previewUrl={previewUrl} />
       </div>
     </div>
   </div>;

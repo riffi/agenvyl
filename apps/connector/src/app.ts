@@ -24,6 +24,7 @@ import { ExecutionRegistry, RegistryError } from './execution-registry.js';
 import { WorkspacePolicy, WorkspacePolicyError } from './workspace-policy.js';
 import {pickLocalDirectory,validateLocalDirectory} from './directory-access.js';
 import {ManagedServerError} from './managed-servers.js';
+import {registerProjectFileRoutes} from './project-files.routes.js';
 
 export function buildConnectorApp(config: ConnectorConfig, options: {
   connectorEpoch?: string;
@@ -55,6 +56,7 @@ export function buildConnectorApp(config: ConnectorConfig, options: {
   const restartingInstances=new Set<string>();
   const hasAdapter = (instance: ConnectorConfig['instances'][number]) => generations.current.adapters.get(instance.id)?.type === instance.type;
   const workspacePolicy = new WorkspacePolicy(config.workspaces.roots);
+  registerProjectFileRoutes(app,workspacePolicy);
   const isReady = (instance: ConnectorConfig['instances'][number]) => !runtimeErrors.has(instance.id)&&hasAdapter(instance) && workspacePolicy.configured;
   const registry = new ExecutionRegistry(
     connectorEpoch,

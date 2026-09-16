@@ -1,4 +1,5 @@
 export const CONNECTOR_API_VERSION = 'v2' as const;
+export * from './projectFiles.js';
 
 export type ConnectorApiVersion = typeof CONNECTOR_API_VERSION;
 export type ConnectorStatus = 'ready' | 'degraded';

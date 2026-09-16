@@ -1,5 +1,9 @@
 # App builds and previews
 
+This page describes room Workspace builds. Connected projects show the current
+build directly from their folder, with optional manual building and HTML
+selection. See [Project files and previews](projects.md#browse-project-files-and-the-current-build).
+
 An app build is a static website captured when an agent run finishes. It is a
 frozen preview stored separately from the editable room Workspace. You can open
 the exact app associated with a response, compare builds, and see when source

@@ -4,6 +4,15 @@ import {buildPreviewApp} from './buildPreviewApp.js';
 describe('preview origin app',()=>{
   const apps:Array<Awaited<ReturnType<typeof buildPreviewApp>>>=[];
   afterEach(async()=>Promise.all(apps.splice(0).map(app=>app.close())));
+  it('relays project previews and scopes absolute assets without exposing project APIs',async()=>{
+    const request=vi.fn<typeof fetch>(async()=>new Response('preview'));
+    const app=await buildPreviewApp({upstreamOrigin:'http://127.0.0.1:8791',fetch:request,logger:false});apps.push(app);
+    const base='/api/v1/projects/project/preview/ZGlzdC9pbmRleC5odG1s/';
+    expect((await app.inject(base)).body).toBe('preview');
+    const asset=await app.inject({url:'/assets/app.js',headers:{host:'preview.test',referer:`http://preview.test${base}`}});
+    expect(asset.headers.location).toBe(`${base}assets/app.js`);
+    for(const suffix of ['files','file?path=.env','build','inspection'])expect((await app.inject(`/api/v1/projects/project/${suffix}`)).statusCode).toBe(404);
+  });
 
   it('relays only preview resources and preserves isolation headers',async()=>{
     const request=vi.fn<typeof fetch>(async input=>{

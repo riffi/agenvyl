@@ -24,6 +24,10 @@ flowchart TD
 
 ## Open the Workspace
 
+When a project is attached, the same window defaults to its files and current
+app build. Use the source selector to return to **Room workspace** and its
+history and file operations. See [Project files and previews](projects.md#browse-project-files-and-the-current-build).
+
 - Select **+** beside the message composer, then **Open workspace**, to open the
   current files with the tree visible.
 - Select an attachment or a changed file below an agent response to open the

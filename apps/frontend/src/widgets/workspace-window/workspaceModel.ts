@@ -27,6 +27,7 @@ export type WorkspaceViewState = {
 };
 
 export type WorkspaceOpenRequest = {
+  source?:'project'|'workspace';
   origin: WorkspaceOpenOrigin;
   section?: WorkspaceSection;
   buildRunId?: string;
@@ -57,6 +58,7 @@ export const workspaceRequestForTarget = (
 });
 
 export type WorkspaceRequestUpdate = {
+  source?:'project'|'workspace';
   section?: WorkspaceSection;
   buildRunId?: string;
   target?: WorkspaceTarget;
@@ -153,6 +155,7 @@ export const workspaceRequestFromSearch = (search: URLSearchParams): WorkspaceOp
   const section = sectionValue === 'app' || sectionValue === 'files' ? sectionValue : undefined;
   return {
     origin: search.get('wsOrigin') === 'artifact' ? 'artifact' : 'workspace',
+    source: search.get('wsSource') === 'project' ? 'project' : search.get('wsSource') === 'workspace' ? 'workspace' : undefined,
     section,
     buildRunId: search.get('wsBuild') || undefined,
     treeVisible: search.get('wsTree') !== '0',
@@ -163,9 +166,10 @@ export const workspaceRequestFromSearch = (search: URLSearchParams): WorkspaceOp
 
 export const workspaceSearchWithRequest = (current: URLSearchParams, request?: WorkspaceOpenRequest | WorkspaceRequestUpdate) => {
   const next = new URLSearchParams(current);
-  ['workspace','wsEntry','wsVersion','wsView','wsTree','wsOrigin','wsSection','wsBuild'].forEach(key => next.delete(key));
+  ['workspace','wsEntry','wsVersion','wsView','wsTree','wsOrigin','wsSection','wsBuild','wsSource'].forEach(key => next.delete(key));
   if (!request) return next;
   next.set('workspace', '1');
+  if(request.source)next.set('wsSource',request.source);
   const target = request.target;
   if (target?.entryId) next.set('wsEntry', target.entryId);
   if (target?.versionId) next.set('wsVersion', target.versionId);

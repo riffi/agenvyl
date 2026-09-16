@@ -291,7 +291,7 @@ export function WorkspaceApp({
         harnessCatalog={harnessCatalog}
         close={() => setSelected(undefined)}
       />
-      <WorkspaceWindow request={workspaceRequest} roomId={roomId} fake={fake} onAttach={attachment=>attachments.addExisting([attachment])} onClose={closeWorkspace} onRequestChange={updateWorkspaceRequest}/>
+      <WorkspaceWindow request={workspaceRequest} roomId={roomId} project={currentRoom?.project} revision={Object.values(state.runs).filter(run=>['completed','failed','cancelled'].includes(run.status)).map(run=>run.id).join(',')} fake={fake} onAttach={attachment=>attachments.addExisting([attachment])} onClose={closeWorkspace} onRequestChange={updateWorkspaceRequest}/>
       <AttachmentPicker open={attachmentPicker} roomId={roomId} selected={attachments.ready} onClose={()=>setAttachmentPicker(false)} onConfirm={attachments.replaceReady} onUpload={files=>void attachments.uploadFiles(files)}/>
       {creatingRoom&&<CreateRoomDialog personas={personaCatalog.filter(persona=>!persona.archived_at)} catalog={harnessCatalog} groups={groups} projects={projectsQuery.data??[]} onClose={()=>setCreatingRoom(false)} onCreated={createRoom}/>}
       {managingAgents&&currentRoom&&<RoomAgentManager personas={personaCatalog.filter(persona=>!persona.archived_at)} catalog={harnessCatalog} groups={groups} roomPersonas={roomPersonas} onUpdateReasoning={updateParticipantReasoning} onClose={()=>setManagingAgents(false)} onSave={saveRoomAgents}/>}

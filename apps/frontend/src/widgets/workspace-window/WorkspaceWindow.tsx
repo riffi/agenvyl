@@ -1,8 +1,10 @@
 import { createPortal } from 'react-dom';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { File, X } from 'lucide-react';
-import type { RoomWorkspace, WorkspaceAttachment, WorkspaceEntry } from '@agenvyl/contracts';
+import type { ProjectSummary, RoomWorkspace, WorkspaceAttachment, WorkspaceEntry } from '@agenvyl/contracts';
+import {ProjectWindow} from './ProjectWindow';
+import {WorkspaceSource} from './WorkspaceSource';
 import { Alert } from '../../shared/ui';
 import { roomsApi } from '../../entities/room';
 import { WorkspaceContent } from './WorkspaceContent';
@@ -21,13 +23,32 @@ import {
 } from './workspaceModel';
 import styles from './WorkspaceWindow.module.css';
 
-export const WorkspaceWindow = ({
+type WindowProps={request?:WorkspaceOpenRequest;roomId:string;fake?:boolean;onClose:()=>void;onRequestChange:(update:WorkspaceRequestUpdate)=>void;onAttach?:(attachment:WorkspaceAttachment)=>void;project?:ProjectSummary|null;revision?:string};
+export const WorkspaceWindow=(props:WindowProps)=>{
+  const {project,request,onRequestChange}=props;
+  const preferenceKey=`project-view:${props.roomId}:${project?.id}:${project?.path}`;
+  let remembered:{source?:'project'|'workspace';section?:'app'|'files'}={};
+  try{const value=JSON.parse(localStorage.getItem(preferenceKey)??'{}');if(value&&typeof value==='object')remembered=value;}catch{/* Use the initial view if browser storage is unavailable. */}
+  const artifact=Boolean(request?.origin==='artifact'||request?.target?.entryId||request?.target?.versionId);
+  const source=request?.source??(artifact?'workspace':project?remembered.source==='workspace'?'workspace':'project':'workspace');
+  const effectiveRequest=request?{...request,section:request.section??(!artifact&&(remembered.section==='files'||remembered.section==='app')?remembered.section:undefined)}:undefined;
+  useEffect(()=>{
+    if(!request||!project||artifact)return;
+    try{localStorage.setItem(preferenceKey,JSON.stringify({source,section:effectiveRequest?.section??(source==='project'?'app':'files')}));}catch{/* Viewing files does not require browser storage. */}
+  },[request,project,artifact,preferenceKey,source,effectiveRequest?.section]);
+  const selector=project?<WorkspaceSource project={project} source={source} onChange={source=>onRequestChange({source,section:source==='project'?'app':'files',target:undefined,buildRunId:undefined,mode:undefined,treeVisible:true})}/>:undefined;
+  if(effectiveRequest&&source==='project'&&project&&!props.fake)return <ProjectWindow key={`${props.roomId}:${project.id}:${project.path}`} {...props} request={effectiveRequest} project={project} source={selector}/>;
+  return <WorkspaceFilesWindow {...props} request={effectiveRequest} sourceSelector={selector}/>;
+};
+
+const WorkspaceFilesWindow = ({
   request,
   roomId,
   fake = false,
   onClose,
   onRequestChange,
   onAttach,
+  sourceSelector,
 }: {
   request?: WorkspaceOpenRequest;
   roomId: string;
@@ -35,6 +56,7 @@ export const WorkspaceWindow = ({
   onClose: () => void;
   onRequestChange: (update: WorkspaceRequestUpdate) => void;
   onAttach?: (attachment: WorkspaceAttachment) => void;
+  sourceSelector?:ReactNode;
 }) => {
   const open = Boolean(request);
   const queryClient = useQueryClient();
@@ -244,6 +266,7 @@ export const WorkspaceWindow = ({
 
   return createPortal(<section className={styles.window} role="dialog" aria-modal="true" aria-label="Workspace">
     <WorkspaceHeader
+      sourceSelector={sourceSelector}
       previewDevice={previewDevice}
       onPreviewDevice={setPreviewDevice}
       section={section}

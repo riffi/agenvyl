@@ -37,4 +37,5 @@ export const migrations = [
   { version: 36, name: 'workflow_mode_handoffs', file: '036_workflow_mode_handoffs.sql' },
   { version: 37, name: 'started_fresh_delivery', file: '037_started_fresh_delivery.sql' },
   { version: 38, name: 'workspace_restores', file: '038_workspace_restores.sql' },
+  { version: 39, name: 'project_preview_settings', file: '039_project_preview_settings.sql' },
 ] as const;

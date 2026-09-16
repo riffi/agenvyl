@@ -1,4 +1,4 @@
-import { useRef, type FocusEventHandler } from 'react';
+import { useRef, type FocusEventHandler, type ReactNode } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -26,6 +26,7 @@ import { WorkspaceBuildPicker } from './WorkspaceBuildPicker';
 import styles from './WorkspaceWindow.module.css';
 
 type WorkspaceHeaderProps = {
+  sourceSelector?:ReactNode;
   section: WorkspaceSection;
   previewDevice: WorkspacePreviewDevice;
   onPreviewDevice: (device: WorkspacePreviewDevice) => void;
@@ -63,6 +64,7 @@ type WorkspaceHeaderProps = {
 };
 
 export const WorkspaceHeader = ({
+  sourceSelector,
   section,
   previewDevice,
   onPreviewDevice,
@@ -124,14 +126,14 @@ export const WorkspaceHeader = ({
         <ChevronLeft className={styles.mobileBackIcon} />
       </IconButton>}
 
-      <div className={styles.workspaceIdentity}>
+      {sourceSelector??<div className={styles.workspaceIdentity}>
         <FolderOpen className={styles.workspaceIcon} />
         <strong>Workspace</strong>
         {section === 'files' && attachment && <>
           <span className={styles.identityDivider}>/</span>
           <span className={styles.fileName} title={entry?.path ?? attachment.path}>{attachment.name}</span>
         </>}
-      </div>
+      </div>}
     </div>
 
     <div className={styles.headerCenter}>

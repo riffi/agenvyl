@@ -1,7 +1,7 @@
 import {spawn,type ChildProcess,type ChildProcessByStdio} from 'node:child_process';
 import type {Readable,Writable} from 'node:stream';
 
-type Invocation={file:string;args:string[];windowsVerbatimArguments?:boolean};
+type Invocation={file:string;args:string[];windowsVerbatimArguments?:boolean;cwd?:string};
 type StdioChild=ChildProcessByStdio<Writable,Readable,Readable>;
 
 export const spawnInWindowsJob=(invocation:Invocation,env:NodeJS.ProcessEnv,spawnProcess:typeof spawn=spawn)=>{
@@ -25,7 +25,7 @@ export const spawnStdioInWindowsJob=(invocation:Invocation,env:NodeJS.ProcessEnv
       AGENVYL_JOB_FILE:invocation.file,
       AGENVYL_JOB_ARGS:invocation.args.map(value=>Buffer.from(value,'utf8').toString('base64')).join('.'),
     },
-    stdio:['pipe','pipe','pipe'],windowsHide:true,
+    stdio:['pipe','pipe','pipe'],windowsHide:true,cwd:invocation.cwd,
   },
 ) as StdioChild;
 

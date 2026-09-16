@@ -1,0 +1,8 @@
+.source{max-width:240px;min-width:70px;padding:6px 22px 6px 8px;border:1px solid #d9dfe8;border-radius:6px;background:#fff;color:#354155;font-size:11px;text-overflow:ellipsis}
+.source:focus-visible{outline:2px solid #5666c2;outline-offset:2px}
+.error{display:flex;align-items:center;gap:12px;padding:10px 16px;background:#fff0ee;color:#9c3026;font-size:12px}
+.error button,.log button{margin-left:auto;padding:5px 10px;border:1px solid #c8d0df;border-radius:5px;background:#fff;color:#354155}
+.filePath{padding:8px 14px;border-bottom:1px solid #e3e7ed;color:#627086;font:11px/1.4 monospace;overflow-wrap:anywhere}
+.log{flex:none;max-height:35vh;overflow:auto;border-top:1px solid #d9dfe8;background:#fff}
+.log header{display:flex;align-items:center;gap:14px;padding:8px 14px;font-size:12px}.log code{overflow-wrap:anywhere;font-size:11px}.log pre{margin:0;padding:10px 14px;white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.5 monospace}
+@media(max-width:680px){.source{max-width:105px;font-size:10px}.log header{gap:6px}.log code{display:none}}

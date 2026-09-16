@@ -17,6 +17,7 @@ import {ConnectorRunAdapter} from '../integrations/connector/ConnectorRunAdapter
 import {UserProfileService} from '../modules/user-profile/userProfile.service.js';
 import {SetupService} from '../modules/setup/SetupService.js';
 import {ProjectsService} from '../modules/projects/projects.service.js';
+import {ProjectFilesService} from '../modules/projects/ProjectFilesService.js';
 import {RunInterventionService} from '../modules/runs/RunInterventionService.js';
 import {PreviewBundleStore} from '../modules/workspace/PreviewBundleStore.js';
 import {RunContinuationCleanupService} from '../modules/runs/RunContinuationCleanupService.js';
@@ -73,6 +74,7 @@ export async function createAppContainer(config: AppConfig, fetchImplementation?
     roomWorkspace,
     setupService:new SetupService(database,connector,workspaceRoot,harnessCatalogService,{logger,roomWorkspace}),
     projectsService:new ProjectsService(projects,connector),
+    projectFilesService:new ProjectFilesService(projects,connector,roomWorkspace),
   };
 }
 

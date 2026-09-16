@@ -126,10 +126,10 @@ export class RoomWorkspaceService{
     return result;
   }
 
-  async upload(roomId:string,filePath:string|undefined,_contentType:string|undefined,body:Buffer,conflict:'fail'|'replace'|'rename'='fail'){
+  async upload(roomId:string,filePath:string|undefined,_contentType:string|undefined,body:Buffer,conflict:'fail'|'replace'|'rename'='fail',acceptEmpty=false){
     return this.withRoomMutation(roomId,async()=>{
       if(!filePath)throw new AppError('file_name_required',400,'File name is required');
-      if(!body.length)throw new AppError('empty_file',400,'File is empty');
+      if(!body.length&&!acceptEmpty)throw new AppError('empty_file',400,'File is empty');
       if(body.length>this.maxFileBytes)throw new AppError('file_too_large',413,`File size must not exceed ${Math.floor(this.maxFileBytes/1024/1024)} MB`);
       let relative=safeRelative(decodeHeaderName(filePath));assertPublicPath(relative);const directory=await this.ensure(roomId);let target=path.join(directory,relative);
       const exists=await stat(target).then(item=>item.isFile()).catch(()=>false);

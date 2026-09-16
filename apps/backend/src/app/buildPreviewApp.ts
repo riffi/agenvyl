@@ -14,6 +14,7 @@ export async function buildPreviewApp(options:PreviewAppOptions){
   await registerErrorHandler(app);
 
   app.get('/health',()=>({status:'ok'}));
+  app.get('/api/v1/projects/:id/preview/:entry/*',async(req,reply)=>relay(request,options.upstreamOrigin,req.raw.url??req.url,reply));
   app.get<{Params:{roomId:string;versionId:string}}>('/api/v1/rooms/:roomId/workspace/versions/:versionId/preview',async(req,reply)=>
     relay(request,options.upstreamOrigin,req.raw.url??req.url,reply));
   app.get<{Params:{roomId:string;versionId:string;'*':string}}>('/api/v1/rooms/:roomId/workspace/versions/:versionId/preview/*',async(req,reply)=>
@@ -49,7 +50,7 @@ const scopedRunAsset=(referer:string|undefined,host:string|undefined,assetInput:
   let source:URL;
   try{source=new URL(referer);}catch{return undefined;}
   if(source.host!==host)return undefined;
-  const match=source.pathname.match(/^\/api\/v1\/rooms\/([^/]+)\/runs\/([^/]+)\/preview(?:\/|$)/);
+  const match=source.pathname.match(/^(\/api\/v1\/rooms\/[^/]+\/runs\/[^/]+\/preview)(?:\/|$)/)??source.pathname.match(/^(\/api\/v1\/projects\/[^/]+\/preview\/[A-Za-z0-9_-]+)(?:\/|$)/);
   if(!match)return undefined;
   let decoded:string,rawDecoded:string;
   try{
@@ -60,5 +61,5 @@ const scopedRunAsset=(referer:string|undefined,host:string|undefined,assetInput:
   const rawSegments=rawDecoded.replaceAll('\\','/').split('/');
   if(!decoded||segments.some(segment=>!segment||segment==='.'||segment==='..')||rawSegments.some(segment=>!segment||segment==='.'||segment==='..'))return undefined;
   const path=segments.map(encodeURIComponent).join('/'),search=new URL(requestUrl,'http://preview.invalid').search;
-  return`/api/v1/rooms/${match[1]}/runs/${match[2]}/preview/${path}${search}`;
+  return`${match[1]}/${path}${search}`;
 };

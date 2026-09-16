@@ -1,6 +1,7 @@
 import { isConnectorCatalog, isConnectorCommandResult, isConnectorConfigurationResult, isConnectorDirectoryPickerResult, isConnectorDirectoryValidation, isConnectorDiscovery, isConnectorExecutionEvent, isConnectorHealth, isConnectorInstanceList, isConnectorInterventionCommandResult, isConnectorRequestCommandResult, isExecutionSnapshot, isReleaseContinuationResult, isRestartConnectorInstanceResult, isTestConnectorInstanceResult, type ConfigureConnectorInstancesRequest, type ConnectorCatalog, type ConnectorConfigurationResult, type ConnectorDirectoryPickerResult, type ConnectorDirectoryValidation, type ConnectorDiscovery, type ConnectorExecutionEvent, type ConnectorHealth, type ConnectorInstanceList, type ConnectorInterventionCommandResult, type ConnectorRequestAnswer, type ConnectorRequestCommandResult, type ContinuationReleaseOutcome, type CreateExecutionInterventionRequest, type ExecutionSnapshot, type RestartConnectorInstanceResult, type StartExecutionRequest, type TestConnectorInstanceRequest, type TestConnectorInstanceResult } from '@agenvyl/connector-contract';
 import type { ConnectorExecutionClient, ConnectorLifecycleErrorCode } from '../../modules/connector/connector.ports.js';
 import {parseSse} from '../../infrastructure/http/parseSse.js';
+import {isProjectFileResult,type ProjectFileOperation,type ProjectFileRequest,type ProjectFileResults} from '@agenvyl/connector-contract';
 
 const DEFAULT_REQUEST_TIMEOUT_MS=3_000;
 const METADATA_REQUEST_TIMEOUT_MS=30_000;
@@ -54,6 +55,12 @@ export class HttpConnectorClient implements ConnectorExecutionClient {
   async catalog(instanceId:string):Promise<ConnectorCatalog>{
     const value=await this.get(`/v2/instances/${encodeURIComponent(instanceId)}/catalog`,'discovery',METADATA_REQUEST_TIMEOUT_MS);
     if(!isConnectorCatalog(value))throw new ConnectorClientError('connector_invalid_response','Connector returned an invalid catalog response');
+    return value;
+  }
+
+  async projectFiles<T extends ProjectFileOperation>(operation:T,input:ProjectFileRequest):Promise<ProjectFileResults[T]>{
+    const value=await this.json(`/v2/project-files/${operation}`,'POST',input,'discovery',30_000);
+    if(!isProjectFileResult(operation,value))throw invalidResponse('Connector returned an invalid project file response');
     return value;
   }
 
@@ -169,7 +176,7 @@ export class HttpConnectorClient implements ConnectorExecutionClient {
     const body=await safeJson(response),serverCode=isRecord(body)&&typeof body.error==='string'?body.error:undefined;
     if(resource==='execution'&&response.status===404&&serverCode==='execution_not_found')return new ConnectorClientError('connector_execution_lost','Connector execution is no longer available',404);
     if(response.status===409&&serverCode==='replay_unavailable')return new ConnectorClientError('connector_replay_unavailable','Connector events are no longer replayable',409);
-    if(response.status===400||response.status===404||response.status===409)return new ConnectorClientError('connector_command_rejected',isRecord(body)&&typeof body.message==='string'?body.message:'Connector command was rejected',response.status,undefined,serverCode);
+    if([400,403,404,409,413,422].includes(response.status))return new ConnectorClientError('connector_command_rejected',isRecord(body)&&typeof body.message==='string'?body.message:'Connector command was rejected',response.status,undefined,serverCode);
     return new ConnectorClientError('connector_unavailable','Connector request failed',response.status);
   }
 }

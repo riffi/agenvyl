@@ -17,6 +17,7 @@ import {registerUserProfileRoutes} from '../modules/user-profile/userProfile.rou
 import {registerSetupRoutes} from '../modules/setup/setup.routes.js';
 import {registerFeatureRoutes} from '../modules/features/features.routes.js';
 import {registerProjectRoutes} from '../modules/projects/projects.routes.js';
+import {registerProjectFilesRoutes} from '../modules/projects/projectFiles.routes.js';
 import path from 'node:path';
 
 export type AppOptions = { databaseUrl?: string; connectorUrl?:string; connectorToken?:string; fetch?: typeof fetch; distPath?: string; serveStaticFrontend?:boolean; runConcurrency?: number; runTimeoutMs?:number; shutdownTimeoutMs?: number; websocketMaxBufferedBytes?: number; workspaceRoot?:string; workspaceAgentRoot?:string; workspaceMaxFileBytes?:number; artifactRoot?:string;artifactMaxBytes?:number;previewOrigin?:string; logger?:boolean;legacySeed?:boolean };
@@ -40,7 +41,7 @@ export async function buildApp(options: AppOptions = {}) {
     previewOrigin:options.previewOrigin,
   });
   const app = Fastify({ logger: options.logger === false ? false : { redact: ['req.headers.authorization', 'req.headers.x-api-key'] } });
-  const { database, events, dependencyHealth, runExecutor, roomsService, personasService, userProfileService, personaGroupsService, conversationRoutingService, runsService,roomWorkspace,harnessCatalogService,setupService,projectsService } = await createAppContainer(config, options.fetch,app.log,options.legacySeed);
+  const { database, events, dependencyHealth, runExecutor, roomsService, personasService, userProfileService, personaGroupsService, conversationRoutingService, runsService,roomWorkspace,harnessCatalogService,setupService,projectsService,projectFilesService } = await createAppContainer(config, options.fetch,app.log,options.legacySeed);
 
   await registerErrorHandler(app);
   await app.register(websocket);
@@ -51,6 +52,7 @@ export async function buildApp(options: AppOptions = {}) {
   await registerHealthRoutes(app, dependencyHealth,database);
   await registerFeatureRoutes(app,{previewOrigin:config.previewOrigin});
   await registerProjectRoutes(app,projectsService);
+  registerProjectFilesRoutes(app,projectFilesService);
   await registerConnectorRoutes(app,harnessCatalogService);
   await registerSetupRoutes(app,setupService);
   await registerRoomRoutes(app, roomsService);
