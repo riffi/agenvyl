@@ -2,6 +2,7 @@ import type {ProjectBuild,ProjectDirectory,ProjectInspection} from '@agenvyl/con
 export type ProjectFileRequest={root:string;path?:string;entrypoint?:string;command?:string};
 export type ProjectFileResults={
   list:ProjectDirectory;
+  search:ProjectDirectory;
   inspect:Pick<ProjectInspection,'candidates'|'detected_command'|'scan_truncated'|'build'>;
   read:{data:string;mime_type:string};
   preview:{data:string;mime_type:string};

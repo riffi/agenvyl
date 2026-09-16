@@ -2,7 +2,8 @@
 
 import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,describe,expect,it,vi} from 'vitest';
-import {MAX_MESSAGE_TEXT_LENGTH} from '@agenvyl/contracts';
+import {MAX_MESSAGE_TEXT_LENGTH,projectReferences} from '@agenvyl/contracts';
+import {projectFilesApi} from '../../entities/project';
 import type {HarnessCatalog} from '../../entities/harness';
 import type {Persona} from '../../entities/persona';
 import type {RoomGateway} from '../../features/room-session';
@@ -14,9 +15,89 @@ const catalog:HarnessCatalog={connectorEpoch:'epoch',cache,instances:[{id:'local
 const gateway:RoomGateway={mode:'fake',subscribe:vi.fn(()=>vi.fn()),send:vi.fn(),applyQueuedNow:vi.fn(),resolve:vi.fn(),intervene:vi.fn(),cancel:vi.fn(),retry:vi.fn(),select:vi.fn(),dispose:vi.fn()};
 const sentMessage={id:'message-1',text:'',createdAt:'2026-07-22T00:00:00.000Z',targets:[],runIds:[],author:{profileId:'local-user',displayName:'User',handle:'user'},addressedToAll:false};
 
-afterEach(()=>{cleanup();vi.unstubAllGlobals()});
+afterEach(()=>{cleanup();vi.restoreAllMocks();vi.unstubAllGlobals()});
 
 describe('Composer agent list',()=>{
+  it('inserts a typed folder path on Enter without opening it or sending the message',async()=>{
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
+    const project={id:'project',name:'Project',path:'/project',availability:'available' as const};
+    const folder={name:'archive',path:'docs/archive',kind:'directory' as const,size:0,modified:'now',mime_type:'application/octet-stream'};
+    vi.spyOn(projectFilesApi,'search').mockResolvedValue({entries:[folder],truncated:false});
+    const list=vi.spyOn(projectFilesApi,'list'),send=vi.fn();
+    render(<Composer project={project} gateway={{...gateway,send}} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()}/>);
+    const editor=screen.getByRole('textbox',{name:'Message'});
+    fireEvent.change(editor,{target:{value:'Read @docs/archive',selectionStart:18}});
+    await screen.findByRole('option',{name:/archive/});
+    fireEvent.keyDown(editor,{key:'Enter'});
+    expect(screen.getByRole('button',{name:'Open docs/archive'})).toBeTruthy();
+    expect(screen.queryByRole('textbox',{name:'Search this folder'})).toBeNull();
+    expect(screen.queryByRole('listbox')).toBeNull();
+    expect(list).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+  });
+  it('browses folders from the add menu without changing the draft until a file is chosen',async()=>{
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
+    const project={id:'project',name:'Project',path:'/project',availability:'available' as const};
+    const folder={name:'src',path:'src',kind:'directory' as const,size:0,modified:'now',mime_type:'application/octet-stream'};
+    const file={...folder,name:'main.ts',path:'src/main.ts',kind:'file' as const};
+    const list=vi.spyOn(projectFilesApi,'list').mockImplementation(async(_id,path)=>({entries:path==='src'?[file]:[folder],truncated:false}));
+    render(<Composer project={project} gateway={gateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()}/>);
+    const editor=screen.getByRole('textbox',{name:'Message'}) as HTMLTextAreaElement;
+    fireEvent.change(editor,{target:{value:'Please read '}});
+    fireEvent.click(screen.getByRole('button',{name:'Add to message'}));
+    fireEvent.click(screen.getByRole('menuitem',{name:/Project file or folder/}));
+    expect(editor.value).toBe('Please read ');
+    expect(screen.queryByRole('option',{name:/All agents/})).toBeNull();
+    fireEvent.click(await screen.findByRole('option',{name:/src/}));
+    await waitFor(()=>expect(list).toHaveBeenCalledWith('project','src',expect.any(AbortSignal)));
+    expect(editor.value).toBe('Please read ');
+    fireEvent.click(await screen.findByRole('option',{name:/main.ts/}));
+    expect(screen.getByRole('button',{name:'Open src/main.ts'})).toBeTruthy();
+    expect(screen.queryByLabelText('Project references')).toBeNull();
+  });
+  it('opens a folder from @, goes back and can explicitly add the folder itself',async()=>{
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
+    const project={id:'project',name:'Project',path:'/project',availability:'available' as const};
+    const folder={name:'src',path:'src',kind:'directory' as const,size:0,modified:'now',mime_type:'application/octet-stream'};
+    vi.spyOn(projectFilesApi,'search').mockResolvedValue({entries:[folder],truncated:false});
+    vi.spyOn(projectFilesApi,'list').mockImplementation(async(_id,path)=>({entries:path?[]:[folder],truncated:false}));
+    render(<Composer project={project} gateway={gateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()}/>);
+    const editor=screen.getByRole('textbox',{name:'Message'}) as HTMLTextAreaElement;
+    fireEvent.change(editor,{target:{value:'@src',selectionStart:4}});
+    await screen.findByRole('option',{name:/src/});
+    fireEvent.keyDown(editor,{key:'ArrowRight'});
+    expect(screen.getByRole('textbox',{name:'Search this folder'})).toBeTruthy();
+    expect(editor.value).toBe('@src');
+    fireEvent.click(screen.getByRole('button',{name:'Back to parent folder'}));
+    fireEvent.click(await screen.findByRole('button',{name:'Add folder src to message'}));
+    expect(screen.getByRole('button',{name:'Open src'})).toBeTruthy();
+    expect(screen.getByRole('textbox',{name:'Message'}).textContent).not.toContain('@src');
+  });
+  it('inserts a file with @ in its path, keeps its original project after reassignment, and restores it on retry',async()=>{
+    vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
+    const project={id:'old-project',name:'Original',path:'/old-project',availability:'available' as const};
+    const file={name:'@coder.ts',path:'src/@coder.ts',kind:'file' as const,size:1,modified:'now',mime_type:'text/plain'};
+    vi.spyOn(projectFilesApi,'search').mockResolvedValue({entries:[file],truncated:false});
+    const send=vi.fn<RoomGateway['send']>().mockRejectedValueOnce(new Error('Offline')).mockResolvedValue(sentMessage);
+    const props={gateway:{...gateway,send},active:0,personas:[persona],harnessCatalog:catalog,catalogReady:true,onSent:vi.fn(async()=>undefined),openWorkspace:vi.fn(),roomId:'room',attachments:[],attachmentsBusy:false,openAttachmentPicker:vi.fn(),uploadFiles:vi.fn(),removeAttachment:vi.fn(),retryAttachment:vi.fn(),clearAttachments:vi.fn()};
+    const view=render(<Composer {...props} project={project}/>);
+    const editor=screen.getByRole('textbox',{name:'Message'}) as HTMLTextAreaElement;
+    fireEvent.change(editor,{target:{value:'Read @src/',selectionStart:10}});
+    fireEvent.click(await screen.findByRole('option',{name:/@coder\.ts/}));
+    expect(screen.getByRole('button',{name:'Open src/@coder.ts'})).toBeTruthy();
+    expect(screen.queryByRole('group',{name:'Responder Coder'})).toBeNull();
+    view.rerender(<Composer {...props} project={{...project,id:'new-project',path:'/new-project'}}/>);
+    fireEvent.keyDown(screen.getByRole('textbox',{name:'Message'}),{key:'Enter'});
+    await screen.findByText(/Failed to send/);
+    expect(screen.getByRole('button',{name:'Open src/@coder.ts'})).toBeTruthy();
+    const outgoing=send.mock.calls[0][0];
+    expect(projectReferences(outgoing)[0].reference).toMatchObject({projectId:'old-project',root:'/old-project',path:'src/@coder.ts'});
+    expect(send.mock.calls[0][1]).toEqual([]);
+    fireEvent.click(screen.getByRole('button',{name:'Retry'}));
+    await waitFor(()=>expect(send).toHaveBeenCalledTimes(2));
+    expect(send.mock.calls[1][0]).toBe(outgoing);
+    await waitFor(()=>expect(screen.getByRole('textbox',{name:'Message'}).textContent).toBe(''));
+  });
   it('allows ordinary messages up to the shared 64,000-character limit',()=>{
     vi.stubGlobal('matchMedia',vi.fn(()=>({matches:false})));
     render(<Composer gateway={gateway} active={0} personas={[persona]} harnessCatalog={catalog} catalogReady onSent={vi.fn(async()=>undefined)} openWorkspace={vi.fn()} roomId="room" attachments={[]} attachmentsBusy={false} openAttachmentPicker={vi.fn()} uploadFiles={vi.fn()} removeAttachment={vi.fn()} retryAttachment={vi.fn()} clearAttachments={vi.fn()}/>);

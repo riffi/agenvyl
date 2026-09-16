@@ -36,7 +36,8 @@ export const WorkspaceWindow=(props:WindowProps)=>{
     if(!request||!project||artifact)return;
     try{localStorage.setItem(preferenceKey,JSON.stringify({source,section:effectiveRequest?.section??(source==='project'?'app':'files')}));}catch{/* Viewing files does not require browser storage. */}
   },[request,project,artifact,preferenceKey,source,effectiveRequest?.section]);
-  const selector=project?<WorkspaceSource project={project} source={source} onChange={source=>onRequestChange({source,section:source==='project'?'app':'files',target:undefined,buildRunId:undefined,mode:undefined,treeVisible:true})}/>:undefined;
+  const selector=project?<WorkspaceSource project={project} source={source} onChange={source=>onRequestChange({source,projectReference:undefined,section:source==='project'?'app':'files',target:undefined,buildRunId:undefined,mode:undefined,treeVisible:true})}/>:undefined;
+  if(request?.projectReference&&(!project||project.id!==request.projectReference.projectId||project.path!==request.projectReference.root))return createPortal(<section className={styles.window} role="dialog" aria-modal="true" aria-label="Project reference unavailable" onKeyDown={event=>{if(event.key==='Escape')props.onClose();if(event.key==='Tab')event.preventDefault();}}><header className={styles.globalHeader}><strong>Project reference unavailable</strong><button autoFocus onClick={props.onClose}>Close</button></header><p>The original project may have been removed or its folder changed. This reference still points to {request.projectReference.root}/{request.projectReference.path}.</p></section>,document.body);
   if(effectiveRequest&&source==='project'&&project&&!props.fake)return <ProjectWindow key={`${props.roomId}:${project.id}:${project.path}`} {...props} request={effectiveRequest} project={project} source={selector}/>;
   return <WorkspaceFilesWindow {...props} request={effectiveRequest} sourceSelector={selector}/>;
 };

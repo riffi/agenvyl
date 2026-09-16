@@ -1,4 +1,6 @@
+import {withoutProjectReferences} from '@agenvyl/contracts';
 export function parseMentions(text: string, handles: string[]): string[] {
+  text=withoutProjectReferences(text);
   const known = new Set(handles.map(handle => handle.toLowerCase()));
   const result: string[] = [];
   for (const match of text.matchAll(/(^|[^\p{L}\p{N}_])@([\p{L}\p{N}_-]+)/giu)) {

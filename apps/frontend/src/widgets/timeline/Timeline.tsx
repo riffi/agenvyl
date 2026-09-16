@@ -1,3 +1,4 @@
+import {readableProjectReferences} from '@agenvyl/contracts';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Ban, Brain, Check, ChevronDown, ChevronUp, CircleCheck, CircleHelp, CircleX, Clock3, Eye, FolderCheck, Info, LoaderCircle, MessageSquarePlus, Paperclip, RotateCcw, Square, TriangleAlert } from 'lucide-react';
 import type {HumanAuthorSnapshot,UpstreamStatus,WorkspaceAttachment} from '@agenvyl/contracts';
@@ -319,7 +320,7 @@ export function Timeline({
         return (
         <section className={`${styles.round} ${responseTabs?styles['has-answer-navigation']:''}`} data-timeline-layout key={m.id}>
           <div className={`${styles['user-message']} ${imageAttachments.length?styles['with-images']:''}`}>
-            <CopyTextButton className={styles['copy-user-message']} text={m.text} label="Copy user message" copiedLabel="User message copied"/>
+            <CopyTextButton className={styles['copy-user-message']} text={readableProjectReferences(m.text)} label="Copy user message" copiedLabel="User message copied"/>
             <p><MentionText text={m.text} personas={personas} onMentionPersona={onMentionPersona}/></p>
             {imageAttachments.length>0&&<div className={styles['image-attachments']} data-count={Math.min(imageAttachments.length,4)}>{imageAttachments.map(item=><MessageImage key={item.version_id} attachment={item} gallery={imageAttachments} openArtifact={openArtifact} openWorkspace={openWorkspace}/>)}</div>}
             {fileAttachments.length>0&&<div className={styles.attachments}>{fileAttachments.map(item=><MessageAttachment key={item.version_id} attachment={item} gallery={m.attachments} openArtifact={openArtifact} openWorkspace={openWorkspace}/>)}</div>}

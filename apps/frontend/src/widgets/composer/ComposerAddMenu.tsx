@@ -7,10 +7,11 @@ type ComposerAddMenuProps={
   attachmentDisabled:boolean;
   onAttach:()=>void;
   onOpenWorkspace:()=>void;
+  onReference?:()=>void;
   routing?:{mode:VisibleRoutingMode;saving:boolean;onModeChange:(mode:VisibleRoutingMode)=>void};
 };
 
-export const ComposerAddMenu=({attachmentDisabled,onAttach,onOpenWorkspace,routing}:ComposerAddMenuProps)=>{
+export const ComposerAddMenu=({attachmentDisabled,onAttach,onOpenWorkspace,onReference,routing}:ComposerAddMenuProps)=>{
   const [open,setOpen]=useState(false);
   const menuId=useId();
   const rootRef=useRef<HTMLDivElement>(null);
@@ -67,11 +68,12 @@ export const ComposerAddMenu=({attachmentDisabled,onAttach,onOpenWorkspace,routi
       <button ref={node=>{itemRefs.current[1]=node}} type="button" role="menuitem" onKeyDown={event=>moveFocus(event,1)} onClick={()=>run(onOpenWorkspace)}>
         <i><FolderOpen aria-hidden="true"/></i><span><strong>Open workspace</strong><small>Browse room files</small></span>
       </button>
+      {onReference&&<button ref={node=>{itemRefs.current[2]=node}} type="button" role="menuitem" onKeyDown={event=>moveFocus(event,2)} onClick={()=>run(onReference)}><i><FolderOpen aria-hidden="true"/></i><span><strong>Project file or folder</strong><small>Reference current project files</small></span></button>}
       {routing&&<>
         <div className={styles['add-menu-separator']} role="separator"/>
         <div className={styles['add-menu-section-label']} role="presentation">Message routing</div>
         {conversationRouteOptions.map(([value,title,description],optionIndex)=>{
-          const index=optionIndex+2,selected=routing.mode===value;
+          const index=optionIndex+(onReference?3:2),selected=routing.mode===value;
           return <button className={styles['add-menu-route']} ref={node=>{itemRefs.current[index]=node}} key={value} type="button" role="menuitemradio" aria-checked={selected} disabled={routing.saving} onKeyDown={event=>moveFocus(event,index)} onClick={()=>run(()=>routing.onModeChange(value))}>
             <i><GitBranch aria-hidden="true"/></i><span><strong>{title}</strong><small>{description}</small></span>{selected&&<Check className={styles['add-menu-check']} aria-hidden="true"/>}
           </button>;

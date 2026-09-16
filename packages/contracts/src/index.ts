@@ -1,4 +1,5 @@
 export * from './projectFiles.js';
+export * from './projectReferences.js';
 export { DEFAULT_ROOM_TITLE, deriveRoomTitle } from './roomTitle.js';
 import type {WorkspaceRestoreRecord} from './workspaceRestore.js';
 export type { DeriveRoomTitleInput } from './roomTitle.js';

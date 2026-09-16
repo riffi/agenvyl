@@ -1,4 +1,4 @@
-import type {WorkflowMode} from '@agenvyl/contracts';
+import {readableProjectReferences,type WorkflowMode} from '@agenvyl/contracts';
 import {Clock3,LoaderCircle,Zap} from 'lucide-react';
 import {useState} from 'react';
 import type {Message} from '../../entities/message';
@@ -18,7 +18,7 @@ const PendingFollowUp=({message,persona,workflowMode,onApplyNow}:{message:Messag
     <Clock3 aria-hidden="true"/>
     <div className={styles['pending-follow-up-copy']}>
       <span role="status"><strong>{handoff?(dispatching?'Stopping current run…':`New ${modeLabel} session queued`):dispatching?'Applying now':`Waiting for ${agent}`}</strong><small>{handoff?`The message will start a new session for ${agent}.`:dispatching?'The message is being applied to the active response.':'It will be sent after the current response.'}</small></span>
-      <p title={message.text}>{message.text}</p>
+      <p title={readableProjectReferences(message.text)}>{readableProjectReferences(message.text)}</p>
       <small className={styles['pending-follow-up-error']} role="alert">{error||message.delivery?.error?`Could not ${handoff?'switch modes':'apply now'}. The message is still queued. ${error??message.delivery?.error}`:''}</small>
     </div>
     <Button className={styles['apply-pending-now']} size="sm" variant="secondary" disabled={applying||dispatching} aria-label={handoff?`Switch ${agent} to ${modeLabel} now`:`Apply queued message to ${agent} now`} onClick={()=>void apply()} icon={applying||dispatching?<LoaderCircle className={styles.spinning} aria-hidden="true"/>:<Zap aria-hidden="true"/>}>{applying||dispatching?(handoff?'Switching…':'Applying…'):handoff?'Switch now':'Apply now'}</Button>

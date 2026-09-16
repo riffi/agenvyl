@@ -8,6 +8,7 @@ const commandByName=new Map<string,ComposerCommand>(composerCommands.map(command
 
 const protectedCodeRanges=(text:string)=>{
   const ranges:Array<{start:number;end:number}>=[];
+  for(const match of text.matchAll(/⟦[^⟧]*⟧/g))ranges.push({start:match.index!,end:match.index!+match[0].length});
   let index=0,fence:{marker:string;size:number;start:number}|undefined;
   while(index<text.length){
     const lineStart=index===0||text[index-1]==='\n';

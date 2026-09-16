@@ -3,6 +3,12 @@ import { decodeWorkspaceBytes, detectWorkspaceEncoding } from './workspaceText';
 import { applyWorkspaceRequestUpdate, workspaceModesFor, workspaceRequestForTarget, workspaceRequestFromSearch, workspaceSearchWithRequest } from './workspaceModel';
 
 describe('workspace viewer model', () => {
+  it('preserves the original project and path in a reloadable reference URL',()=>{
+    const projectReference={projectId:'original',projectName:'Original',root:'C:/old project',path:'src/my file.ts',kind:'file' as const};
+    const search=workspaceSearchWithRequest(new URLSearchParams(),{origin:'workspace',source:'project',section:'files',projectReference});
+    expect(workspaceRequestFromSearch(search)).toMatchObject({projectReference,source:'project',section:'files'});
+    expect(workspaceSearchWithRequest(search).has('wsReference')).toBe(false);
+  });
   it('assigns rendered and source modes without trusting MIME alone', () => {
     expect(workspaceModesFor({ path: 'page.html', mime_type: 'application/octet-stream' })).toEqual(['rendered', 'source']);
     expect(workspaceModesFor({ path: 'src/main.ts', mime_type: 'video/mp2t' })).toEqual(['source']);

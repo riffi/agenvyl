@@ -3,6 +3,7 @@ import path from 'node:path';
 import type {WorkspacePolicy} from './workspace-policy.js';
 import {inspectProject,listProject,projectError,projectRelative,projectTarget,readProject} from './project-files.js';
 import {ProjectBuilds} from './project-builds.js';
+import {searchProject} from './project-search.js';
 
 export function registerProjectFileRoutes(app:FastifyInstance,policy:WorkspacePolicy){
   const builds=new ProjectBuilds();
@@ -10,6 +11,7 @@ export function registerProjectFileRoutes(app:FastifyInstance,policy:WorkspacePo
   type Input={root:string;path?:string;entrypoint?:string;command?:string};
   const schema={body:{type:'object',required:['root'],additionalProperties:false,properties:{root:{type:'string',minLength:1},path:{type:'string',maxLength:4000},entrypoint:{type:'string',maxLength:4000},command:{type:'string',maxLength:4000}}}};
   app.post<{Body:Input}>('/v2/project-files/list',{schema},req=>listProject(policy.resolveProject(req.body.root),req.body.path??''));
+  app.post<{Body:Input}>('/v2/project-files/search',{schema},req=>searchProject(policy.resolveProject(req.body.root),req.body.path??''));
   app.post<{Body:Input}>('/v2/project-files/inspect',{schema},async req=>{
     const root=policy.resolveProject(req.body.root);
     return{...await inspectProject(root),build:builds.get(root)};

@@ -1,3 +1,4 @@
+import {readableProjectReferences} from './projectReferences.js';
 export const DEFAULT_ROOM_TITLE = 'New room';
 
 export type DeriveRoomTitleInput = {
@@ -21,7 +22,7 @@ const wordSegmenter = new Intl.Segmenter(undefined, { granularity: 'word' });
 const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 
 export const deriveRoomTitle = ({ text = '', attachmentNames = [] }: DeriveRoomTitleInput) => {
-  const candidates = sentenceCandidates(cleanMessage(text));
+  const candidates = sentenceCandidates(cleanMessage(readableProjectReferences(text)));
   const preferred = candidates.find(candidate => wordCount(candidate) >= 2) ?? candidates[0];
   if (preferred) return truncateTitle(preferred);
 

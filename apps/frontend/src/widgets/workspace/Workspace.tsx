@@ -1,3 +1,5 @@
+import {ProjectReferenceContext} from '../../shared/project-references/ProjectReferenceContext';
+import type {ProjectReference} from '@agenvyl/contracts';
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from 'react-router-dom';
@@ -216,8 +218,11 @@ export function WorkspaceApp({
   useEffect(()=>{if(!state.latestTitle)return;if(fake){pendingDemoTitles.current.delete(roomId);setDemoRooms(current=>applyRoomTitle(current,roomId,state.latestTitle!)??current);return}queryClient.setQueryData<Room[]>(roomKeys.all,current=>applyRoomTitle(current,roomId,state.latestTitle!));},[fake,queryClient,roomId,state.latestTitle]);
   useEffect(()=>{if(!selected)return;const closeDrawer=(event:KeyboardEvent)=>{if(event.key==='Escape')setSelected(undefined)};addEventListener('keydown',closeDrawer);return()=>removeEventListener('keydown',closeDrawer)},[selected]);
   useEffect(()=>{if(workspaceRequest&&!fake)void queryClient.invalidateQueries({queryKey:['rooms',roomId,'workspace']})},[workspaceRequest,state.lastSequence,roomId,fake,queryClient]);
+  const referenceActions={open:(reference:ProjectReference)=>pushWorkspace({origin:'workspace',source:'project',section:'files',treeVisible:true,projectReference:reference}),insert:(reference:ProjectReference)=>{closeWorkspace();composerRef.current?.insertProjectReference(reference);}};
+  const linkedReference=workspaceRequest?.projectReference;
+  const viewerProject=linkedReference?projectsQuery.data?.find(project=>project.id===linkedReference.projectId&&project.path===linkedReference.root):currentRoom?.project;
   return (
-    <>
+    <ProjectReferenceContext.Provider value={referenceActions}>
       <Sidebar
         open={menu}
         close={() => setMenu(false)}
@@ -264,7 +269,7 @@ export function WorkspaceApp({
             manageAgents={() => setManagingAgents(true)}
           />
           <Timeline roomId={roomId} state={state} personas={personaCatalog} harnessCatalog={harnessCatalog} select={setSelected} gateway={gateway} loadOlder={loadOlder} loadingOlder={loadingOlder} initialLoading={!fake&&timelineQuery.isPending} onMentionPersona={mentionPersona} openWorkspace={openWorkspace} openArtifact={openArtifact} addInstructionToRun={setInstructionRunId}/>
-          <Composer ref={composerRef} gateway={gateway} active={active} personas={personas} roomPersonas={roomPersonas} updateParticipantReasoning={updateParticipantReasoning} harnessCatalog={harnessCatalog} catalogReady={gateway.mode === "fake" || (!catalogLoading && !catalogError)} onSent={async()=>{await invalidateRooms()}} openWorkspace={openWorkspace} openArtifact={openArtifact} roomId={roomId} attachments={attachments.items} attachmentsBusy={attachments.busy} openAttachmentPicker={()=>setAttachmentPicker(true)} uploadFiles={files=>void attachments.uploadFiles(files)} removeAttachment={attachments.remove} retryAttachment={attachments.retry} clearAttachments={attachments.clear} workflowMode={state.workflowMode} updateWorkflowMode={updateWorkflowMode} interventionTarget={interventionTarget} exitIntervention={()=>setInstructionRunId(undefined)} conversationRoutingMode={state.conversationRoutingMode} updateConversationRouting={updateConversationRouting} autoRoutingCandidates={autoRouteCandidates} pendingFollowUps={pendingFollowUps} pendingWorkflowModes={pendingWorkflowModes}/>
+          <Composer project={currentRoom.project} ref={composerRef} gateway={gateway} active={active} personas={personas} roomPersonas={roomPersonas} updateParticipantReasoning={updateParticipantReasoning} harnessCatalog={harnessCatalog} catalogReady={gateway.mode === "fake" || (!catalogLoading && !catalogError)} onSent={async()=>{await invalidateRooms()}} openWorkspace={openWorkspace} openArtifact={openArtifact} roomId={roomId} attachments={attachments.items} attachmentsBusy={attachments.busy} openAttachmentPicker={()=>setAttachmentPicker(true)} uploadFiles={files=>void attachments.uploadFiles(files)} removeAttachment={attachments.remove} retryAttachment={attachments.retry} clearAttachments={attachments.clear} workflowMode={state.workflowMode} updateWorkflowMode={updateWorkflowMode} interventionTarget={interventionTarget} exitIntervention={()=>setInstructionRunId(undefined)} conversationRoutingMode={state.conversationRoutingMode} updateConversationRouting={updateConversationRouting} autoRoutingCandidates={autoRouteCandidates} pendingFollowUps={pendingFollowUps} pendingWorkflowModes={pendingWorkflowModes}/>
         </>:<div className={styles['empty-chat']}><div className={styles['empty-mobile-header']}><button type="button" aria-label="Open menu" onClick={()=>setMenu(true)}><Menu /></button><strong>agenvyl</strong></div><EmptyState icon={<MessageCircle />} title="No rooms" description="Create a room to start a conversation with agents." action={<Button variant="primary" icon={<Plus />} onClick={()=>setCreatingRoom(true)}>Create room</Button>} /></div>):<PersonasScreen
           personas={personaCatalog}
           harnessCatalog={harnessCatalog}
@@ -291,11 +296,11 @@ export function WorkspaceApp({
         harnessCatalog={harnessCatalog}
         close={() => setSelected(undefined)}
       />
-      <WorkspaceWindow request={workspaceRequest} roomId={roomId} project={currentRoom?.project} revision={Object.values(state.runs).filter(run=>['completed','failed','cancelled'].includes(run.status)).map(run=>run.id).join(',')} fake={fake} onAttach={attachment=>attachments.addExisting([attachment])} onClose={closeWorkspace} onRequestChange={updateWorkspaceRequest}/>
+      <WorkspaceWindow request={workspaceRequest} roomId={roomId} project={viewerProject} revision={Object.values(state.runs).filter(run=>['completed','failed','cancelled'].includes(run.status)).map(run=>run.id).join(',')} fake={fake} onAttach={attachment=>attachments.addExisting([attachment])} onClose={closeWorkspace} onRequestChange={updateWorkspaceRequest}/>
       <AttachmentPicker open={attachmentPicker} roomId={roomId} selected={attachments.ready} onClose={()=>setAttachmentPicker(false)} onConfirm={attachments.replaceReady} onUpload={files=>void attachments.uploadFiles(files)}/>
       {creatingRoom&&<CreateRoomDialog personas={personaCatalog.filter(persona=>!persona.archived_at)} catalog={harnessCatalog} groups={groups} projects={projectsQuery.data??[]} onClose={()=>setCreatingRoom(false)} onCreated={createRoom}/>}
       {managingAgents&&currentRoom&&<RoomAgentManager personas={personaCatalog.filter(persona=>!persona.archived_at)} catalog={harnessCatalog} groups={groups} roomPersonas={roomPersonas} onUpdateReasoning={updateParticipantReasoning} onClose={()=>setManagingAgents(false)} onSave={saveRoomAgents}/>}
       {projectRoom&&<RoomProjectDialog room={projectRoom} projects={projectsQuery.data??[]} onClose={()=>setProjectRoom(undefined)} onSave={async projectId=>{await assignProjectMutation.mutateAsync({id:projectRoom.id,projectId})}}/>}
-    </>
+    </ProjectReferenceContext.Provider>
   );
 }

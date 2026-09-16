@@ -1,4 +1,6 @@
 import type {CSSProperties,ReactNode} from 'react';
+import {projectReferences} from '@agenvyl/contracts';
+import {ProjectReferenceChip} from '../../shared/project-references/ProjectReferenceContext';
 import type {Persona} from '../../entities/persona';
 import styles from './Timeline.module.css';
 
@@ -53,6 +55,20 @@ export function MentionLink({handle,personas,onMentionPersona}:{handle:string;pe
 }
 
 export function MentionText({text,personas,onMentionPersona}:{text:string;personas:readonly Persona[];onMentionPersona?:(handle:string)=>void}){
+  const references=projectReferences(text);
+  if(!references.length)return <AgentMentionText text={text} personas={personas} onMentionPersona={onMentionPersona}/>;
+  const parts:ReactNode[]=[];
+  let cursor=0;
+  for(const item of references){
+    parts.push(<AgentMentionText key={`text-${item.start}`} text={text.slice(cursor,item.start)} personas={personas} onMentionPersona={onMentionPersona}/>);
+    parts.push(<ProjectReferenceChip key={item.start} reference={item.reference}/>);
+    cursor=item.end;
+  }
+  parts.push(<AgentMentionText key="tail" text={text.slice(cursor)} personas={personas} onMentionPersona={onMentionPersona}/>);
+  return <>{parts}</>;
+}
+
+function AgentMentionText({text,personas,onMentionPersona}:{text:string;personas:readonly Persona[];onMentionPersona?:(handle:string)=>void}){
   const known=new Set(personas.map(persona=>persona.handle.toLocaleLowerCase()));
   const parts:ReactNode[]=[];
   let cursor=0,index=0;

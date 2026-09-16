@@ -5,6 +5,7 @@ import {AppError} from '../../shared/errors/AppError.js';
 
 const params={type:'object',required:['id'],properties:{id:{type:'string',format:'uuid'}}};
 export function registerProjectFilesRoutes(app:FastifyInstance,files:ProjectFilesService){
+  app.get<{Params:{id:string};Querystring:{q?:string}}>('/api/v1/projects/:id/search',{schema:{params,querystring:{type:'object',properties:{q:{type:'string',maxLength:500}}}}},req=>files.search(req.params.id,req.query.q??''));
   app.get<{Params:{id:string};Querystring:{path?:string}}>('/api/v1/projects/:id/files',{schema:{params,querystring:{type:'object',properties:{path:{type:'string',maxLength:4000}}}}},req=>files.list(req.params.id,req.query.path??''));
   app.get<{Params:{id:string}}>('/api/v1/projects/:id/inspection',{schema:{params}},req=>files.inspect(req.params.id));
   app.put<{Params:{id:string};Body:ProjectPreviewSettings}>('/api/v1/projects/:id/preview-settings',{schema:{params,body:{type:'object',additionalProperties:false,required:['entrypoint','build_command'],properties:{entrypoint:{type:['string','null'],maxLength:4000},build_command:{type:['string','null'],maxLength:4000}}}}},req=>files.saveSettings(req.params.id,req.body));

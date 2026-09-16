@@ -2,8 +2,18 @@ import type { ConnectorExecutionClient } from '../../modules/connector/connector
 import { connectorContractFixtures, EXPERIMENTAL_TAIL_V2_ITEM_LIMIT, EXPERIMENTAL_TAIL_V2_JSON_CHAR_LIMIT, EXPERIMENTAL_TAIL_V2_ROUND_LIMIT, type ConnectorExecutionEvent, type ExecutionSnapshot } from '@agenvyl/connector-contract';
 import { describe,expect,it,vi } from 'vitest';
 import {ConnectorRunAdapter} from './ConnectorRunAdapter.js';
+import {encodeProjectReference} from '@agenvyl/contracts';
 
 describe('ConnectorRunAdapter',()=>{
+  it('expands project references in the message, instructions and resumed history',async()=>{
+    const marker=encodeProjectReference({projectId:'old-project',projectName:'Original',root:'/original/project',path:'src/main.ts',kind:'file'});
+    const execution={...connectorContractFixtures.execution,pendingRequests:[]},client=clientFixture(execution,[]),adapter=new ConnectorRunAdapter(client);
+    await adapter.createRun({...input(),input:marker,instructions:marker,conversationHistory:[{role:'user',content:marker}]});
+    const request=vi.mocked(client.start).mock.calls[0]![0];
+    for(const text of [request.input.message,request.input.systemPrompt,request.input.history[0].content]){
+      expect(text).toContain('/original/project/src/main.ts');expect(text).not.toContain('[[project:');
+    }
+  });
   it('maps Core start input and replays the typed stream after the accepted checkpoint',async()=>{
     const execution={...connectorContractFixtures.execution,cursor:2,pendingRequests:[]};
     const streamed=[event(3,'execution.upstream_status',{state:'retrying',reason:'rate_limited',retryable:true,attempt:2}),event(4,'execution.upstream_status',{state:'recovered',reason:'rate_limited',retryable:false,attempt:2}),event(5,'output.reasoning.delta',{text:'Thinking'}),event(6,'output.text.delta',{text:'Hello'}),event(7,'tool.started',{toolId:'tool-1',name:'read_file',safeSummary:'Reading',safeInput:'{"path":"src/app.ts"}'}),event(8,'usage.updated',{usage:{inputTokens:20,outputTokens:5,totalTokens:25}}),event(9,'execution.completed',{})];

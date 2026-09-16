@@ -4,6 +4,7 @@ import type {Persona} from '../../entities/persona';
 import type {Run} from '../../entities/run';
 import {MarkdownAnswer} from './Timeline';
 import {MentionText} from './mentions';
+import {encodeProjectReference} from '@agenvyl/contracts';
 
 const personas:Persona[]=[
   {id:'foreign-id',handle:'foreign',name:'Мимокрокодил',color:'#0f766e',requested_model:'qwen',harness_instance_id:'local-hermes',harness_type:'hermes',model_id:'qwen',permission_profile_id:null,agent_variant_id:null,default_reasoning_effort:null,group_id:null,archived_at:null},
@@ -11,6 +12,11 @@ const personas:Persona[]=[
 const run:Run={id:'run',messageId:'message',agent:'foreign',harnessInstanceId:'local-hermes',harnessType:'hermes',modelId:'qwen',executionProfile:{workflowMode:'work',requestedReasoningEffort:null,reasoningEffort:null,reasoningEffortFallback:false,reasoningEffortSource:'auto',planEnforcement:null,permissionProfileId:null,agentVariantId:null},status:'completed',text:'',tools:[],interventions:[]};
 
 describe('timeline persona mentions',()=>{
+  it('renders a file reference without parsing handles inside its path',()=>{
+    const reference={projectId:'project',projectName:'Project',root:'/project',path:'src/@foreign.ts',kind:'file' as const};
+    const html=renderToStaticMarkup(<MentionText text={`Read ${encodeProjectReference(reference)}`} personas={personas}/>);
+    expect(html).toContain('src/@foreign.ts');expect(html).not.toContain('[[project:');expect(html).not.toContain('Add @foreign');
+  });
   it('shows known handles as persona names and keeps unknown and bare handles intact',()=>{
     const html=renderToStaticMarkup(<MentionText text="@FOREIGN, foreign и @missing" personas={personas}/>);
     expect(html).toContain('Мимокрокодил');

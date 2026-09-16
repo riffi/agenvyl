@@ -1,4 +1,5 @@
 import type { WorkspaceAttachment } from '@agenvyl/contracts';
+import {encodeProjectReference,projectReferences,type ProjectReference} from '@agenvyl/contracts';
 
 export type WorkspaceViewMode = 'rendered' | 'source';
 export type WorkspaceSection = 'app' | 'files';
@@ -27,6 +28,7 @@ export type WorkspaceViewState = {
 };
 
 export type WorkspaceOpenRequest = {
+  projectReference?:ProjectReference;
   source?:'project'|'workspace';
   origin: WorkspaceOpenOrigin;
   section?: WorkspaceSection;
@@ -58,6 +60,7 @@ export const workspaceRequestForTarget = (
 });
 
 export type WorkspaceRequestUpdate = {
+  projectReference?:ProjectReference;
   source?:'project'|'workspace';
   section?: WorkspaceSection;
   buildRunId?: string;
@@ -155,6 +158,7 @@ export const workspaceRequestFromSearch = (search: URLSearchParams): WorkspaceOp
   const section = sectionValue === 'app' || sectionValue === 'files' ? sectionValue : undefined;
   return {
     origin: search.get('wsOrigin') === 'artifact' ? 'artifact' : 'workspace',
+    projectReference:projectReferences(search.get('wsReference')??'')[0]?.reference,
     source: search.get('wsSource') === 'project' ? 'project' : search.get('wsSource') === 'workspace' ? 'workspace' : undefined,
     section,
     buildRunId: search.get('wsBuild') || undefined,
@@ -166,9 +170,10 @@ export const workspaceRequestFromSearch = (search: URLSearchParams): WorkspaceOp
 
 export const workspaceSearchWithRequest = (current: URLSearchParams, request?: WorkspaceOpenRequest | WorkspaceRequestUpdate) => {
   const next = new URLSearchParams(current);
-  ['workspace','wsEntry','wsVersion','wsView','wsTree','wsOrigin','wsSection','wsBuild','wsSource'].forEach(key => next.delete(key));
+  ['workspace','wsEntry','wsVersion','wsView','wsTree','wsOrigin','wsSection','wsBuild','wsSource','wsReference'].forEach(key => next.delete(key));
   if (!request) return next;
   next.set('workspace', '1');
+  if(request.projectReference)next.set('wsReference',encodeProjectReference(request.projectReference));
   if(request.source)next.set('wsSource',request.source);
   const target = request.target;
   if (target?.entryId) next.set('wsEntry', target.entryId);

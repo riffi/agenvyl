@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Fragment, forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type KeyboardEvent } from 'react';
 import { ArrowUp, FileText, Hammer, LoaderCircle, MessageSquarePlus, RefreshCw, Shield, Slash, Square, X } from 'lucide-react';
 import {personaModelName,type HarnessCatalog} from '../../entities/harness';
 import type { Persona } from '../../entities/persona';
@@ -15,10 +15,15 @@ import {ComposerAddMenu} from './ComposerAddMenu';
 import {AUTO_ROUTING_GUIDANCE_ID,AutoRoutingGuidance} from './AutoRoutingGuidance';
 import {ConversationRouteControl} from './ConversationRouteControl';
 import {PendingFollowUps} from './PendingFollowUps';
+import type {ProjectReference,ProjectSummary} from '@agenvyl/contracts';
+import {registerProjectReference,serializeProjectReferenceDraft,restoreProjectReferenceDraft} from './projectReferenceDraft';
+import {ReferenceEditor,type ReferenceEditorElement} from './ReferenceEditor';
+import {useProjectMentions} from './useProjectMentions';
 
 function highlightComposerText(text:string,personas:readonly Persona[]):ReactNode[] {
   const known=new Map(personas.map(persona=>[persona.handle.toLowerCase(),persona]));
   const ranges:Array<{start:number;end:number;className:string;color?:string}>=[];
+  for(const match of text.matchAll(/⟦[^⟧]*⟧/g))ranges.push({start:match.index!,end:match.index!+match[0].length,className:styles['known-mention'],color:'#355583'});
   for(const match of text.matchAll(/(^|[^\p{L}\p{N}_])@([\p{L}\p{N}_-]+)/giu)){
     const start=(match.index??0)+match[1].length,end=(match.index??0)+match[0].length,handle=match[2].toLowerCase();
     const persona=known.get(handle),color=handle==='all'?'#4f6ef7':persona?.color??'#b45309';
@@ -36,7 +41,7 @@ function highlightComposerText(text:string,personas:readonly Persona[]):ReactNod
   return parts;
 }
 
-export type ComposerHandle={insertMention:(handle:string)=>void};
+export type ComposerHandle={insertMention:(handle:string)=>void;insertProjectReference:(reference:ProjectReference)=>void};
 export type ComposerInterventionTarget={runId:string;agent:string;mode:'active_redirect'|'post_turn_continuation'|'unavailable'};
 
 export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer({
@@ -67,17 +72,27 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   autoRoutingCandidates=[],
   pendingFollowUps=[],
   pendingWorkflowModes={},
+  project,
 }: ComposerProps,ref) {
   const [text, setText] = useState("");
+  const references=useRef(new Map<string,ProjectReference>());
+  const beforeFirstReference=useRef('');
+  const serializeReferences=(value:string)=>serializeProjectReferenceDraft(references.current,value);
+  const restoreReferences=(value:string)=>restoreProjectReferenceDraft(references.current,value);
   const ordinaryDraftRef=useRef('');
   const interventionDraftsRef=useRef(new Map<string,string>());
   const previousInterventionRef=useRef<string|undefined>(undefined);
-  const editorRef=useRef<HTMLTextAreaElement>(null);
+  const editorRef=useRef<HTMLTextAreaElement|ReferenceEditorElement>(null);
   const mirrorRef=useRef<HTMLDivElement>(null);
   const mentionPopoverRef=useRef<HTMLDivElement>(null);
   const commandPopoverRef=useRef<HTMLDivElement>(null);
   const [mention,setMention]=useState<{start:number;end:number;query:string}>();
   const [mentionIndex,setMentionIndex]=useState(0);
+  const [mentionDirectory,setMentionDirectory]=useState<string>();
+  const [directoryFilter,setDirectoryFilter]=useState('');
+  const browseDirectory=(path:string)=>{setMentionDirectory(path);setDirectoryFilter('');setMentionIndex(0);};
+  useLayoutEffect(()=>{if(mentionDirectory!==undefined&&mentionPopoverRef.current){mentionPopoverRef.current.scrollTop=0;mentionPopoverRef.current.querySelector('input')?.focus();}},[mentionDirectory]);
+  useEffect(()=>{if(!mention){setMentionDirectory(undefined);setDirectoryFilter('');}},[mention]);
   const [command,setCommand]=useState<ActiveComposerCommandQuery>();
   const [commandIndex,setCommandIndex]=useState(0);
   const [startFresh,setStartFresh]=useState(false);
@@ -101,7 +116,14 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
     setMention(undefined);
     requestAnimationFrame(()=>{editorRef.current?.focus();editorRef.current?.setSelectionRange(caret,caret)});
   };
-  useImperativeHandle(ref,()=>({insertMention}),[text]);
+  const insertProjectReference=(reference:ProjectReference,range?:{start:number;end:number})=>{
+    if(!references.current.size)beforeFirstReference.current=text;
+    const token=registerProjectReference(references.current,reference),start=range?.start??editorRef.current?.selectionStart??text.length,end=range?.end??editorRef.current?.selectionEnd??start;
+    const next=text.slice(0,start)+token+' '+text.slice(end);if(next.length>MAX_MESSAGE_TEXT_LENGTH)return;
+    setText(next);setMention(undefined);
+    requestAnimationFrame(()=>{editorRef.current?.focus();editorRef.current?.setSelectionRange(start+token.length+1,start+token.length+1);});
+  };
+  useImperativeHandle(ref,()=>({insertMention,insertProjectReference}),[text]);
   const targets = useMemo(
     () => parseMentions(text, personas),
     [text, personas],
@@ -113,16 +135,19 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   const instructionOnlyTargets=workflowMode==='plan'?targetExecutionPreview.filter(item=>!item.native):[];
   const readyAttachments=attachments.flatMap(item=>item.attachment?[item.attachment]:[]);
   const composerExpanded=Boolean(interventionTarget||text.length||attachments.length||targets.length||startFresh);
-  const composerPlaceholder=interventionTarget?`Add an instruction for @${interventionTarget.agent}…`:!catalogReady&&!composerExpanded?'Agent catalog unavailable':'Message @handle or @all…';
-  const mentionCandidates=useMemo(()=>[
+  const composerPlaceholder=interventionTarget?`Add an instruction for @${interventionTarget.agent}…`:!catalogReady&&!composerExpanded?'Agent catalog unavailable':project?'Message @agent, @file or @folder…':'Message @handle or @all…';
+  const projectMatches=useProjectMentions(project,mention?(mentionDirectory===undefined?mention.query:directoryFilter):undefined,mentionDirectory);
+  const agentCandidates=useMemo(()=>mentionDirectory!==undefined?[]:[
     {handle:'all',name:'All agents',detail:'Notify every participant',color:'#4f6ef7'},
     ...personas.map(persona=>({handle:persona.handle,name:persona.name,detail:personaModelName(persona,harnessCatalog),color:persona.color})),
-  ].filter(candidate=>!mention||!mention.query||candidate.handle.toLowerCase().includes(mention.query)||candidate.name.toLowerCase().includes(mention.query)||candidate.detail.toLowerCase().includes(mention.query)).slice(0,8),[harnessCatalog,mention,personas]);
+  ].filter(candidate=>!mention||!mention.query||candidate.handle.toLowerCase().includes(mention.query)||candidate.name.toLowerCase().includes(mention.query)||candidate.detail.toLowerCase().includes(mention.query)).slice(0,8),[harnessCatalog,mention,personas,mentionDirectory]);
+  const mentionCandidates:Array<{handle:string;name:string;detail:string;color:string;reference?:ProjectReference}>=[...agentCandidates,...(project?projectMatches.entries.map(file=>({handle:`file:${file.path}`,name:file.name,detail:file.path,color:'#e7edf7',reference:{projectId:project.id,projectName:project.name,root:project.path,path:file.path,kind:file.kind}})):[])];
   const commandCandidates=useMemo(()=>composerCommands.filter(candidate=>!command?.query||candidate.name.startsWith(command.query)),[command?.query]);
   useEffect(()=>setMentionIndex(0),[mention?.query]);
+  useEffect(()=>{mentionPopoverRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({block:'nearest'});},[mentionIndex]);
   useEffect(()=>setCommandIndex(0),[command?.query]);
   useEffect(()=>{if(typeof matchMedia!=='function')return;const query=matchMedia('(max-width: 767px)'),update=()=>setMobileControls(query.matches);update();query.addEventListener?.('change',update);return()=>query.removeEventListener?.('change',update)},[]);
-  useEffect(()=>{setText('');setMention(undefined);setCommand(undefined);updateStartFresh(false);setComposerStatus('');setSendError(undefined);setProfileError(undefined);setModeError(undefined);setRouteError(undefined)},[roomId]);
+  useEffect(()=>{references.current.clear();setText('');setMention(undefined);setCommand(undefined);updateStartFresh(false);setComposerStatus('');setSendError(undefined);setProfileError(undefined);setModeError(undefined);setRouteError(undefined)},[roomId]);
   useEffect(()=>{
     const previous=previousInterventionRef.current,next=interventionTarget?.runId;
     if(previous===next)return;
@@ -135,7 +160,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   useEffect(()=>{const editor=editorRef.current;if(!editor)return;editor.style.height='auto';editor.style.height=`${Math.min(Math.max(editor.scrollHeight,composerExpanded?44:56),composerExpanded?168:56)}px`;if(mirrorRef.current){mirrorRef.current.scrollTop=editor.scrollTop;mirrorRef.current.scrollLeft=editor.scrollLeft}},[composerExpanded,text]);
   useLayoutEffect(()=>{if((!mention&&!command)||!matchMedia('(max-width: 767px)').matches)return;const position=()=>{const popover=commandPopoverRef.current??mentionPopoverRef.current,editor=editorRef.current;if(!popover||!editor)return;popover.style.setProperty('--mention-bottom',`${Math.max(0,window.innerHeight-editor.getBoundingClientRect().top)}px`)};position();window.visualViewport?.addEventListener('resize',position);addEventListener('resize',position);return()=>{window.visualViewport?.removeEventListener('resize',position);removeEventListener('resize',position)}},[command,mention,text,targets.length]);
   const updateComposerQueries=(value:string,caret:number)=>{const nextCommand=activeComposerCommandQuery(value,caret);setCommand(nextCommand);setMention(nextCommand?undefined:activeMentionQuery(value,caret));};
-  const chooseMention=(handle:string)=>{if(!mention)return;const next=`${text.slice(0,mention.start)}@${handle} ${text.slice(mention.end)}`,caret=mention.start+handle.length+2;setText(next);setMention(undefined);requestAnimationFrame(()=>{editorRef.current?.focus();editorRef.current?.setSelectionRange(caret,caret)});};
+  const chooseMention=(handle:string,directoryAction:'browse'|'insert'='browse')=>{if(!mention)return;const reference=mentionCandidates.find(item=>item.handle===handle)?.reference;if(reference){if(reference.kind==='directory'&&directoryAction==='browse')browseDirectory(reference.path);else insertProjectReference(reference,mention);return;}const next=`${text.slice(0,mention.start)}@${handle} ${text.slice(mention.end)}`,caret=mention.start+handle.length+2;setText(next);setMention(undefined);requestAnimationFrame(()=>{editorRef.current?.focus();editorRef.current?.setSelectionRange(caret,caret)});};
   const chooseCommand=(selected=commandCandidates[commandIndex]??commandCandidates[0])=>{if(!command||!selected)return;const next=insertComposerCommandAt(text,selected,command);setText(next.text);setCommand(undefined);requestAnimationFrame(()=>{editorRef.current?.focus();editorRef.current?.setSelectionRange(next.caret,next.caret)});};
   const selectWorkflowMode=async(nextMode:WorkflowMode)=>{if(modeSaving||nextMode===workflowMode)return;setModeSaving(true);setModeError(undefined);const update=Promise.resolve().then(()=>updateWorkflowMode(nextMode));modeUpdateRef.current=update;try{await update}catch(error){setModeError(error instanceof Error?error.message:String(error))}finally{if(modeUpdateRef.current===update)modeUpdateRef.current=undefined;setModeSaving(false)}};
   const selectConversationRouting=async(nextMode:import('@agenvyl/contracts').ConversationRoutingMode)=>{if(routeSaving||nextMode===conversationRoutingMode)return;setRouteSaving(true);setRouteError(undefined);try{await updateConversationRouting(nextMode)}catch(error){setRouteError(error instanceof Error?error.message:String(error))}finally{setRouteSaving(false)}};
@@ -161,14 +186,16 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
   const send = async (retry?:typeof sendError) => {
     try{await modeUpdateRef.current}catch{return}
     if(interventionTarget){
-      const outgoing=text.trim();if(!outgoing||sending)return;
+      const outgoing=serializeReferences(text.trim());if(!outgoing||sending)return;
+      if(outgoing.length>2000){setInterventionError('The instruction and references exceed 2,000 characters. Shorten it or send a regular message.');return;}
       if(interventionTarget.mode==='unavailable'){setInterventionError('This run can no longer accept instructions. Your instruction draft is still here.');return;}
       setSending(true);setInterventionError(undefined);
       try{await gateway.intervene(interventionTarget.runId,outgoing);interventionDraftsRef.current.delete(interventionTarget.runId);previousInterventionRef.current=undefined;setText(ordinaryDraftRef.current);exitIntervention();}
       catch(error){setInterventionError(error instanceof ApiError?`${error.code}: ${error.message}`:error instanceof Error?error.message:String(error));}
       finally{setSending(false);}return;
     }
-    const outgoing=retry?.text??text.trim();
+    const outgoing=retry?.text??serializeReferences(text.trim());
+    if(outgoing.length>MAX_MESSAGE_TEXT_LENGTH){setComposerStatus('The message and project references exceed the message size limit. Remove some references or shorten the message.');return;}
     const outgoingTargets=retry?.targets??parseMentions(outgoing,personas), messageId=retry?.messageId??crypto.randomUUID(),attachmentVersionIds=retry?.attachmentVersionIds??attachments.flatMap(item=>item.attachment?[item.attachment.version_id]:[]);
     const outgoingRouting=retry?.routing??(visibleConversationRoutingMode==='room_context'?{mode:'room_context' as const}:{mode:'auto' as const,delivery:startFresh||startFreshRef.current?'new_request' as const:'after_response' as const});
     if ((!outgoing&&!attachmentVersionIds.length) || !catalogReady || sending || (!retry&&attachmentsBusy))return;
@@ -176,9 +203,34 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
     setSending(true);setSendError(undefined);
     let delivered=false;
     try{await gateway.send(outgoing,outgoingTargets,messageId,attachmentVersionIds,outgoingRouting);delivered=true;setText("");setMention(undefined);setCommand(undefined);clearAttachments();updateStartFresh(false);setComposerStatus('');await onSent();}
-    catch(error){if(!delivered){setText(outgoing);setSendError({message:error instanceof ApiError?`${error.code}: ${error.message}`:error instanceof Error?error.message:String(error),messageId,text:outgoing,targets:outgoingTargets,attachmentVersionIds,routing:outgoingRouting});}}
+    catch(error){if(!delivered){setText(restoreReferences(outgoing));setSendError({message:error instanceof ApiError?`${error.code}: ${error.message}`:error instanceof Error?error.message:String(error),messageId,text:outgoing,targets:outgoingTargets,attachmentVersionIds,routing:outgoingRouting});}}
     finally{setSending(false);}
   };
+  const handleEditorKeyDown=(e:KeyboardEvent<HTMLElement>)=>{
+              if(mention&&e.key==='ArrowRight'&&mentionCandidates[mentionIndex]?.reference?.kind==='directory'){
+                e.preventDefault();browseDirectory(mentionCandidates[mentionIndex].reference!.path);
+              } else if(mention&&mentionDirectory!==undefined&&e.key==='ArrowLeft'){
+                e.preventDefault();browseDirectory(mentionDirectory.split('/').slice(0,-1).join('/'));
+              } else if(mention&&project&&!mentionCandidates.length&&(e.key==='Enter'||e.key==='Tab')){
+                e.preventDefault();
+              } else if(mention&&mentionCandidates.length&&(e.key==='ArrowDown'||e.key==='ArrowUp')){
+                e.preventDefault();setMentionIndex(index=>(index+(e.key==='ArrowDown'?1:-1)+mentionCandidates.length)%mentionCandidates.length);
+              } else if(mention&&mentionCandidates.length&&(e.key==='Enter'||e.key==='Tab')){
+                e.preventDefault();chooseMention(mentionCandidates[mentionIndex]?.handle??mentionCandidates[0].handle,'insert');
+              } else if(mention&&e.key==='Escape'){
+                e.preventDefault();setMention(undefined);
+              } else if(command&&commandCandidates.length&&(e.key==='ArrowDown'||e.key==='ArrowUp')){
+                e.preventDefault();setCommandIndex(index=>(index+(e.key==='ArrowDown'?1:-1)+commandCandidates.length)%commandCandidates.length);
+              } else if(command&&commandCandidates.length&&e.key==='Tab'){
+                e.preventDefault();chooseCommand();
+              } else if(command&&commandCandidates.length&&e.key==='Enter'&&command.query!==commandCandidates[commandIndex]?.name){
+                e.preventDefault();chooseCommand();
+              } else if(command&&e.key==='Escape'){
+                e.preventDefault();setCommand(undefined);
+              } else if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){
+                e.preventDefault();if(!interventionTarget&&applyComposerCommands())return;void send();
+              }
+            };
   return (
     <div className={styles.composer} ui-spec-block-id="room_composer">
       {gateway.mode === "fake" && (
@@ -246,50 +298,54 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
               <i className={styles['command-icon']}><Slash aria-hidden="true"/></i><span><strong>/{candidate.name}</strong><small>{candidate.description}</small></span><em>{candidate.label}</em>
             </button>)}
           </div>}
-          {!interventionTarget&&!command&&mention&&mentionCandidates.length>0&&<div ref={mentionPopoverRef} className={styles['mention-popover']} role="listbox" aria-label="Select an agent to mention">
-            <header><span>Mention</span><small>↑↓ select · Enter insert</small></header>
-            {mentionCandidates.map((candidate,index)=><button key={candidate.handle} type="button" role="option" aria-selected={index===mentionIndex} className={index===mentionIndex?styles.selected:''} onMouseDown={event=>event.preventDefault()} onClick={()=>chooseMention(candidate.handle)}>
-              <i style={{background:candidate.color}}>{candidate.name[0]}</i><span><strong>{candidate.name}</strong><small><b>@{candidate.handle}</b><span> · {candidate.detail}</span></small></span>{candidate.handle==='all'&&<em>all</em>}
-            </button>)}
+          {!interventionTarget&&!command&&mention&&(mentionCandidates.length>0||project)&&<div ref={mentionPopoverRef} className={styles['mention-popover']} onKeyDown={event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();setMention(undefined);requestAnimationFrame(()=>{editorRef.current?.focus();setMention(undefined);});}}} onBlur={()=>setTimeout(()=>{if(!mentionPopoverRef.current?.contains(document.activeElement)&&document.activeElement!==editorRef.current)setMention(undefined);},100)} role="listbox" aria-label={project?'Select an agent, file or folder':'Select an agent to mention'}>
+            <header><span>{mentionDirectory===undefined?'Mention':'Project files and folders'}</span><small>{mentionDirectory===undefined?'↑↓ select · Enter insert · → open folder':'↑↓ select · Enter open / insert'}</small></header>
+            {project&&mentionDirectory!==undefined&&<div className={styles['directory-navigation']}>
+              <nav aria-label="Project folder path"><button type="button" aria-label="Back to parent folder" disabled={!mentionDirectory} onClick={()=>browseDirectory(mentionDirectory.split('/').slice(0,-1).join('/'))}>←</button><button type="button" onClick={()=>browseDirectory('')}>{project.name}</button>{mentionDirectory.split('/').filter(Boolean).map((part,index)=><Fragment key={index}><span>/</span><button type="button" onClick={()=>browseDirectory(mentionDirectory.split('/').slice(0,index+1).join('/'))}>{part}</button></Fragment>)}</nav>
+              <input autoFocus aria-label="Search this folder" placeholder="Search this folder" value={directoryFilter} onChange={event=>{setDirectoryFilter(event.target.value);setMentionIndex(0);}} onKeyDown={event=>{
+                if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();if(mentionCandidates.length)setMentionIndex(index=>(index+(event.key==='ArrowDown'?1:-1)+mentionCandidates.length)%mentionCandidates.length);}
+                else if(event.key==='Enter'){event.preventDefault();if(mentionCandidates.length)chooseMention(mentionCandidates[mentionIndex]?.handle??mentionCandidates[0].handle);}
+                else if(!directoryFilter&&event.key==='ArrowRight'&&mentionCandidates[mentionIndex]?.reference?.kind==='directory'){event.preventDefault();browseDirectory(mentionCandidates[mentionIndex].reference!.path);}
+                else if(!directoryFilter&&event.key==='ArrowLeft'){event.preventDefault();browseDirectory(mentionDirectory.split('/').slice(0,-1).join('/'));}
+              }}/>
+            </div>}
+            {mentionCandidates.map((candidate,index)=><Fragment key={candidate.handle}>{project&&(index===0||index===agentCandidates.length)&&<div className={styles['mention-section']} role="presentation">{candidate.reference?`Project · ${project.name}`:'Agents'}</div>}<div className={styles['mention-option-row']}><button type="button" role="option" aria-selected={index===mentionIndex} className={index===mentionIndex?styles.selected:''} onMouseDown={event=>event.preventDefault()} onClick={()=>chooseMention(candidate.handle)}>
+              <i style={{background:candidate.color}}>{candidate.reference?candidate.reference.kind==='directory'?'📁':'📄':candidate.name[0]}</i><span><strong>{candidate.name}</strong><small>{candidate.reference?<span>{candidate.detail} · {project?.name}</span>:<><b>@{candidate.handle}</b><span> · {candidate.detail}</span></>}</small></span><em>{candidate.reference?candidate.reference.kind==='directory'?'›':'file':candidate.handle==='all'?'all':'agent'}</em>
+            </button>{candidate.reference?.kind==='directory'&&<button type="button" className={styles['add-folder-reference']} aria-label={`Add folder ${candidate.reference.path} to message`} title="Add folder to message" onMouseDown={event=>event.preventDefault()} onClick={()=>insertProjectReference(candidate.reference!,mention)}>+</button>}</div></Fragment>)}
+            {project&&mentionDirectory&&<button type="button" className={styles['add-current-folder']} onMouseDown={event=>event.preventDefault()} onClick={()=>insertProjectReference({projectId:project.id,projectName:project.name,root:project.path,path:mentionDirectory,kind:'directory'},mention)}>Add folder {mentionDirectory} to message +</button>}
+            {projectMatches.loading&&<small role="status">Searching project…</small>}
+            {projectMatches.error&&<small role="alert">{projectMatches.error} <button type="button" onClick={projectMatches.retry}>Retry</button></small>}
+            {project&&!projectMatches.loading&&!projectMatches.error&&!projectMatches.entries.length&&<small>{mentionDirectory!==undefined&&!directoryFilter?'Folder is empty':'No matching project files or folders'}</small>}
+            {projectMatches.truncated&&<small>{mentionDirectory===undefined?'More results available; type a more specific path.':'Folder listing is limited to 2,000 entries.'}</small>}
           </div>}
+          {references.current.size>0?<ReferenceEditor ref={node=>{editorRef.current=node;}} className={styles.editor} value={text} initialValue={beforeFirstReference.current} placeholder={composerPlaceholder} references={references.current} maxLength={interventionTarget?2000:MAX_MESSAGE_TEXT_LENGTH} label={interventionTarget?`Instruction for ${interventionTarget.agent}`:'Message'} describedBy={showAutoRoutingGuidance?AUTO_ROUTING_GUIDANCE_ID:undefined}
+            onChange={(value,caret)=>{setMentionDirectory(undefined);setDirectoryFilter('');setText(value);setComposerStatus('');setSendError(undefined);if(!interventionTarget)updateComposerQueries(value,caret);}}
+            onSelect={(value,caret)=>{if(!interventionTarget)updateComposerQueries(value,caret);}}
+            onBlur={()=>setTimeout(()=>{if(!mentionPopoverRef.current?.contains(document.activeElement)&&document.activeElement!==editorRef.current){setMention(undefined);setCommand(undefined);}},100)}
+            onKeyDown={handleEditorKeyDown}
+            onPaste={event=>{const encoded=event.clipboardData.getData('application/x-agenvyl-project-references');if(encoded&&event.currentTarget instanceof HTMLTextAreaElement){event.preventDefault();beforeFirstReference.current=text;const pasted=restoreReferences(encoded),start=event.currentTarget.selectionStart,end=event.currentTarget.selectionEnd,next=text.slice(0,start)+pasted+text.slice(end);if(next.length>(interventionTarget?2000:MAX_MESSAGE_TEXT_LENGTH))return;setText(next);requestAnimationFrame(()=>{editorRef.current?.focus();editorRef.current?.setSelectionRange(start+pasted.length,start+pasted.length);});return;}if(interventionTarget)return;const files=[...event.clipboardData.items].filter(item=>item.kind==='file').flatMap(item=>{const file=item.getAsFile();return file?[file]:[]});if(files.length){event.preventDefault();uploadFiles(files);}}}
+          />:<>
           <div ref={mirrorRef} className={styles['editor-mirror']} aria-hidden="true">{highlightedText}</div>
           <TextArea
             className={styles.editor}
-            ref={editorRef}
+            ref={node=>{editorRef.current=node;}}
             value={text}
             rows={1}
             maxLength={interventionTarget?2000:MAX_MESSAGE_TEXT_LENGTH}
-            onChange={(e) => {setText(e.target.value);setComposerStatus('');setSendError(undefined);if(!interventionTarget)updateComposerQueries(e.target.value,e.target.selectionStart)}}
+            onChange={(e) => {setMentionDirectory(undefined);setDirectoryFilter('');setText(e.target.value);setComposerStatus('');setSendError(undefined);if(!interventionTarget)updateComposerQueries(e.target.value,e.target.selectionStart)}}
             onSelect={(e)=>{if(!interventionTarget)updateComposerQueries(e.currentTarget.value,e.currentTarget.selectionStart)}}
-            onBlur={()=>setTimeout(()=>{setMention(undefined);setCommand(undefined)},100)}
+            onBlur={()=>setTimeout(()=>{if(!mentionPopoverRef.current?.contains(document.activeElement)&&document.activeElement!==editorRef.current){setMention(undefined);setCommand(undefined)}},100)}
             onScroll={event=>{if(mirrorRef.current){mirrorRef.current.scrollTop=event.currentTarget.scrollTop;mirrorRef.current.scrollLeft=event.currentTarget.scrollLeft}}}
-            onPaste={event=>{if(interventionTarget)return;const files=[...event.clipboardData.items].filter(item=>item.kind==='file').flatMap(item=>{const file=item.getAsFile();return file?[file]:[]});if(files.length){event.preventDefault();uploadFiles(files)}}}
-            onKeyDown={(e) => {
-              if(mention&&mentionCandidates.length&&(e.key==='ArrowDown'||e.key==='ArrowUp')){
-                e.preventDefault();setMentionIndex(index=>(index+(e.key==='ArrowDown'?1:-1)+mentionCandidates.length)%mentionCandidates.length);
-              } else if(mention&&mentionCandidates.length&&(e.key==='Enter'||e.key==='Tab')){
-                e.preventDefault();chooseMention(mentionCandidates[mentionIndex]?.handle??mentionCandidates[0].handle);
-              } else if(mention&&e.key==='Escape'){
-                e.preventDefault();setMention(undefined);
-              } else if(command&&commandCandidates.length&&(e.key==='ArrowDown'||e.key==='ArrowUp')){
-                e.preventDefault();setCommandIndex(index=>(index+(e.key==='ArrowDown'?1:-1)+commandCandidates.length)%commandCandidates.length);
-              } else if(command&&commandCandidates.length&&e.key==='Tab'){
-                e.preventDefault();chooseCommand();
-              } else if(command&&commandCandidates.length&&e.key==='Enter'&&command.query!==commandCandidates[commandIndex]?.name){
-                e.preventDefault();chooseCommand();
-              } else if(command&&e.key==='Escape'){
-                e.preventDefault();setCommand(undefined);
-              } else if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){
-                e.preventDefault();if(!interventionTarget&&applyComposerCommands())return;void send();
-              }
-            }}
+            onPaste={event=>{const encoded=event.clipboardData.getData('application/x-agenvyl-project-references');if(encoded&&event.currentTarget instanceof HTMLTextAreaElement){event.preventDefault();beforeFirstReference.current=text;const pasted=restoreReferences(encoded),start=event.currentTarget.selectionStart,end=event.currentTarget.selectionEnd,next=text.slice(0,start)+pasted+text.slice(end);if(next.length>(interventionTarget?2000:MAX_MESSAGE_TEXT_LENGTH))return;setText(next);requestAnimationFrame(()=>{editorRef.current?.focus();editorRef.current?.setSelectionRange(start+pasted.length,start+pasted.length);});return;}if(interventionTarget)return;const files=[...event.clipboardData.items].filter(item=>item.kind==='file').flatMap(item=>{const file=item.getAsFile();return file?[file]:[]});if(files.length){event.preventDefault();uploadFiles(files)}}}
+            onKeyDown={handleEditorKeyDown}
             aria-label={interventionTarget?`Instruction for ${interventionTarget.agent}`:'Message'}
             aria-describedby={showAutoRoutingGuidance?AUTO_ROUTING_GUIDANCE_ID:undefined}
             placeholder={composerPlaceholder}
           />
+          </>}
         </div>
         <footer className={interventionTarget?styles['instruction-footer']:undefined}>
-          {!interventionTarget&&<ComposerAddMenu attachmentDisabled={attachments.length>=10||attachmentsBusy} onAttach={openAttachmentPicker} onOpenWorkspace={()=>openWorkspace()} routing={mobileControls?{mode:visibleConversationRoutingMode,saving:routeSaving,onModeChange:mode=>void selectConversationRouting(mode)}:undefined}/>}
+          {!interventionTarget&&<ComposerAddMenu attachmentDisabled={attachments.length>=10||attachmentsBusy} onAttach={openAttachmentPicker} onReference={project?()=>{setCommand(undefined);setMention({start:editorRef.current?.selectionStart??text.length,end:editorRef.current?.selectionEnd??text.length,query:''});browseDirectory('');}:undefined} onOpenWorkspace={()=>openWorkspace()} routing={mobileControls?{mode:visibleConversationRoutingMode,saving:routeSaving,onModeChange:mode=>void selectConversationRouting(mode)}:undefined}/>}
           <span className={styles['footer-spacer']} aria-hidden="true"/>
           {!interventionTarget&&!mobileControls&&<ConversationRouteControl mode={visibleConversationRoutingMode} saving={routeSaving} onModeChange={mode=>void selectConversationRouting(mode)}/>}
           {!interventionTarget&&<Button
@@ -320,6 +376,7 @@ export const Composer=forwardRef<ComposerHandle,ComposerProps>(function Composer
 });
 
 type ComposerProps={
+  project?:ProjectSummary|null;
   gateway: RoomGateway;
   active: number;
   personas: Persona[];

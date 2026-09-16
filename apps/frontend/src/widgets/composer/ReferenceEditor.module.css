@@ -1,0 +1,10 @@
+.editor[contenteditable]{color:#1e293b;-webkit-text-fill-color:currentColor;white-space:pre-wrap;overflow-wrap:anywhere;outline:0;overflow-y:auto;min-height:44px;max-height:168px;font:inherit;line-height:1.8;padding:10px 12px;}
+.editor:empty::before{content:attr(data-placeholder);color:#64748b;pointer-events:none;}
+.chip{display:inline-flex;align-items:center;vertical-align:baseline;max-width:100%;margin:0 2px;border:1px solid #d5deeb;border-radius:6px;background:#f1f5f9;color:#425875;line-height:1.5;white-space:nowrap;user-select:all;}
+.chip button{display:inline-flex;align-items:center;gap:5px;min-width:0;border:0;background:transparent;color:inherit;font:inherit;font-size:.9em;padding:1px 5px;cursor:pointer;}
+.chip button:first-child{overflow:hidden;}
+.chip button span{overflow:hidden;text-overflow:ellipsis;}
+.chip svg{width:13px;height:13px;flex:none;}
+.chip button:last-child{align-self:stretch;color:#7a8798;padding:0 5px;}
+.chip button:hover{background:#e2e8f0;}
+.chip button:focus-visible{outline:2px solid #818cf8;border-radius:4px;}

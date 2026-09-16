@@ -4,6 +4,7 @@ import {useMutation,useQuery,useQueryClient} from '@tanstack/react-query';
 import {Code2,Download,ExternalLink,Eye,Monitor,MoreHorizontal,PanelLeft,Paperclip,Play,RefreshCw,Settings,Smartphone,X} from 'lucide-react';
 import type {ProjectFile,ProjectSummary,WorkspaceAttachment} from '@agenvyl/contracts';
 import {projectFilesApi} from '../../entities/project';
+import {useProjectReferenceActions} from '../../shared/project-references/ProjectReferenceContext';
 import {AppPreviewDevice} from './WorkspaceAppPreview';
 import {IconButton} from '../../shared/ui';
 import {isolatedPreviewUrl,useRuntimeFeatures} from '../../shared/features';
@@ -18,14 +19,21 @@ export function ProjectWindow({project,roomId,request,revision,source,onClose,on
   const client=useQueryClient(),menu=useRef<HTMLDetailsElement>(null),windowRef=useRef<HTMLElement>(null);
   const[settings,setSettings]=useState(false),[showLog,setShowLog]=useState(false),[refresh,setRefresh]=useState(0),[error,setError]=useState('');
   const[selection,setSelection]=useState<ProjectFile>();
+  const referenceActions=useProjectReferenceActions();
+  const reference=request.projectReference;
+  const selectedPath=selection?.path??reference?.path;
+  useEffect(()=>setSelection(undefined),[reference?.path,reference?.kind]);
+  const referenceFile=(file:ProjectFile)=>referenceActions?.insert({projectId:project.id,projectName:project.name,root:project.path,path:file.path,kind:file.kind});
   const[device,setDevice]=useState<'desktop'|'mobile'>('desktop');
   const {preview_origin:previewOrigin}=useRuntimeFeatures();
   const section=request.section??'app',tree=request.treeVisible!==false;
   const inspection=useQuery({queryKey:['project-files',project.id,'inspection'],queryFn:({signal})=>projectFilesApi.inspect(project.id,signal),refetchOnWindowFocus:false});
   const build=useQuery({queryKey:['project-files',project.id,'build'],queryFn:({signal})=>projectFilesApi.buildStatus(project.id,signal),refetchInterval:2000});
-  const parent=selection?.path.includes('/')?selection.path.slice(0,selection.path.lastIndexOf('/')):'';
-  const selectedDirectory=useQuery({queryKey:['project-files',project.id,'directory',parent],queryFn:({signal})=>projectFilesApi.list(project.id,parent,signal),enabled:Boolean(selection),refetchInterval:3000});
-  const selected=selectedDirectory.data?.entries.find(file=>file.path===selection?.path)??(!selectedDirectory.data?selection:undefined);
+  const parent=selectedPath?.includes('/')?selectedPath.slice(0,selectedPath.lastIndexOf('/')):'';
+  const selectedDirectory=useQuery({queryKey:['project-files',project.id,'directory',parent],queryFn:({signal})=>projectFilesApi.list(project.id,parent,signal),enabled:Boolean(selectedPath),refetchInterval:3000});
+  const selected=selectedDirectory.error?undefined:selectedDirectory.data?.entries.find(file=>file.kind==='file'&&file.path===selectedPath)??(!selectedDirectory.data?selection:undefined);
+  const referencedFolder=reference?.kind==='directory'&&selectedDirectory.data?.entries.some(file=>file.path===selectedPath&&file.kind==='directory');
+  const emptyMessage=!selectedPath?'Select a file':selectedDirectory.isPending?'Loading file…':selectedDirectory.error?.message??(referencedFolder?`Folder: ${selectedPath}`:'Referenced file or folder is no longer available');
   const previousBuild=useRef<string|undefined>(undefined);
   const refreshAll=()=>{setRefresh(value=>value+1);void client.invalidateQueries({queryKey:['project-files',project.id]});};
   useEffect(()=>{setRefresh(value=>value+1);void client.invalidateQueries({queryKey:['project-files',project.id]});},[revision,project.id,client]);
@@ -69,6 +77,7 @@ export function ProjectWindow({project,roomId,request,revision,source,onClose,on
           <button disabled={operation.isPending||build.data?.status==='running'} onClick={action(startBuild)}><Play/>Build now</button>
           <button disabled={!inspection.data} onClick={action(()=>setSettings(true))}><Settings/>Build settings…</button>
           {build.data&&<button onClick={action(()=>setShowLog(true))}>Build log</button>}
+          {selected&&section==='files'&&referenceActions&&<button onClick={action(()=>referenceFile(selected))}>Reference in chat</button>}
           {attachment&&section==='files'&&<><a href={attachment.url} download><Download/>Download</a>{onAttach&&<button disabled={operation.isPending} onClick={action(()=>operation.mutate(async()=>{const captured=await projectFilesApi.attach(project.id,roomId,attachment.path);onAttach(captured);}))}><Paperclip/>Attach to message</button>}{/\.html?$/i.test(attachment.path)&&inspection.data&&<button disabled={operation.isPending} onClick={action(()=>operation.mutate(async()=>{await projectFilesApi.saveSettings(project.id,{...inspection.data!.settings,entrypoint:attachment.path});onRequestChange({section:'app'});refreshAll();}))}><Play/>Use as app entry</button>}</>}
         </section></div></details>
         <IconButton aria-label="Close project viewer" onClick={onClose}><X/></IconButton>
@@ -76,7 +85,7 @@ export function ProjectWindow({project,roomId,request,revision,source,onClose,on
     </header>
     {(error||inspection.error||build.error)&&<div role="alert" className={projectStyles.error}>{error||inspection.error?.message||build.error?.message}<button onClick={()=>{setError('');refreshAll();}}>Retry</button></div>}
     <div className={`${styles.layout} ${tree?styles.treePane:''}`}>
-      {tree&&<div className={styles.explorerShell} style={{width:286}}><ProjectExplorer projectId={project.id} selected={selection?.path} onSelect={choose}/></div>}
+      {tree&&<div className={styles.explorerShell} style={{width:286}}><ProjectExplorer projectId={project.id} selected={selectedPath} revealPath={reference?.path} onSelect={choose} onReference={referenceActions?referenceFile:undefined}/></div>}
       <main className={styles.viewer}>
         {section==='app'?(previewUrl?<AppPreviewDevice key={`${entry}:${refresh}`} device={device} title={`${project.name} app preview`} previewUrl={previewUrl}/>:<div className={styles.previewGate}>
           <strong>{inspection.isPending?'Looking for a build…':inspection.data?.candidates.length?'Choose the app to preview':'Ready build not found'}</strong>
@@ -84,7 +93,7 @@ export function ProjectWindow({project,roomId,request,revision,source,onClose,on
           {inspection.data?.scan_truncated&&<p>Auto-detection reached its scan limit. You can select an HTML path in Build settings.</p>}
           <div>{inspection.data?.candidates.map(candidate=><button key={candidate} onClick={()=>operation.mutate(async()=>{await projectFilesApi.saveSettings(project.id,{...inspection.data!.settings,entrypoint:candidate});})}>{candidate}</button>)}</div>
           <div><button disabled={operation.isPending||!inspection.data?.build_command||build.data?.status==='running'} onClick={startBuild}>Build now</button><button disabled={!inspection.data} onClick={()=>setSettings(true)}>Select HTML</button></div>
-        </div>):attachment?<><div className={projectStyles.filePath}>{attachment.path}</div><div className={styles.content}><WorkspaceContent attachment={/\.html?$/i.test(attachment.path)?{...attachment,preview_url:projectFilesApi.previewUrl(project.id,attachment.path)}:attachment} mode={mode} encoding={request.encoding} onEncodingChange={encoding=>onRequestChange({encoding})}/></div></>:<div className={styles.viewerEmpty}>{selection?'File is no longer available':'Select a file'}</div>}
+        </div>):attachment?<><div className={projectStyles.filePath}>{attachment.path}</div><div className={styles.content}><WorkspaceContent attachment={/\.html?$/i.test(attachment.path)?{...attachment,preview_url:projectFilesApi.previewUrl(project.id,attachment.path)}:attachment} mode={mode} encoding={request.encoding} onEncodingChange={encoding=>onRequestChange({encoding})}/></div></>:<div className={styles.viewerEmpty}>{emptyMessage}</div>}
       </main>
     </div>
     {(showLog||build.data?.status==='running')&&<section className={projectStyles.log} aria-label="Build log"><header><strong>{build.data?`Build ${build.data.status}`:'Starting build…'}</strong><code>{build.data?.command}</code>{build.data?.status==='running'?<button onClick={()=>operation.mutate(()=>projectFilesApi.cancel(project.id))}>Cancel build</button>:<button onClick={()=>setShowLog(false)}>Close log</button>}</header><pre>{build.data?.log||'Waiting for output…'}</pre></section>}

@@ -23,6 +23,9 @@ describe('project files end to end',()=>{
       const room=(await app.inject({method:'POST',url:'/api/v1/rooms',payload:{title:'Preview',persona_ids:[],project_id:id}})).json();
       expect((await app.inject(`${base}/inspection`)).json()).toMatchObject({entrypoint:'dist/index.html',settings:{entrypoint:null,build_command:null}});
       expect((await app.inject(`${base}/files`)).json().entries.map((item:{name:string})=>item.name)).toEqual(['dist','note.txt']);
+      const search=await app.inject(`${base}/search?q=dist%2Findex`);
+      expect(search.statusCode).toBe(200);
+      expect(search.json().entries.map((item:{path:string})=>item.path)).toEqual(['dist/index.html']);
       const url=`${base}/preview/${Buffer.from('dist/index.html').toString('base64url')}/`;
       const preview=await app.inject(url);expect(preview.statusCode).toBe(200);expect(preview.body).toContain('<base href=');expect(preview.headers['cache-control']).toBe('no-store');
       await writeFile(join(project,'dist/index.html'),'<p>updated</p>');expect((await app.inject(url)).body).toContain('updated');

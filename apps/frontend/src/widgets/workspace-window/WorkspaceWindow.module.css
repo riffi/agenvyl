@@ -37,3 +37,9 @@
 @media(prefers-reduced-motion:reduce){.window{animation:none}}
 
 .buildRow{display:flex;align-items:center;gap:4px;border-bottom:1px solid #e3e7ed}.buildRow>button,.buildRow>.buildNotice{flex:1;min-width:0}.buildRow:last-child{border-bottom:0}.buildRestore{display:flex;flex:none;padding:0 4px}.buildPopover .buildRestore button{width:32px;height:32px;min-height:32px;justify-content:center;padding:0;color:#5968ba}.buildPopover .buildRestore button:focus-visible{outline:2px solid #5968ba;outline-offset:1px}.buildRestore svg{width:14px;height:14px}.buildNotice small{display:block;margin-top:3px;color:#7b8798;font-size:10px}.buildPopover button:disabled{cursor:not-allowed;opacity:.55}.buildNotice{margin:0;padding:9px 8px;color:#667286;font-size:11px;line-height:1.5}.buildOtherChanges h3{margin:8px 8px 4px;color:#667286;font-size:10px;font-weight:600}
+
+.projectTreeRow {display:flex;align-items:center;}
+.projectTreeRow > .treeRow {flex:1;min-width:0;}
+.projectReferenceAction {flex-shrink:0;border:0;background:transparent;color:var(--text-muted,#64748b);padding:6px;cursor:pointer;opacity:0;}
+.projectTreeRow:hover .projectReferenceAction,.projectReferenceAction:focus-visible {opacity:1;}
+@media (hover:none) {.projectReferenceAction {opacity:1;}}

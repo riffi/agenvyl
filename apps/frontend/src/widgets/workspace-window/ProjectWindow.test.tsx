@@ -6,6 +6,7 @@ import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {projectFilesApi} from '../../entities/project';
 import {WorkspaceWindow} from './WorkspaceWindow';
 import {applyWorkspaceRequestUpdate,type WorkspaceOpenRequest} from './workspaceModel';
+import {ProjectReferenceContext} from '../../shared/project-references/ProjectReferenceContext';
 
 vi.mock('../../shared/features',async importOriginal=>({...await importOriginal<typeof import('../../shared/features')>(),IsolatedHtmlPreview:({previewUrl}:{previewUrl:string})=><iframe title="Project preview" src={previewUrl}/>}));
 vi.mock('./WorkspaceContent',()=>({WorkspaceContent:({attachment}:{attachment:{path:string;url:string}})=><a href={attachment.url}>Content: {attachment.path}</a>}));
@@ -26,6 +27,23 @@ function mount(onAttach=vi.fn()){
   render(<QueryClientProvider client={client}><Host/></QueryClientProvider>);return client;
 }
 describe('project viewer',()=>{
+  it('opens a referenced file and inserts folder references from the tree',async()=>{
+    const directory={...file,name:'src',path:'src',kind:'directory' as const},nested={...file,path:'src/notes.txt'};
+    vi.mocked(projectFilesApi.list).mockImplementation(async(_id,path)=>({entries:path==='src'?[nested]:[directory],truncated:false}));
+    const client=new QueryClient({defaultOptions:{queries:{retry:false}}}),insert=vi.fn();
+    const reference={projectId:project.id,projectName:project.name,root:project.path,path:nested.path,kind:'file' as const};
+    render(<QueryClientProvider client={client}><ProjectReferenceContext.Provider value={{open:vi.fn(),insert}}><WorkspaceWindow roomId="room" project={project} request={{origin:'workspace',source:'project',section:'files',projectReference:reference}} onClose={vi.fn()} onRequestChange={vi.fn()}/></ProjectReferenceContext.Provider></QueryClientProvider>);
+    expect(await screen.findByText('Content: src/notes.txt')).toBeTruthy();
+    expect((await screen.findByRole('button',{name:'src'})).getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(screen.getByRole('button',{name:'Reference src in chat'}));
+    expect(insert).toHaveBeenCalledWith({...reference,path:'src',kind:'directory'});
+  });
+  it('does not retarget a reference when the registered project root changes',()=>{
+    const reference={projectId:project.id,projectName:project.name,root:'C:/original-project',path:file.path,kind:'file' as const};
+    render(<QueryClientProvider client={new QueryClient()}><WorkspaceWindow roomId="room" project={project} request={{origin:'workspace',source:'project',projectReference:reference}} onClose={vi.fn()} onRequestChange={vi.fn()}/></QueryClientProvider>);
+    expect(screen.getByRole('dialog',{name:'Project reference unavailable'})).toBeTruthy();
+    expect(projectFilesApi.list).not.toHaveBeenCalled();
+  });
   it('defaults to the current app, opens files and snapshots attachments only on Attach',async()=>{
     const captured={version_id:'saved',name:'notes.txt',path:'snapshots/notes.txt',size:8,mime_type:'text/plain',url:'/saved',preview_url:'/saved/preview'};
     const attach=vi.spyOn(projectFilesApi,'attach').mockResolvedValue(captured),onAttach=vi.fn();mount(onAttach);

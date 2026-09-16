@@ -13,6 +13,7 @@ export class ProjectFilesService{
     catch(error){if(error instanceof ConnectorClientError)throw new AppError(error.serverCode??error.code,error.status??503,error.message);throw error;}
   }
   async list(id:string,path:string){return this.call(id,'list',{path});}
+  async search(id:string,query:string){return this.call(id,'search',{path:query});}
   async inspect(id:string):Promise<ProjectInspection>{
     const [discovery,settings]=await Promise.all([this.call(id,'inspect'),this.projects.previewSettings(id)]);
     return{...discovery,settings,entrypoint:settings.entrypoint??(discovery.candidates.length===1?discovery.candidates[0]:null),build_command:settings.build_command??discovery.detected_command};

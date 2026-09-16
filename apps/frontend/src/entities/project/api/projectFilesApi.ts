@@ -2,6 +2,7 @@ import type {ProjectBuild,ProjectDirectory,ProjectInspection,ProjectPreviewSetti
 import {apiRequest} from '../../../shared/api';
 const base=(id:string)=>`/api/v1/projects/${encodeURIComponent(id)}`;
 export const projectFilesApi={
+  search:(id:string,q:string,signal?:AbortSignal)=>apiRequest<ProjectDirectory>(`${base(id)}/search?${new URLSearchParams({q})}`,{signal}),
   list:(id:string,path:string,signal?:AbortSignal)=>apiRequest<ProjectDirectory>(`${base(id)}/files?${new URLSearchParams({path})}`,{signal}),
   inspect:(id:string,signal?:AbortSignal)=>apiRequest<ProjectInspection>(`${base(id)}/inspection`,{signal}),
   saveSettings:(id:string,body:ProjectPreviewSettings)=>apiRequest<ProjectPreviewSettings>(`${base(id)}/preview-settings`,{method:'PUT',body}),

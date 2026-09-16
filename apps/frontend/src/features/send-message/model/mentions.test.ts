@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { fakePersonas, type Persona } from '../../../entities/persona';
 import { activeMentionQuery, insertMentionAt, parseMentions, removeMentionTarget } from './mentions';
+import {encodeProjectReference,projectReferenceToken} from '@agenvyl/contracts';
+
+it('does not route or remove agent handles inside project reference paths',()=>{
+  const reference={projectId:'project',projectName:'Project',root:'/project',path:'src/@coder file.ts',kind:'file' as const},token=projectReferenceToken(reference);
+  expect(parseMentions(`${encodeProjectReference(reference)} @reviewer`,fakePersonas)).toEqual(['reviewer']);
+  expect(parseMentions(`${token} @reviewer`,fakePersonas)).toEqual(['reviewer']);
+  expect(removeMentionTarget(`${token} @coder`,'coder',fakePersonas)).toBe(`${token} `);
+  expect(activeMentionQuery(token,token.indexOf('@coder')+3)).toBeUndefined();
+  expect(activeMentionQuery('@src/components',15)?.query).toBe('src/components');
+});
 
 describe('parseMentions',()=>{it('parses supplied handles case-insensitively and deduplicates',()=>expect(parseMentions('@Coder hi @coder, @architect',fakePersonas)).toEqual(['coder','architect']));it('expands @all in supplied room order',()=>expect(parseMentions('ask @all please',fakePersonas)).toEqual(['architect','coder','reviewer','debugger']));it('ignores aliases, email fragments and unknown handles',()=>expect(parseMentions('@qwen a@coder.dev @unknown',fakePersonas)).toEqual([]));});
 describe('mention autocomplete query',()=>{it('finds a mention at the caret with its replacement range',()=>expect(activeMentionQuery('ask @arc please',8)).toEqual({start:4,end:8,query:'arc'}));it('opens for an empty @ token',()=>expect(activeMentionQuery('hello @',7)).toEqual({start:6,end:7,query:''}));it('does not open inside an email address',()=>expect(activeMentionQuery('a@code',6)).toBeUndefined());});
