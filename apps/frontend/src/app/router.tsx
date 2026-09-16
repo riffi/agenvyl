@@ -8,6 +8,7 @@ import {withGatewayMode} from '../shared/lib';
 import {SetupPage} from '../pages/setup';
 import {HarnessSettingsPage} from '../pages/harness-settings';
 import {ProjectsPage} from '../pages/projects';
+import {FullscreenPreviewPage} from '../pages/fullscreen-preview';
 import {apiRequest} from '../shared/api';
 import {AppShell} from '../widgets/app-shell';
 import {roomsApi} from '../entities/room';
@@ -37,6 +38,7 @@ const harnessSettings=<AppShell><HarnessSettingsPage/></AppShell>;
 const router=createBrowserRouter([
   {path:'/',element:<RootRedirect/>},
   {path:'/setup',element:<SetupPage/>},
+  {path:'/rooms/:roomId/runs/:runId/fullscreen-preview',element:<FullscreenPreviewPage/>},
   {path:'/rooms/:roomId',element:<RoomPage/>},
   {path:'/personas',element:<PersonasPage/>},
   {path:'/personas/:personaId',element:<PersonasPage/>},

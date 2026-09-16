@@ -191,6 +191,10 @@ describe('WorkspaceWindow', () => {
 
     const appPreview = await screen.findByRole('button', { name: 'App preview' });
     await waitFor(() => expect(appPreview.getAttribute('aria-pressed')).toBe('true'));
+    const fullScreen = screen.getByRole('link', { name: 'Open full-screen preview' });
+    expect(fullScreen.getAttribute('href')).toBe('/rooms/room/runs/run-1/fullscreen-preview');
+    expect(fullScreen.getAttribute('target')).toBe('_blank');
+    expect(fullScreen.getAttribute('rel')).toBe('noopener noreferrer');
     expect(screen.getByRole('button', { name: 'Choose app build' }).getAttribute('title')).toContain('@builder');
     expect(onRequestChange).not.toHaveBeenCalled();
 
@@ -235,9 +239,23 @@ describe('WorkspaceWindow', () => {
       onRequestChange={onRequestChange}
     /></QueryClientProvider>);
     expect(await screen.findByText('App preview is out of date')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Open full-screen preview' })).toBeNull();
     expect(screen.getByText('Source files changed after this build.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Open latest build anyway' }));
     expect(onRequestChange).toHaveBeenLastCalledWith({ section: 'app', buildRunId: 'run-1' });
+  });
+
+  it('hides the full-screen preview link without a build', () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><WorkspaceWindow
+      request={{ origin: 'workspace', section: 'app', treeVisible: false }}
+      roomId="room"
+      fake
+      onClose={vi.fn()}
+      onRequestChange={vi.fn()}
+    /></QueryClientProvider>);
+
+    expect(screen.queryByRole('link', { name: 'Open full-screen preview' })).toBeNull();
   });
 
   it('switches from the full-width mobile tree to the file viewer after selection', async () => {
