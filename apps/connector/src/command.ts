@@ -10,7 +10,8 @@ export async function resolveCommand(command:string,options:{platform?:NodeJS.Pl
   if(platform!=='win32'||['.exe','.com','.cmd','.bat'].includes(extname(command).toLowerCase()))return command;
   const{stdout}=await run('where.exe',[command],executionOptions(env));
   const matches=stdout.split(/\r?\n/).map(value=>value.trim()).filter(Boolean);
-  const resolved=matches.find(value=>['.exe','.com'].includes(extname(value).toLowerCase()))??matches.find(value=>['.cmd','.bat'].includes(extname(value).toLowerCase()));
+  // Preserve lookup order: an npm shim earlier on PATH must beat a later native binary.
+  const resolved=matches.find(value=>['.exe','.com','.cmd','.bat'].includes(extname(value).toLowerCase()));
   if(!resolved)throw new Error('Command is not available on PATH');
   return resolved;
 }
