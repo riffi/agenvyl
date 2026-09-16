@@ -1,0 +1,4 @@
+.reference { overflow-wrap: anywhere; }
+.link { padding: 0; border: 0; background: none; color: var(--accent, #355583); font: inherit; text-decoration: underline; cursor: pointer; }
+.link:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; border-radius: 2px; }
+.fallback { display: block; padding: 8px; margin-block: 4px; background: var(--surface-secondary, #f1f5f9); border-radius: 6px; font-size: .9em; }

@@ -8,6 +8,8 @@ import type { Run } from '../../entities/run';
 import { ImageLightbox, type ImageLightboxAction } from '../../shared/ui';
 import styles from './MarkdownAnswer.module.css';
 import { MentionLink, remarkPersonaMentions } from './mentions';
+import {isProjectFileLink} from '../../shared/project-references/projectFileLink';
+import {ProjectFileLink} from './ProjectFileLink';
 
 const terminalStatuses = new Set<Run['status']>(['completed', 'failed', 'cancelled']);
 type MarkdownAnswerProps = {
@@ -87,6 +89,7 @@ export const MarkdownAnswer = memo(({
       remarkPlugins={[remarkGfm, [remarkPersonaMentions, { handles: personas.map(persona => persona.handle) }]]}
       skipHtml
       urlTransform={(url, key, node) => url.startsWith('mention:') && key === 'href' && node.tagName === 'a'
+        || isProjectFileLink(url) && key === 'href' && node.tagName === 'a'
         || url.startsWith('workspace:') && key === 'src' && node.tagName === 'img'
         ? url
         : defaultUrlTransform(url)}
@@ -98,6 +101,8 @@ export const MarkdownAnswer = memo(({
           return <p {...props}>{children}</p>;
         },
         a: ({ node: _node, href, ...props }) => {
+          if (!href) return <>{props.children}</>;
+          if (isProjectFileLink(href)) return <ProjectFileLink href={href} project={run.recommendedProject}>{props.children}</ProjectFileLink>;
           if (!href?.startsWith('mention:')) return <a {...props} href={href} target="_blank" rel="noopener noreferrer" />;
           let handle = href.slice('mention:'.length);
           try {

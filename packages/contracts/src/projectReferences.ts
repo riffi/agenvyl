@@ -1,4 +1,4 @@
-export type ProjectReference={projectId:string;projectName:string;root:string;path:string;kind:'file'|'directory'};
+export type ProjectReference={projectId:string;projectName:string;root:string;path:string;kind:'file'|'directory';line?:number};
 export const projectReferenceToken=(ref:ProjectReference)=>`⟦${ref.kind==='directory'?'📁':'📄'} ${ref.projectName.replace(/[⟦⟧\r\n]/g,' ')}: ${ref.path.replace(/[⟦⟧\r\n]/g,' ')}⟧`;
 export const encodeProjectReference=(ref:ProjectReference)=>`[[project:${encodeURIComponent(JSON.stringify(ref))}]]`;
 export function projectReferences(text:string){
@@ -7,6 +7,7 @@ export function projectReferences(text:string){
     try{
       const ref=JSON.parse(decodeURIComponent(match[1])) as ProjectReference;
       if(!ref||!['file','directory'].includes(ref.kind)||!['projectId','projectName','root','path'].every(key=>typeof ref[key as keyof ProjectReference]==='string'))continue;
+      if(ref.line!==undefined&&(!Number.isSafeInteger(ref.line)||ref.line<1))continue;
       if(!ref.projectId||!ref.root||!ref.path||ref.path.startsWith('/')||ref.path.split(/[\\/]/).some(part=>!part||part==='.'||part==='..'||part.includes(':'))||/[\x00-\x1f]/.test(ref.path))continue;
       result.push({start:match.index!,end:match.index!+match[0].length,reference:ref});
     }catch{/* Ordinary text remains ordinary text if a reference is malformed. */}

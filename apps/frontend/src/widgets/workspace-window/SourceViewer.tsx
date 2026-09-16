@@ -47,10 +47,12 @@ export const SourceViewer = ({
   attachment,
   encoding,
   onEncodingChange,
+  line,
 }: {
   attachment: WorkspaceAttachment;
   encoding?: WorkspaceEncoding;
   onEncodingChange?: (encoding?: WorkspaceEncoding) => void;
+  line?: number;
 }) => {
   const state = useWorkspaceBytes(attachment.url);
   const compact = useCompactSourceViewer();
@@ -94,8 +96,8 @@ export const SourceViewer = ({
         ? <pre className={`${styles.plainSource} ${wrap ? styles.wrapped : ''}`}>{text}</pre>
         : <Suspense fallback={<div className={styles.sourceLoading}>Loading code viewer…</div>}>
             {compact
-              ? <MobileSourceViewer text={text} language={workspaceLanguageFor(attachment.path, attachment.mime_type)} label={attachment.name} wrap={wrap} />
-              : <DesktopSourceViewer text={text} language={workspaceLanguageFor(attachment.path, attachment.mime_type)} label={attachment.name} wrap={wrap} />}
+              ? <MobileSourceViewer text={text} language={workspaceLanguageFor(attachment.path, attachment.mime_type)} label={attachment.name} wrap={wrap} line={line} />
+              : <DesktopSourceViewer text={text} language={workspaceLanguageFor(attachment.path, attachment.mime_type)} label={attachment.name} wrap={wrap} line={line} />}
           </Suspense>}
     </div>
   </section>;

@@ -1,0 +1,4 @@
+.control { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; font: inherit; overflow-wrap: anywhere; }
+.button { border: 1px solid var(--border, #d8deea); background: var(--surface, #fff); color: var(--text-muted, #526078); border-radius: 5px; padding: 3px 8px; font: inherit; cursor: pointer; }
+.button:hover { background: var(--surface-secondary, #f1f5f9); }
+.button:focus-visible { outline: 2px solid var(--accent, #355583); outline-offset: 2px; }

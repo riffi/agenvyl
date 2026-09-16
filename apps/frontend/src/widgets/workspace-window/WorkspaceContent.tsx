@@ -44,6 +44,7 @@ export const WorkspaceContent = ({
   onGalleryNavigate,
   appEntry = false,
   onOpenAppPreview,
+  line,
 }: {
   attachment: WorkspaceAttachment;
   mode: WorkspaceViewMode;
@@ -53,15 +54,16 @@ export const WorkspaceContent = ({
   onGalleryNavigate?: (attachment: WorkspaceAttachment) => void;
   appEntry?: boolean;
   onOpenAppPreview?: () => void;
+  line?: number;
 }) => {
   const renderer = resolveWorkspaceRenderer(attachment);
   const effectiveMode = workspaceModesFor(attachment).includes(mode) ? mode : renderer.modes[0];
   if (effectiveMode === 'source') return appEntry
     ? <div className={styles.appEntryContent}>
       <div className={styles.appEntryNotice} role="note"><span><strong>App entry file</strong><small>This HTML starts the source app and needs its build pipeline to render correctly.</small></span><button type="button" onClick={onOpenAppPreview}><Play aria-hidden="true"/>Open app preview</button></div>
-      <SourceViewer attachment={attachment} encoding={encoding} onEncodingChange={onEncodingChange} />
+      <SourceViewer attachment={attachment} encoding={encoding} onEncodingChange={onEncodingChange} line={line} />
     </div>
-    : <SourceViewer attachment={attachment} encoding={encoding} onEncodingChange={onEncodingChange} />;
+    : <SourceViewer attachment={attachment} encoding={encoding} onEncodingChange={onEncodingChange} line={line} />;
   if (renderer.id === 'html') return <IsolatedHtmlPreview className={styles.frame} title={attachment.name} previewUrl={attachment.preview_url} />;
   if (renderer.id === 'markdown') return <RenderedMarkdown attachment={attachment} encoding={encoding} />;
   if (renderer.id === 'svg') return <ImageGallery attachment={attachment} vector />;

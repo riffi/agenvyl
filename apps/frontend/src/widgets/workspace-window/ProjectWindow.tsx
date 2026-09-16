@@ -9,6 +9,7 @@ import {AppPreviewDevice} from './WorkspaceAppPreview';
 import {IconButton} from '../../shared/ui';
 import {isolatedPreviewUrl,useRuntimeFeatures} from '../../shared/features';
 import {WorkspaceContent} from './WorkspaceContent';
+import {CopyFilePath} from '../../shared/project-references/CopyFilePath';
 import {ProjectExplorer} from './ProjectExplorer';
 import {ProjectBuildSettings} from './ProjectBuildSettings';
 import {defaultWorkspaceMode,workspaceModesFor,type WorkspaceOpenRequest,type WorkspaceRequestUpdate} from './workspaceModel';
@@ -93,7 +94,7 @@ export function ProjectWindow({project,roomId,request,revision,source,onClose,on
           {inspection.data?.scan_truncated&&<p>Auto-detection reached its scan limit. You can select an HTML path in Build settings.</p>}
           <div>{inspection.data?.candidates.map(candidate=><button key={candidate} onClick={()=>operation.mutate(async()=>{await projectFilesApi.saveSettings(project.id,{...inspection.data!.settings,entrypoint:candidate});})}>{candidate}</button>)}</div>
           <div><button disabled={operation.isPending||!inspection.data?.build_command||build.data?.status==='running'} onClick={startBuild}>Build now</button><button disabled={!inspection.data} onClick={()=>setSettings(true)}>Select HTML</button></div>
-        </div>):attachment?<><div className={projectStyles.filePath}>{attachment.path}</div><div className={styles.content}><WorkspaceContent attachment={/\.html?$/i.test(attachment.path)?{...attachment,preview_url:projectFilesApi.previewUrl(project.id,attachment.path)}:attachment} mode={mode} encoding={request.encoding} onEncodingChange={encoding=>onRequestChange({encoding})}/></div></>:<div className={styles.viewerEmpty}>{emptyMessage}</div>}
+        </div>):attachment?<><div className={projectStyles.filePath}>{attachment.path} <CopyFilePath path={`${project.path.replace(/[\\/]+$/,'')}/${attachment.path}`}/></div><div className={styles.content}><WorkspaceContent attachment={/\.html?$/i.test(attachment.path)?{...attachment,preview_url:projectFilesApi.previewUrl(project.id,attachment.path)}:attachment} mode={mode} encoding={request.encoding} onEncodingChange={encoding=>onRequestChange({encoding})} line={selectedPath===reference?.path?reference?.line:undefined}/></div></>:<div className={styles.viewerEmpty}>{emptyMessage}{selectedPath&&<CopyFilePath path={`${project.path.replace(/[\\/]+$/,'')}/${selectedPath}`}/>}</div>}
       </main>
     </div>
     {(showLog||build.data?.status==='running')&&<section className={projectStyles.log} aria-label="Build log"><header><strong>{build.data?`Build ${build.data.status}`:'Starting build…'}</strong><code>{build.data?.command}</code>{build.data?.status==='running'?<button onClick={()=>operation.mutate(()=>projectFilesApi.cancel(project.id))}>Cancel build</button>:<button onClick={()=>setShowLog(false)}>Close log</button>}</header><pre>{build.data?.log||'Waiting for output…'}</pre></section>}

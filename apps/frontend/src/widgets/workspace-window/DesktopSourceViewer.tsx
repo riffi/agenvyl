@@ -7,9 +7,10 @@ export type SourceRendererProps = {
   language: string;
   label: string;
   wrap: boolean;
+  line?: number;
 };
 
-const DesktopSourceViewer = ({ text, language, label, wrap }: SourceRendererProps) => {
+const DesktopSourceViewer = ({ text, language, label, wrap, line }: SourceRendererProps) => {
   const hostRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -36,11 +37,16 @@ const DesktopSourceViewer = ({ text, language, label, wrap }: SourceRendererProp
       overviewRulerLanes: 0,
       stickyScroll: { enabled: true },
     });
+    if (line) {
+      const target = Math.min(line, model.getLineCount());
+      editor.setSelection(new monaco.Range(target, 1, target, model.getLineMaxColumn(target)));
+      editor.revealLineInCenter(target);
+    }
     return () => {
       editor.dispose();
       model.dispose();
     };
-  }, [label, language, text, wrap]);
+  }, [label, language, text, wrap, line]);
 
   return <div ref={hostRef} className={styles.monacoHost} />;
 };

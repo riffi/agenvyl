@@ -27,6 +27,16 @@ function mount(onAttach=vi.fn()){
   render(<QueryClientProvider client={client}><Host/></QueryClientProvider>);return client;
 }
 describe('project viewer',()=>{
+  it('offers the original path when a referenced file is missing',async()=>{
+    vi.mocked(projectFilesApi.list).mockResolvedValue({entries:[],truncated:false});
+    const writeText=vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText}});
+    const reference={projectId:project.id,projectName:project.name,root:project.path,path:'missing.ts',kind:'file' as const};
+    render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><WorkspaceWindow roomId="room" project={project} request={{origin:'workspace',source:'project',section:'files',projectReference:reference}} onClose={vi.fn()} onRequestChange={vi.fn()}/></QueryClientProvider>);
+    expect(await screen.findByText('Referenced file or folder is no longer available')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button',{name:'Copy path: C:/project/missing.ts'}));
+    await waitFor(()=>expect(writeText).toHaveBeenCalledWith('C:/project/missing.ts'));
+  });
   it('opens a referenced file and inserts folder references from the tree',async()=>{
     const directory={...file,name:'src',path:'src',kind:'directory' as const},nested={...file,path:'src/notes.txt'};
     vi.mocked(projectFilesApi.list).mockImplementation(async(_id,path)=>({entries:path==='src'?[nested]:[directory],truncated:false}));

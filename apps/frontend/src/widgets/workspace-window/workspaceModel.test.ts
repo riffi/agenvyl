@@ -4,7 +4,7 @@ import { applyWorkspaceRequestUpdate, workspaceModesFor, workspaceRequestForTarg
 
 describe('workspace viewer model', () => {
   it('preserves the original project and path in a reloadable reference URL',()=>{
-    const projectReference={projectId:'original',projectName:'Original',root:'C:/old project',path:'src/my file.ts',kind:'file' as const};
+    const projectReference={projectId:'original',projectName:'Original',root:'C:/old project',path:'src/my file.ts',kind:'file' as const,line:42};
     const search=workspaceSearchWithRequest(new URLSearchParams(),{origin:'workspace',source:'project',section:'files',projectReference});
     expect(workspaceRequestFromSearch(search)).toMatchObject({projectReference,source:'project',section:'files'});
     expect(workspaceSearchWithRequest(search).has('wsReference')).toBe(false);

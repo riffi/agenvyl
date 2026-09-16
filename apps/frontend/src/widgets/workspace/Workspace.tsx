@@ -220,7 +220,7 @@ export function WorkspaceApp({
   useEffect(()=>{if(!state.latestTitle)return;if(fake){pendingDemoTitles.current.delete(roomId);setDemoRooms(current=>applyRoomTitle(current,roomId,state.latestTitle!)??current);return}queryClient.setQueryData<Room[]>(roomKeys.all,current=>applyRoomTitle(current,roomId,state.latestTitle!));},[fake,queryClient,roomId,state.latestTitle]);
   useEffect(()=>{if(!selected)return;const closeDrawer=(event:KeyboardEvent)=>{if(event.key==='Escape')setSelected(undefined)};addEventListener('keydown',closeDrawer);return()=>removeEventListener('keydown',closeDrawer)},[selected]);
   useEffect(()=>{if(workspaceRequest&&!fake)void queryClient.invalidateQueries({queryKey:['rooms',roomId,'workspace']})},[workspaceRequest,state.lastSequence,roomId,fake,queryClient]);
-  const referenceActions={open:(reference:ProjectReference)=>pushWorkspace({origin:'workspace',source:'project',section:'files',treeVisible:true,projectReference:reference}),insert:(reference:ProjectReference)=>{closeWorkspace();composerRef.current?.insertProjectReference(reference);}};
+  const referenceActions={project:currentRoom?.project??undefined,open:(reference:ProjectReference)=>pushWorkspace({origin:'workspace',source:'project',section:'files',treeVisible:true,projectReference:reference,mode:reference.line?'source':undefined,opener:document.activeElement instanceof HTMLElement?document.activeElement:null}),insert:(reference:ProjectReference)=>{closeWorkspace();composerRef.current?.insertProjectReference(reference);}};
   const linkedReference=workspaceRequest?.projectReference;
   const viewerProject=linkedReference?projectsQuery.data?.find(project=>project.id===linkedReference.projectId&&project.path===linkedReference.root):currentRoom?.project;
   return (

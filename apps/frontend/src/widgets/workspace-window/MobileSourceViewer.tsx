@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createHighlighterCore, type LanguageInput } from 'shiki/core';
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript';
 import githubLight from '@shikijs/themes/github-light';
@@ -45,8 +45,16 @@ const highlightedHtml = async (text: string, language: string) => {
   return highlighter.codeToHtml(text, { lang: language, theme: 'github-light' });
 };
 
-const MobileSourceViewer = ({ text, language, label, wrap }: SourceRendererProps) => {
+const MobileSourceViewer = ({ text, language, label, wrap, line }: SourceRendererProps) => {
   const [html, setHtml] = useState<string>();
+  const host = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!line || !host.current) return;
+    const lines = host.current.querySelectorAll<HTMLElement>('.line');
+    const target = lines[Math.min(line, lines.length) - 1];
+    if (target) { target.style.backgroundColor = '#fff0bb'; target.scrollIntoView({block: 'center'}); }
+    return () => { if (target) target.style.backgroundColor = ''; };
+  }, [html, line]);
 
   useEffect(() => {
     let active = true;
@@ -58,8 +66,8 @@ const MobileSourceViewer = ({ text, language, label, wrap }: SourceRendererProps
   }, [language, text]);
 
   if (html === undefined) return <div className={styles.sourceLoading}>Highlighting source…</div>;
-  if (!html) return <pre className={`${styles.plainSource} ${wrap ? styles.wrapped : ''}`} aria-label={`${label} source`}>{text}</pre>;
-  return <div className={`${styles.shikiSource} ${wrap ? styles.wrapped : ''}`} aria-label={`${label} source`} dangerouslySetInnerHTML={{ __html: html }} />;
+  if (!html) return <div ref={host}><pre className={`${styles.plainSource} ${wrap ? styles.wrapped : ''}`} aria-label={`${label} source`}>{text.split('\n').map((content, index) => <span key={index} className="line">{content}{'\n'}</span>)}</pre></div>;
+  return <div ref={host} className={`${styles.shikiSource} ${wrap ? styles.wrapped : ''}`} aria-label={`${label} source`} dangerouslySetInnerHTML={{ __html: html }} />;
 };
 
 export default MobileSourceViewer;
