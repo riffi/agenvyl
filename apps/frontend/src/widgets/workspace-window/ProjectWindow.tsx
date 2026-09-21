@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState,type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
 import {useMutation,useQuery,useQueryClient} from '@tanstack/react-query';
-import {Code2,Download,ExternalLink,Eye,Monitor,MoreHorizontal,PanelLeft,Paperclip,Play,RefreshCw,Settings,Smartphone,X} from 'lucide-react';
+import {ChevronLeft,Code2,Download,ExternalLink,Eye,Monitor,MoreHorizontal,PanelLeft,Paperclip,Play,RefreshCw,Settings,Smartphone,X} from 'lucide-react';
 import type {ProjectFile,ProjectSummary,WorkspaceAttachment} from '@agenvyl/contracts';
 import {projectFilesApi} from '../../entities/project';
 import {useProjectReferenceActions} from '../../shared/project-references/ProjectReferenceContext';
@@ -10,6 +10,8 @@ import {IconButton} from '../../shared/ui';
 import {isolatedPreviewUrl,useRuntimeFeatures} from '../../shared/features';
 import {WorkspaceContent} from './WorkspaceContent';
 import {CopyFilePath} from '../../shared/project-references/CopyFilePath';
+import {useCompactWorkspace} from './useCompactWorkspace';
+import {WorkspaceSectionSwitch} from './WorkspaceSectionSwitch';
 import {ProjectExplorer} from './ProjectExplorer';
 import {ProjectBuildSettings} from './ProjectBuildSettings';
 import {defaultWorkspaceMode,workspaceModesFor,type WorkspaceOpenRequest,type WorkspaceRequestUpdate} from './workspaceModel';
@@ -17,6 +19,7 @@ import styles from './WorkspaceWindow.module.css';
 import projectStyles from './ProjectWindow.module.css';
 
 export function ProjectWindow({project,roomId,request,revision,source,onClose,onRequestChange,onAttach}:{project:ProjectSummary;roomId:string;request:WorkspaceOpenRequest;revision?:string;source:ReactNode;onClose:()=>void;onRequestChange:(value:WorkspaceRequestUpdate)=>void;onAttach?: (attachment:WorkspaceAttachment)=>void}){
+  const compact=useCompactWorkspace();
   const client=useQueryClient(),menu=useRef<HTMLDetailsElement>(null),windowRef=useRef<HTMLElement>(null);
   const[settings,setSettings]=useState(false),[showLog,setShowLog]=useState(false),[refresh,setRefresh]=useState(0),[error,setError]=useState('');
   const[selection,setSelection]=useState<ProjectFile>();
@@ -27,7 +30,7 @@ export function ProjectWindow({project,roomId,request,revision,source,onClose,on
   const referenceFile=(file:ProjectFile)=>referenceActions?.insert({projectId:project.id,projectName:project.name,root:project.path,path:file.path,kind:file.kind});
   const[device,setDevice]=useState<'desktop'|'mobile'>('desktop');
   const {preview_origin:previewOrigin}=useRuntimeFeatures();
-  const section=request.section??'app',tree=request.treeVisible!==false;
+  const section=request.section??'app',tree=request.treeVisible!==false&&(!compact||section==='files');
   const inspection=useQuery({queryKey:['project-files',project.id,'inspection'],queryFn:({signal})=>projectFilesApi.inspect(project.id,signal),refetchOnWindowFocus:false});
   const build=useQuery({queryKey:['project-files',project.id,'build'],queryFn:({signal})=>projectFilesApi.buildStatus(project.id,signal),refetchInterval:2000});
   const parent=selectedPath?.includes('/')?selectedPath.slice(0,selectedPath.lastIndexOf('/')):'';
@@ -61,20 +64,24 @@ export function ProjectWindow({project,roomId,request,revision,source,onClose,on
     if(event.key==='Escape'&&!settings&&!document.querySelector('.yarl__root')){event.stopPropagation();if(menu.current?.open)menu.current.removeAttribute('open');else onClose();}
     if(event.key==='Tab'){const scope=event.target instanceof Element?event.target.closest<HTMLElement>('[role="dialog"]')??event.currentTarget:event.currentTarget;const elements=[...scope.querySelectorAll<HTMLElement>('button:not(:disabled),select,input,a[href],summary,iframe')].filter(item=>item.getClientRects().length);const first=elements[0],last=elements.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}}
   }}>
-    <header className={styles.globalHeader}>
-      <div className={styles.headerLead}><IconButton aria-label={tree?'Hide project files':'Show project files'} onClick={()=>onRequestChange({treeVisible:!tree})}><PanelLeft/></IconButton>{source}</div>
-      <div className={styles.headerCenter}><div className={styles.workspaceSectionSwitch} aria-label="Workspace view">{(['app','files'] as const).map(value=><button key={value} className={section===value?styles.workspaceSectionActive:''} aria-pressed={section===value} onClick={()=>onRequestChange({section:value,...(value==='files'&&!selection?{treeVisible:true}:{})})}>{value==='app'?'App preview':'Files'}</button>)}</div></div>
+    <header className={`${styles.globalHeader} ${section==='app'?styles.appHeader:tree?styles.treeHeader:styles.viewerHeader}`}>
+      <div className={styles.headerLead}><IconButton aria-label={tree?'Hide project files':'Show project files'} onClick={()=>onRequestChange({treeVisible:!tree})}>{compact?<ChevronLeft/>:<PanelLeft/>}</IconButton>{!compact&&<span className={styles.desktopSource}>{source}</span>}</div>
+      <div className={styles.headerCenter}><WorkspaceSectionSwitch section={section} onChange={value=>onRequestChange({section:value,...(value==='files'?{treeVisible:true}:{})})}/></div>
       <div className={styles.headerControls}>
         {section==='app'&&<>
           <div className={`${styles.headerModeSwitch} ${styles.previewDeviceSwitch}`} role="group" aria-label="Preview device">
             <button type="button" aria-label="Desktop preview" title="Desktop" aria-pressed={device==='desktop'} className={device==='desktop'?styles.headerModeActive:''} onClick={()=>setDevice('desktop')}><Monitor aria-hidden="true"/></button>
             <button type="button" aria-label="Mobile preview" title="Mobile" aria-pressed={device==='mobile'} className={device==='mobile'?styles.headerModeActive:''} onClick={()=>setDevice('mobile')}><Smartphone aria-hidden="true"/></button>
           </div>
-          <IconButton aria-label="Open preview in new window" title="Open preview in new window" disabled={!externalPreviewUrl} onClick={()=>externalPreviewUrl&&window.open(externalPreviewUrl,'_blank','popup,noopener,noreferrer,width=1280,height=800')}><ExternalLink aria-hidden="true"/></IconButton>
+          <IconButton className={styles.desktopOnly} aria-label="Open preview in new window" title="Open preview in new window" disabled={!externalPreviewUrl} onClick={()=>externalPreviewUrl&&window.open(externalPreviewUrl,'_blank','popup,noopener,noreferrer,width=1280,height=800')}><ExternalLink aria-hidden="true"/></IconButton>
         </>}
         {section==='files'&&modes.length>1&&<IconButton aria-label={mode==='source'?'Rendered':'Source'} onClick={()=>onRequestChange({mode:mode==='source'?'rendered':'source'})}>{mode==='source'?<Eye/>:<Code2/>}</IconButton>}
         <IconButton aria-label="Refresh project" onClick={refreshAll}><RefreshCw/></IconButton>
-        <details ref={menu} className={styles.workspaceMenu}><summary aria-label="Project actions"><MoreHorizontal/></summary><div className={styles.workspaceMenuPopover}><section>
+        <details ref={menu} className={styles.workspaceMenu}><summary aria-label="Project actions"><MoreHorizontal/></summary><div className={styles.workspaceMenuPopover}>
+          <section className={styles.mobileMenuSection}>
+            {compact&&source}
+            {section==='app'&&<a href={externalPreviewUrl} aria-disabled={!externalPreviewUrl} target="_blank" rel="noopener noreferrer" onClick={()=>menu.current?.removeAttribute('open')}><ExternalLink/>Open in new tab</a>}
+          </section><section>
           <button disabled={operation.isPending||build.data?.status==='running'} onClick={action(startBuild)}><Play/>Build now</button>
           <button disabled={!inspection.data} onClick={action(()=>setSettings(true))}><Settings/>Build settings…</button>
           {build.data&&<button onClick={action(()=>setShowLog(true))}>Build log</button>}
@@ -85,7 +92,7 @@ export function ProjectWindow({project,roomId,request,revision,source,onClose,on
       </div>
     </header>
     {(error||inspection.error||build.error)&&<div role="alert" className={projectStyles.error}>{error||inspection.error?.message||build.error?.message}<button onClick={()=>{setError('');refreshAll();}}>Retry</button></div>}
-    <div className={`${styles.layout} ${tree?styles.treePane:''}`}>
+    <div className={`${styles.layout} ${tree?styles.treePane:''} ${section==='app'?styles.appLayout:''}`}>
       {tree&&<div className={styles.explorerShell} style={{width:286}}><ProjectExplorer projectId={project.id} selected={selectedPath} revealPath={reference?.path} onSelect={choose} onReference={referenceActions?referenceFile:undefined}/></div>}
       <main className={styles.viewer}>
         {section==='app'?(previewUrl?<AppPreviewDevice key={`${entry}:${refresh}`} device={device} title={`${project.name} app preview`} previewUrl={previewUrl}/>:<div className={styles.previewGate}>

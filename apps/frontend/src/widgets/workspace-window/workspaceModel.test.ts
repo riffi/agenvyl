@@ -44,7 +44,8 @@ describe('workspace viewer model', () => {
       followCurrent: false,
     });
     expect(workspaceRequestForTarget(target, false).treeVisible).toBe(true);
-    expect(workspaceRequestForTarget(undefined, true).treeVisible).toBe(true);
+    expect(workspaceRequestForTarget(undefined, true)).toMatchObject({ section: 'app', treeVisible: true });
+    expect(workspaceRequestForTarget(undefined, false).section).toBeUndefined();
   });
 
   it('clears the active file preview without forgetting the selected app build', () => {

@@ -54,6 +54,7 @@ export const workspaceRequestForTarget = (
   compact = isCompactWorkspace(),
 ): WorkspaceOpenRequest => ({
   origin: 'workspace',
+  ...(compact && !target ? { section: 'app' as const } : {}),
   target,
   treeVisible: !target || !compact,
   followCurrent: !target?.versionId,

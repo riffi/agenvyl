@@ -42,5 +42,25 @@
 .projectTreeRow {display:flex;align-items:center;}
 .projectTreeRow > .treeRow {flex:1;min-width:0;}
 .projectReferenceAction {flex-shrink:0;border:0;background:transparent;color:var(--text-muted,#64748b);padding:6px;cursor:pointer;opacity:0;}
+.desktopSource{display:flex;min-width:0}
+.mobileSectionSwitch,.mobileRefresh{display:none!important}
+.workspaceMenuPopover .mobileMenuSection{display:none}
+@media(max-width:899px){
+  .appLayout>.explorerShell{display:none}
+  .appLayout.treePane>.viewer{display:flex}
+  .globalHeader{grid-template-columns:auto minmax(0,1fr) auto;gap:4px;padding:0 8px}
+  .headerLead{grid-column:1;grid-row:1}
+  .headerCenter{grid-column:2;grid-row:1;justify-self:start}
+  .headerControls{grid-column:3;grid-row:1;gap:4px}
+  .desktopSource,.desktopOnly,.workspaceSectionSwitch,.appHeader .headerLead,.headerModeSwitch.previewDeviceSwitch{display:none!important}
+  .mobileSectionSwitch{display:block!important;max-width:100%;height:44px;border:0;border-radius:7px;background:transparent;color:#334155;font-family:inherit;font-size:14px;font-weight:600;line-height:1.4;padding:0 8px}
+  .mobileSectionSwitch:focus-visible{outline:2px solid #5666c2;outline-offset:-2px}
+  .mobileRefresh{display:grid!important}
+  .headerControls>button,.workspaceMenu>summary{width:40px;height:44px}
+  .workspaceMenuPopover{position:fixed;top:52px;right:8px;width:min(300px,calc(100vw - 16px));max-height:calc(100dvh - 68px);overflow:auto}
+  .workspaceMenuPopover .mobileMenuSection{display:grid;gap:6px;padding:8px}
+  .mobileMenuSection select{width:100%;max-width:none;height:40px;font-size:13px}
+  .workspaceMenuPopover button,.workspaceMenuPopover a{min-height:44px;height:auto;font-size:13px}
+}
 .projectTreeRow:hover .projectReferenceAction,.projectReferenceAction:focus-visible {opacity:1;}
 @media (hover:none) {.projectReferenceAction {opacity:1;}}

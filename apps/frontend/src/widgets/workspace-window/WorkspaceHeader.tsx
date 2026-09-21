@@ -23,6 +23,8 @@ import {
 import type { WorkspaceAttachment, WorkspaceBuildPreview, WorkspaceEntry, WorkspaceHistory, WorkspaceRestoreTarget, WorkspaceVersion } from '@agenvyl/contracts';
 import { IconButton } from '../../shared/ui';
 import { workspaceModesFor, type WorkspacePreviewDevice, type WorkspaceSection, type WorkspaceViewMode } from './workspaceModel';
+import { useCompactWorkspace } from './useCompactWorkspace';
+import { WorkspaceSectionSwitch } from './WorkspaceSectionSwitch';
 import { WorkspaceBuildPicker } from './WorkspaceBuildPicker';
 import styles from './WorkspaceWindow.module.css';
 
@@ -103,6 +105,7 @@ export const WorkspaceHeader = ({
   onWorkspaceRestore,
   onClose,
 }: WorkspaceHeaderProps) => {
+  const compact = useCompactWorkspace();
   const actionsRef = useRef<HTMLDetailsElement>(null);
   const versionsRef = useRef<HTMLDetailsElement>(null);
   const viewedIndex = Math.max(0, versions.findIndex(version => version.id === viewed?.id));
@@ -129,7 +132,7 @@ export const WorkspaceHeader = ({
         <ChevronLeft className={styles.mobileBackIcon} />
       </IconButton>}
 
-      {sourceSelector??<div className={styles.workspaceIdentity}>
+      {sourceSelector?!compact&&<span className={styles.desktopSource}>{sourceSelector}</span>:<div className={styles.workspaceIdentity}>
         <FolderOpen className={styles.workspaceIcon} />
         <strong>Workspace</strong>
         {section === 'files' && attachment && <>
@@ -140,10 +143,7 @@ export const WorkspaceHeader = ({
     </div>
 
     <div className={styles.headerCenter}>
-      <div className={styles.workspaceSectionSwitch} aria-label="Workspace view">
-        <button type="button" className={section === 'app' ? styles.workspaceSectionActive : ''} aria-pressed={section === 'app'} onClick={() => onSection('app')}>App preview</button>
-        <button type="button" className={section === 'files' ? styles.workspaceSectionActive : ''} aria-pressed={section === 'files'} onClick={() => onSection('files')}>Files</button>
-      </div>
+      <WorkspaceSectionSwitch section={section} onChange={onSection}/>
     </div>
 
     <div className={styles.headerControls}>
@@ -152,7 +152,7 @@ export const WorkspaceHeader = ({
         <button type="button" aria-label="Mobile preview" title="Mobile" aria-pressed={previewDevice === 'mobile'} className={previewDevice === 'mobile' ? styles.headerModeActive : ''} onClick={() => onPreviewDevice('mobile')}><Smartphone aria-hidden="true" /></button>
       </div>}
       {section === 'app' && fullScreenPreviewUrl && <a
-        className={styles.fullScreenPreviewLink}
+        className={`${styles.fullScreenPreviewLink} ${styles.desktopOnly}`}
         href={fullScreenPreviewUrl}
         target="_blank"
         rel="noopener noreferrer"
@@ -213,10 +213,16 @@ export const WorkspaceHeader = ({
         </details>
         <IconButton aria-label="View newer version" title="Newer version" disabled={!newer} onClick={() => newer && onVersion(newer, newer.id === current?.id)}><ChevronRight /></IconButton>
       </div>}
-      {(section === 'app' || onWorkspaceRestore) && <WorkspaceBuildPicker builds={builds} selected={selectedBuild} currentRunId={currentBuildRunId} historical={historicalBuild} onSelect={onBuild} onBack={onCurrentBuild} history={history} historyError={historyError} onRestore={onWorkspaceRestore}/>}
+      {!compact && (section === 'app' || onWorkspaceRestore) && <span className={styles.desktopOnly}><WorkspaceBuildPicker builds={builds} selected={selectedBuild} currentRunId={currentBuildRunId} historical={historicalBuild} onSelect={onBuild} onBack={onCurrentBuild} history={history} historyError={historyError} onRestore={onWorkspaceRestore}/></span>}
+      <IconButton className={styles.mobileRefresh} aria-label="Refresh workspace" onClick={onRefresh}><RefreshCw/></IconButton>
       <details ref={actionsRef} className={styles.workspaceMenu} onBlur={closeOutside}>
         <summary role="button" aria-label="Workspace actions" title="Workspace actions"><MoreHorizontal /></summary>
         <div className={styles.workspaceMenuPopover}>
+          <section className={styles.mobileMenuSection}>
+            {compact && sourceSelector}
+            {compact && (section === 'app' || onWorkspaceRestore) && <WorkspaceBuildPicker builds={builds} selected={selectedBuild} currentRunId={currentBuildRunId} historical={historicalBuild} onSelect={onBuild} onBack={onCurrentBuild} history={history} historyError={historyError} onRestore={onWorkspaceRestore}/>}
+            {section==='app'&&fullScreenPreviewUrl&&<a href={fullScreenPreviewUrl} target="_blank" rel="noopener noreferrer" onClick={()=>actionsRef.current?.removeAttribute('open')}><ExternalLink/>Open in new tab</a>}
+          </section>
           {section === 'files' && attachment && <section>
             {versions.length > 0 && <button onClick={action(() => versionsRef.current?.setAttribute('open', ''))}><History />Version history</button>}
             {isHistorical && <button onClick={action(onRestoreVersion)}><RotateCcw />Restore this version</button>}

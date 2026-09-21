@@ -27,6 +27,21 @@ function mount(onAttach=vi.fn()){
   render(<QueryClientProvider client={client}><Host/></QueryClientProvider>);return client;
 }
 describe('project viewer',()=>{
+  it('keeps the mobile preview separate from the file tree',async()=>{
+    vi.stubGlobal('matchMedia',()=>({matches:true}));
+    mount();
+    expect(await screen.findByTitle('Project preview')).toBeTruthy();
+    expect(screen.queryByRole('navigation',{name:'Project files'})).toBeNull();
+    fireEvent.change(screen.getByRole('combobox',{name:'Workspace view'}),{target:{value:'files'}});
+    fireEvent.click(await screen.findByRole('button',{name:'notes.txt'}));
+    expect(await screen.findByText('Content: notes.txt')).toBeTruthy();
+    expect(screen.queryByRole('navigation',{name:'Project files'})).toBeNull();
+    fireEvent.click(screen.getByRole('button',{name:'Show project files'}));
+    expect(await screen.findByRole('navigation',{name:'Project files'})).toBeTruthy();
+    fireEvent.change(screen.getByRole('combobox',{name:'Workspace view'}),{target:{value:'app'}});
+    expect(await screen.findByTitle('Project preview')).toBeTruthy();
+    expect(screen.queryByRole('navigation',{name:'Project files'})).toBeNull();
+  });
   it('offers the original path when a referenced file is missing',async()=>{
     vi.mocked(projectFilesApi.list).mockResolvedValue({entries:[],truncated:false});
     const writeText=vi.fn().mockResolvedValue(undefined);

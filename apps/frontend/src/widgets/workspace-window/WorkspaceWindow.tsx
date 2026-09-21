@@ -63,6 +63,7 @@ const WorkspaceFilesWindow = ({
   const open = Boolean(request);
   const queryClient = useQueryClient();
   const workspaceKey = ['rooms', roomId, 'workspace'] as const;
+  const [previewRefresh, setPreviewRefresh] = useState(0);
   const [trash, setTrash] = useState(false);
   const [previewDevice, setPreviewDevice] = useState<WorkspacePreviewDevice>('desktop');
   const [restoreChoice,setRestoreChoice]=useState<WorkspaceRestoreChoice>();
@@ -306,7 +307,7 @@ const WorkspaceFilesWindow = ({
       onRename={() => selected && setOperation({ kind: 'rename', entry: selected })}
       onMove={() => selected && setOperation({ kind: 'move', entry: selected })}
       onDelete={() => selected && setOperation({ kind: 'delete', entry: selected })}
-      onRefresh={() => void workspaceQuery.refetch()}
+      onRefresh={() => { setPreviewRefresh(value => value + 1); void workspaceQuery.refetch(); }}
       history={historyQuery.data}
       historyError={historyQuery.error?.message}
       onWorkspaceRestore={fake?undefined:(target,label,recovery)=>setRestoreChoice({target,label,recovery})}
@@ -316,7 +317,7 @@ const WorkspaceFilesWindow = ({
     {workspaceQuery.error && <div className={styles.alert}><Alert tone="error">{workspaceQuery.error instanceof Error ? workspaceQuery.error.message : String(workspaceQuery.error)}</Alert></div>}
     {notice && <button className={styles.notice} onClick={() => setNotice(undefined)}>{notice}<X /></button>}
     {section === 'app'
-      ? <WorkspaceAppPreview
+      ? <WorkspaceAppPreview key={previewRefresh}
         device={previewDevice}
         selected={selectedBuild}
         latestOutdated={latestOutdated}
